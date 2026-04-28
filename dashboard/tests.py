@@ -2,7 +2,9 @@ from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import TestCase
+from django.test.utils import override_settings
 from django.urls import reverse
 
 from obras.models import AditivoContrato, DespesaObra, ImpostoNotaFiscal, NotaFiscal, Obra, RetencaoNotaFiscal
@@ -158,3 +160,36 @@ class DashboardHomeTests(TestCase):
         response = self.client.get(reverse('home'))
 
         self.assertRedirects(response, f"{reverse('login')}?next={reverse('home')}")
+
+
+@override_settings(
+    DJANGO_SUPERUSER_USERNAME='renderadmin',
+    DJANGO_SUPERUSER_EMAIL='admin@ambarengenharia.com.br',
+    DJANGO_SUPERUSER_PASSWORD='Senha-Forte-Render-123',
+)
+class EnsureSuperuserCommandTests(TestCase):
+    def test_cria_superusuario_por_variavel_de_ambiente(self):
+        call_command('ensure_superuser')
+
+        user_model = get_user_model()
+        user = user_model.objects.get(username='renderadmin')
+        self.assertEqual(user.email, 'admin@ambarengenharia.com.br')
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.check_password('Senha-Forte-Render-123'))
+
+    def test_atualiza_usuario_existente_para_superusuario(self):
+        user_model = get_user_model()
+        user_model.objects.create_user(
+            username='renderadmin',
+            email='usuario@ambarengenharia.com.br',
+            password='senha-antiga',
+        )
+
+        call_command('ensure_superuser')
+
+        user = user_model.objects.get(username='renderadmin')
+        self.assertEqual(user.email, 'admin@ambarengenharia.com.br')
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.check_password('Senha-Forte-Render-123'))

@@ -4,7 +4,7 @@ services:
     name: dashboard-ambar
     plan: free
     region: oregon
-    buildCommand: pip install -r requirements.txt && python manage.py migrate --noinput --settings=config.settings.prod && python manage.py collectstatic --noinput --settings=config.settings.prod
+    buildCommand: pip install -r requirements.txt && python manage.py migrate --noinput --settings=config.settings.prod && python manage.py ensure_superuser --settings=config.settings.prod && python manage.py collectstatic --noinput --settings=config.settings.prod
     startCommand: gunicorn config.wsgi:application
     healthCheckPath: /healthz/
     envVars:
@@ -30,6 +30,12 @@ services:
         value: "60"
       - key: POSTGRES_SSL_REQUIRE
         value: "True"
+      - key: DJANGO_SUPERUSER_USERNAME
+        sync: false
+      - key: DJANGO_SUPERUSER_EMAIL
+        sync: false
+      - key: DJANGO_SUPERUSER_PASSWORD
+        sync: false
       - key: DATABASE_URL
         fromDatabase:
           name: dashboard-ambar-db

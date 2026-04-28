@@ -54,7 +54,8 @@ venv\Scripts\python.exe manage.py check --deploy --settings=config.settings.prod
   - um `Web Service` Django
   - um banco `PostgreSQL`
 - Apos o primeiro deploy:
-  - rode `createsuperuser` no Shell do Render
+  - em plano free, preencha `DJANGO_SUPERUSER_USERNAME`, `DJANGO_SUPERUSER_EMAIL` e `DJANGO_SUPERUSER_PASSWORD`
+  - rode um novo deploy para o sistema criar ou atualizar o admin automaticamente
   - ajuste o dominio proprio, se houver
   - atualize `DJANGO_ALLOWED_HOSTS` e `DJANGO_CSRF_TRUSTED_ORIGINS` com o dominio final
 
