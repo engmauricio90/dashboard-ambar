@@ -1,0 +1,42 @@
+services:
+  - type: web
+    runtime: python
+    name: dashboard-ambar
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput --settings=config.settings.prod
+    preDeployCommand: python manage.py migrate --noinput --settings=config.settings.prod
+    startCommand: gunicorn config.wsgi:application
+    healthCheckPath: /healthz/
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.prod
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DJANGO_ALLOWED_HOSTS
+        value: .onrender.com
+      - key: DJANGO_CSRF_TRUSTED_ORIGINS
+        value: https://*.onrender.com
+      - key: DJANGO_SECURE_SSL_REDIRECT
+        value: "True"
+      - key: DJANGO_SECURE_HSTS_SECONDS
+        value: "31536000"
+      - key: DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS
+        value: "True"
+      - key: DJANGO_SECURE_HSTS_PRELOAD
+        value: "True"
+      - key: POSTGRES_CONN_MAX_AGE
+        value: "60"
+      - key: POSTGRES_SSL_REQUIRE
+        value: "True"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: dashboard-ambar-db
+          property: connectionString
+
+databases:
+  - name: dashboard-ambar-db
+    plan: free
+    region: oregon

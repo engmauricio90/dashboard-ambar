@@ -17,6 +17,7 @@ class LoginRequiredMiddleware:
         exempt_prefixes = (
             reverse(settings.LOGIN_URL),
             reverse('logout'),
+            reverse('healthz'),
             '/admin/',
             settings.STATIC_URL,
             settings.MEDIA_URL,

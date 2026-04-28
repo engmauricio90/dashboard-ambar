@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.db.models import Prefetch
+from django.http import HttpResponse
 from django.shortcuts import render
 
 from obras.models import NotaFiscal, Obra
@@ -127,3 +128,7 @@ def relatorio_geral(request):
     contexto = _build_dashboard_context(obras)
     contexto['filtro_form'] = filtro_form
     return render(request, 'dashboard/relatorio_geral.html', contexto)
+
+
+def healthz(request):
+    return HttpResponse('ok', content_type='text/plain')

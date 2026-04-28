@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+import dj_database_url
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -28,6 +30,10 @@ DEBUG = env_bool('DJANGO_DEBUG', False)
 ALLOWED_HOSTS = env_list('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1')
 CSRF_TRUSTED_ORIGINS = env_list('DJANGO_CSRF_TRUSTED_ORIGINS', '')
 
+render_hostname = env('RENDER_EXTERNAL_HOSTNAME')
+if render_hostname and render_hostname not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(render_hostname)
+
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -44,6 +50,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -103,6 +110,14 @@ NUMBER_GROUPING = 3
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
@@ -128,14 +143,25 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
 
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': env('POSTGRES_DB', ''),
-        'USER': env('POSTGRES_USER', ''),
-        'PASSWORD': env('POSTGRES_PASSWORD', ''),
-        'HOST': env('POSTGRES_HOST', 'localhost'),
-        'PORT': env('POSTGRES_PORT', '5432'),
-        'CONN_MAX_AGE': int(env('POSTGRES_CONN_MAX_AGE', '60')),
+database_url = env('DATABASE_URL')
+
+if database_url:
+    DATABASES = {
+        'default': dj_database_url.parse(
+            database_url,
+            conn_max_age=int(env('POSTGRES_CONN_MAX_AGE', '60')),
+            ssl_require=env_bool('POSTGRES_SSL_REQUIRE', True),
+        )
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': env('POSTGRES_DB', ''),
+            'USER': env('POSTGRES_USER', ''),
+            'PASSWORD': env('POSTGRES_PASSWORD', ''),
+            'HOST': env('POSTGRES_HOST', 'localhost'),
+            'PORT': env('POSTGRES_PORT', '5432'),
+            'CONN_MAX_AGE': int(env('POSTGRES_CONN_MAX_AGE', '60')),
+        }
+    }

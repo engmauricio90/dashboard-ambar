@@ -6,14 +6,15 @@ DEBUG = False
 if not SECRET_KEY or SECRET_KEY == 'dev-insecure-secret-key':
     raise ValueError('Defina DJANGO_SECRET_KEY para o ambiente de producao.')
 
-if not DATABASES['default']['NAME']:
-    raise ValueError('Defina POSTGRES_DB para o ambiente de producao.')
+if not env('DATABASE_URL'):
+    if not DATABASES['default']['NAME']:
+        raise ValueError('Defina POSTGRES_DB ou DATABASE_URL para o ambiente de producao.')
 
-if not DATABASES['default']['USER']:
-    raise ValueError('Defina POSTGRES_USER para o ambiente de producao.')
+    if not DATABASES['default']['USER']:
+        raise ValueError('Defina POSTGRES_USER ou DATABASE_URL para o ambiente de producao.')
 
-if not DATABASES['default']['PASSWORD']:
-    raise ValueError('Defina POSTGRES_PASSWORD para o ambiente de producao.')
+    if not DATABASES['default']['PASSWORD']:
+        raise ValueError('Defina POSTGRES_PASSWORD ou DATABASE_URL para o ambiente de producao.')
 
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
