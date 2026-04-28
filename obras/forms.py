@@ -30,6 +30,13 @@ class BootstrapModelForm(forms.ModelForm):
             existing = field.widget.attrs.get('class', '')
             field.widget.attrs['class'] = f'{existing} {css_class}'.strip()
 
+            if isinstance(field.widget, forms.DateInput) and field.widget.attrs.get('type') == 'date':
+                field.widget.format = '%Y-%m-%d'
+                field.input_formats = ['%Y-%m-%d']
+                initial_value = self.initial.get(name) or getattr(self.instance, name, None)
+                if initial_value:
+                    self.initial[name] = initial_value.strftime('%Y-%m-%d')
+
             if is_new_unbound_form and isinstance(field, (forms.DecimalField, forms.IntegerField)):
                 if getattr(self.instance, name, None) == 0:
                     setattr(self.instance, name, None)
@@ -69,7 +76,7 @@ class ObraForm(BootstrapModelForm):
             'projecao_despesa',
         ]
         widgets = {
-            'data_inicio': forms.DateInput(attrs={'type': 'date'}),
+            'data_inicio': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'observacoes': forms.Textarea(attrs={'rows': 3}),
             'valor_contrato': forms.NumberInput(attrs={'step': '0.01'}),
             'projecao_despesa': forms.NumberInput(attrs={'step': '0.01'}),
@@ -81,7 +88,7 @@ class NotaFiscalForm(BootstrapModelForm):
         model = NotaFiscal
         fields = ['numero', 'data_emissao', 'valor_bruto', 'status', 'observacoes']
         widgets = {
-            'data_emissao': forms.DateInput(attrs={'type': 'date'}),
+            'data_emissao': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'valor_bruto': forms.NumberInput(attrs={'step': '0.01'}),
             'observacoes': forms.Textarea(attrs={'rows': 3}),
         }
@@ -152,7 +159,7 @@ class DespesaObraForm(BootstrapModelForm):
         model = DespesaObra
         fields = ['data_referencia', 'categoria', 'descricao', 'valor']
         widgets = {
-            'data_referencia': forms.DateInput(attrs={'type': 'date'}),
+            'data_referencia': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'valor': forms.NumberInput(attrs={'step': '0.01'}),
         }
 
@@ -162,7 +169,7 @@ class AditivoContratoForm(BootstrapModelForm):
         model = AditivoContrato
         fields = ['data_referencia', 'tipo', 'descricao', 'valor']
         widgets = {
-            'data_referencia': forms.DateInput(attrs={'type': 'date'}),
+            'data_referencia': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'valor': forms.NumberInput(attrs={'step': '0.01'}),
         }
 
@@ -172,14 +179,14 @@ class RetencaoTecnicaObraForm(BootstrapModelForm):
         model = RetencaoTecnicaObra
         fields = ['data_referencia', 'descricao', 'valor']
         widgets = {
-            'data_referencia': forms.DateInput(attrs={'type': 'date'}),
+            'data_referencia': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'valor': forms.NumberInput(attrs={'step': '0.01'}),
         }
 
 
 class RelatorioObraFiltroForm(BootstrapForm):
-    data_inicial = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}))
-    data_final = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}))
+    data_inicial = forms.DateField(required=False, widget=forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}))
+    data_final = forms.DateField(required=False, widget=forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}))
 
     def clean(self):
         cleaned_data = super().clean()

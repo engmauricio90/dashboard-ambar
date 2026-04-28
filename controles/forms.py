@@ -32,6 +32,13 @@ class BootstrapModelForm(forms.ModelForm):
             existing = field.widget.attrs.get('class', '')
             field.widget.attrs['class'] = f'{existing} {css_class}'.strip()
 
+            if isinstance(field.widget, forms.DateInput) and field.widget.attrs.get('type') == 'date':
+                field.widget.format = '%Y-%m-%d'
+                field.input_formats = ['%Y-%m-%d']
+                initial_value = self.initial.get(name) or getattr(self.instance, name, None)
+                if initial_value:
+                    self.initial[name] = initial_value.strftime('%Y-%m-%d')
+
             if is_new_unbound_form and isinstance(field, (forms.DecimalField, forms.IntegerField)):
                 if getattr(self.instance, name, None) == 0:
                     setattr(self.instance, name, None)
@@ -65,7 +72,7 @@ class RegistroAbastecimentoForm(BootstrapModelForm):
             'observacoes',
         ]
         widgets = {
-            'data_abastecimento': forms.DateInput(attrs={'type': 'date'}),
+            'data_abastecimento': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'litros': forms.NumberInput(attrs={'step': '0.01'}),
             'valor_litro': forms.NumberInput(attrs={'step': '0.01'}),
             'valor_total': forms.NumberInput(attrs={'step': '0.01'}),
@@ -110,9 +117,9 @@ class LocacaoEquipamentoForm(BootstrapModelForm):
             'observacoes',
         ]
         widgets = {
-            'data_locacao': forms.DateInput(attrs={'type': 'date'}),
-            'data_solicitacao_retirada': forms.DateInput(attrs={'type': 'date'}),
-            'data_retirada': forms.DateInput(attrs={'type': 'date'}),
+            'data_locacao': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'data_solicitacao_retirada': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'data_retirada': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'quantidade': forms.NumberInput(attrs={'min': '1'}),
             'valor_referencia': forms.NumberInput(attrs={'step': '0.01'}),
             'observacoes': forms.Textarea(attrs={'rows': 3}),
@@ -124,7 +131,7 @@ class SolicitarRetiradaEquipamentoForm(BootstrapModelForm):
         model = LocacaoEquipamento
         fields = ['data_solicitacao_retirada', 'observacoes']
         widgets = {
-            'data_solicitacao_retirada': forms.DateInput(attrs={'type': 'date'}),
+            'data_solicitacao_retirada': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'observacoes': forms.Textarea(attrs={'rows': 3}),
         }
 
@@ -134,7 +141,7 @@ class BaixarLocacaoEquipamentoForm(BootstrapModelForm):
         model = LocacaoEquipamento
         fields = ['data_retirada', 'observacoes']
         widgets = {
-            'data_retirada': forms.DateInput(attrs={'type': 'date'}),
+            'data_retirada': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'observacoes': forms.Textarea(attrs={'rows': 3}),
         }
 
@@ -153,7 +160,7 @@ class OrcamentoRadarObraForm(BootstrapModelForm):
             'observacoes',
         ]
         widgets = {
-            'data_orcamento': forms.DateInput(attrs={'type': 'date'}),
+            'data_orcamento': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'valor_estimado': forms.NumberInput(attrs={'step': '0.01'}),
             'descricao': forms.Textarea(attrs={'rows': 3}),
             'observacoes': forms.Textarea(attrs={'rows': 3}),
@@ -179,7 +186,7 @@ class ContratoConcretagemForm(BootstrapModelForm):
             'observacoes',
         ]
         widgets = {
-            'data_inicio': forms.DateInput(attrs={'type': 'date'}),
+            'data_inicio': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'custo_m3_concreto': forms.NumberInput(attrs={'step': '0.01'}),
             'custo_bomba': forms.NumberInput(attrs={'step': '0.01'}),
             'adicional_noturno': forms.NumberInput(attrs={'step': '0.01'}),
@@ -229,8 +236,8 @@ class FaturamentoConcretagemForm(BootstrapModelForm):
             'observacoes',
         ]
         widgets = {
-            'data_faturamento': forms.DateInput(attrs={'type': 'date'}),
-            'data_conferencia': forms.DateInput(attrs={'type': 'date'}),
+            'data_faturamento': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'data_conferencia': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'volume_m3': forms.NumberInput(attrs={'step': '0.01'}),
             'volume_faltante_m3': forms.NumberInput(attrs={'step': '0.01'}),
             'valor_previsto_manual': forms.NumberInput(attrs={'step': '0.01'}),

@@ -221,6 +221,26 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(locacao.status, 'retirado')
         self.assertFalse(locacao.em_aberto)
 
+    def test_editar_locacao_mantem_datas_no_formulario(self):
+        equipamento = EquipamentoLocadoCatalogo.objects.create(nome='Betoneira')
+        locadora = LocadoraEquipamento.objects.create(nome='Locadora Centro')
+        obra = Obra.objects.create(nome_obra='Obra Datas')
+        locacao = LocacaoEquipamento.objects.create(
+            equipamento=equipamento,
+            locadora=locadora,
+            obra=obra,
+            data_locacao='2026-04-01',
+            data_solicitacao_retirada='2026-04-10',
+            data_retirada='2026-04-15',
+        )
+
+        response = self.client.get(reverse('editar_locacao_equipamento', args=[locacao.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'value="2026-04-01"', html=False)
+        self.assertContains(response, 'value="2026-04-10"', html=False)
+        self.assertContains(response, 'value="2026-04-15"', html=False)
+
     def test_cria_orcamento_no_radar(self):
         response = self.client.post(
             reverse('novo_radar_obra'),

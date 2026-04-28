@@ -22,6 +22,13 @@ class BootstrapModelForm(forms.ModelForm):
             existing = field.widget.attrs.get('class', '')
             field.widget.attrs['class'] = f'{existing} {css_class}'.strip()
 
+            if isinstance(field.widget, forms.DateInput) and field.widget.attrs.get('type') == 'date':
+                field.widget.format = '%Y-%m-%d'
+                field.input_formats = ['%Y-%m-%d']
+                initial_value = self.initial.get(name) or getattr(self.instance, name, None)
+                if initial_value:
+                    self.initial[name] = initial_value.strftime('%Y-%m-%d')
+
             if is_new_unbound_form and isinstance(field, (forms.DecimalField, forms.IntegerField)):
                 if getattr(self.instance, name, None) == 0:
                     setattr(self.instance, name, None)
@@ -62,11 +69,11 @@ class PropostaForm(BootstrapModelForm):
             'situacao',
         ]
         widgets = {
-            'data_proposta': forms.DateInput(attrs={'type': 'date'}),
+            'data_proposta': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'servico_incluso': forms.Textarea(attrs={'rows': 5}),
             'forma_pagamento': forms.Textarea(attrs={'rows': 4}),
             'observacoes': forms.Textarea(attrs={'rows': 6}),
-            'data_encerramento': forms.DateInput(attrs={'type': 'date'}),
+            'data_encerramento': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'bdi_percentual': forms.NumberInput(attrs={'step': '0.01'}),
         }
 
