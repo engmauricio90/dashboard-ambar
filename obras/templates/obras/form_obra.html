@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        <p class="text-muted mb-0">Dados principais da obra e metas financeiras base.</p>
+    </div>
+    <a href="{% url 'lista_obras' %}" class="btn btn-secondary">Voltar</a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Nome da obra</label>
+                    {{ form.nome_obra }}
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">Cliente</label>
+                    {{ form.cliente }}
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">Status</label>
+                    {{ form.status_obra }}
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">Responsável</label>
+                    {{ form.responsavel }}
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">Data de início</label>
+                    {{ form.data_inicio }}
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label">Observações</label>
+                    {{ form.observacoes }}
+                </div>
+
+                <hr class="my-4">
+
+                <div class="col-md-6">
+                    <label class="form-label">Valor do contrato</label>
+                    {{ form.valor_contrato }}
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">Projeção de despesa</label>
+                    {{ form.projecao_despesa }}
+                </div>
+            </div>
+
+            <div class="alert alert-light border mt-4 mb-0">
+                Aditivos, notas fiscais, retenções, impostos e despesas agora são lançados no histórico financeiro da obra.
+            </div>
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary">Salvar obra</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

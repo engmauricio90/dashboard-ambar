@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+
+{% block title %}Lista de Obras{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="mb-1">Lista de Obras</h1>
+        <p class="text-muted mb-0">Acompanhe obras, resultados e acesso ao histórico financeiro.</p>
+    </div>
+    <a href="{% url 'nova_obra' %}" class="btn btn-primary">Nova Obra</a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle">
+                <thead>
+                    <tr>
+                        <th>Nome da obra</th>
+                        <th>Cliente</th>
+                        <th>Status</th>
+                        <th>Contrato atualizado</th>
+                        <th>Total faturado</th>
+                        <th>Resultado real</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for obra in obras %}
+                    <tr>
+                        <td>{{ obra.nome_obra }}</td>
+                        <td>{{ obra.cliente }}</td>
+                        <td>{{ obra.get_status_obra_display }}</td>
+                        <td>R$ {{ obra.contrato_atualizado|floatformat:2 }}</td>
+                        <td>R$ {{ obra.total_notas_fiscais|floatformat:2 }}</td>
+                        <td>R$ {{ obra.resultado_real|floatformat:2 }}</td>
+                        <td class="d-flex gap-2 flex-wrap">
+                            <a href="{% url 'detalhe_obra' obra.id %}" class="btn btn-sm btn-outline-dark">Ver</a>
+                            <a href="{% url 'historico_financeiro' obra.id %}" class="btn btn-sm btn-outline-secondary">Financeiro</a>
+                            <a href="{% url 'editar_obra' obra.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7">Nenhuma obra cadastrada.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

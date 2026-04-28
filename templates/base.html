@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Dashboard de Obras{% endblock %}</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="{% url 'home' %}">Ambar Engenharia</a>
+
+            <div class="navbar-nav ms-auto align-items-center gap-2">
+                {% if request.user.is_authenticated %}
+                    <a class="nav-link" href="{% url 'home' %}">Dashboard</a>
+                    <a class="nav-link" href="{% url 'lista_obras' %}">Obras</a>
+                    <a class="nav-link" href="{% url 'controles_home' %}">Controles</a>
+                    <a class="nav-link" href="{% url 'lista_propostas' %}">Propostas</a>
+                    <a class="nav-link" href="/admin/">Admin</a>
+                    <span class="navbar-text text-white-50">{{ request.user.username }}</span>
+                    <form method="post" action="{% url 'logout' %}" class="mb-0">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-light">Sair</button>
+                    </form>
+                {% else %}
+                    <a class="btn btn-sm btn-outline-light" href="{% url 'login' %}">Entrar</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        {% block content %}
+        {% endblock %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

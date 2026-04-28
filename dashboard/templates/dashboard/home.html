@@ -1,0 +1,304 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Dashboard Geral</h1>
+        <p class="text-muted mb-0">Painel consolidado a partir dos lancamentos reais de obras, notas, despesas e aditivos.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'nova_obra' %}" class="btn btn-primary">Nova Obra</a>
+        <a href="{% url 'lista_obras' %}" class="btn btn-outline-dark">Ver Obras</a>
+        <a href="{% url 'relatorio_geral' %}" class="btn btn-outline-secondary">Relatorio Geral</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Valor total de contratos</h6>
+                <h4>R$ {{ total_contratos|floatformat:2 }}</h4>
+                <small class="text-muted">{{ quantidade_obras }} obra(s) cadastrada(s)</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Total de aditivos</h6>
+                <h4>R$ {{ total_aditivos|floatformat:2 }}</h4>
+                <small class="text-muted">Supressoes: R$ {{ total_supressoes|floatformat:2 }}</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Total faturado</h6>
+                <h4>R$ {{ total_notas|floatformat:2 }}</h4>
+                <small class="text-muted">Notas fiscais emitidas</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Total recebido liquido</h6>
+                <h4>R$ {{ total_recebido_liquido|floatformat:2 }}</h4>
+                <small class="text-muted">Bruto menos retencoes e impostos</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Total de despesas</h6>
+                <h4>R$ {{ total_despesas|floatformat:2 }}</h4>
+                <small class="text-muted">Despesas lancadas</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Total de impostos</h6>
+                <h4>R$ {{ total_impostos|floatformat:2 }}</h4>
+                <small class="text-muted">Impostos vinculados as NFs</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Total de retencoes</h6>
+                <h4>R$ {{ total_retencoes|floatformat:2 }}</h4>
+                <small class="text-muted">{{ quantidade_obras_em_alerta }} obra(s) em alerta</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Resultado projetado</h6>
+                <h4 class="{% if total_resultado_projetado < 0 %}text-danger{% else %}text-success{% endif %}">
+                    R$ {{ total_resultado_projetado|floatformat:2 }}
+                </h4>
+                <small class="text-muted">Baseado nas metas e projecoes das obras</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{ grafico_operacional|json_script:"grafico-operacional-data" }}
+{{ grafico_resultado_real|json_script:"grafico-resultado-data" }}
+{{ grafico_status|json_script:"grafico-status-data" }}
+
+<div class="row g-4 mb-4">
+    <div class="col-lg-8">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">Faturamento x Despesas por obra</h5>
+                    <span class="text-muted small">Comparativo operacional</span>
+                </div>
+                <div style="position: relative; height: 320px;">
+                    <canvas id="graficoOperacional"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-3">Composicao por status</h5>
+                <div style="position: relative; height: 320px;">
+                    <canvas id="graficoStatus"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-lg-8">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">Ranking de obras por resultado real</h5>
+                    <span class="text-muted small">Ordenado do melhor para o pior resultado</span>
+                </div>
+                <div style="position: relative; height: 320px;">
+                    <canvas id="graficoResultadoReal"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-3">Obras em alerta</h5>
+                <p class="text-muted small">Obras com resultado real ou margem real negativos.</p>
+
+                <div class="list-group list-group-flush">
+                    {% for obra in obras_em_alerta %}
+                    <div class="list-group-item px-0">
+                        <div class="d-flex justify-content-between align-items-start gap-3">
+                            <div>
+                                <strong>{{ obra.nome_obra }}</strong>
+                                <div class="text-muted small">{{ obra.cliente }}</div>
+                            </div>
+                            <div class="text-end">
+                                <div class="text-danger">R$ {{ obra.resultado_real|floatformat:2 }}</div>
+                                <a href="{% url 'historico_financeiro' obra.id %}" class="small">ver financeiro</a>
+                            </div>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="list-group-item px-0 text-success">
+                        Nenhuma obra em alerta no momento.
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Obra</th>
+                        <th>Cliente</th>
+                        <th>Status</th>
+                        <th>Contrato atualizado</th>
+                        <th>Faturado</th>
+                        <th>Resultado projetado</th>
+                        <th>Resultado real</th>
+                        <th>Acao</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for obra in obras %}
+                    <tr>
+                        <td>{{ obra.nome_obra }}</td>
+                        <td>{{ obra.cliente }}</td>
+                        <td>{{ obra.get_status_obra_display }}</td>
+                        <td>R$ {{ obra.contrato_atualizado|floatformat:2 }}</td>
+                        <td>R$ {{ obra.total_notas_fiscais|floatformat:2 }}</td>
+                        <td class="{% if obra.projecao_resultado < 0 %}text-danger{% else %}text-success{% endif %}">
+                            R$ {{ obra.projecao_resultado|floatformat:2 }}
+                        </td>
+                        <td class="{% if obra.resultado_real < 0 %}text-danger{% else %}text-success{% endif %}">
+                            R$ {{ obra.resultado_real|floatformat:2 }}
+                        </td>
+                        <td>
+                            <a href="{% url 'detalhe_obra' obra.id %}" class="btn btn-sm btn-outline-dark">Ver obra</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8">Nenhuma obra cadastrada.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <h5 class="mb-3">Resultado real consolidado</h5>
+        <h2 class="{% if total_resultado_real < 0 %}text-danger{% else %}text-success{% endif %}">
+            R$ {{ total_resultado_real|floatformat:2 }}
+        </h2>
+        <p class="text-muted mb-0">Esse total ja considera faturamento bruto, despesas, impostos e retencoes lancados nas obras.</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+    const graficoOperacionalData = JSON.parse(document.getElementById('grafico-operacional-data').textContent);
+    const graficoResultadoData = JSON.parse(document.getElementById('grafico-resultado-data').textContent);
+    const graficoStatusData = JSON.parse(document.getElementById('grafico-status-data').textContent);
+
+    if (graficoOperacionalData.labels.length) {
+        new Chart(document.getElementById('graficoOperacional'), {
+            type: 'bar',
+            data: {
+                labels: graficoOperacionalData.labels,
+                datasets: [
+                    {
+                        label: 'Faturado',
+                        data: graficoOperacionalData.faturamento,
+                        backgroundColor: '#2d6a4f',
+                    },
+                    {
+                        label: 'Despesas',
+                        data: graficoOperacionalData.despesas,
+                        backgroundColor: '#bc4749',
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+            }
+        });
+    }
+
+    if (graficoResultadoData.labels.length) {
+        new Chart(document.getElementById('graficoResultadoReal'), {
+            type: 'bar',
+            data: {
+                labels: graficoResultadoData.labels,
+                datasets: [{
+                    label: 'Resultado real',
+                    data: graficoResultadoData.resultados,
+                    backgroundColor: graficoResultadoData.resultados.map(value => value >= 0 ? '#40916c' : '#d62828'),
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+            }
+        });
+    }
+
+    if (graficoStatusData.valores.some(value => value > 0)) {
+        new Chart(document.getElementById('graficoStatus'), {
+            type: 'doughnut',
+            data: {
+                labels: graficoStatusData.labels,
+                datasets: [{
+                    data: graficoStatusData.valores,
+                    backgroundColor: ['#1d3557', '#2a9d8f', '#f4a261'],
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+            }
+        });
+    }
+</script>
+{% endblock %}

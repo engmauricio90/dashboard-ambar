@@ -1,0 +1,249 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proposta {{ proposta.numero_formatado }}</title>
+    <style>
+        @page { size: A4; margin: 0; }
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: #f3f5f7; color: #2f3133; }
+        .toolbar {
+            position: sticky; top: 0; z-index: 10; display: flex; gap: .75rem; align-items: center;
+            padding: 1rem 1.5rem; background: rgba(255,255,255,.94); border-bottom: 1px solid #dde3e8;
+        }
+        .toolbar a, .toolbar button {
+            text-decoration: none; border: 0; background: #1f6f78; color: white; padding: .7rem 1rem;
+            border-radius: .6rem; font-size: .95rem; cursor: pointer;
+        }
+        .toolbar a.secondary { background: #64707a; }
+        .proposal-page {
+            width: 210mm; min-height: 297mm; margin: 1rem auto; position: relative; background: white;
+            box-shadow: 0 20px 45px rgba(0,0,0,.10); overflow: hidden; page-break-after: always;
+        }
+        .proposal-page:last-child { page-break-after: auto; }
+        .page-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
+        .page-content { position: relative; z-index: 1; padding: 28mm 22mm 24mm; }
+        .cover-content { padding: 0; }
+        .cover-panel {
+            position: absolute; right: 22mm; top: 62mm; width: 76mm; min-height: 126mm;
+            color: white; display: flex; flex-direction: column; justify-content: flex-start;
+        }
+        .cover-title { font-size: .72rem; font-weight: 700; letter-spacing: .05em; margin-bottom: .35rem; text-transform: uppercase; }
+        .cover-client { font-size: .56rem; letter-spacing: .08em; opacity: .92; margin-bottom: .65rem; text-transform: uppercase; }
+        .cover-execucao { font-size: 1.08rem; font-weight: 700; text-transform: uppercase; line-height: 1.14; margin-bottom: 1.1rem; }
+        .cover-meta-box {
+            margin-top: auto;
+            width: 42mm;
+            min-height: 28mm;
+            padding: 4mm 4mm 5mm;
+            background: rgba(255,255,255,.08);
+        }
+        .cover-date { font-size: .68rem; opacity: .95; margin-top: .35rem; }
+        .text-page { padding: 66mm 24mm 28mm; }
+        .summary-page { padding: 72mm 24mm 28mm; }
+        .signature-page { padding: 76mm 24mm 28mm; }
+        .planilha-page { padding: 66mm 22mm 28mm; }
+        .section-title { font-size: 1.1rem; font-weight: 700; margin: 1.1rem 0 .8rem; }
+        .body-text { font-size: .98rem; line-height: 1.55; text-align: justify; }
+        .body-list { margin: .8rem 0 1.2rem 1.1rem; padding: 0; line-height: 1.55; }
+        .body-list li { margin-bottom: .35rem; }
+        .summary-table, .planilha-table {
+            width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: .95rem;
+        }
+        .summary-table th, .summary-table td, .planilha-table th, .planilha-table td {
+            border: 1px solid #888; padding: .45rem .55rem; vertical-align: top;
+        }
+        .summary-table th, .planilha-table th { background: #f2f4f5; }
+        .text-end { text-align: right; }
+        .mt-3 { margin-top: 1rem; }
+        .mt-4 { margin-top: 1.6rem; }
+        .signature-block { margin-top: 2.25rem; font-size: 1rem; }
+        .signature-name { margin-top: 2rem; font-weight: 700; }
+        .observacoes { margin-top: 1rem; padding-left: 1.1rem; }
+        .observacoes li { margin-bottom: .45rem; }
+        .obs-paragraph { white-space: pre-line; line-height: 1.55; }
+        .planilha-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: .8rem; }
+        .planilha-meta strong { display: block; font-size: .82rem; color: #5f6d76; text-transform: uppercase; letter-spacing: .04em; }
+        .planilha-imagem-wrap { margin-top: .8rem; }
+        .planilha-imagem { width: 100%; max-height: 205mm; object-fit: contain; }
+        .back-page { padding: 0; }
+        .closing-text { font-size: .98rem; line-height: 1.65; text-align: justify; }
+        @media print {
+            body { background: white; }
+            .toolbar { display: none; }
+            .proposal-page { margin: 0 auto; box-shadow: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <a href="{% url 'editar_proposta' proposta.id %}" class="secondary">Voltar para edicao</a>
+        <a href="{% url 'lista_propostas' %}" class="secondary">Lista de propostas</a>
+        <button onclick="window.print()">Imprimir / Salvar em PDF</button>
+    </div>
+
+    <section class="proposal-page">
+        <img src="{% static 'propostas/reference/page_1_2.png' %}" alt="" class="page-bg">
+        <div class="page-content cover-content">
+            <div class="cover-panel">
+                <div class="cover-execucao">{{ proposta.tipo_execucao }}</div>
+                <div class="cover-meta-box">
+                    <div class="cover-title">{{ proposta.titulo_documento }}</div>
+                    <div class="cover-client">{{ proposta.cliente }}</div>
+                    <div class="cover-date">{{ proposta.data_proposta|date:"j \\d\\e F \\d\\e Y" }}</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="proposal-page">
+        <img src="{% static 'propostas/reference/page_2_about.jpg' %}" alt="" class="page-bg">
+        <div class="page-content"></div>
+    </section>
+
+    <section class="proposal-page">
+        <img src="{% static 'propostas/reference/page_frame.png' %}" alt="" class="page-bg">
+        <div class="page-content text-page">
+            <div class="body-text">
+                Atuamos com solucoes completas para obras de infraestrutura e edificacoes, com ampla experiencia,
+                organizacao e know-how para a execucao de:
+            </div>
+            <ul class="body-list">
+                <li>Redes de drenagem pluvial</li>
+                <li>Redes de esgoto cloacal</li>
+                <li>Redes de abastecimento de agua</li>
+                <li>Terraplenagem</li>
+                <li>Pavimentacao</li>
+                <li>Construcoes de alto padrao</li>
+                <li>Com equipamentos e producao propria, nossa empresa adota as melhores praticas da engenharia, priorizando eficiencia e atuacao com foco em qualidade, prazo e custo.</li>
+            </ul>
+
+            <div class="section-title">Nesta proposta, esta incluido o servico de:</div>
+            <div class="body-text obs-paragraph">{{ proposta.servico_incluso }}</div>
+
+            <div class="section-title">Proposito, comprometimento e expertise fazem a diferenca:</div>
+            <ul class="body-list">
+                <li>Maquinario proprio como caminhoes, retroescavadeiras e escavadeiras;</li>
+                <li>Compromisso com a qualidade, com execucao fidedigna ao projeto e as imagens apresentadas;</li>
+                <li>Acompanhamento diario da obra por engenheiros;</li>
+                <li>Equipe multidisciplinar capacitada com experiencia em obras publicas e conhecimento de tramites em orgaos competentes.</li>
+            </ul>
+        </div>
+    </section>
+
+    <section class="proposal-page">
+        <img src="{% static 'propostas/reference/page_frame.png' %}" alt="" class="page-bg">
+        <div class="page-content summary-page">
+            <div class="section-title" style="letter-spacing:.4rem;">PROPOSTA</div>
+            <table class="summary-table">
+                <thead>
+                    <tr>
+                        <th>Descricao</th>
+                        <th style="width:18%;">Quantidade</th>
+                        <th style="width:24%;">Custo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in proposta.itens_resumo.all %}
+                    <tr>
+                        <td>{{ item.descricao }}</td>
+                        <td>{{ item.quantidade_descricao }}</td>
+                        <td class="text-end">R$ {{ item.valor|floatformat:2 }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="3">Nenhum item resumido cadastrado.</td>
+                    </tr>
+                    {% endfor %}
+                    <tr>
+                        <td colspan="2"><strong>Total</strong></td>
+                        <td class="text-end"><strong>R$ {{ proposta.total_final|floatformat:2 }}</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="mt-4 body-text"><strong>Prazo de execucao:</strong> {{ proposta.prazo_execucao|default:'a definir' }}</div>
+            <div class="mt-3 body-text"><strong>Forma de pagamento:</strong> {{ proposta.forma_pagamento|linebreaksbr }}</div>
+            {% if proposta.incluir_planilha %}
+            <div class="mt-3 body-text"><strong>Anexo:</strong> Planilha orcamentaria</div>
+            {% endif %}
+            {% if proposta.observacoes %}
+            <div class="mt-3 body-text"><strong>Observacoes:</strong></div>
+            <div class="obs-paragraph">{{ proposta.observacoes }}</div>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="proposal-page">
+        <img src="{% static 'propostas/reference/page_frame.png' %}" alt="" class="page-bg">
+        <div class="page-content signature-page">
+            <div class="closing-text">
+                Permanecemos a disposicao para quaisquer esclarecimentos complementares, ajustes de escopo e alinhamentos tecnicos necessarios para o pleno atendimento desta proposta.
+                Sera um prazer contribuir com a execucao deste servico, mantendo o padrao de qualidade, organizacao e acompanhamento tecnico que caracteriza a Ambar Engenharia.
+            </div>
+            <div class="signature-block">
+                <div>{{ proposta.local_fechamento }}, {{ proposta.data_encerramento|date:"j \\d\\e F \\d\\e Y" }}</div>
+                <div class="mt-3">Atenciosamente,</div>
+                <div class="signature-name">{{ proposta.engenheiro_nome }}</div>
+                <div>{{ proposta.engenheiro_crea }}</div>
+            </div>
+        </div>
+    </section>
+
+    {% if proposta.incluir_planilha %}
+    <section class="proposal-page">
+        <img src="{% static 'propostas/reference/page_frame.png' %}" alt="" class="page-bg">
+        <div class="page-content planilha-page">
+            <div class="planilha-meta">
+                <div><strong>Local</strong>{{ proposta.cliente }}</div>
+                <div><strong>Obra</strong>{{ proposta.tipo_execucao }}</div>
+            </div>
+            {% if proposta.planilha_imagem %}
+            <div class="planilha-imagem-wrap">
+                <img src="{{ proposta.planilha_imagem.url }}" alt="Planilha detalhada" class="planilha-imagem">
+            </div>
+            {% else %}
+            <table class="planilha-table">
+                <thead>
+                    <tr>
+                        <th style="width:8%;">Item</th>
+                        <th>Descricao</th>
+                        <th style="width:10%;">Und</th>
+                        <th style="width:10%;">Qtde</th>
+                        <th style="width:18%;">Preco unitario</th>
+                        <th style="width:18%;">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in proposta.itens_planilha.all %}
+                    <tr>
+                        <td>{{ item.ordem }}</td>
+                        <td>{{ item.descricao }}</td>
+                        <td>{{ item.unidade }}</td>
+                        <td>{{ item.quantidade|floatformat:2 }}</td>
+                        <td class="text-end">R$ {{ item.preco_unit_cliente|floatformat:2 }}</td>
+                        <td class="text-end">R$ {{ item.total_cliente|floatformat:2 }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6">Nenhum item de planilha cadastrado.</td>
+                    </tr>
+                    {% endfor %}
+                    <tr>
+                        <td colspan="5" class="text-end"><strong>Total</strong></td>
+                        <td class="text-end"><strong>R$ {{ proposta.total_planilha|floatformat:2 }}</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+            {% endif %}
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="proposal-page back-page">
+        <img src="{% static 'propostas/reference/page_7_back.png' %}" alt="" class="page-bg">
+    </section>
+</body>
+</html>

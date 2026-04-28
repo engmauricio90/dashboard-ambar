@@ -1,0 +1,148 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        <p class="text-muted mb-0">{{ obra.nome_obra }}</p>
+    </div>
+    <a href="{% url 'historico_financeiro' obra.id %}" class="btn btn-secondary">Voltar</a>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="mb-3">Dados da nota fiscal</h5>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Numero da NF</label>
+                    {{ form.numero }}
+                    {% if form.numero.errors %}<div class="text-danger small mt-1">{{ form.numero.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Data de emissao</label>
+                    {{ form.data_emissao }}
+                    {% if form.data_emissao.errors %}<div class="text-danger small mt-1">{{ form.data_emissao.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Status</label>
+                    {{ form.status }}
+                    {% if form.status.errors %}<div class="text-danger small mt-1">{{ form.status.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Valor bruto</label>
+                    {{ form.valor_bruto }}
+                    {% if form.valor_bruto.errors %}<div class="text-danger small mt-1">{{ form.valor_bruto.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Observacoes</label>
+                    {{ form.observacoes }}
+                    {% if form.observacoes.errors %}<div class="text-danger small mt-1">{{ form.observacoes.errors|join:', ' }}</div>{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0">Retencoes da NF</h5>
+                        <span class="text-muted small">Preencha apenas as linhas necessarias</span>
+                    </div>
+                    {{ retencoes_formset.management_form }}
+                    {% if retencoes_formset.non_form_errors %}
+                    <div class="alert alert-danger">{{ retencoes_formset.non_form_errors }}</div>
+                    {% endif %}
+
+                    {% for retencao_form in retencoes_formset %}
+                    <div class="border rounded p-3 mb-3 bg-light-subtle">
+                        {% for hidden in retencao_form.hidden_fields %}{{ hidden }}{% endfor %}
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Tipo</label>
+                                {{ retencao_form.tipo }}
+                                {% if retencao_form.tipo.errors %}<div class="text-danger small mt-1">{{ retencao_form.tipo.errors|join:', ' }}</div>{% endif %}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Descricao</label>
+                                {{ retencao_form.descricao }}
+                                {% if retencao_form.descricao.errors %}<div class="text-danger small mt-1">{{ retencao_form.descricao.errors|join:', ' }}</div>{% endif %}
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Valor</label>
+                                {{ retencao_form.valor }}
+                                {% if retencao_form.valor.errors %}<div class="text-danger small mt-1">{{ retencao_form.valor.errors|join:', ' }}</div>{% endif %}
+                            </div>
+                            <div class="col-md-1 d-flex align-items-end">
+                                {% if retencao_form.DELETE %}
+                                <div class="form-check mb-2">
+                                    {{ retencao_form.DELETE }}
+                                    <label class="form-check-label" for="{{ retencao_form.DELETE.id_for_label }}">Excluir</label>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0">Impostos da NF</h5>
+                        <span class="text-muted small">Preencha apenas as linhas necessarias</span>
+                    </div>
+                    {{ impostos_formset.management_form }}
+                    {% if impostos_formset.non_form_errors %}
+                    <div class="alert alert-danger">{{ impostos_formset.non_form_errors }}</div>
+                    {% endif %}
+
+                    {% for imposto_form in impostos_formset %}
+                    <div class="border rounded p-3 mb-3 bg-light-subtle">
+                        {% for hidden in imposto_form.hidden_fields %}{{ hidden }}{% endfor %}
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Tipo</label>
+                                {{ imposto_form.tipo }}
+                                {% if imposto_form.tipo.errors %}<div class="text-danger small mt-1">{{ imposto_form.tipo.errors|join:', ' }}</div>{% endif %}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Descricao</label>
+                                {{ imposto_form.descricao }}
+                                {% if imposto_form.descricao.errors %}<div class="text-danger small mt-1">{{ imposto_form.descricao.errors|join:', ' }}</div>{% endif %}
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Valor</label>
+                                {{ imposto_form.valor }}
+                                {% if imposto_form.valor.errors %}<div class="text-danger small mt-1">{{ imposto_form.valor.errors|join:', ' }}</div>{% endif %}
+                            </div>
+                            <div class="col-md-1 d-flex align-items-end">
+                                {% if imposto_form.DELETE %}
+                                <div class="form-check mb-2">
+                                    {{ imposto_form.DELETE }}
+                                    <label class="form-check-label" for="{{ imposto_form.DELETE.id_for_label }}">Excluir</label>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <button type="submit" class="btn btn-success">Salvar nota fiscal</button>
+    </div>
+</form>
+{% endblock %}

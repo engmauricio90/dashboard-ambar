@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+
+{% block title %}Radar de Obras{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Radar de Obras</h1>
+        <p class="text-muted mb-0">Lista de orcamentos e oportunidades acompanhadas pela diretoria.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'novo_radar_obra' %}" class="btn btn-success">Novo orcamento</a>
+        <a href="{% url 'controles_home' %}" class="btn btn-secondary">Voltar</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md">
+        <div class="card shadow-sm h-100"><div class="card-body"><h6>Aguardando</h6><h4>{{ contadores.aguardando_resposta }}</h4></div></div>
+    </div>
+    <div class="col-md">
+        <div class="card shadow-sm h-100"><div class="card-body"><h6>Em revisao</h6><h4>{{ contadores.em_revisao }}</h4></div></div>
+    </div>
+    <div class="col-md">
+        <div class="card shadow-sm h-100"><div class="card-body"><h6>Fechadas</h6><h4>{{ contadores.fechada }}</h4></div></div>
+    </div>
+    <div class="col-md">
+        <div class="card shadow-sm h-100"><div class="card-body"><h6>Nao foi</h6><h4>{{ contadores.nao_foi_para_frente }}</h4></div></div>
+    </div>
+    <div class="col-md">
+        <div class="card shadow-sm h-100"><div class="card-body"><h6>Canceladas</h6><h4>{{ contadores.cancelada }}</h4></div></div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Nr orcamento</th>
+                        <th>Data</th>
+                        <th>Cliente</th>
+                        <th>Descricao</th>
+                        <th>Situacao</th>
+                        <th>Valor estimado</th>
+                        <th>Responsavel</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for orcamento in orcamentos %}
+                    <tr>
+                        <td>{{ orcamento.numero }}</td>
+                        <td>{{ orcamento.data_orcamento }}</td>
+                        <td>{{ orcamento.cliente }}</td>
+                        <td>{{ orcamento.descricao|truncatechars:90 }}</td>
+                        <td>{{ orcamento.get_situacao_display }}</td>
+                        <td>R$ {{ orcamento.valor_estimado|floatformat:2 }}</td>
+                        <td>{{ orcamento.responsavel|default:'-' }}</td>
+                        <td class="text-end">
+                            <a href="{% url 'editar_radar_obra' orcamento.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8">Nenhum orcamento cadastrado no radar.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

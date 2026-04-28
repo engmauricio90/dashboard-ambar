@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        <p class="text-muted mb-0">{{ contrato.descricao }} | {{ contrato.obra }}</p>
+    </div>
+    <a href="{% url 'detalhe_contrato_concretagem' contrato.id %}" class="btn btn-secondary">Voltar</a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-4"><label class="form-label">Data da concretagem</label>{{ form.data_faturamento }}</div>
+                <div class="col-md-4">
+                    <label class="form-label">Responsavel solicitacao</label>
+                    {{ form.solicitante }}
+                    <div class="form-text">
+                        Nao encontrou?
+                        <a href="{% url 'novo_solicitante_concretagem' %}">Cadastrar solicitante</a>
+                    </div>
+                </div>
+                <div class="col-md-4"><label class="form-label">Status</label>{{ form.status }}</div>
+                <div class="col-md-4"><label class="form-label">Volume</label>{{ form.volume_m3 }}</div>
+                <div class="col-md-4"><label class="form-label">FCK/Traco</label>{{ form.fck_traco }}</div>
+                <div class="col-md-4"><label class="form-label">Tipo de bomba</label>{{ form.tipo_bomba }}</div>
+                <div class="col-md-4"><label class="form-label">Valor total previsto</label>{{ form.valor_previsto_manual }}</div>
+                <div class="col-md-4"><label class="form-label">Valor faturado</label>{{ form.valor_cobrado }}</div>
+                <div class="col-md-4"><label class="form-label">Nota fiscal</label>{{ form.numero_documento }}</div>
+                <div class="col-md-4"><label class="form-label">Data conferencia</label>{{ form.data_conferencia }}</div>
+                <div class="col-md-4"><label class="form-label">Volume faltante m3</label>{{ form.volume_faltante_m3 }}</div>
+                <div class="col-md-4">
+                    <label class="form-label d-block">Adicionais contratuais</label>
+                    <div class="d-flex flex-column gap-2">
+                        <div class="form-check">{{ form.usou_bomba }} <label class="form-check-label" for="{{ form.usou_bomba.id_for_label }}">Usou bomba</label></div>
+                        <div class="form-check">{{ form.adicional_noturno_aplicado }} <label class="form-check-label" for="{{ form.adicional_noturno_aplicado.id_for_label }}">Adicional noturno</label></div>
+                        <div class="form-check">{{ form.adicional_sabado_aplicado }} <label class="form-check-label" for="{{ form.adicional_sabado_aplicado.id_for_label }}">Adicional sabado</label></div>
+                    </div>
+                </div>
+                <div class="col-12"><label class="form-label">Observacoes</label>{{ form.observacoes }}</div>
+            </div>
+
+            {% if form.errors %}
+            <div class="alert alert-danger mt-3">Confira os campos informados.</div>
+            {% endif %}
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-success">Salvar concretagem</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

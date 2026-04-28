@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        <p class="text-muted mb-0">Controle no mesmo formato da planilha de locacoes.</p>
+    </div>
+    <a href="{% url 'lista_equipamentos_locados' %}" class="btn btn-secondary">Voltar</a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Data aluguel</label>
+                    {{ form.data_locacao }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Quem locou</label>
+                    {{ form.solicitante }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Locadora</label>
+                    {{ form.locadora }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Situacao</label>
+                    {{ form.status }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Equipamento</label>
+                    {{ form.equipamento }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Contrato</label>
+                    {{ form.numero_contrato }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Qntd</label>
+                    {{ form.quantidade }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Data coleta</label>
+                    {{ form.data_retirada }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Prazo</label>
+                    {{ form.prazo }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Valor</label>
+                    {{ form.valor_referencia }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Obra</label>
+                    {{ form.obra }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Data solic. coleta</label>
+                    {{ form.data_solicitacao_retirada }}
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Observacao</label>
+                    {{ form.observacoes }}
+                </div>
+            </div>
+
+            {% if form.errors %}
+            <div class="alert alert-danger mt-3">Confira os campos informados.</div>
+            {% endif %}
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-success">Salvar locacao</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

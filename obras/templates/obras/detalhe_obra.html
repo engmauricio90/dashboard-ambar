@@ -1,0 +1,474 @@
+{% extends 'base.html' %}
+{% load l10n %}
+
+{% block title %}{{ obra.nome_obra }}{% endblock %}
+
+{% block content %}
+<style>
+    .gauge-card {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    .gauge {
+        width: 220px;
+        height: 110px;
+        margin: 0 auto;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .gauge-arc {
+        width: 220px;
+        height: 220px;
+        border-radius: 50%;
+        background:
+            conic-gradient(
+                from 180deg,
+                #e9ecef 0deg 72deg,
+                #dc3545 72deg 108deg,
+                #ffc107 108deg 144deg,
+                #6fda44 144deg 180deg,
+                #198754 180deg 216deg,
+                #198754 216deg 252deg,
+                #e9ecef 252deg 360deg
+            );
+        position: absolute;
+        top: 0;
+        left: 0;
+    }
+
+    .gauge-arc::after {
+        content: "";
+        position: absolute;
+        inset: 28px;
+        background: #fff;
+        border-radius: 50%;
+    }
+
+    .gauge-needle {
+        position: absolute;
+        left: 50%;
+        bottom: 0;
+        width: 4px;
+        height: 92px;
+        background: #212529;
+        transform-origin: bottom center;
+        transform: translateX(-50%) rotate({{ margem_gauge_angle|unlocalize }}deg);
+        border-radius: 999px;
+        z-index: 2;
+    }
+
+    .gauge-center {
+        position: absolute;
+        left: 50%;
+        bottom: 0;
+        width: 18px;
+        height: 18px;
+        background: #212529;
+        border-radius: 50%;
+        transform: translateX(-50%);
+        z-index: 3;
+    }
+
+    .gauge-labels {
+        display: flex;
+        justify-content: space-between;
+        max-width: 220px;
+        margin: 0 auto;
+        font-size: 0.75rem;
+        color: #6c757d;
+    }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">{{ obra.nome_obra }}</h1>
+        <p class="text-muted mb-0">{{ obra.cliente }} | {{ obra.get_status_obra_display }}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'nova_nota_fiscal' obra.id %}" class="btn btn-success">Nova NF</a>
+        <a href="{% url 'nova_despesa' obra.id %}" class="btn btn-outline-danger">Nova Despesa</a>
+        <a href="{% url 'nova_retencao_tecnica' obra.id %}" class="btn btn-outline-warning">Nova Retencao Tecnica</a>
+        <a href="{% url 'novo_aditivo' obra.id %}" class="btn btn-outline-info">Novo Aditivo/Supressao</a>
+        <a href="{% url 'historico_financeiro' obra.id %}" class="btn btn-outline-dark">Historico Financeiro</a>
+        <a href="{% url 'relatorio_obra' obra.id %}" class="btn btn-outline-secondary">Relatorio</a>
+        <a href="{% url 'editar_obra' obra.id %}" class="btn btn-primary">Editar</a>
+        <a href="{% url 'excluir_obra' obra.id %}" class="btn btn-outline-danger">Excluir</a>
+        <a href="{% url 'lista_obras' %}" class="btn btn-secondary">Voltar</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Contrato atualizado</h6>
+                <h4>R$ {{ obra.contrato_atualizado|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Saldo contratual</h6>
+                <h4>R$ {{ obra.saldo_contratual|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Resultado projetado</h6>
+                <h4>R$ {{ obra.projecao_resultado|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Resultado real</h6>
+                <h4>R$ {{ obra.resultado_real|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-12 col-lg-4">
+        <div class="card shadow-sm h-100 gauge-card">
+            <div class="card-body text-center">
+                <h6 class="mb-3">Velocimetro de margem real</h6>
+                {% if obra.total_notas_fiscais > 0 %}
+                <div class="gauge mb-3">
+                    <div class="gauge-arc"></div>
+                    <div class="gauge-needle"></div>
+                    <div class="gauge-center"></div>
+                </div>
+                <div class="gauge-labels mb-3">
+                    <span>0%</span>
+                    <span>10%</span>
+                    <span>20%</span>
+                    <span>30%</span>
+                    <span>40%+</span>
+                </div>
+                <h3 class="mb-1">{{ margem_real_float|floatformat:2 }}%</h3>
+                <div class="{{ margem_status_classe }} fw-semibold">{{ margem_status }}</div>
+                <small class="text-muted">Baseado na margem real da obra</small>
+                {% else %}
+                <div class="py-5">
+                    <h3 class="mb-2 text-muted">Sem base</h3>
+                    <small class="text-muted">Cadastre faturamento para calcular a margem real.</small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Total faturado</h6>
+                <h4>R$ {{ obra.total_notas_fiscais|floatformat:2 }}</h4>
+                <small class="text-muted">{{ obra.percentual_faturado|floatformat:2 }}% do contrato atualizado</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Total de retencoes</h6>
+                <h4>R$ {{ obra.total_retencoes|floatformat:2 }}</h4>
+                <small class="text-muted">NF: R$ {{ obra.total_retencoes_nf|floatformat:2 }} | Tecnicas: R$ {{ obra.total_retencoes_tecnicas|floatformat:2 }}</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Total recebido liquido</h6>
+                <h4>R$ {{ obra.total_recebido_liquido|floatformat:2 }}</h4>
+                <small class="text-muted">Bruto menos retencoes e impostos</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{ grafico_evolucao|json_script:"grafico-evolucao-obra-data" }}
+{{ grafico_composicao|json_script:"grafico-composicao-obra-data" }}
+
+<div class="row g-4 mb-4">
+    <div class="col-lg-8">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">Evolucao mensal da obra</h5>
+                    <span class="text-muted small">Faturamento, despesas e aditivos por mes</span>
+                </div>
+                <div style="position: relative; height: 320px;">
+                    <canvas id="graficoEvolucaoObra"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-3">Composicao financeira</h5>
+                <div style="position: relative; height: 320px;">
+                    <canvas id="graficoComposicaoObra"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h5 class="mb-3">Dados da obra</h5>
+        <div class="row">
+            <div class="col-md-4"><strong>Cliente:</strong> {{ obra.cliente|default:'-' }}</div>
+            <div class="col-md-4"><strong>Status:</strong> {{ obra.get_status_obra_display }}</div>
+            <div class="col-md-4"><strong>Responsavel:</strong> {{ obra.responsavel|default:'-' }}</div>
+        </div>
+        <div class="row mt-3">
+            <div class="col-md-4"><strong>Data de inicio:</strong> {{ obra.data_inicio|default:'-' }}</div>
+            <div class="col-md-4"><strong>Valor do contrato:</strong> R$ {{ obra.valor_contrato|floatformat:2 }}</div>
+            <div class="col-md-4"><strong>Projecao de despesa:</strong> R$ {{ obra.projecao_despesa|floatformat:2 }}</div>
+        </div>
+        <div class="row mt-3">
+            <div class="col-12"><strong>Observacoes:</strong> {{ obra.observacoes|default:'-' }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">Ultimas notas fiscais</h5>
+                    <a href="{% url 'nova_nota_fiscal' obra.id %}" class="btn btn-sm btn-outline-success">Adicionar</a>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Numero</th>
+                                <th>Data</th>
+                                <th>Valor bruto</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for nota in notas_fiscais %}
+                            <tr>
+                                <td>{{ nota.numero }}</td>
+                                <td>{{ nota.data_emissao }}</td>
+                                <td>R$ {{ nota.valor_bruto|floatformat:2 }}</td>
+                                <td class="text-end">
+                                    <a href="{% url 'editar_nota_fiscal' obra.id nota.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                                    <a href="{% url 'detalhe_nota_fiscal' obra.id nota.id %}" class="btn btn-sm btn-outline-dark">Abrir</a>
+                                    <a href="{% url 'excluir_nota_fiscal' obra.id nota.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="4">Nenhuma nota fiscal cadastrada.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">Ultimas despesas</h5>
+                    <a href="{% url 'nova_despesa' obra.id %}" class="btn btn-sm btn-outline-danger">Adicionar</a>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Categoria</th>
+                                <th>Valor</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for despesa in despesas %}
+                            <tr>
+                                <td>{{ despesa.data_referencia }}</td>
+                                <td>{{ despesa.get_categoria_display }}</td>
+                                <td>R$ {{ despesa.valor|floatformat:2 }}</td>
+                                <td class="text-end">
+                                    <a href="{% url 'excluir_despesa' obra.id despesa.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="4">Nenhuma despesa cadastrada.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">Ultimas movimentacoes contratuais</h5>
+                    <a href="{% url 'novo_aditivo' obra.id %}" class="btn btn-sm btn-outline-info">Adicionar</a>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Tipo</th>
+                                <th>Descricao</th>
+                                <th>Valor</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for aditivo in aditivos %}
+                            <tr>
+                                <td>{{ aditivo.data_referencia }}</td>
+                                <td>{{ aditivo.get_tipo_display }}</td>
+                                <td>{{ aditivo.descricao }}</td>
+                                <td>{% if aditivo.tipo == 'supressao' %}-{% endif %}R$ {{ aditivo.valor|floatformat:2 }}</td>
+                                <td class="text-end">
+                                    <a href="{% url 'excluir_aditivo' obra.id aditivo.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="5">Nenhuma movimentacao contratual cadastrada.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">Ultimas retencoes tecnicas</h5>
+                    <a href="{% url 'nova_retencao_tecnica' obra.id %}" class="btn btn-sm btn-outline-warning">Adicionar</a>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Descricao</th>
+                                <th>Valor</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for retencao in retencoes_tecnicas %}
+                            <tr>
+                                <td>{{ retencao.data_referencia }}</td>
+                                <td>{{ retencao.descricao }}</td>
+                                <td>R$ {{ retencao.valor|floatformat:2 }}</td>
+                                <td class="text-end">
+                                    <a href="{% url 'excluir_retencao_tecnica' obra.id retencao.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="4">Nenhuma retencao tecnica cadastrada.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+    const graficoEvolucaoObraData = JSON.parse(document.getElementById('grafico-evolucao-obra-data').textContent);
+    const graficoComposicaoObraData = JSON.parse(document.getElementById('grafico-composicao-obra-data').textContent);
+
+    if (graficoEvolucaoObraData.labels.length) {
+        new Chart(document.getElementById('graficoEvolucaoObra'), {
+            type: 'line',
+            data: {
+                labels: graficoEvolucaoObraData.labels,
+                datasets: [
+                    {
+                        label: 'Faturado',
+                        data: graficoEvolucaoObraData.faturado,
+                        borderColor: '#2d6a4f',
+                        backgroundColor: '#2d6a4f',
+                        tension: 0.25,
+                    },
+                    {
+                        label: 'Despesas',
+                        data: graficoEvolucaoObraData.despesas,
+                        borderColor: '#bc4749',
+                        backgroundColor: '#bc4749',
+                        tension: 0.25,
+                    },
+                    {
+                        label: 'Mov. contratuais',
+                        data: graficoEvolucaoObraData.aditivos,
+                        borderColor: '#3a86ff',
+                        backgroundColor: '#3a86ff',
+                        tension: 0.25,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+            }
+        });
+    }
+
+    if (graficoComposicaoObraData.valores.some(value => value > 0)) {
+        new Chart(document.getElementById('graficoComposicaoObra'), {
+            type: 'doughnut',
+            data: {
+                labels: graficoComposicaoObraData.labels,
+                datasets: [{
+                    data: graficoComposicaoObraData.valores,
+                    backgroundColor: ['#2d6a4f', '#bc4749', '#6a4c93', '#f4a261'],
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+            }
+        });
+    }
+</script>
+{% endblock %}

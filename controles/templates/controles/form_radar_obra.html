@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        <p class="text-muted mb-0">Cadastro para acompanhamento do radar de obras.</p>
+    </div>
+    <a href="{% url 'lista_radar_obras' %}" class="btn btn-secondary">Voltar</a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Nr do orcamento</label>
+                    {{ form.numero }}
+                    {% if form.numero.errors %}<div class="text-danger small mt-1">{{ form.numero.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Data</label>
+                    {{ form.data_orcamento }}
+                    {% if form.data_orcamento.errors %}<div class="text-danger small mt-1">{{ form.data_orcamento.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Situacao</label>
+                    {{ form.situacao }}
+                    {% if form.situacao.errors %}<div class="text-danger small mt-1">{{ form.situacao.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Cliente</label>
+                    {{ form.cliente }}
+                    {% if form.cliente.errors %}<div class="text-danger small mt-1">{{ form.cliente.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Valor estimado</label>
+                    {{ form.valor_estimado }}
+                    {% if form.valor_estimado.errors %}<div class="text-danger small mt-1">{{ form.valor_estimado.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Responsavel</label>
+                    {{ form.responsavel }}
+                    {% if form.responsavel.errors %}<div class="text-danger small mt-1">{{ form.responsavel.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Descricao do orcamento</label>
+                    {{ form.descricao }}
+                    {% if form.descricao.errors %}<div class="text-danger small mt-1">{{ form.descricao.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Observacoes</label>
+                    {{ form.observacoes }}
+                    {% if form.observacoes.errors %}<div class="text-danger small mt-1">{{ form.observacoes.errors|join:', ' }}</div>{% endif %}
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-success">Salvar orcamento</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

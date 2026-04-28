@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        <p class="text-muted mb-0">Cadastre a regra contratual para calcular os faturamentos.</p>
+    </div>
+    <a href="{% url 'lista_concretagens' %}" class="btn btn-secondary">Voltar</a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-4"><label class="form-label">Nr do contrato</label>{{ form.numero_contrato }}</div>
+                <div class="col-md-4"><label class="form-label">Obra</label>{{ form.obra }}</div>
+                <div class="col-md-4"><label class="form-label">Fornecedor</label>{{ form.fornecedor }}</div>
+                <div class="col-md-4"><label class="form-label">Data inicio</label>{{ form.data_inicio }}</div>
+                <div class="col-md-8"><label class="form-label">Descricao</label>{{ form.descricao }}</div>
+                <div class="col-md-4"><label class="form-label">Status</label>{{ form.status }}</div>
+                <div class="col-md-4"><label class="form-label">Custo por m3 concreto</label>{{ form.custo_m3_concreto }}</div>
+                <div class="col-md-4"><label class="form-label">Custo bomba</label>{{ form.custo_bomba }}</div>
+                <div class="col-md-4"><label class="form-label">Adicional noturno</label>{{ form.adicional_noturno }}</div>
+                <div class="col-md-4"><label class="form-label">Adicional sabado</label>{{ form.adicional_sabado }}</div>
+                <div class="col-md-4"><label class="form-label">Adicional por m3 faltante</label>{{ form.adicional_m3_faltante }}</div>
+                <div class="col-md-4"><label class="form-label">Volume minimo m3</label>{{ form.volume_minimo_m3 }}</div>
+                <div class="col-12"><label class="form-label">Observacoes</label>{{ form.observacoes }}</div>
+            </div>
+
+            {% if form.errors %}
+            <div class="alert alert-danger mt-3">Confira os campos informados.</div>
+            {% endif %}
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-success">Salvar contrato</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

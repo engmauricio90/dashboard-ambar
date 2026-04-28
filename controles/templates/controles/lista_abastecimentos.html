@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+
+{% block title %}Abastecimentos{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Abastecimentos</h1>
+        <p class="text-muted mb-0">Historico de abastecimentos por veiculo/maquina.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'novo_abastecimento' %}" class="btn btn-success">Novo abastecimento</a>
+        <a href="{% url 'novo_veiculo' %}" class="btn btn-outline-primary">Novo veiculo/maquina</a>
+        <a href="{% url 'controles_home' %}" class="btn btn-secondary">Voltar</a>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h6>Total abastecido</h6>
+        <h3 class="mb-0">R$ {{ total_abastecido|floatformat:2 }}</h3>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Veiculo/Maquina</th>
+                        <th>Posto</th>
+                        <th>Responsavel</th>
+                        <th>Litros</th>
+                        <th>Valor bomba</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for abastecimento in abastecimentos %}
+                    <tr>
+                        <td>{{ abastecimento.data_abastecimento }}</td>
+                        <td>{{ abastecimento.veiculo }}</td>
+                        <td>{{ abastecimento.posto }}</td>
+                        <td>{{ abastecimento.responsavel }}</td>
+                        <td>{{ abastecimento.litros|default:'-' }}</td>
+                        <td>R$ {{ abastecimento.valor_litro|floatformat:2 }}</td>
+                        <td>R$ {{ abastecimento.valor_total|floatformat:2 }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7">Nenhum abastecimento registrado.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,117 @@
+{% extends 'base.html' %}
+
+{% block title %}Controles Operacionais{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Controles Operacionais</h1>
+        <p class="text-muted mb-0">Area separada para controles do dia a dia da empresa.</p>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Veiculos/Maquinas</h6>
+                <h4>{{ veiculos }}</h4>
+                <small class="text-muted">Cadastros disponiveis para abastecimento</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Abastecimentos</h6>
+                <h4>{{ abastecimentos }}</h4>
+                <small class="text-muted">Registros de historico</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Locacoes em aberto</h6>
+                <h4>{{ locacoes_abertas }}</h4>
+                <small class="text-muted">Equipamentos ainda em obra ou aguardando retirada</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Orcamentos aguardando</h6>
+                <h4>{{ orcamentos_aguardando }}</h4>
+                <small class="text-muted">Radar de obras</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Contratos concretagem</h6>
+                <h4>{{ contratos_concretagem }}</h4>
+                <small class="text-muted">Ativos</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-2">Controle de abastecimento</h5>
+                <p class="text-muted">Registre abastecimentos por veiculo/maquina, posto, responsavel, litros e valores.</p>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="{% url 'lista_abastecimentos' %}" class="btn btn-primary">Ver abastecimentos</a>
+                    <a href="{% url 'novo_abastecimento' %}" class="btn btn-outline-primary">Novo abastecimento</a>
+                    <a href="{% url 'lista_veiculos' %}" class="btn btn-outline-dark">Veiculos/Maquinas</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-2">Equipamentos locados</h5>
+                <p class="text-muted">Controle locacoes, locadoras, obras, solicitantes e retirada/baixa.</p>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="{% url 'lista_equipamentos_locados' %}" class="btn btn-primary">Ver locacoes</a>
+                    <a href="{% url 'nova_locacao_equipamento' %}" class="btn btn-outline-primary">Nova locacao</a>
+                    <a href="{% url 'lista_catalogo_equipamentos' %}" class="btn btn-outline-dark">Catalogo</a>
+                    <a href="{% url 'lista_locadoras' %}" class="btn btn-outline-dark">Locadoras</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-2">Radar de obras</h5>
+                <p class="text-muted">Acompanhe orcamentos enviados, clientes, status e oportunidades fechadas.</p>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="{% url 'lista_radar_obras' %}" class="btn btn-primary">Ver radar</a>
+                    <a href="{% url 'novo_radar_obra' %}" class="btn btn-outline-primary">Novo orcamento</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-2">Controle de concretagens</h5>
+                <p class="text-muted">Espelhe o contrato com a concreteira e compare faturamentos previstos x cobrados.</p>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="{% url 'lista_concretagens' %}" class="btn btn-primary">Ver contratos</a>
+                    <a href="{% url 'novo_contrato_concretagem' %}" class="btn btn-outline-primary">Novo contrato</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

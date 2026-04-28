@@ -1,0 +1,239 @@
+from django import forms
+from django.db.models import Q
+
+from .models import (
+    ContratoConcretagem,
+    EquipamentoLocadoCatalogo,
+    FaturamentoConcretagem,
+    LocacaoEquipamento,
+    LocadoraEquipamento,
+    OrcamentoRadarObra,
+    RegistroAbastecimento,
+    SolicitanteConcretagem,
+    VeiculoMaquina,
+)
+
+
+class BootstrapModelForm(forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        is_new_unbound_form = not self.is_bound and not getattr(self.instance, 'pk', None)
+
+        for name, field in self.fields.items():
+            if isinstance(field.widget, forms.CheckboxInput):
+                css_class = 'form-check-input'
+            elif isinstance(field.widget, forms.Select):
+                css_class = 'form-select'
+            elif isinstance(field.widget, forms.Textarea):
+                css_class = 'form-control'
+            else:
+                css_class = 'form-control'
+
+            existing = field.widget.attrs.get('class', '')
+            field.widget.attrs['class'] = f'{existing} {css_class}'.strip()
+
+            if is_new_unbound_form and isinstance(field, (forms.DecimalField, forms.IntegerField)):
+                if getattr(self.instance, name, None) == 0:
+                    setattr(self.instance, name, None)
+                if field.initial == 0:
+                    field.initial = None
+                if self.initial.get(name) in (0, 0.0, '0'):
+                    self.initial[name] = ''
+                field.widget.attrs.setdefault('placeholder', '0,00')
+
+
+class VeiculoMaquinaForm(BootstrapModelForm):
+    class Meta:
+        model = VeiculoMaquina
+        fields = ['placa', 'descricao', 'tipo', 'status', 'observacoes']
+        widgets = {
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+
+
+class RegistroAbastecimentoForm(BootstrapModelForm):
+    class Meta:
+        model = RegistroAbastecimento
+        fields = [
+            'data_abastecimento',
+            'veiculo',
+            'posto',
+            'responsavel',
+            'litros',
+            'valor_litro',
+            'valor_total',
+            'observacoes',
+        ]
+        widgets = {
+            'data_abastecimento': forms.DateInput(attrs={'type': 'date'}),
+            'litros': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_litro': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_total': forms.NumberInput(attrs={'step': '0.01'}),
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+
+
+class EquipamentoLocadoCatalogoForm(BootstrapModelForm):
+    class Meta:
+        model = EquipamentoLocadoCatalogo
+        fields = ['nome', 'categoria', 'status', 'observacoes']
+        widgets = {
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+
+
+class LocadoraEquipamentoForm(BootstrapModelForm):
+    class Meta:
+        model = LocadoraEquipamento
+        fields = ['nome', 'contato', 'telefone', 'email', 'observacoes']
+        widgets = {
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+
+
+class LocacaoEquipamentoForm(BootstrapModelForm):
+    class Meta:
+        model = LocacaoEquipamento
+        fields = [
+            'data_locacao',
+            'solicitante',
+            'equipamento',
+            'locadora',
+            'obra',
+            'status',
+            'numero_contrato',
+            'quantidade',
+            'data_solicitacao_retirada',
+            'data_retirada',
+            'prazo',
+            'valor_referencia',
+            'observacoes',
+        ]
+        widgets = {
+            'data_locacao': forms.DateInput(attrs={'type': 'date'}),
+            'data_solicitacao_retirada': forms.DateInput(attrs={'type': 'date'}),
+            'data_retirada': forms.DateInput(attrs={'type': 'date'}),
+            'quantidade': forms.NumberInput(attrs={'min': '1'}),
+            'valor_referencia': forms.NumberInput(attrs={'step': '0.01'}),
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+
+
+class SolicitarRetiradaEquipamentoForm(BootstrapModelForm):
+    class Meta:
+        model = LocacaoEquipamento
+        fields = ['data_solicitacao_retirada', 'observacoes']
+        widgets = {
+            'data_solicitacao_retirada': forms.DateInput(attrs={'type': 'date'}),
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+
+
+class BaixarLocacaoEquipamentoForm(BootstrapModelForm):
+    class Meta:
+        model = LocacaoEquipamento
+        fields = ['data_retirada', 'observacoes']
+        widgets = {
+            'data_retirada': forms.DateInput(attrs={'type': 'date'}),
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+
+
+class OrcamentoRadarObraForm(BootstrapModelForm):
+    class Meta:
+        model = OrcamentoRadarObra
+        fields = [
+            'numero',
+            'cliente',
+            'descricao',
+            'data_orcamento',
+            'situacao',
+            'valor_estimado',
+            'responsavel',
+            'observacoes',
+        ]
+        widgets = {
+            'data_orcamento': forms.DateInput(attrs={'type': 'date'}),
+            'valor_estimado': forms.NumberInput(attrs={'step': '0.01'}),
+            'descricao': forms.Textarea(attrs={'rows': 3}),
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+
+
+class ContratoConcretagemForm(BootstrapModelForm):
+    class Meta:
+        model = ContratoConcretagem
+        fields = [
+            'obra',
+            'numero_contrato',
+            'fornecedor',
+            'descricao',
+            'data_inicio',
+            'status',
+            'custo_m3_concreto',
+            'custo_bomba',
+            'adicional_noturno',
+            'adicional_sabado',
+            'adicional_m3_faltante',
+            'volume_minimo_m3',
+            'observacoes',
+        ]
+        widgets = {
+            'data_inicio': forms.DateInput(attrs={'type': 'date'}),
+            'custo_m3_concreto': forms.NumberInput(attrs={'step': '0.01'}),
+            'custo_bomba': forms.NumberInput(attrs={'step': '0.01'}),
+            'adicional_noturno': forms.NumberInput(attrs={'step': '0.01'}),
+            'adicional_sabado': forms.NumberInput(attrs={'step': '0.01'}),
+            'adicional_m3_faltante': forms.NumberInput(attrs={'step': '0.01'}),
+            'volume_minimo_m3': forms.NumberInput(attrs={'step': '0.01'}),
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+
+
+class SolicitanteConcretagemForm(BootstrapModelForm):
+    class Meta:
+        model = SolicitanteConcretagem
+        fields = ['nome', 'ativo', 'observacoes']
+        widgets = {
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+
+
+class FaturamentoConcretagemForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        queryset = SolicitanteConcretagem.objects.filter(ativo=True)
+        if self.instance and self.instance.solicitante_id:
+            queryset = SolicitanteConcretagem.objects.filter(
+                Q(ativo=True) | Q(id=self.instance.solicitante_id),
+            )
+        self.fields['solicitante'].queryset = queryset
+
+    class Meta:
+        model = FaturamentoConcretagem
+        fields = [
+            'data_faturamento',
+            'solicitante',
+            'status',
+            'numero_documento',
+            'data_conferencia',
+            'volume_m3',
+            'fck_traco',
+            'tipo_bomba',
+            'usou_bomba',
+            'adicional_noturno_aplicado',
+            'adicional_sabado_aplicado',
+            'volume_faltante_m3',
+            'valor_previsto_manual',
+            'valor_cobrado',
+            'observacoes',
+        ]
+        widgets = {
+            'data_faturamento': forms.DateInput(attrs={'type': 'date'}),
+            'data_conferencia': forms.DateInput(attrs={'type': 'date'}),
+            'volume_m3': forms.NumberInput(attrs={'step': '0.01'}),
+            'volume_faltante_m3': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_previsto_manual': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_cobrado': forms.NumberInput(attrs={'step': '0.01'}),
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }

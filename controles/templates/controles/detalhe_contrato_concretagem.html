@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+
+{% block title %}Contrato de Concretagem{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">{{ contrato.descricao }}</h1>
+        <p class="text-muted mb-0">
+            {{ contrato.obra }} | {{ contrato.fornecedor }}
+            {% if contrato.numero_contrato %}| Contrato {{ contrato.numero_contrato }}{% endif %}
+        </p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'novo_faturamento_concretagem' contrato.id %}" class="btn btn-success">Nova concretagem</a>
+        <a href="{% url 'editar_contrato_concretagem' contrato.id %}" class="btn btn-primary">Editar contrato</a>
+        <a href="{% url 'lista_concretagens' %}" class="btn btn-secondary">Voltar</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100"><div class="card-body"><h6>Total previsto</h6><h4>R$ {{ contrato.total_previsto|floatformat:2 }}</h4></div></div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100"><div class="card-body"><h6>Total faturado</h6><h4>R$ {{ contrato.total_faturado|floatformat:2 }}</h4></div></div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Diferenca</h6>
+                <h4 class="{% if contrato.diferenca_total > 0 %}text-danger{% elif contrato.diferenca_total < 0 %}text-success{% endif %}">
+                    R$ {{ contrato.diferenca_total|floatformat:2 }}
+                </h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h5 class="mb-3">Regra contratual</h5>
+        <div class="row g-3">
+            <div class="col-md-4"><strong>Custo m3:</strong> R$ {{ contrato.custo_m3_concreto|floatformat:2 }}</div>
+            <div class="col-md-4"><strong>Bomba:</strong> R$ {{ contrato.custo_bomba|floatformat:2 }}</div>
+            <div class="col-md-4"><strong>Volume minimo:</strong> {{ contrato.volume_minimo_m3|floatformat:2 }} m3</div>
+            <div class="col-md-4"><strong>Adic. noturno:</strong> R$ {{ contrato.adicional_noturno|floatformat:2 }}</div>
+            <div class="col-md-4"><strong>Adic. sabado:</strong> R$ {{ contrato.adicional_sabado|floatformat:2 }}</div>
+            <div class="col-md-4"><strong>Adic. m3 faltante:</strong> R$ {{ contrato.adicional_m3_faltante|floatformat:2 }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <h5 class="mb-3">Lancamentos de concretagem</h5>
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Data concretagem</th>
+                        <th>Responsavel</th>
+                        <th>Status</th>
+                        <th>Volume m3</th>
+                        <th>FCK/Traco</th>
+                        <th>Tipo bomba</th>
+                        <th>Bomba</th>
+                        <th>Previsto</th>
+                        <th>Faturado</th>
+                        <th>NF</th>
+                        <th>Conferencia</th>
+                        <th>Diferenca</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for faturamento in contrato.faturamentos.all %}
+                    <tr>
+                        <td>{{ faturamento.data_faturamento }}</td>
+                        <td>{{ faturamento.responsavel_display|default:'-' }}</td>
+                        <td>{{ faturamento.get_status_display }}</td>
+                        <td>{{ faturamento.volume_m3|floatformat:2 }}</td>
+                        <td>{{ faturamento.get_fck_traco_display|default:'-' }}</td>
+                        <td>{{ faturamento.get_tipo_bomba_display|default:'-' }}</td>
+                        <td>{% if faturamento.usou_bomba %}Sim{% else %}Nao{% endif %}</td>
+                        <td>R$ {{ faturamento.valor_previsto|floatformat:2 }}</td>
+                        <td>R$ {{ faturamento.valor_cobrado|floatformat:2 }}</td>
+                        <td>{{ faturamento.numero_documento|default:'-' }}</td>
+                        <td>{{ faturamento.data_conferencia|default:'-' }}</td>
+                        <td class="{% if faturamento.diferenca > 0 %}text-danger{% elif faturamento.diferenca < 0 %}text-success{% endif %}">
+                            R$ {{ faturamento.diferenca|floatformat:2 }}
+                        </td>
+                        <td class="text-end">
+                            <a href="{% url 'editar_faturamento_concretagem' faturamento.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="13">Nenhuma concretagem lancada para este contrato.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

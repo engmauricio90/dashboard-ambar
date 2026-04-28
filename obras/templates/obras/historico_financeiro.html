@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+
+{% block title %}Historico Financeiro{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Historico Financeiro</h1>
+        <p class="text-muted mb-0">{{ obra.nome_obra }} | visao consolidada dos lancamentos</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'nova_nota_fiscal' obra.id %}" class="btn btn-success">Nova NF</a>
+        <a href="{% url 'nova_despesa' obra.id %}" class="btn btn-outline-danger">Nova Despesa</a>
+        <a href="{% url 'nova_retencao_tecnica' obra.id %}" class="btn btn-outline-warning">Nova Retencao Tecnica</a>
+        <a href="{% url 'novo_aditivo' obra.id %}" class="btn btn-outline-info">Novo Aditivo/Supressao</a>
+        <a href="{% url 'detalhe_obra' obra.id %}" class="btn btn-secondary">Voltar para a obra</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-2">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Total faturado</h6>
+                <h4>R$ {{ obra.total_notas_fiscais|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Total de despesas</h6>
+                <h4>R$ {{ obra.total_despesa_real|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Retencoes da NF</h6>
+                <h4>R$ {{ obra.total_retencoes_nf|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Retencoes tecnicas</h6>
+                <h4>R$ {{ obra.total_retencoes_tecnicas|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Total de impostos</h6>
+                <h4>R$ {{ obra.total_impostos|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <h5 class="mb-3">Linha do tempo financeira</h5>
+        <div class="table-responsive">
+            <table class="table table-bordered align-middle">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Tipo</th>
+                        <th>Descricao</th>
+                        <th>Valor</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for evento in eventos %}
+                    <tr class="{{ evento.classe }}">
+                        <td>{{ evento.data }}</td>
+                        <td>{{ evento.tipo }}</td>
+                        <td>{{ evento.descricao }}</td>
+                        <td>R$ {{ evento.valor|floatformat:2 }}</td>
+                        <td class="text-end">
+                            {% if evento.tipo == 'Nota fiscal' %}
+                                <a href="{% url 'editar_nota_fiscal' obra.id evento.link.1 %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                                <a href="{% url 'detalhe_nota_fiscal' obra.id evento.link.1 %}" class="btn btn-sm btn-outline-dark">Detalhar</a>
+                                <a href="{% url 'excluir_nota_fiscal' obra.id evento.link.1 %}" class="btn btn-sm btn-outline-danger">Excluir</a>
+                            {% elif evento.tipo == 'Despesa' %}
+                                <a href="{% url 'excluir_despesa' obra.id evento.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
+                            {% elif evento.tipo == 'Aditivo' or evento.tipo == 'Supressao' %}
+                                <a href="{% url 'excluir_aditivo' obra.id evento.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
+                            {% elif evento.tipo == 'Retencao tecnica' %}
+                                <a href="{% url 'excluir_retencao_tecnica' obra.id evento.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5">Nenhum lancamento financeiro cadastrado para esta obra.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

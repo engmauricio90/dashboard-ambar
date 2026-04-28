@@ -1,0 +1,161 @@
+{% extends 'base.html' %}
+
+{% block title %}Relatorio Geral{% endblock %}
+
+{% block content %}
+<style>
+@media print {
+    .no-print { display: none !important; }
+    .card { border: 1px solid #ddd !important; box-shadow: none !important; }
+}
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3 no-print">
+    <div>
+        <h1 class="mb-1">Relatorio Geral</h1>
+        <p class="text-muted mb-0">Relatorio consolidado e imprimivel do portfolio de obras.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <button type="button" class="btn btn-dark" onclick="window.print()">Imprimir / Salvar PDF</button>
+        <a href="{% url 'home' %}" class="btn btn-secondary">Voltar</a>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4 no-print">
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Buscar obra</label>
+                {{ filtro_form.busca }}
+                {% if filtro_form.busca.errors %}<div class="text-danger small mt-1">{{ filtro_form.busca.errors|join:', ' }}</div>{% endif %}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Cliente</label>
+                {{ filtro_form.cliente }}
+                {% if filtro_form.cliente.errors %}<div class="text-danger small mt-1">{{ filtro_form.cliente.errors|join:', ' }}</div>{% endif %}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Status</label>
+                {{ filtro_form.status }}
+                {% if filtro_form.status.errors %}<div class="text-danger small mt-1">{{ filtro_form.status.errors|join:', ' }}</div>{% endif %}
+            </div>
+            {% if filtro_form.non_field_errors %}
+            <div class="col-12">
+                <div class="alert alert-danger mb-0">{{ filtro_form.non_field_errors }}</div>
+            </div>
+            {% endif %}
+            <div class="col-12 d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Aplicar filtros</button>
+                <a href="{% url 'relatorio_geral' %}" class="btn btn-outline-secondary">Limpar</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Obras filtradas</h6>
+                <h4>{{ quantidade_obras }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Total faturado</h6>
+                <h4>R$ {{ total_notas|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Total de despesas</h6>
+                <h4>R$ {{ total_despesas|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Resultado real</h6>
+                <h4 class="{% if total_resultado_real < 0 %}text-danger{% else %}text-success{% endif %}">R$ {{ total_resultado_real|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h5 class="mb-3">Resumo consolidado</h5>
+        <div class="table-responsive">
+            <table class="table table-bordered align-middle mb-0">
+                <tbody>
+                    <tr>
+                        <th>Valor total de contratos</th>
+                        <td>R$ {{ total_contratos|floatformat:2 }}</td>
+                        <th>Total de aditivos</th>
+                        <td>R$ {{ total_aditivos|floatformat:2 }}</td>
+                    </tr>
+                    <tr>
+                        <th>Total de impostos</th>
+                        <td>R$ {{ total_impostos|floatformat:2 }}</td>
+                        <th>Total de retencoes</th>
+                        <td>R$ {{ total_retencoes|floatformat:2 }}</td>
+                    </tr>
+                    <tr>
+                        <th>Total recebido liquido</th>
+                        <td>R$ {{ total_recebido_liquido|floatformat:2 }}</td>
+                        <th>Resultado projetado</th>
+                        <td>R$ {{ total_resultado_projetado|floatformat:2 }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <h5 class="mb-3">Obras do relatorio</h5>
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Obra</th>
+                        <th>Cliente</th>
+                        <th>Status</th>
+                        <th>Contrato atualizado</th>
+                        <th>Faturado</th>
+                        <th>Despesas</th>
+                        <th>Impostos</th>
+                        <th>Retencoes</th>
+                        <th>Resultado real</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for obra in obras %}
+                    <tr>
+                        <td>{{ obra.nome_obra }}</td>
+                        <td>{{ obra.cliente|default:'-' }}</td>
+                        <td>{{ obra.get_status_obra_display }}</td>
+                        <td>R$ {{ obra.contrato_atualizado|floatformat:2 }}</td>
+                        <td>R$ {{ obra.total_notas_fiscais|floatformat:2 }}</td>
+                        <td>R$ {{ obra.total_despesa_real|floatformat:2 }}</td>
+                        <td>R$ {{ obra.total_impostos|floatformat:2 }}</td>
+                        <td>R$ {{ obra.total_retencoes|floatformat:2 }}</td>
+                        <td class="{% if obra.resultado_real < 0 %}text-danger{% else %}text-success{% endif %}">R$ {{ obra.resultado_real|floatformat:2 }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9">Nenhuma obra encontrada com os filtros atuais.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

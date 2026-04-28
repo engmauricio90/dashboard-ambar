@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-danger">
+            <div class="card-body">
+                <h1 class="h4 mb-3">{{ titulo }}</h1>
+                <p class="mb-2">{{ mensagem }}</p>
+                <p class="text-muted">{{ detalhe }}</p>
+
+                <form method="post" class="d-flex gap-2 flex-wrap mt-4">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">{{ confirmar_label }}</button>
+                    <a href="{{ cancelar_href }}" class="btn btn-secondary">Cancelar</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

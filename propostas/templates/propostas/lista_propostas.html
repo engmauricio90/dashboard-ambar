@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+
+{% block title %}Propostas Comerciais{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Propostas Comerciais</h1>
+        <p class="text-muted mb-0">Orcamentos comerciais com numeracao automatica e integracao ao radar.</p>
+    </div>
+    <a href="{% url 'nova_proposta' %}" class="btn btn-success">Nova proposta</a>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100"><div class="card-body"><h6>Total</h6><h3 class="mb-0">{{ totais.total_propostas }}</h3></div></div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100"><div class="card-body"><h6>Aguardando resposta</h6><h3 class="mb-0">{{ totais.aguardando_resposta }}</h3></div></div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100"><div class="card-body"><h6>Fechadas</h6><h3 class="mb-0">{{ totais.fechadas }}</h3></div></div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100"><div class="card-body"><h6>Valor em aberto</h6><h4 class="mb-0">R$ {{ totais.valor_em_aberto|floatformat:2 }}</h4></div></div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Proposta</th>
+                        <th>Cliente</th>
+                        <th>Tipo de execucao</th>
+                        <th>Data</th>
+                        <th>Situacao</th>
+                        <th>Total</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for proposta in propostas %}
+                    <tr>
+                        <td>{{ proposta.numero_formatado }}</td>
+                        <td>{{ proposta.cliente }}</td>
+                        <td>{{ proposta.tipo_execucao }}</td>
+                        <td>{{ proposta.data_proposta }}</td>
+                        <td>{{ proposta.get_situacao_display }}</td>
+                        <td>R$ {{ proposta.total_final|floatformat:2 }}</td>
+                        <td class="text-end">
+                            <div class="d-flex gap-2 justify-content-end flex-wrap">
+                                <a href="{% url 'editar_proposta' proposta.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                                <a href="{% url 'visualizar_proposta' proposta.id %}" class="btn btn-sm btn-outline-dark">Visualizar</a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7">Nenhuma proposta cadastrada.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

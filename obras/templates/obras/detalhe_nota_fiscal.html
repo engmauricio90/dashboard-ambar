@@ -1,0 +1,167 @@
+{% extends 'base.html' %}
+
+{% block title %}NF {{ nota.numero }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">NF {{ nota.numero }}</h1>
+        <p class="text-muted mb-0">{{ obra.nome_obra }} | {{ nota.data_emissao }} | {{ nota.get_status_display }}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'editar_nota_fiscal' obra.id nota.id %}" class="btn btn-primary">Editar NF</a>
+        <a href="{% url 'excluir_nota_fiscal' obra.id nota.id %}" class="btn btn-outline-danger">Excluir NF</a>
+        <a href="{% url 'historico_financeiro' obra.id %}" class="btn btn-secondary">Voltar</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Valor bruto</h6>
+                <h4>R$ {{ nota.valor_bruto|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Total de retencoes</h6>
+                <h4>R$ {{ nota.total_retencoes|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Valor liquido</h6>
+                <h4>R$ {{ nota.valor_liquido|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-3">Retencoes da NF</h5>
+                <form method="post" class="mb-4">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_type" value="retencao">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Tipo</label>
+                            {{ retencao_form.tipo }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Descricao</label>
+                            {{ retencao_form.descricao }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Valor</label>
+                            {{ retencao_form.valor }}
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-outline-primary mt-3">Adicionar retencao</button>
+                </form>
+
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Tipo</th>
+                                <th>Descricao</th>
+                                <th>Valor</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for retencao in retencoes %}
+                            <tr>
+                                <td>{{ retencao.get_tipo_display }}</td>
+                                <td>{{ retencao.descricao|default:'-' }}</td>
+                                <td>R$ {{ retencao.valor|floatformat:2 }}</td>
+                                <td class="text-end">
+                                    <a href="{% url 'excluir_retencao' obra.id nota.id retencao.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="4">Nenhuma retencao lancada.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-3">Impostos da NF</h5>
+                <form method="post" class="mb-4">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_type" value="imposto">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Tipo</label>
+                            {{ imposto_form.tipo }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Descricao</label>
+                            {{ imposto_form.descricao }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Valor</label>
+                            {{ imposto_form.valor }}
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-outline-primary mt-3">Adicionar imposto</button>
+                </form>
+
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Tipo</th>
+                                <th>Descricao</th>
+                                <th>Valor</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for imposto in impostos %}
+                            <tr>
+                                <td>{{ imposto.get_tipo_display }}</td>
+                                <td>{{ imposto.descricao|default:'-' }}</td>
+                                <td>R$ {{ imposto.valor|floatformat:2 }}</td>
+                                <td class="text-end">
+                                    <a href="{% url 'excluir_imposto' obra.id nota.id imposto.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="4">Nenhum imposto lancado.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if nota.observacoes %}
+<div class="card shadow-sm mt-4">
+    <div class="card-body">
+        <h5 class="mb-2">Observacoes</h5>
+        <p class="mb-0">{{ nota.observacoes }}</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
