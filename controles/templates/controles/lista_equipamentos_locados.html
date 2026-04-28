@@ -23,6 +23,27 @@
     </div>
 </div>
 
+{% if resumo_obras %}
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <div>
+                <h6 class="mb-1">Resumo por obra</h6>
+                <p class="text-muted mb-0">A obra fica destacada antes mesmo de entrar no detalhe de cada locacao.</p>
+            </div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            {% for item in resumo_obras %}
+            <div class="border rounded px-3 py-2 bg-light">
+                <div class="fw-semibold">{{ item.obra.nome_obra }}</div>
+                <div class="small text-muted">{{ item.abertas }} em aberto de {{ item.total }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="card shadow-sm">
     <div class="card-body">
         <div class="table-responsive">
@@ -30,10 +51,10 @@
                 <thead>
                     <tr>
                         <th>Data aluguel</th>
+                        <th>Obra</th>
                         <th>Quem locou</th>
                         <th>Locadora</th>
                         <th>Situacao</th>
-                        <th>Obra</th>
                         <th>Equipamento</th>
                         <th>Contrato</th>
                         <th>Qntd</th>
@@ -48,10 +69,15 @@
                     {% for locacao in locacoes %}
                     <tr>
                         <td>{{ locacao.data_locacao }}</td>
+                        <td>
+                            <div class="fw-semibold">{{ locacao.obra.nome_obra }}</div>
+                            {% if locacao.obra.cliente %}
+                            <div class="small text-muted">{{ locacao.obra.cliente }}</div>
+                            {% endif %}
+                        </td>
                         <td>{{ locacao.solicitante|default:'-' }}</td>
                         <td>{{ locacao.locadora }}</td>
                         <td>{{ locacao.get_status_display }}</td>
-                        <td>{{ locacao.obra }}</td>
                         <td>{{ locacao.equipamento }}</td>
                         <td>{{ locacao.numero_contrato|default:'-' }}</td>
                         <td>{{ locacao.quantidade }}</td>

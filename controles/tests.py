@@ -1,8 +1,12 @@
 from decimal import Decimal
+import os
+from tempfile import NamedTemporaryFile
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
+from openpyxl import Workbook
 
 from obras.models import Obra
 
@@ -110,6 +114,25 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(locacao.numero_contrato, '97016-01')
         self.assertEqual(locacao.quantidade, 2)
         self.assertTrue(locacao.em_aberto)
+
+    def test_lista_locacoes_destaca_resumo_por_obra(self):
+        equipamento = EquipamentoLocadoCatalogo.objects.create(nome='Gerador')
+        locadora = LocadoraEquipamento.objects.create(nome='Locadora Sul')
+        obra = Obra.objects.create(nome_obra='Condominio Rithmo', cliente='Cliente X')
+        LocacaoEquipamento.objects.create(
+            equipamento=equipamento,
+            locadora=locadora,
+            obra=obra,
+            data_locacao='2026-04-01',
+            status='aguardando_entrega',
+        )
+
+        response = self.client.get(reverse('lista_equipamentos_locados'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Resumo por obra')
+        self.assertContains(response, 'Condominio Rithmo')
+        self.assertContains(response, 'Ag. entrega')
 
     def test_solicita_retirada_e_baixa_locacao(self):
         equipamento = EquipamentoLocadoCatalogo.objects.create(nome='Andaime')
@@ -241,3 +264,37 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Controle de Concretagens')
         self.assertContains(response, 'Fornecedor Concreto')
+
+    def test_importa_planilha_de_locacoes_por_obra(self):
+        Obra.objects.create(nome_obra='Condominio Rithmo')
+
+        workbook = Workbook()
+        worksheet = workbook.active
+        worksheet.title = 'RITHMO (guris interno)'
+        worksheet.append(['Endereco'])
+        worksheet.append([])
+        worksheet.append(
+            ['DATA ALUGUEL', 'LOCADORA', 'QUEM LOCOU', 'SITUAÇÃO', 'EQUIPAMENTO', 'OS', 'CONTRATO', 'QNTD', 'DATA DEVOLUÇÃO', 'OBSERVAÇÃO', 'PRAZO', 'VALOR MENSAL']
+        )
+        worksheet.append([])
+        worksheet.append(['2026-01-29', 'SULMAK', 'VINICIUS', 'NA OBRA', 'BETONEIRA 250L', '-', '2931-01', 1, '2026-02-04', 'teste', '1 SEMANA', '400'])
+        worksheet.append(['2026-04-24', 'SULMAK', 'MAURICIO', 'AG ENTREGA', 'BOMBA MANGOTE 3"', None, None, 1, None, None, None, None])
+
+        with NamedTemporaryFile(suffix='.xlsx', delete=False) as temp_file:
+            temp_path = temp_file.name
+        try:
+            workbook.save(temp_path)
+            call_command('importar_locacoes_equipamentos', temp_path)
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+        self.assertEqual(LocacaoEquipamento.objects.count(), 2)
+        locacao = LocacaoEquipamento.objects.get(equipamento__nome='BETONEIRA 250L')
+        self.assertEqual(locacao.obra.nome_obra, 'Condominio Rithmo')
+        self.assertEqual(locacao.locadora.nome, 'SULMAK')
+        self.assertEqual(locacao.valor_referencia, Decimal('400.00'))
+        self.assertEqual(locacao.data_retirada.isoformat(), '2026-02-04')
+
+        entrega = LocacaoEquipamento.objects.get(equipamento__nome='BOMBA MANGOTE 3"')
+        self.assertEqual(entrega.status, 'aguardando_entrega')

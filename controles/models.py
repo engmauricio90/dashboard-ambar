@@ -108,6 +108,7 @@ class LocadoraEquipamento(models.Model):
 class LocacaoEquipamento(models.Model):
     STATUS_CHOICES = [
         ('locado', 'Na obra'),
+        ('aguardando_entrega', 'Ag. entrega'),
         ('retirada_solicitada', 'Ag. coleta'),
         ('retirado', 'Coletado'),
         ('cancelado', 'Cancelado'),

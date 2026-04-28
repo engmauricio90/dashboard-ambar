@@ -120,12 +120,30 @@ def editar_veiculo(request, veiculo_id):
 def lista_equipamentos_locados(request):
     locacoes = LocacaoEquipamento.objects.select_related('equipamento', 'locadora', 'obra').all()
     locacoes_abertas = [locacao for locacao in locacoes if locacao.em_aberto]
+    resumo_obras = []
+    contadores = {}
+    for locacao in locacoes:
+        obra_id = locacao.obra_id
+        if obra_id not in contadores:
+            contadores[obra_id] = {
+                'obra': locacao.obra,
+                'total': 0,
+                'abertas': 0,
+            }
+        contadores[obra_id]['total'] += 1
+        if locacao.em_aberto:
+            contadores[obra_id]['abertas'] += 1
+    resumo_obras = sorted(
+        contadores.values(),
+        key=lambda item: (item['obra'].nome_obra.lower(),),
+    )
     return render(
         request,
         'controles/lista_equipamentos_locados.html',
         {
             'locacoes': locacoes,
             'locacoes_abertas': locacoes_abertas,
+            'resumo_obras': resumo_obras,
         },
     )
 
