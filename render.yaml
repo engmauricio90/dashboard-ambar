@@ -4,8 +4,8 @@ services:
     name: dashboard-ambar
     plan: free
     region: oregon
-    buildCommand: pip install -r requirements.txt && python manage.py migrate --noinput --settings=config.settings.prod && python manage.py ensure_superuser --settings=config.settings.prod && python manage.py collectstatic --noinput --settings=config.settings.prod
-    startCommand: gunicorn config.wsgi:application
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput --settings=config.settings.prod
+    startCommand: python manage.py migrate --noinput --settings=config.settings.prod && python manage.py ensure_superuser --settings=config.settings.prod && gunicorn config.wsgi:application
     healthCheckPath: /healthz/
     envVars:
       - key: DJANGO_SETTINGS_MODULE
