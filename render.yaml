@@ -4,8 +4,7 @@ services:
     name: dashboard-ambar
     plan: free
     region: oregon
-    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput --settings=config.settings.prod
-    preDeployCommand: python manage.py migrate --noinput --settings=config.settings.prod
+    buildCommand: pip install -r requirements.txt && python manage.py migrate --noinput --settings=config.settings.prod && python manage.py collectstatic --noinput --settings=config.settings.prod
     startCommand: gunicorn config.wsgi:application
     healthCheckPath: /healthz/
     envVars:
