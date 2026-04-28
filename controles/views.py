@@ -1,6 +1,10 @@
 from decimal import Decimal
+from io import BytesIO
+import unicodedata
 
 from django.contrib import messages
+from django.db.models import Q
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from .forms import (
@@ -27,6 +31,117 @@ from .models import (
     SolicitanteConcretagem,
     VeiculoMaquina,
 )
+
+
+def _pdf_escape(value):
+    text = unicodedata.normalize('NFKD', str(value)).encode('ascii', 'ignore').decode('ascii')
+    return text.replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)')
+
+
+def _build_simple_pdf(lines_by_page):
+    objects = []
+
+    def add_object(content):
+        objects.append(content)
+        return len(objects)
+
+    font_id = add_object('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>')
+
+    page_ids = []
+    content_ids = []
+    pages_id_placeholder = None
+
+    for lines in lines_by_page:
+        content_stream = ['BT', '/F1 10 Tf', '40 555 Td', '14 TL']
+        for index, line in enumerate(lines):
+            if index == 0:
+                content_stream.append(f'({_pdf_escape(line)}) Tj')
+            else:
+                content_stream.append(f'T* ({_pdf_escape(line)}) Tj')
+        content_stream.append('ET')
+        stream = '\n'.join(content_stream)
+        content_id = add_object(f'<< /Length {len(stream.encode("latin-1"))} >>\nstream\n{stream}\nendstream')
+        content_ids.append(content_id)
+        page_ids.append(
+            add_object(
+                '<< /Type /Page /Parent {pages} 0 R /MediaBox [0 0 842 595] '
+                f'/Resources << /Font << /F1 {font_id} 0 R >> >> /Contents {content_id} 0 R >>'
+            )
+        )
+
+    kids = ' '.join(f'{page_id} 0 R' for page_id in page_ids)
+    pages_id = add_object(f'<< /Type /Pages /Kids [{kids}] /Count {len(page_ids)} >>')
+
+    for page_id in page_ids:
+        objects[page_id - 1] = objects[page_id - 1].replace('{pages}', str(pages_id))
+
+    catalog_id = add_object(f'<< /Type /Catalog /Pages {pages_id} 0 R >>')
+
+    buffer = BytesIO()
+    buffer.write(b'%PDF-1.4\n%\xe2\xe3\xcf\xd3\n')
+    offsets = [0]
+    for index, content in enumerate(objects, start=1):
+        offsets.append(buffer.tell())
+        buffer.write(f'{index} 0 obj\n{content}\nendobj\n'.encode('latin-1'))
+    xref_position = buffer.tell()
+    buffer.write(f'xref\n0 {len(objects) + 1}\n'.encode('latin-1'))
+    buffer.write(b'0000000000 65535 f \n')
+    for offset in offsets[1:]:
+        buffer.write(f'{offset:010d} 00000 n \n'.encode('latin-1'))
+    buffer.write(
+        (
+            f'trailer\n<< /Size {len(objects) + 1} /Root {catalog_id} 0 R >>\n'
+            f'startxref\n{xref_position}\n%%EOF'
+        ).encode('latin-1')
+    )
+    return buffer.getvalue()
+
+
+def _queryset_locacoes_filtradas(request):
+    locacoes = LocacaoEquipamento.objects.select_related('equipamento', 'locadora', 'obra').all()
+
+    obra_id = request.GET.get('obra', '').strip()
+    locadora_id = request.GET.get('locadora', '').strip()
+    status = request.GET.get('status', '').strip()
+    busca = request.GET.get('busca', '').strip()
+
+    if obra_id.isdigit():
+        locacoes = locacoes.filter(obra_id=obra_id)
+    if locadora_id.isdigit():
+        locacoes = locacoes.filter(locadora_id=locadora_id)
+    if status in {choice[0] for choice in LocacaoEquipamento.STATUS_CHOICES}:
+        locacoes = locacoes.filter(status=status)
+    if busca:
+        locacoes = locacoes.filter(
+            Q(equipamento__nome__icontains=busca)
+            | Q(observacoes__icontains=busca)
+            | Q(obra__nome_obra__icontains=busca)
+            | Q(locadora__nome__icontains=busca)
+        )
+
+    filtros = {
+        'obra': obra_id,
+        'locadora': locadora_id,
+        'status': status,
+        'busca': busca,
+    }
+    return locacoes.order_by('-data_locacao', '-id'), filtros
+
+
+def _resumo_obras(locacoes):
+    contadores = {}
+    for locacao in locacoes:
+        obra_id = locacao.obra_id
+        if obra_id not in contadores:
+            contadores[obra_id] = {
+                'obra': locacao.obra,
+                'total': 0,
+                'abertas': 0,
+            }
+        contadores[obra_id]['total'] += 1
+        if locacao.em_aberto:
+            contadores[obra_id]['abertas'] += 1
+    return sorted(contadores.values(), key=lambda item: (item['obra'].nome_obra.lower(),))
 
 
 def home(request):
@@ -118,25 +233,9 @@ def editar_veiculo(request, veiculo_id):
 
 
 def lista_equipamentos_locados(request):
-    locacoes = LocacaoEquipamento.objects.select_related('equipamento', 'locadora', 'obra').all()
+    locacoes, filtros = _queryset_locacoes_filtradas(request)
     locacoes_abertas = [locacao for locacao in locacoes if locacao.em_aberto]
-    resumo_obras = []
-    contadores = {}
-    for locacao in locacoes:
-        obra_id = locacao.obra_id
-        if obra_id not in contadores:
-            contadores[obra_id] = {
-                'obra': locacao.obra,
-                'total': 0,
-                'abertas': 0,
-            }
-        contadores[obra_id]['total'] += 1
-        if locacao.em_aberto:
-            contadores[obra_id]['abertas'] += 1
-    resumo_obras = sorted(
-        contadores.values(),
-        key=lambda item: (item['obra'].nome_obra.lower(),),
-    )
+    resumo_obras = _resumo_obras(locacoes)
     return render(
         request,
         'controles/lista_equipamentos_locados.html',
@@ -144,8 +243,67 @@ def lista_equipamentos_locados(request):
             'locacoes': locacoes,
             'locacoes_abertas': locacoes_abertas,
             'resumo_obras': resumo_obras,
+            'filtros': filtros,
+            'obras_filtro': LocacaoEquipamento.objects.select_related('obra').values_list(
+                'obra_id', 'obra__nome_obra'
+            ).distinct().order_by('obra__nome_obra'),
+            'locadoras_filtro': LocadoraEquipamento.objects.filter(locacoes__isnull=False).distinct().order_by('nome'),
+            'status_choices': LocacaoEquipamento.STATUS_CHOICES,
         },
     )
+
+
+def relatorio_locacoes_equipamentos_pdf(request):
+    locacoes, filtros = _queryset_locacoes_filtradas(request)
+    active_filters = []
+    if filtros['obra'].isdigit():
+        obra = next((obra for obra in LocacaoEquipamento.objects.select_related('obra').values_list('obra_id', 'obra__nome_obra').distinct() if str(obra[0]) == filtros['obra']), None)
+        if obra:
+            active_filters.append(f'Obra: {obra[1]}')
+    if filtros['locadora'].isdigit():
+        locadora = LocadoraEquipamento.objects.filter(id=filtros['locadora']).first()
+        if locadora:
+            active_filters.append(f'Locadora: {locadora.nome}')
+    if filtros['status']:
+        active_filters.append(
+            f"Situacao: {dict(LocacaoEquipamento.STATUS_CHOICES).get(filtros['status'], filtros['status'])}"
+        )
+    if filtros['busca']:
+        active_filters.append(f"Busca: {filtros['busca']}")
+
+    lines = [
+        'Relatorio de equipamentos locados',
+        'Visao operacional com os filtros aplicados na listagem.',
+        '',
+    ]
+    if active_filters:
+        lines.append(' | '.join(active_filters))
+        lines.append('')
+    lines.append('Data | Obra | Locadora | Situacao | Equipamento | Qntd | Data coleta | Observacao')
+    lines.append('-' * 120)
+
+    for locacao in locacoes:
+        observacao = (locacao.observacoes or '-').replace('\n', ' ')[:55]
+        lines.append(
+            ' | '.join(
+                [
+                    locacao.data_locacao.strftime('%d/%m/%Y'),
+                    locacao.obra.nome_obra[:18],
+                    str(locacao.locadora)[:12],
+                    locacao.get_status_display()[:12],
+                    str(locacao.equipamento)[:24],
+                    str(locacao.quantidade),
+                    locacao.data_retirada.strftime('%d/%m/%Y') if locacao.data_retirada else '-',
+                    observacao,
+                ]
+            )
+        )
+
+    max_lines_per_page = 36
+    pages = [lines[index:index + max_lines_per_page] for index in range(0, len(lines), max_lines_per_page)]
+    response = HttpResponse(_build_simple_pdf(pages), content_type='application/pdf')
+    response['Content-Disposition'] = 'inline; filename="relatorio_locacoes_equipamentos.pdf"'
+    return response
 
 
 def nova_locacao_equipamento(request):

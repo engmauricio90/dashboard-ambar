@@ -134,6 +134,55 @@ class ControleAbastecimentoTests(TestCase):
         self.assertContains(response, 'Condominio Rithmo')
         self.assertContains(response, 'Ag. entrega')
 
+    def test_lista_locacoes_aplica_filtros(self):
+        equipamento = EquipamentoLocadoCatalogo.objects.create(nome='Gerador')
+        locadora_a = LocadoraEquipamento.objects.create(nome='Sulmak')
+        locadora_b = LocadoraEquipamento.objects.create(nome='RM')
+        obra_a = Obra.objects.create(nome_obra='Condominio Rithmo')
+        obra_b = Obra.objects.create(nome_obra='Ipanema')
+        LocacaoEquipamento.objects.create(
+            equipamento=equipamento,
+            locadora=locadora_a,
+            obra=obra_a,
+            data_locacao='2026-04-01',
+            observacoes='Equipamento principal',
+        )
+        LocacaoEquipamento.objects.create(
+            equipamento=equipamento,
+            locadora=locadora_b,
+            obra=obra_b,
+            data_locacao='2026-04-02',
+            status='retirado',
+            observacoes='Outro equipamento',
+        )
+
+        response = self.client.get(
+            reverse('lista_equipamentos_locados'),
+            {'obra': obra_a.id, 'locadora': locadora_a.id, 'status': 'locado', 'busca': 'principal'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Condominio Rithmo')
+        self.assertEqual(list(response.context['locacoes']), [LocacaoEquipamento.objects.get(obra=obra_a)])
+
+    def test_relatorio_locacoes_pdf_responde_pdf(self):
+        equipamento = EquipamentoLocadoCatalogo.objects.create(nome='Betoneira')
+        locadora = LocadoraEquipamento.objects.create(nome='Sulmak')
+        obra = Obra.objects.create(nome_obra='Condominio Rithmo')
+        LocacaoEquipamento.objects.create(
+            equipamento=equipamento,
+            locadora=locadora,
+            obra=obra,
+            data_locacao='2026-04-01',
+            observacoes='Locacao para relatorio',
+        )
+
+        response = self.client.get(reverse('relatorio_locacoes_equipamentos_pdf'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertTrue(response.content.startswith(b'%PDF'))
+
     def test_solicita_retirada_e_baixa_locacao(self):
         equipamento = EquipamentoLocadoCatalogo.objects.create(nome='Andaime')
         locadora = LocadoraEquipamento.objects.create(nome='Locadora Centro')

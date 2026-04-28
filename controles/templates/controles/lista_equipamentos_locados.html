@@ -10,9 +10,54 @@
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <a href="{% url 'nova_locacao_equipamento' %}" class="btn btn-success">Nova locacao</a>
+        <a href="{% url 'relatorio_locacoes_equipamentos_pdf' %}?{% if filtros.obra %}obra={{ filtros.obra|urlencode }}&{% endif %}{% if filtros.locadora %}locadora={{ filtros.locadora|urlencode }}&{% endif %}{% if filtros.status %}status={{ filtros.status|urlencode }}&{% endif %}{% if filtros.busca %}busca={{ filtros.busca|urlencode }}{% endif %}" class="btn btn-outline-primary" target="_blank">Relatorio PDF</a>
         <a href="{% url 'lista_catalogo_equipamentos' %}" class="btn btn-outline-dark">Catalogo</a>
         <a href="{% url 'lista_locadoras' %}" class="btn btn-outline-dark">Locadoras</a>
         <a href="{% url 'controles_home' %}" class="btn btn-secondary">Voltar</a>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-12 col-md-3">
+                <label class="form-label">Obra</label>
+                <select name="obra" class="form-select">
+                    <option value="">Todas</option>
+                    {% for obra_id, obra_nome in obras_filtro %}
+                    <option value="{{ obra_id }}" {% if filtros.obra == obra_id|stringformat:'s' %}selected{% endif %}>{{ obra_nome }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-md-3">
+                <label class="form-label">Locadora</label>
+                <select name="locadora" class="form-select">
+                    <option value="">Todas</option>
+                    {% for locadora in locadoras_filtro %}
+                    <option value="{{ locadora.id }}" {% if filtros.locadora == locadora.id|stringformat:'s' %}selected{% endif %}>{{ locadora.nome }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-md-2">
+                <label class="form-label">Situacao</label>
+                <select name="status" class="form-select">
+                    <option value="">Todas</option>
+                    {% for status_value, status_label in status_choices %}
+                    <option value="{{ status_value }}" {% if filtros.status == status_value %}selected{% endif %}>{{ status_label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-md-3">
+                <label class="form-label">Busca</label>
+                <input type="text" name="busca" class="form-control" value="{{ filtros.busca }}" placeholder="equipamento, obra, observacao...">
+            </div>
+            <div class="col-12 col-md-1 d-grid">
+                <button type="submit" class="btn btn-dark">Filtrar</button>
+            </div>
+            <div class="col-12">
+                <a href="{% url 'lista_equipamentos_locados' %}" class="btn btn-sm btn-outline-secondary">Limpar filtros</a>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -47,21 +92,17 @@
 <div class="card shadow-sm">
     <div class="card-body">
         <div class="table-responsive">
-            <table class="table table-bordered table-striped align-middle mb-0">
+            <table class="table table-bordered table-hover align-middle mb-0">
                 <thead>
                     <tr>
                         <th>Data aluguel</th>
                         <th>Obra</th>
-                        <th>Quem locou</th>
                         <th>Locadora</th>
                         <th>Situacao</th>
                         <th>Equipamento</th>
-                        <th>Contrato</th>
                         <th>Qntd</th>
                         <th>Data coleta</th>
                         <th>Observacao</th>
-                        <th>Prazo</th>
-                        <th>Valor</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -75,16 +116,12 @@
                             <div class="small text-muted">{{ locacao.obra.cliente }}</div>
                             {% endif %}
                         </td>
-                        <td>{{ locacao.solicitante|default:'-' }}</td>
                         <td>{{ locacao.locadora }}</td>
                         <td>{{ locacao.get_status_display }}</td>
                         <td>{{ locacao.equipamento }}</td>
-                        <td>{{ locacao.numero_contrato|default:'-' }}</td>
                         <td>{{ locacao.quantidade }}</td>
                         <td>{{ locacao.data_retirada|default:'-' }}</td>
-                        <td>{{ locacao.observacoes|default:'-' }}</td>
-                        <td>{{ locacao.prazo|default:'-' }}</td>
-                        <td>R$ {{ locacao.valor_referencia|floatformat:2 }}</td>
+                        <td class="small">{{ locacao.observacoes|default:'-'|truncatechars:80 }}</td>
                         <td class="text-end">
                             <div class="d-flex gap-2 justify-content-end flex-wrap">
                                 <a href="{% url 'editar_locacao_equipamento' locacao.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
@@ -99,7 +136,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="13">Nenhuma locacao cadastrada.</td>
+                        <td colspan="9">Nenhuma locacao cadastrada.</td>
                     </tr>
                     {% endfor %}
                 </tbody>

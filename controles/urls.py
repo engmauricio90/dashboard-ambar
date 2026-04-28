@@ -11,6 +11,11 @@ urlpatterns = [
     path('veiculos/novo/', views.novo_veiculo, name='novo_veiculo'),
     path('veiculos/<int:veiculo_id>/editar/', views.editar_veiculo, name='editar_veiculo'),
     path('equipamentos-locados/', views.lista_equipamentos_locados, name='lista_equipamentos_locados'),
+    path(
+        'equipamentos-locados/relatorio.pdf/',
+        views.relatorio_locacoes_equipamentos_pdf,
+        name='relatorio_locacoes_equipamentos_pdf',
+    ),
     path('equipamentos-locados/nova/', views.nova_locacao_equipamento, name='nova_locacao_equipamento'),
     path(
         'equipamentos-locados/<int:locacao_id>/editar/',
