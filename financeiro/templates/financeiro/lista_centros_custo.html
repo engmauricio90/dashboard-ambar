@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+
+{% block title %}Centros de Custo{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Centros de Custo</h1>
+        <p class="text-muted mb-0">Cadastro livre para escritorio, maquinas, abastecimento e demais grupos.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'novo_centro_custo' %}" class="btn btn-primary">Novo Centro</a>
+        <a href="{% url 'financeiro_home' %}" class="btn btn-secondary">Voltar</a>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <table class="table table-bordered table-striped align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>Descricao</th>
+                    <th>Ativo</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for centro in centros %}
+                <tr>
+                    <td>{{ centro.nome }}</td>
+                    <td>{{ centro.descricao|default:'-' }}</td>
+                    <td>{% if centro.ativo %}Sim{% else %}Nao{% endif %}</td>
+                    <td class="text-end">
+                        <a href="{% url 'editar_centro_custo' centro.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4">Nenhum centro de custo cadastrado.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

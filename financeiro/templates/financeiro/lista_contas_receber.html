@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+
+{% block title %}Contas a Receber{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Contas a Receber</h1>
+        <p class="text-muted mb-0">Receitas lancadas pelo financeiro e integradas com NF da obra.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'nova_conta_receber' %}" class="btn btn-success">Nova Receita</a>
+        <a href="{% url 'financeiro_home' %}" class="btn btn-secondary">Voltar</a>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Vencimento</th>
+                        <th>Cliente</th>
+                        <th>Obra</th>
+                        <th>NF</th>
+                        <th>Centro</th>
+                        <th>Bruto</th>
+                        <th>Liquido</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for conta in contas %}
+                    <tr>
+                        <td>{{ conta.data_vencimento }}</td>
+                        <td>{{ conta.cliente }}</td>
+                        <td>{{ conta.obra|default:'-' }}</td>
+                        <td>{{ conta.numero_nf|default:'-' }}</td>
+                        <td>{{ conta.centro_custo|default:'-' }}</td>
+                        <td>R$ {{ conta.valor_bruto|floatformat:2 }}</td>
+                        <td>R$ {{ conta.valor_liquido|floatformat:2 }}</td>
+                        <td>{{ conta.get_status_display }}</td>
+                        <td class="text-end">
+                            {% if not conta.esta_baixada %}
+                            <a href="{% url 'baixar_conta_receber' conta.id %}" class="btn btn-sm btn-outline-success">Receber</a>
+                            {% endif %}
+                            <a href="{% url 'editar_conta_receber' conta.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="9">Nenhuma conta a receber cadastrada.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

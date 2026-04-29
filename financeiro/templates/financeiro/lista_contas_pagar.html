@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+
+{% block title %}Contas a Pagar{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Contas a Pagar</h1>
+        <p class="text-muted mb-0">Despesas lancadas pelo financeiro e integradas com obra quando vinculadas.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'nova_conta_pagar' %}" class="btn btn-danger">Nova Despesa</a>
+        <a href="{% url 'financeiro_home' %}" class="btn btn-secondary">Voltar</a>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Vencimento</th>
+                        <th>Fornecedor</th>
+                        <th>Obra</th>
+                        <th>Centro</th>
+                        <th>Categoria</th>
+                        <th>Valor</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for conta in contas %}
+                    <tr>
+                        <td>{{ conta.data_vencimento }}</td>
+                        <td>{{ conta.fornecedor }}</td>
+                        <td>{{ conta.obra|default:'-' }}</td>
+                        <td>{{ conta.centro_custo|default:'-' }}</td>
+                        <td>{{ conta.get_categoria_display }}</td>
+                        <td>R$ {{ conta.valor|floatformat:2 }}</td>
+                        <td>{{ conta.get_status_display }}</td>
+                        <td class="text-end">
+                            {% if not conta.esta_baixada %}
+                            <a href="{% url 'baixar_conta_pagar' conta.id %}" class="btn btn-sm btn-outline-success">Pagar</a>
+                            {% endif %}
+                            <a href="{% url 'editar_conta_pagar' conta.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="8">Nenhuma conta a pagar cadastrada.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

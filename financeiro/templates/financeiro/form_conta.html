@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        <p class="text-muted mb-0">Lancamento financeiro com integracao por obra quando informada.</p>
+    </div>
+    <a href="{% url 'financeiro_home' %}" class="btn btn-secondary">Voltar</a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+            <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+            {% endif %}
+            <div class="row g-3">
+                {% for field in form %}
+                <div class="{% if field.name == 'observacoes' or field.name == 'descricao' %}col-12{% else %}col-md-4{% endif %}">
+                    {% if field.field.widget.input_type == 'checkbox' %}
+                    <div class="form-check mt-4">
+                        {{ field }}
+                        <label class="form-check-label">{{ field.label }}</label>
+                    </div>
+                    {% else %}
+                    <label class="form-label">{{ field.label }}</label>
+                    {{ field }}
+                    {% endif %}
+                    {% if field.errors %}<div class="text-danger small mt-1">{{ field.errors|join:', ' }}</div>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            <div class="d-flex gap-2 mt-4">
+                <button type="submit" class="btn btn-primary">Salvar</button>
+                <a href="{% url 'financeiro_home' %}" class="btn btn-outline-secondary">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

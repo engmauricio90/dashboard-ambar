@@ -1,0 +1,131 @@
+{% extends 'base.html' %}
+
+{% block title %}Financeiro{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Financeiro</h1>
+        <p class="text-muted mb-0">Contas a pagar, contas a receber e fluxo de caixa.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'nova_conta_receber' %}" class="btn btn-success">Nova Receita</a>
+        <a href="{% url 'nova_conta_pagar' %}" class="btn btn-outline-danger">Nova Despesa</a>
+        <a href="{% url 'lista_centros_custo' %}" class="btn btn-outline-secondary">Centros de Custo</a>
+        <a href="{% url 'relatorio_financeiro' %}" class="btn btn-outline-dark">Relatorio</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100"><div class="card-body">
+            <h6>A receber aberto</h6>
+            <h4>R$ {{ total_receber_aberto|floatformat:2 }}</h4>
+            <small class="text-muted">Atrasado: R$ {{ atrasado_receber|floatformat:2 }}</small>
+        </div></div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100"><div class="card-body">
+            <h6>A pagar aberto</h6>
+            <h4>R$ {{ total_pagar_aberto|floatformat:2 }}</h4>
+            <small class="text-muted">Atrasado: R$ {{ atrasado_pagar|floatformat:2 }}</small>
+        </div></div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100"><div class="card-body">
+            <h6>Saldo previsto</h6>
+            <h4 class="{% if saldo_previsto < 0 %}text-danger{% else %}text-success{% endif %}">R$ {{ saldo_previsto|floatformat:2 }}</h4>
+            <small class="text-muted">Aberto a receber menos aberto a pagar</small>
+        </div></div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100"><div class="card-body">
+            <h6>Saldo realizado</h6>
+            <h4 class="{% if saldo_realizado < 0 %}text-danger{% else %}text-success{% endif %}">R$ {{ saldo_realizado|floatformat:2 }}</h4>
+            <small class="text-muted">Recebido menos pago</small>
+        </div></div>
+    </div>
+</div>
+
+{{ grafico_fluxo|json_script:"grafico-fluxo-financeiro-data" }}
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-3">Fluxo de caixa por vencimento/baixa</h5>
+                <div style="position: relative; height: 320px;">
+                    <canvas id="graficoFluxoFinanceiro"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-3">Atalhos</h5>
+                <div class="list-group list-group-flush">
+                    <a class="list-group-item list-group-item-action" href="{% url 'lista_contas_receber' %}">Contas a receber</a>
+                    <a class="list-group-item list-group-item-action" href="{% url 'lista_contas_pagar' %}">Contas a pagar</a>
+                    <a class="list-group-item list-group-item-action" href="{% url 'lista_centros_custo' %}">Centros de custo</a>
+                    <a class="list-group-item list-group-item-action" href="{% url 'relatorio_financeiro' %}">Relatorio financeiro</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mt-4">
+    <div class="card-body">
+        <h5 class="mb-3">Ultimos movimentos</h5>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Tipo</th>
+                        <th>Descricao</th>
+                        <th>Obra</th>
+                        <th>Status</th>
+                        <th>Valor</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for evento in ultimos_eventos %}
+                    <tr>
+                        <td>{{ evento.data }}</td>
+                        <td>{{ evento.tipo }}</td>
+                        <td>{{ evento.descricao }}</td>
+                        <td>{{ evento.obra|default:'-' }}</td>
+                        <td>{{ evento.status }}</td>
+                        <td>R$ {{ evento.valor|floatformat:2 }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="6">Nenhum movimento financeiro cadastrado.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+    const fluxoData = JSON.parse(document.getElementById('grafico-fluxo-financeiro-data').textContent);
+    if (fluxoData.labels.length) {
+        new Chart(document.getElementById('graficoFluxoFinanceiro'), {
+            type: 'bar',
+            data: {
+                labels: fluxoData.labels,
+                datasets: [
+                    { label: 'A receber', data: fluxoData.receber, backgroundColor: '#2d6a4f' },
+                    { label: 'A pagar', data: fluxoData.pagar, backgroundColor: '#bc4749' }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    }
+</script>
+{% endblock %}
