@@ -163,6 +163,11 @@ def detalhe_obra(request, obra_id):
             'despesas': timeline_despesas,
             'aditivos': timeline_aditivos,
         },
+        'grafico_despesas_comparativo': {
+            'labels': ['Despesa'],
+            'projetada': [float(obra.projecao_despesa)],
+            'real': [float(obra.total_despesa_real)],
+        },
         'grafico_composicao': {
             'labels': ['Faturado', 'Despesas', 'Impostos', 'INSS retido', 'Outras ret. NF', 'Ret. tecnica'],
             'valores': [
