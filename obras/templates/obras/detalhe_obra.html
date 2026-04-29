@@ -172,18 +172,19 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h6 class="mb-0">Projetado x realizado</h6>
-                    <span class="text-muted small">Receita e despesa da obra</span>
                 </div>
                 <div class="row g-3">
                     <div class="col-md-6">
                         <div style="position: relative; height: 220px;">
                             <canvas id="graficoReceitasComparativo"></canvas>
                         </div>
+                        <div class="text-center fw-semibold mt-2">Receita</div>
                     </div>
                     <div class="col-md-6">
                         <div style="position: relative; height: 220px;">
                             <canvas id="graficoDespesasComparativo"></canvas>
                         </div>
+                        <div class="text-center fw-semibold mt-2">Despesa</div>
                     </div>
                 </div>
             </div>
@@ -509,8 +510,8 @@
                     {
                         label: 'Receita projetada',
                         data: graficoReceitasComparativoData.projetada,
-                        backgroundColor: 'rgba(141, 211, 199, 0.75)',
-                        borderColor: '#62b6aa',
+                        backgroundColor: 'rgba(149, 213, 178, 0.72)',
+                        borderColor: '#74c69d',
                         borderWidth: 1,
                         grouped: false,
                         categoryPercentage: 0.58,
@@ -520,7 +521,7 @@
                     {
                         label: 'Receita realizada',
                         data: graficoReceitasComparativoData.realizada,
-                        backgroundColor: 'rgba(45, 106, 79, 0.9)',
+                        backgroundColor: 'rgba(45, 106, 79, 0.92)',
                         borderColor: '#1b4332',
                         borderWidth: 1,
                         grouped: false,
@@ -576,8 +577,8 @@
                     {
                         label: 'Despesa projetada',
                         data: graficoDespesasComparativoData.projetada,
-                        backgroundColor: 'rgba(141, 211, 199, 0.75)',
-                        borderColor: '#62b6aa',
+                        backgroundColor: 'rgba(255, 205, 210, 0.78)',
+                        borderColor: '#ef9a9a',
                         borderWidth: 1,
                         grouped: false,
                         categoryPercentage: 0.58,
@@ -587,8 +588,8 @@
                     {
                         label: 'Despesa real',
                         data: graficoDespesasComparativoData.real,
-                        backgroundColor: 'rgba(224, 159, 62, 0.9)',
-                        borderColor: '#c77d12',
+                        backgroundColor: 'rgba(198, 40, 40, 0.9)',
+                        borderColor: '#8e1b1b',
                         borderWidth: 1,
                         grouped: false,
                         categoryPercentage: 0.34,
