@@ -2,12 +2,15 @@ from django import forms
 from django.db.models import Q
 
 from .models import (
+    BombonaCombustivel,
     ContratoConcretagem,
     EquipamentoLocadoCatalogo,
     FaturamentoConcretagem,
+    NotaFiscalCombustivel,
     LocacaoEquipamento,
     LocadoraEquipamento,
     OrcamentoRadarObra,
+    OrdemCompraCombustivel,
     RegistroAbastecimento,
     SolicitanteConcretagem,
     VeiculoMaquina,
@@ -73,6 +76,84 @@ class RegistroAbastecimentoForm(BootstrapModelForm):
         ]
         widgets = {
             'data_abastecimento': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'litros': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_litro': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_total': forms.NumberInput(attrs={'step': '0.01'}),
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+
+
+class BombonaCombustivelForm(BootstrapModelForm):
+    class Meta:
+        model = BombonaCombustivel
+        fields = ['identificacao', 'capacidade_litros', 'localizacao', 'status', 'observacoes']
+        widgets = {
+            'capacidade_litros': forms.NumberInput(attrs={'step': '0.01'}),
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+
+
+class OrdemCompraCombustivelForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['valor_total_previsto'].required = False
+
+    class Meta:
+        model = OrdemCompraCombustivel
+        fields = [
+            'numero',
+            'data_ordem',
+            'fornecedor',
+            'solicitante',
+            'tipo_combustivel',
+            'tipo_destino',
+            'veiculo',
+            'bombona',
+            'quantidade_litros',
+            'valor_litro_previsto',
+            'valor_total_previsto',
+            'status',
+            'observacoes',
+        ]
+        widgets = {
+            'data_ordem': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'quantidade_litros': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_litro_previsto': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_total_previsto': forms.NumberInput(attrs={'step': '0.01'}),
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+        help_texts = {
+            'numero': 'Deixe em branco para gerar automaticamente.',
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        tipo_destino = cleaned_data.get('tipo_destino')
+        veiculo = cleaned_data.get('veiculo')
+        bombona = cleaned_data.get('bombona')
+
+        if tipo_destino == OrdemCompraCombustivel.DESTINO_VEICULO:
+            if not veiculo:
+                self.add_error('veiculo', 'Informe o veiculo/maquina da ordem.')
+            cleaned_data['bombona'] = None
+        elif tipo_destino == OrdemCompraCombustivel.DESTINO_BOMBONA:
+            if not bombona:
+                self.add_error('bombona', 'Informe a bombona da ordem.')
+            cleaned_data['veiculo'] = None
+
+        return cleaned_data
+
+
+class NotaFiscalCombustivelForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['valor_total'].required = False
+
+    class Meta:
+        model = NotaFiscalCombustivel
+        fields = ['numero', 'data_emissao', 'litros', 'valor_litro', 'valor_total', 'status', 'observacoes']
+        widgets = {
+            'data_emissao': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'litros': forms.NumberInput(attrs={'step': '0.01'}),
             'valor_litro': forms.NumberInput(attrs={'step': '0.01'}),
             'valor_total': forms.NumberInput(attrs={'step': '0.01'}),

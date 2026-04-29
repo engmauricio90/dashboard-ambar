@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        <p class="text-muted mb-0">A ordem deve ser destinada a um veiculo/maquina ou a uma bombona.</p>
+    </div>
+    <a href="{% if ordem %}{% url 'detalhe_ordem_combustivel' ordem.id %}{% else %}{% url 'lista_ordens_combustivel' %}{% endif %}" class="btn btn-secondary">Voltar</a>
+</div>
+
+<form method="post" class="card shadow-sm">
+    {% csrf_token %}
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Numero</label>
+                {{ form.numero }}
+                {% if form.numero.help_text %}<div class="form-text">{{ form.numero.help_text }}</div>{% endif %}
+                {% if form.numero.errors %}<div class="text-danger small mt-1">{{ form.numero.errors|join:', ' }}</div>{% endif %}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Data da ordem</label>
+                {{ form.data_ordem }}
+                {% if form.data_ordem.errors %}<div class="text-danger small mt-1">{{ form.data_ordem.errors|join:', ' }}</div>{% endif %}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Status</label>
+                {{ form.status }}
+                {% if form.status.errors %}<div class="text-danger small mt-1">{{ form.status.errors|join:', ' }}</div>{% endif %}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Combustivel</label>
+                {{ form.tipo_combustivel }}
+                {% if form.tipo_combustivel.errors %}<div class="text-danger small mt-1">{{ form.tipo_combustivel.errors|join:', ' }}</div>{% endif %}
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Fornecedor/Posto</label>
+                {{ form.fornecedor }}
+                {% if form.fornecedor.errors %}<div class="text-danger small mt-1">{{ form.fornecedor.errors|join:', ' }}</div>{% endif %}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Solicitante</label>
+                {{ form.solicitante }}
+                {% if form.solicitante.errors %}<div class="text-danger small mt-1">{{ form.solicitante.errors|join:', ' }}</div>{% endif %}
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">Destino</label>
+                {{ form.tipo_destino }}
+                {% if form.tipo_destino.errors %}<div class="text-danger small mt-1">{{ form.tipo_destino.errors|join:', ' }}</div>{% endif %}
+            </div>
+            <div class="col-md-4 destino-veiculo">
+                <label class="form-label">Veiculo/Maquina</label>
+                {{ form.veiculo }}
+                {% if form.veiculo.errors %}<div class="text-danger small mt-1">{{ form.veiculo.errors|join:', ' }}</div>{% endif %}
+            </div>
+            <div class="col-md-4 destino-bombona">
+                <label class="form-label">Bombona</label>
+                {{ form.bombona }}
+                {% if form.bombona.errors %}<div class="text-danger small mt-1">{{ form.bombona.errors|join:', ' }}</div>{% endif %}
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">Quantidade litros</label>
+                {{ form.quantidade_litros }}
+                {% if form.quantidade_litros.errors %}<div class="text-danger small mt-1">{{ form.quantidade_litros.errors|join:', ' }}</div>{% endif %}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Valor litro previsto</label>
+                {{ form.valor_litro_previsto }}
+                {% if form.valor_litro_previsto.errors %}<div class="text-danger small mt-1">{{ form.valor_litro_previsto.errors|join:', ' }}</div>{% endif %}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Valor total previsto</label>
+                {{ form.valor_total_previsto }}
+                {% if form.valor_total_previsto.errors %}<div class="text-danger small mt-1">{{ form.valor_total_previsto.errors|join:', ' }}</div>{% endif %}
+            </div>
+
+            <div class="col-12">
+                <label class="form-label">Observacoes</label>
+                {{ form.observacoes }}
+                {% if form.observacoes.errors %}<div class="text-danger small mt-1">{{ form.observacoes.errors|join:', ' }}</div>{% endif %}
+            </div>
+        </div>
+        {% if form.non_field_errors %}
+            <div class="alert alert-danger mt-3">{{ form.non_field_errors|join:', ' }}</div>
+        {% endif %}
+    </div>
+    <div class="card-footer text-end">
+        <button type="submit" class="btn btn-success">Salvar ordem</button>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const destinoSelect = document.getElementById('id_tipo_destino');
+    const veiculoBox = document.querySelector('.destino-veiculo');
+    const bombonaBox = document.querySelector('.destino-bombona');
+
+    function atualizarDestino() {
+        const destino = destinoSelect.value;
+        veiculoBox.classList.toggle('d-none', destino !== 'veiculo');
+        bombonaBox.classList.toggle('d-none', destino !== 'bombona');
+    }
+
+    destinoSelect.addEventListener('change', atualizarDestino);
+    atualizarDestino();
+</script>
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+
+{% block title %}Bombonas{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Bombonas</h1>
+        <p class="text-muted mb-0">Cadastro usado nas ordens de compra de combustivel.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'nova_bombona_combustivel' %}" class="btn btn-success">Nova bombona</a>
+        <a href="{% url 'lista_ordens_combustivel' %}" class="btn btn-secondary">Voltar</a>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Identificacao</th>
+                        <th>Capacidade</th>
+                        <th>Localizacao</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for bombona in bombonas %}
+                    <tr>
+                        <td>{{ bombona.identificacao }}</td>
+                        <td>{{ bombona.capacidade_litros|floatformat:2 }} L</td>
+                        <td>{{ bombona.localizacao|default:'-' }}</td>
+                        <td>{{ bombona.get_status_display }}</td>
+                        <td class="text-end"><a href="{% url 'editar_bombona_combustivel' bombona.id %}" class="btn btn-sm btn-outline-primary">Editar</a></td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5">Nenhuma bombona cadastrada.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -9,24 +9,30 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from .forms import (
     BaixarLocacaoEquipamentoForm,
+    BombonaCombustivelForm,
     ContratoConcretagemForm,
     EquipamentoLocadoCatalogoForm,
     FaturamentoConcretagemForm,
     LocacaoEquipamentoForm,
     LocadoraEquipamentoForm,
+    NotaFiscalCombustivelForm,
     OrcamentoRadarObraForm,
+    OrdemCompraCombustivelForm,
     RegistroAbastecimentoForm,
     SolicitarRetiradaEquipamentoForm,
     SolicitanteConcretagemForm,
     VeiculoMaquinaForm,
 )
 from .models import (
+    BombonaCombustivel,
     ContratoConcretagem,
     EquipamentoLocadoCatalogo,
     FaturamentoConcretagem,
     LocacaoEquipamento,
     LocadoraEquipamento,
+    NotaFiscalCombustivel,
     OrcamentoRadarObra,
+    OrdemCompraCombustivel,
     RegistroAbastecimento,
     SolicitanteConcretagem,
     VeiculoMaquina,
@@ -144,10 +150,24 @@ def _resumo_obras(locacoes):
     return sorted(contadores.values(), key=lambda item: (item['obra'].nome_obra.lower(),))
 
 
+def _registrar_historico_ordem(ordem, evento, descricao, status_anterior='', status_novo=''):
+    ordem.historico.create(
+        evento=evento,
+        descricao=descricao,
+        status_anterior=status_anterior or '',
+        status_novo=status_novo or '',
+    )
+
+
 def home(request):
     totais = {
         'veiculos': VeiculoMaquina.objects.count(),
         'abastecimentos': RegistroAbastecimento.objects.count(),
+        'ordens_combustivel': OrdemCompraCombustivel.objects.count(),
+        'ordens_combustivel_abertas': OrdemCompraCombustivel.objects.exclude(
+            status__in=['encerrada', 'cancelada'],
+        ).count(),
+        'bombonas_combustivel': BombonaCombustivel.objects.count(),
         'locacoes_abertas': LocacaoEquipamento.objects.filter(
             status__in=['locado', 'retirada_solicitada'],
         ).count(),
@@ -188,6 +208,200 @@ def novo_abastecimento(request):
         request,
         'controles/form_abastecimento.html',
         {'form': form, 'titulo': 'Novo Abastecimento'},
+    )
+
+
+def lista_ordens_combustivel(request):
+    ordens = OrdemCompraCombustivel.objects.select_related('veiculo', 'bombona').prefetch_related('notas_fiscais')
+
+    status = request.GET.get('status', '').strip()
+    tipo_destino = request.GET.get('tipo_destino', '').strip()
+    busca = request.GET.get('busca', '').strip()
+
+    if status in {choice[0] for choice in OrdemCompraCombustivel.STATUS_CHOICES}:
+        ordens = ordens.filter(status=status)
+    if tipo_destino in {choice[0] for choice in OrdemCompraCombustivel.TIPO_DESTINO_CHOICES}:
+        ordens = ordens.filter(tipo_destino=tipo_destino)
+    if busca:
+        ordens = ordens.filter(
+            Q(numero__icontains=busca)
+            | Q(fornecedor__icontains=busca)
+            | Q(solicitante__icontains=busca)
+            | Q(veiculo__placa__icontains=busca)
+            | Q(veiculo__descricao__icontains=busca)
+            | Q(bombona__identificacao__icontains=busca)
+        )
+
+    return render(
+        request,
+        'controles/lista_ordens_combustivel.html',
+        {
+            'ordens': ordens,
+            'status_choices': OrdemCompraCombustivel.STATUS_CHOICES,
+            'tipo_destino_choices': OrdemCompraCombustivel.TIPO_DESTINO_CHOICES,
+            'filtros': {
+                'status': status,
+                'tipo_destino': tipo_destino,
+                'busca': busca,
+            },
+        },
+    )
+
+
+def nova_ordem_combustivel(request):
+    if request.method == 'POST':
+        form = OrdemCompraCombustivelForm(request.POST)
+        if form.is_valid():
+            ordem = form.save()
+            _registrar_historico_ordem(
+                ordem,
+                'Ordem criada',
+                f'Ordem {ordem.numero} criada para {ordem.get_tipo_destino_display().lower()} {ordem.destino_display}.',
+                '',
+                ordem.status,
+            )
+            messages.success(request, 'Ordem de compra de combustivel criada com sucesso.')
+            return redirect('detalhe_ordem_combustivel', ordem_id=ordem.id)
+    else:
+        form = OrdemCompraCombustivelForm()
+
+    return render(
+        request,
+        'controles/form_ordem_combustivel.html',
+        {'form': form, 'titulo': 'Nova Ordem de Combustivel'},
+    )
+
+
+def detalhe_ordem_combustivel(request, ordem_id):
+    ordem = get_object_or_404(
+        OrdemCompraCombustivel.objects.select_related('veiculo', 'bombona').prefetch_related(
+            'notas_fiscais',
+            'historico',
+        ),
+        id=ordem_id,
+    )
+    return render(request, 'controles/detalhe_ordem_combustivel.html', {'ordem': ordem})
+
+
+def editar_ordem_combustivel(request, ordem_id):
+    ordem = get_object_or_404(OrdemCompraCombustivel, id=ordem_id)
+    status_anterior = ordem.status
+
+    if request.method == 'POST':
+        form = OrdemCompraCombustivelForm(request.POST, instance=ordem)
+        if form.is_valid():
+            ordem = form.save()
+            if status_anterior != ordem.status:
+                _registrar_historico_ordem(
+                    ordem,
+                    'Status alterado',
+                    f'Status alterado de {status_anterior} para {ordem.status}.',
+                    status_anterior,
+                    ordem.status,
+                )
+            else:
+                _registrar_historico_ordem(ordem, 'Ordem atualizada', 'Dados da ordem foram atualizados.')
+            messages.success(request, 'Ordem de compra de combustivel atualizada com sucesso.')
+            return redirect('detalhe_ordem_combustivel', ordem_id=ordem.id)
+    else:
+        form = OrdemCompraCombustivelForm(instance=ordem)
+
+    return render(
+        request,
+        'controles/form_ordem_combustivel.html',
+        {'form': form, 'titulo': 'Editar Ordem de Combustivel', 'ordem': ordem},
+    )
+
+
+def nova_nf_combustivel(request, ordem_id):
+    ordem = get_object_or_404(OrdemCompraCombustivel, id=ordem_id)
+
+    if request.method == 'POST':
+        form = NotaFiscalCombustivelForm(request.POST)
+        if form.is_valid():
+            nota = form.save(commit=False)
+            nota.ordem = ordem
+            nota.save()
+            _registrar_historico_ordem(
+                ordem,
+                'NF adicionada',
+                f'NF {nota.numero} adicionada com {nota.litros} litros e valor total R$ {nota.valor_total}.',
+            )
+            messages.success(request, 'Nota fiscal adicionada a ordem com sucesso.')
+            return redirect('detalhe_ordem_combustivel', ordem_id=ordem.id)
+    else:
+        form = NotaFiscalCombustivelForm()
+
+    return render(
+        request,
+        'controles/form_nf_combustivel.html',
+        {'form': form, 'titulo': 'Nova NF de Combustivel', 'ordem': ordem},
+    )
+
+
+def editar_nf_combustivel(request, nota_id):
+    nota = get_object_or_404(NotaFiscalCombustivel.objects.select_related('ordem'), id=nota_id)
+    ordem = nota.ordem
+    status_anterior = nota.status
+
+    if request.method == 'POST':
+        form = NotaFiscalCombustivelForm(request.POST, instance=nota)
+        if form.is_valid():
+            nota = form.save()
+            descricao = f'NF {nota.numero} atualizada.'
+            if status_anterior != nota.status:
+                descricao = f'NF {nota.numero} teve status alterado de {status_anterior} para {nota.status}.'
+            _registrar_historico_ordem(ordem, 'NF atualizada', descricao)
+            messages.success(request, 'Nota fiscal de combustivel atualizada com sucesso.')
+            return redirect('detalhe_ordem_combustivel', ordem_id=ordem.id)
+    else:
+        form = NotaFiscalCombustivelForm(instance=nota)
+
+    return render(
+        request,
+        'controles/form_nf_combustivel.html',
+        {'form': form, 'titulo': 'Editar NF de Combustivel', 'ordem': ordem, 'nota': nota},
+    )
+
+
+def lista_bombonas_combustivel(request):
+    bombonas = BombonaCombustivel.objects.all()
+    return render(request, 'controles/lista_bombonas_combustivel.html', {'bombonas': bombonas})
+
+
+def nova_bombona_combustivel(request):
+    if request.method == 'POST':
+        form = BombonaCombustivelForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Bombona cadastrada com sucesso.')
+            return redirect('lista_bombonas_combustivel')
+    else:
+        form = BombonaCombustivelForm()
+
+    return render(
+        request,
+        'controles/form_bombona_combustivel.html',
+        {'form': form, 'titulo': 'Nova Bombona'},
+    )
+
+
+def editar_bombona_combustivel(request, bombona_id):
+    bombona = get_object_or_404(BombonaCombustivel, id=bombona_id)
+
+    if request.method == 'POST':
+        form = BombonaCombustivelForm(request.POST, instance=bombona)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Bombona atualizada com sucesso.')
+            return redirect('lista_bombonas_combustivel')
+    else:
+        form = BombonaCombustivelForm(instance=bombona)
+
+    return render(
+        request,
+        'controles/form_bombona_combustivel.html',
+        {'form': form, 'titulo': 'Editar Bombona', 'bombona': bombona},
     )
 
 

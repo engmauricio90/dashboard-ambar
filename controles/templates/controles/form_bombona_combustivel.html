@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        <p class="text-muted mb-0">Identifique a bombona para uso nas ordens de combustivel.</p>
+    </div>
+    <a href="{% url 'lista_bombonas_combustivel' %}" class="btn btn-secondary">Voltar</a>
+</div>
+
+<form method="post" class="card shadow-sm">
+    {% csrf_token %}
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4"><label class="form-label">Identificacao</label>{{ form.identificacao }}{% if form.identificacao.errors %}<div class="text-danger small mt-1">{{ form.identificacao.errors|join:', ' }}</div>{% endif %}</div>
+            <div class="col-md-4"><label class="form-label">Capacidade litros</label>{{ form.capacidade_litros }}{% if form.capacidade_litros.errors %}<div class="text-danger small mt-1">{{ form.capacidade_litros.errors|join:', ' }}</div>{% endif %}</div>
+            <div class="col-md-4"><label class="form-label">Status</label>{{ form.status }}{% if form.status.errors %}<div class="text-danger small mt-1">{{ form.status.errors|join:', ' }}</div>{% endif %}</div>
+            <div class="col-md-12"><label class="form-label">Localizacao</label>{{ form.localizacao }}{% if form.localizacao.errors %}<div class="text-danger small mt-1">{{ form.localizacao.errors|join:', ' }}</div>{% endif %}</div>
+            <div class="col-12"><label class="form-label">Observacoes</label>{{ form.observacoes }}{% if form.observacoes.errors %}<div class="text-danger small mt-1">{{ form.observacoes.errors|join:', ' }}</div>{% endif %}</div>
+        </div>
+    </div>
+    <div class="card-footer text-end">
+        <button type="submit" class="btn btn-success">Salvar bombona</button>
+    </div>
+</form>
+{% endblock %}

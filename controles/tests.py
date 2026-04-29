@@ -11,12 +11,16 @@ from openpyxl import Workbook
 from obras.models import Obra
 
 from .models import (
+    BombonaCombustivel,
     EquipamentoLocadoCatalogo,
     ContratoConcretagem,
     FaturamentoConcretagem,
+    HistoricoOrdemCombustivel,
     LocacaoEquipamento,
     LocadoraEquipamento,
+    NotaFiscalCombustivel,
     OrcamentoRadarObra,
+    OrdemCompraCombustivel,
     RegistroAbastecimento,
     SolicitanteConcretagem,
     VeiculoMaquina,
@@ -83,6 +87,92 @@ class ControleAbastecimentoTests(TestCase):
         response = self.client.get(reverse('lista_abastecimentos'))
 
         self.assertRedirects(response, f"{reverse('login')}?next={reverse('lista_abastecimentos')}")
+
+    def test_cria_ordem_combustivel_para_veiculo_e_nf(self):
+        veiculo = VeiculoMaquina.objects.create(
+            placa='oc1234',
+            descricao='Caminhao tanque',
+            tipo='caminhao',
+        )
+
+        response = self.client.post(
+            reverse('nova_ordem_combustivel'),
+            {
+                'numero': '',
+                'data_ordem': '2026-04-29',
+                'fornecedor': 'Posto Central',
+                'solicitante': 'Operacao',
+                'tipo_combustivel': 'diesel',
+                'tipo_destino': 'veiculo',
+                'veiculo': veiculo.id,
+                'bombona': '',
+                'quantidade_litros': '100.00',
+                'valor_litro_previsto': '6.50',
+                'valor_total_previsto': '',
+                'status': 'solicitada',
+                'observacoes': 'Compra inicial',
+            },
+        )
+
+        ordem = OrdemCompraCombustivel.objects.get()
+        self.assertRedirects(response, reverse('detalhe_ordem_combustivel', args=[ordem.id]))
+        self.assertEqual(ordem.veiculo, veiculo)
+        self.assertIsNone(ordem.bombona)
+        self.assertEqual(ordem.valor_total_previsto, Decimal('650.0000'))
+        self.assertTrue(ordem.numero.startswith('OC-COMB-2026-'))
+        self.assertEqual(HistoricoOrdemCombustivel.objects.count(), 1)
+
+        response = self.client.post(
+            reverse('nova_nf_combustivel', args=[ordem.id]),
+            {
+                'numero': 'NF-001',
+                'data_emissao': '2026-04-29',
+                'litros': '80.00',
+                'valor_litro': '6.60',
+                'valor_total': '',
+                'status': 'emitida',
+                'observacoes': '',
+            },
+        )
+
+        self.assertRedirects(response, reverse('detalhe_ordem_combustivel', args=[ordem.id]))
+        nota = NotaFiscalCombustivel.objects.get()
+        self.assertEqual(nota.valor_total, Decimal('528.0000'))
+        self.assertEqual(ordem.total_litros_faturados, Decimal('80.00'))
+        self.assertEqual(ordem.saldo_litros, Decimal('20.00'))
+        self.assertEqual(HistoricoOrdemCombustivel.objects.count(), 2)
+
+    def test_cria_ordem_combustivel_para_bombona(self):
+        bombona = BombonaCombustivel.objects.create(
+            identificacao='bmb-01',
+            capacidade_litros=Decimal('200.00'),
+            localizacao='Almoxarifado',
+        )
+
+        response = self.client.post(
+            reverse('nova_ordem_combustivel'),
+            {
+                'numero': 'OC-BOMBONA-01',
+                'data_ordem': '2026-04-29',
+                'fornecedor': 'Distribuidora Diesel',
+                'solicitante': 'Almoxarifado',
+                'tipo_combustivel': 'diesel',
+                'tipo_destino': 'bombona',
+                'veiculo': '',
+                'bombona': bombona.id,
+                'quantidade_litros': '150.00',
+                'valor_litro_previsto': '6.25',
+                'valor_total_previsto': '937.50',
+                'status': 'aprovada',
+                'observacoes': '',
+            },
+        )
+
+        ordem = OrdemCompraCombustivel.objects.get()
+        self.assertRedirects(response, reverse('detalhe_ordem_combustivel', args=[ordem.id]))
+        self.assertEqual(ordem.bombona, bombona)
+        self.assertIsNone(ordem.veiculo)
+        self.assertEqual(str(ordem.destino_display), 'BMB-01')
 
     def test_cria_locacao_equipamento(self):
         equipamento = EquipamentoLocadoCatalogo.objects.create(nome='Plataforma elevatoria')

@@ -1,6 +1,8 @@
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 
 class VeiculoMaquina(models.Model):
@@ -65,6 +67,216 @@ class RegistroAbastecimento(models.Model):
 
     def __str__(self):
         return f'{self.veiculo} - {self.data_abastecimento}'
+
+
+class BombonaCombustivel(models.Model):
+    STATUS_CHOICES = [
+        ('ativa', 'Ativa'),
+        ('inativa', 'Inativa'),
+        ('manutencao', 'Manutencao'),
+    ]
+
+    identificacao = models.CharField(max_length=80, unique=True)
+    capacidade_litros = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    localizacao = models.CharField(max_length=150, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ativa')
+    observacoes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['identificacao']
+        verbose_name = 'Bombona de combustivel'
+        verbose_name_plural = 'Bombonas de combustivel'
+
+    def save(self, *args, **kwargs):
+        self.identificacao = self.identificacao.strip().upper()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.identificacao
+
+
+class OrdemCompraCombustivel(models.Model):
+    DESTINO_VEICULO = 'veiculo'
+    DESTINO_BOMBONA = 'bombona'
+    TIPO_DESTINO_CHOICES = [
+        (DESTINO_VEICULO, 'Veiculo/Maquina'),
+        (DESTINO_BOMBONA, 'Bombona'),
+    ]
+    COMBUSTIVEL_CHOICES = [
+        ('diesel', 'Diesel'),
+        ('gasolina', 'Gasolina'),
+        ('etanol', 'Etanol'),
+        ('arla', 'ARLA'),
+        ('outro', 'Outro'),
+    ]
+    STATUS_CHOICES = [
+        ('rascunho', 'Rascunho'),
+        ('solicitada', 'Solicitada'),
+        ('aprovada', 'Aprovada'),
+        ('parcialmente_faturada', 'Parcialmente faturada'),
+        ('faturada', 'Faturada'),
+        ('conferida', 'Conferida'),
+        ('encerrada', 'Encerrada'),
+        ('cancelada', 'Cancelada'),
+    ]
+
+    numero = models.CharField(max_length=40, unique=True, blank=True)
+    data_ordem = models.DateField(default=timezone.localdate)
+    fornecedor = models.CharField(max_length=150)
+    solicitante = models.CharField(max_length=120, blank=True)
+    tipo_combustivel = models.CharField(max_length=20, choices=COMBUSTIVEL_CHOICES, default='diesel')
+    tipo_destino = models.CharField(max_length=20, choices=TIPO_DESTINO_CHOICES, default=DESTINO_VEICULO)
+    veiculo = models.ForeignKey(
+        VeiculoMaquina,
+        on_delete=models.PROTECT,
+        related_name='ordens_combustivel',
+        blank=True,
+        null=True,
+    )
+    bombona = models.ForeignKey(
+        BombonaCombustivel,
+        on_delete=models.PROTECT,
+        related_name='ordens_combustivel',
+        blank=True,
+        null=True,
+    )
+    quantidade_litros = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    valor_litro_previsto = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    valor_total_previsto = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='solicitada')
+    observacoes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-data_ordem', '-id']
+        verbose_name = 'Ordem de compra de combustivel'
+        verbose_name_plural = 'Ordens de compra de combustivel'
+
+    def clean(self):
+        super().clean()
+        if self.tipo_destino == self.DESTINO_VEICULO:
+            if not self.veiculo_id:
+                raise ValidationError({'veiculo': 'Informe o veiculo/maquina da ordem.'})
+            if self.bombona_id:
+                raise ValidationError({'bombona': 'Nao informe bombona quando o destino for veiculo/maquina.'})
+        if self.tipo_destino == self.DESTINO_BOMBONA:
+            if not self.bombona_id:
+                raise ValidationError({'bombona': 'Informe a bombona da ordem.'})
+            if self.veiculo_id:
+                raise ValidationError({'veiculo': 'Nao informe veiculo/maquina quando o destino for bombona.'})
+
+    def save(self, *args, **kwargs):
+        if not self.valor_total_previsto and self.quantidade_litros and self.valor_litro_previsto:
+            self.valor_total_previsto = self.quantidade_litros * self.valor_litro_previsto
+        if not self.numero:
+            year = (self.data_ordem or timezone.localdate()).year
+            prefix = f'OC-COMB-{year}-'
+            last = (
+                self.__class__.objects.filter(numero__startswith=prefix)
+                .order_by('-numero')
+                .values_list('numero', flat=True)
+                .first()
+            )
+            next_number = 1
+            if last:
+                try:
+                    next_number = int(last.rsplit('-', 1)[-1]) + 1
+                except ValueError:
+                    next_number = self.__class__.objects.filter(numero__startswith=prefix).count() + 1
+            self.numero = f'{prefix}{next_number:04d}'
+        super().save(*args, **kwargs)
+
+    @property
+    def destino_display(self):
+        if self.tipo_destino == self.DESTINO_BOMBONA:
+            return self.bombona
+        return self.veiculo
+
+    @property
+    def total_litros_faturados(self):
+        return sum((nota.litros for nota in self.notas_fiscais.all()), Decimal('0'))
+
+    @property
+    def total_faturado(self):
+        return sum((nota.valor_total for nota in self.notas_fiscais.all()), Decimal('0'))
+
+    @property
+    def saldo_litros(self):
+        return self.quantidade_litros - self.total_litros_faturados
+
+    @property
+    def diferenca_valor(self):
+        return self.total_faturado - self.valor_total_previsto
+
+    def __str__(self):
+        return f'{self.numero} - {self.destino_display}'
+
+
+class NotaFiscalCombustivel(models.Model):
+    STATUS_CHOICES = [
+        ('emitida', 'Emitida'),
+        ('recebida', 'Recebida'),
+        ('conferida', 'Conferida'),
+        ('cancelada', 'Cancelada'),
+    ]
+
+    ordem = models.ForeignKey(
+        OrdemCompraCombustivel,
+        on_delete=models.CASCADE,
+        related_name='notas_fiscais',
+    )
+    numero = models.CharField(max_length=50)
+    data_emissao = models.DateField()
+    litros = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    valor_litro = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    valor_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='emitida')
+    observacoes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-data_emissao', '-id']
+        verbose_name = 'Nota fiscal de combustivel'
+        verbose_name_plural = 'Notas fiscais de combustivel'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['ordem', 'numero'],
+                name='unique_nf_combustivel_por_ordem',
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.valor_total and self.litros and self.valor_litro:
+            self.valor_total = self.litros * self.valor_litro
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'NF {self.numero} - {self.ordem.numero}'
+
+
+class HistoricoOrdemCombustivel(models.Model):
+    ordem = models.ForeignKey(
+        OrdemCompraCombustivel,
+        on_delete=models.CASCADE,
+        related_name='historico',
+    )
+    data_hora = models.DateTimeField(auto_now_add=True)
+    evento = models.CharField(max_length=80)
+    descricao = models.TextField()
+    status_anterior = models.CharField(max_length=30, blank=True)
+    status_novo = models.CharField(max_length=30, blank=True)
+
+    class Meta:
+        ordering = ['-data_hora', '-id']
+        verbose_name = 'Historico da ordem de combustivel'
+        verbose_name_plural = 'Historicos das ordens de combustivel'
+
+    def __str__(self):
+        return f'{self.ordem.numero} - {self.evento}'
 
 
 class EquipamentoLocadoCatalogo(models.Model):

@@ -1,12 +1,16 @@
 from django.contrib import admin
 
 from .models import (
+    BombonaCombustivel,
     ContratoConcretagem,
     EquipamentoLocadoCatalogo,
     FaturamentoConcretagem,
     LocacaoEquipamento,
     LocadoraEquipamento,
+    HistoricoOrdemCombustivel,
+    NotaFiscalCombustivel,
     OrcamentoRadarObra,
+    OrdemCompraCombustivel,
     RegistroAbastecimento,
     SolicitanteConcretagem,
     VeiculoMaquina,
@@ -25,6 +29,64 @@ class RegistroAbastecimentoAdmin(admin.ModelAdmin):
     list_display = ('data_abastecimento', 'veiculo', 'posto', 'responsavel', 'valor_total')
     search_fields = ('veiculo__placa', 'veiculo__descricao', 'posto', 'responsavel')
     list_filter = ('data_abastecimento', 'posto')
+
+
+@admin.register(BombonaCombustivel)
+class BombonaCombustivelAdmin(admin.ModelAdmin):
+    list_display = ('identificacao', 'capacidade_litros', 'localizacao', 'status')
+    search_fields = ('identificacao', 'localizacao')
+    list_filter = ('status',)
+
+
+class NotaFiscalCombustivelInline(admin.TabularInline):
+    model = NotaFiscalCombustivel
+    extra = 0
+
+
+class HistoricoOrdemCombustivelInline(admin.TabularInline):
+    model = HistoricoOrdemCombustivel
+    extra = 0
+    readonly_fields = ('data_hora', 'evento', 'descricao', 'status_anterior', 'status_novo')
+    can_delete = False
+
+
+@admin.register(OrdemCompraCombustivel)
+class OrdemCompraCombustivelAdmin(admin.ModelAdmin):
+    list_display = (
+        'numero',
+        'data_ordem',
+        'fornecedor',
+        'tipo_destino',
+        'destino_display',
+        'tipo_combustivel',
+        'quantidade_litros',
+        'valor_total_previsto',
+        'status',
+    )
+    search_fields = (
+        'numero',
+        'fornecedor',
+        'solicitante',
+        'veiculo__placa',
+        'veiculo__descricao',
+        'bombona__identificacao',
+    )
+    list_filter = ('status', 'tipo_destino', 'tipo_combustivel', 'data_ordem')
+    inlines = [NotaFiscalCombustivelInline, HistoricoOrdemCombustivelInline]
+
+
+@admin.register(NotaFiscalCombustivel)
+class NotaFiscalCombustivelAdmin(admin.ModelAdmin):
+    list_display = ('numero', 'ordem', 'data_emissao', 'litros', 'valor_total', 'status')
+    search_fields = ('numero', 'ordem__numero', 'ordem__fornecedor')
+    list_filter = ('status', 'data_emissao')
+
+
+@admin.register(HistoricoOrdemCombustivel)
+class HistoricoOrdemCombustivelAdmin(admin.ModelAdmin):
+    list_display = ('ordem', 'data_hora', 'evento', 'status_anterior', 'status_novo')
+    search_fields = ('ordem__numero', 'evento', 'descricao')
+    list_filter = ('evento', 'data_hora')
 
 
 @admin.register(EquipamentoLocadoCatalogo)
