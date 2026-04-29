@@ -168,6 +168,11 @@ def detalhe_obra(request, obra_id):
             'projetada': [float(obra.projecao_despesa)],
             'real': [float(obra.total_despesa_real)],
         },
+        'grafico_receitas_comparativo': {
+            'labels': ['Receita'],
+            'projetada': [float(obra.contrato_atualizado)],
+            'realizada': [float(obra.total_notas_fiscais)],
+        },
         'grafico_composicao': {
             'labels': ['Faturado', 'Despesas', 'Impostos', 'INSS retido', 'Outras ret. NF', 'Ret. tecnica'],
             'valores': [

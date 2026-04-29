@@ -170,12 +170,21 @@
     <div class="col-md-12 col-lg-8">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-                    <h6 class="mb-0">Despesa projetada x real</h6>
-                    <span class="text-muted small">Comparativo da obra</span>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="mb-0">Projetado x realizado</h6>
+                    <span class="text-muted small">Receita e despesa da obra</span>
                 </div>
-                <div style="position: relative; height: 240px;">
-                    <canvas id="graficoDespesasComparativo"></canvas>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div style="position: relative; height: 220px;">
+                            <canvas id="graficoReceitasComparativo"></canvas>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div style="position: relative; height: 220px;">
+                            <canvas id="graficoDespesasComparativo"></canvas>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -225,6 +234,7 @@
 </div>
 
 {{ grafico_evolucao|json_script:"grafico-evolucao-obra-data" }}
+{{ grafico_receitas_comparativo|json_script:"grafico-receitas-comparativo-data" }}
 {{ grafico_despesas_comparativo|json_script:"grafico-despesas-comparativo-data" }}
 {{ grafico_composicao|json_script:"grafico-composicao-obra-data" }}
 
@@ -450,6 +460,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
     const graficoEvolucaoObraData = JSON.parse(document.getElementById('grafico-evolucao-obra-data').textContent);
+    const graficoReceitasComparativoData = JSON.parse(document.getElementById('grafico-receitas-comparativo-data').textContent);
     const graficoDespesasComparativoData = JSON.parse(document.getElementById('grafico-despesas-comparativo-data').textContent);
     const graficoComposicaoObraData = JSON.parse(document.getElementById('grafico-composicao-obra-data').textContent);
 
@@ -485,6 +496,73 @@
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+            }
+        });
+    }
+
+    if (graficoReceitasComparativoData.labels.length) {
+        new Chart(document.getElementById('graficoReceitasComparativo'), {
+            type: 'bar',
+            data: {
+                labels: graficoReceitasComparativoData.labels,
+                datasets: [
+                    {
+                        label: 'Receita projetada',
+                        data: graficoReceitasComparativoData.projetada,
+                        backgroundColor: 'rgba(141, 211, 199, 0.75)',
+                        borderColor: '#62b6aa',
+                        borderWidth: 1,
+                        grouped: false,
+                        categoryPercentage: 0.58,
+                        barPercentage: 0.9,
+                        order: 2,
+                    },
+                    {
+                        label: 'Receita realizada',
+                        data: graficoReceitasComparativoData.realizada,
+                        backgroundColor: 'rgba(45, 106, 79, 0.9)',
+                        borderColor: '#1b4332',
+                        borderWidth: 1,
+                        grouped: false,
+                        categoryPercentage: 0.34,
+                        barPercentage: 0.9,
+                        order: 1,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const value = Number(context.raw || 0).toLocaleString('pt-BR', {
+                                    style: 'currency',
+                                    currency: 'BRL'
+                                });
+                                return `${context.dataset.label}: ${value}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return Number(value).toLocaleString('pt-BR', {
+                                    style: 'currency',
+                                    currency: 'BRL',
+                                    maximumFractionDigits: 0
+                                });
+                            }
+                        }
+                    }
+                }
             }
         });
     }
