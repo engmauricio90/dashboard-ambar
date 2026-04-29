@@ -43,6 +43,11 @@ urlpatterns = [
         name='nova_retencao_tecnica',
     ),
     path(
+        '<int:obra_id>/retencoes-tecnicas/<int:retencao_id>/devolver/',
+        views.devolver_retencao_tecnica,
+        name='devolver_retencao_tecnica',
+    ),
+    path(
         '<int:obra_id>/despesas/<int:despesa_id>/excluir/',
         views.excluir_despesa,
         name='excluir_despesa',

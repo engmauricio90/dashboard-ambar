@@ -92,8 +92,9 @@ class Obra(models.Model):
     def total_retencoes_tecnicas(self):
         retencoes_tecnicas = self._prefetched_items('retencoes_tecnicas_registradas')
         if retencoes_tecnicas is not None:
-            return _sum_decimal(retencao.valor for retencao in retencoes_tecnicas)
-        return self._aggregate_value('retencoes_tecnicas_registradas__valor')
+            return _sum_decimal(retencao.valor_saldo for retencao in retencoes_tecnicas)
+        retencoes = self.retencoes_tecnicas_registradas.all()
+        return _sum_decimal(retencao.valor_saldo for retencao in retencoes)
 
     @property
     def total_retencoes(self):
@@ -339,14 +340,24 @@ class DespesaObra(models.Model):
 
 
 class RetencaoTecnicaObra(models.Model):
+    TIPO_RETENCAO = 'retencao'
+    TIPO_DEVOLUCAO = 'devolucao'
+    TIPO_CHOICES = [
+        (TIPO_RETENCAO, 'Retencao'),
+        (TIPO_DEVOLUCAO, 'Devolucao'),
+    ]
+
     obra = models.ForeignKey(
         Obra,
         on_delete=models.CASCADE,
         related_name='retencoes_tecnicas_registradas',
     )
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default=TIPO_RETENCAO)
     data_referencia = models.DateField()
     descricao = models.CharField(max_length=255)
     valor = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    data_prevista_devolucao = models.DateField(blank=True, null=True)
+    data_devolucao = models.DateField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -356,3 +367,13 @@ class RetencaoTecnicaObra(models.Model):
 
     def __str__(self):
         return f'{self.obra.nome_obra} - {self.descricao}'
+
+    @property
+    def valor_saldo(self):
+        if self.tipo == self.TIPO_DEVOLUCAO:
+            return -self.valor
+        return self.valor
+
+    @property
+    def valor_evento(self):
+        return -self.valor_saldo

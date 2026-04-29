@@ -383,7 +383,10 @@
                         <thead>
                             <tr>
                                 <th>Data</th>
+                                <th>Tipo</th>
                                 <th>Descricao</th>
+                                <th>Previsao devolucao</th>
+                                <th>Data devolucao</th>
                                 <th>Valor</th>
                                 <th></th>
                             </tr>
@@ -392,15 +395,21 @@
                             {% for retencao in retencoes_tecnicas %}
                             <tr>
                                 <td>{{ retencao.data_referencia }}</td>
+                                <td>{{ retencao.get_tipo_display }}</td>
                                 <td>{{ retencao.descricao }}</td>
+                                <td>{{ retencao.data_prevista_devolucao|default:'-' }}</td>
+                                <td>{{ retencao.data_devolucao|default:'-' }}</td>
                                 <td>R$ {{ retencao.valor|floatformat:2 }}</td>
                                 <td class="text-end">
+                                    {% if retencao.tipo == 'retencao' %}
+                                    <a href="{% url 'devolver_retencao_tecnica' obra.id retencao.id %}" class="btn btn-sm btn-outline-success">Registrar devolucao</a>
+                                    {% endif %}
                                     <a href="{% url 'excluir_retencao_tecnica' obra.id retencao.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
                                 </td>
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="4">Nenhuma retencao tecnica cadastrada.</td>
+                                <td colspan="7">Nenhuma retencao tecnica cadastrada.</td>
                             </tr>
                             {% endfor %}
                         </tbody>

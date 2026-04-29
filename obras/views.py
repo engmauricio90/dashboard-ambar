@@ -8,6 +8,7 @@ from django.db import transaction
 from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 
 from .forms import (
     AditivoContratoForm,
@@ -215,7 +216,7 @@ def relatorio_obra(request, obra_id):
     )
     total_impostos = sum((nota.total_impostos for nota in notas), Decimal('0'))
     total_retencoes_nf = sum((nota.total_retencoes for nota in notas), Decimal('0'))
-    total_retencoes_tecnicas = sum((retencao.valor for retencao in retencoes_tecnicas), Decimal('0'))
+    total_retencoes_tecnicas = sum((retencao.valor_saldo for retencao in retencoes_tecnicas), Decimal('0'))
     total_retencoes = total_retencoes_nf + total_retencoes_tecnicas
     total_liquido = total_faturado - total_impostos - total_retencoes
     resultado_periodo = total_faturado - total_despesas - total_impostos - total_retencoes
@@ -252,9 +253,11 @@ def relatorio_obra(request, obra_id):
             (
                 {
                     'data': retencao.data_referencia,
-                    'tipo': 'Retencao tecnica',
+                    'tipo': 'Devolucao retencao tecnica'
+                    if retencao.tipo == RetencaoTecnicaObra.TIPO_DEVOLUCAO
+                    else 'Retencao tecnica',
                     'descricao': retencao.descricao,
-                    'valor': -retencao.valor,
+                    'valor': retencao.valor_evento,
                 }
                 for retencao in retencoes_tecnicas
             ),
@@ -333,11 +336,14 @@ def historico_financeiro(request, obra_id):
         {
             'id': retencao.id,
             'data': retencao.data_referencia,
-            'tipo': 'Retencao tecnica',
+            'tipo': 'Devolucao retencao tecnica'
+            if retencao.tipo == RetencaoTecnicaObra.TIPO_DEVOLUCAO
+            else 'Retencao tecnica',
             'descricao': retencao.descricao,
-            'valor': -retencao.valor,
-            'classe': 'table-warning',
+            'valor': retencao.valor_evento,
+            'classe': 'table-success' if retencao.tipo == RetencaoTecnicaObra.TIPO_DEVOLUCAO else 'table-warning',
             'link': None,
+            'retencao_tipo': retencao.tipo,
         }
         for retencao in obra.retencoes_tecnicas_registradas.all()
     ]
@@ -524,6 +530,48 @@ def nova_retencao_tecnica(request, obra_id):
         request,
         'obras/form_retencao_tecnica.html',
         {'form': form, 'obra': obra, 'titulo': 'Nova Retencao Tecnica'},
+    )
+
+
+def devolver_retencao_tecnica(request, obra_id, retencao_id):
+    obra = get_object_or_404(Obra, id=obra_id)
+    retencao_original = get_object_or_404(
+        RetencaoTecnicaObra,
+        id=retencao_id,
+        obra=obra,
+        tipo=RetencaoTecnicaObra.TIPO_RETENCAO,
+    )
+
+    if request.method == 'POST':
+        form = RetencaoTecnicaObraForm(request.POST)
+        if form.is_valid():
+            devolucao = form.save(commit=False)
+            devolucao.obra = obra
+            devolucao.tipo = RetencaoTecnicaObra.TIPO_DEVOLUCAO
+            devolucao.save()
+            messages.success(request, 'Devolucao de retencao tecnica cadastrada com sucesso.')
+            return redirect('historico_financeiro', obra_id=obra.id)
+    else:
+        data_referencia = retencao_original.data_prevista_devolucao or timezone.localdate()
+        form = RetencaoTecnicaObraForm(
+            initial={
+                'tipo': RetencaoTecnicaObra.TIPO_DEVOLUCAO,
+                'data_referencia': data_referencia,
+                'descricao': f'Devolucao - {retencao_original.descricao}',
+                'valor': retencao_original.valor,
+                'data_devolucao': data_referencia,
+            }
+        )
+
+    return render(
+        request,
+        'obras/form_retencao_tecnica.html',
+        {
+            'form': form,
+            'obra': obra,
+            'titulo': 'Registrar Devolucao de Retencao Tecnica',
+            'retencao_original': retencao_original,
+        },
     )
 
 

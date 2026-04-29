@@ -16,13 +16,32 @@
         <form method="post">
             {% csrf_token %}
             <div class="row g-3">
-                <div class="col-md-4">
+                {% if retencao_original %}
+                <div class="col-12">
+                    <div class="alert alert-info mb-0">
+                        Devolucao referente a: {{ retencao_original.descricao }} | R$ {{ retencao_original.valor|floatformat:2 }}
+                    </div>
+                </div>
+                {% endif %}
+                <div class="col-md-3">
+                    <label class="form-label">Tipo</label>
+                    {{ form.tipo }}
+                </div>
+                <div class="col-md-3">
                     <label class="form-label">Data de referencia</label>
                     {{ form.data_referencia }}
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label">Valor</label>
                     {{ form.valor }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Previsao devolucao</label>
+                    {{ form.data_prevista_devolucao }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Data devolucao</label>
+                    {{ form.data_devolucao }}
                 </div>
                 <div class="col-12">
                     <label class="form-label">Descricao</label>

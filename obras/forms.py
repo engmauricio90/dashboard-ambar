@@ -177,9 +177,11 @@ class AditivoContratoForm(BootstrapModelForm):
 class RetencaoTecnicaObraForm(BootstrapModelForm):
     class Meta:
         model = RetencaoTecnicaObra
-        fields = ['data_referencia', 'descricao', 'valor']
+        fields = ['tipo', 'data_referencia', 'descricao', 'valor', 'data_prevista_devolucao', 'data_devolucao']
         widgets = {
             'data_referencia': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'data_prevista_devolucao': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'data_devolucao': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'valor': forms.NumberInput(attrs={'step': '0.01'}),
         }
 

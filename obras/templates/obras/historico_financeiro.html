@@ -91,6 +91,11 @@
                             {% elif evento.tipo == 'Aditivo' or evento.tipo == 'Supressao' %}
                                 <a href="{% url 'excluir_aditivo' obra.id evento.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
                             {% elif evento.tipo == 'Retencao tecnica' %}
+                                {% if evento.retencao_tipo == 'retencao' %}
+                                    <a href="{% url 'devolver_retencao_tecnica' obra.id evento.id %}" class="btn btn-sm btn-outline-success">Registrar devolucao</a>
+                                {% endif %}
+                                <a href="{% url 'excluir_retencao_tecnica' obra.id evento.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
+                            {% elif evento.tipo == 'Devolucao retencao tecnica' %}
                                 <a href="{% url 'excluir_retencao_tecnica' obra.id evento.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
                             {% else %}
                                 <span class="text-muted">-</span>
