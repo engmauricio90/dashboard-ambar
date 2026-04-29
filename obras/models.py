@@ -89,6 +89,21 @@ class Obra(models.Model):
         return self._aggregate_value('notas_fiscais__retencoes__valor')
 
     @property
+    def total_retencoes_inss(self):
+        notas = self._prefetched_items('notas_fiscais')
+        if notas is not None:
+            return _sum_decimal(nota.total_retencoes_inss for nota in notas)
+        return (
+            self.notas_fiscais.filter(retencoes__tipo=RetencaoNotaFiscal.TIPO_INSS)
+            .aggregate(total=Sum('retencoes__valor'))['total']
+            or Decimal('0')
+        )
+
+    @property
+    def total_retencoes_nf_sem_inss(self):
+        return self.total_retencoes_nf - self.total_retencoes_inss
+
+    @property
     def total_retencoes_tecnicas(self):
         retencoes_tecnicas = self._prefetched_items('retencoes_tecnicas_registradas')
         if retencoes_tecnicas is not None:
@@ -237,6 +252,24 @@ class NotaFiscal(models.Model):
         return self.retencoes.aggregate(total=Sum('valor'))['total'] or Decimal('0')
 
     @property
+    def total_retencoes_inss(self):
+        retencoes = self._prefetched_items('retencoes')
+        if retencoes is not None:
+            return _sum_decimal(
+                retencao.valor
+                for retencao in retencoes
+                if retencao.tipo == RetencaoNotaFiscal.TIPO_INSS
+            )
+        return (
+            self.retencoes.filter(tipo=RetencaoNotaFiscal.TIPO_INSS).aggregate(total=Sum('valor'))['total']
+            or Decimal('0')
+        )
+
+    @property
+    def total_retencoes_sem_inss(self):
+        return self.total_retencoes - self.total_retencoes_inss
+
+    @property
     def total_impostos(self):
         impostos = self._prefetched_items('impostos')
         if impostos is not None:
@@ -252,12 +285,17 @@ class NotaFiscal(models.Model):
 
 
 class RetencaoNotaFiscal(models.Model):
+    TIPO_INSS = 'inss'
+    TIPO_ISS = 'iss'
+    TIPO_IRRF = 'irrf'
+    TIPO_PIS_COFINS_CSLL = 'pis_cofins_csll'
+    TIPO_OUTRA = 'outra'
     TIPO_CHOICES = [
-        ('inss', 'INSS'),
-        ('iss', 'ISS'),
-        ('irrf', 'IRRF'),
-        ('pis_cofins_csll', 'PIS/COFINS/CSLL'),
-        ('outra', 'Outra'),
+        (TIPO_INSS, 'INSS'),
+        (TIPO_ISS, 'ISS'),
+        (TIPO_IRRF, 'IRRF'),
+        (TIPO_PIS_COFINS_CSLL, 'PIS/COFINS/CSLL'),
+        (TIPO_OUTRA, 'Outra'),
     ]
 
     nota_fiscal = models.ForeignKey(
@@ -265,7 +303,7 @@ class RetencaoNotaFiscal(models.Model):
         on_delete=models.CASCADE,
         related_name='retencoes',
     )
-    tipo = models.CharField(max_length=30, choices=TIPO_CHOICES, default='outra')
+    tipo = models.CharField(max_length=30, choices=TIPO_CHOICES, default=TIPO_OUTRA)
     descricao = models.CharField(max_length=255, blank=True)
     valor = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True)

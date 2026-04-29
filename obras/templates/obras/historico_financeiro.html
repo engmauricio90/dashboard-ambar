@@ -37,20 +37,28 @@
     <div class="col-md-2">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h6>Retencoes da NF</h6>
-                <h4>R$ {{ obra.total_retencoes_nf|floatformat:2 }}</h4>
+                <h6>INSS retido</h6>
+                <h4>R$ {{ obra.total_retencoes_inss|floatformat:2 }}</h4>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h6>Retencoes tecnicas</h6>
+                <h6>Outras ret. NF</h6>
+                <h4>R$ {{ obra.total_retencoes_nf_sem_inss|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Ret. tecnicas</h6>
                 <h4>R$ {{ obra.total_retencoes_tecnicas|floatformat:2 }}</h4>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
         <div class="card shadow-sm h-100">
             <div class="card-body">
                 <h6>Total de impostos</h6>

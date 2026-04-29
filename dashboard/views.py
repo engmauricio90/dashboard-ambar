@@ -29,6 +29,9 @@ def _build_dashboard_context(obras):
         'total_notas': Decimal('0'),
         'total_impostos': Decimal('0'),
         'total_retencoes': Decimal('0'),
+        'total_retencoes_inss': Decimal('0'),
+        'total_retencoes_nf_sem_inss': Decimal('0'),
+        'total_retencoes_tecnicas': Decimal('0'),
         'total_recebido_liquido': Decimal('0'),
         'total_despesas': Decimal('0'),
         'total_resultado_projetado': Decimal('0'),
@@ -54,6 +57,9 @@ def _build_dashboard_context(obras):
         totais['total_notas'] += obra.total_notas_fiscais
         totais['total_impostos'] += obra.total_impostos
         totais['total_retencoes'] += obra.total_retencoes
+        totais['total_retencoes_inss'] += obra.total_retencoes_inss
+        totais['total_retencoes_nf_sem_inss'] += obra.total_retencoes_nf_sem_inss
+        totais['total_retencoes_tecnicas'] += obra.total_retencoes_tecnicas
         totais['total_recebido_liquido'] += obra.total_recebido_liquido
         totais['total_despesas'] += obra.total_despesa_real
         totais['total_resultado_projetado'] += obra.projecao_resultado

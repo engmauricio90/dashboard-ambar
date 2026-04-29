@@ -81,9 +81,9 @@
     <div class="col-md-3">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h6>Total de retencoes</h6>
-                <h4>R$ {{ total_retencoes|floatformat:2 }}</h4>
-                <small class="text-muted">{{ quantidade_obras_em_alerta }} obra(s) em alerta</small>
+                <h6>INSS retido</h6>
+                <h4>R$ {{ total_retencoes_inss|floatformat:2 }}</h4>
+                <small class="text-muted">Separado da retencao tecnica</small>
             </div>
         </div>
     </div>
@@ -96,6 +96,36 @@
                     R$ {{ total_resultado_projetado|floatformat:2 }}
                 </h4>
                 <small class="text-muted">Baseado nas metas e projecoes das obras</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Retencao tecnica</h6>
+                <h4>R$ {{ total_retencoes_tecnicas|floatformat:2 }}</h4>
+                <small class="text-muted">Saldo a recuperar/devolver</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Outras retencoes de NF</h6>
+                <h4>R$ {{ total_retencoes_nf_sem_inss|floatformat:2 }}</h4>
+                <small class="text-muted">ISS, IRRF e demais retencoes</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Total de retencoes</h6>
+                <h4>R$ {{ total_retencoes|floatformat:2 }}</h4>
+                <small class="text-muted">{{ quantidade_obras_em_alerta }} obra(s) em alerta</small>
             </div>
         </div>
     </div>
@@ -229,7 +259,7 @@
         <h2 class="{% if total_resultado_real < 0 %}text-danger{% else %}text-success{% endif %}">
             R$ {{ total_resultado_real|floatformat:2 }}
         </h2>
-        <p class="text-muted mb-0">Esse total ja considera faturamento bruto, despesas, impostos e retencoes lancados nas obras.</p>
+        <p class="text-muted mb-0">Esse total ja considera faturamento bruto, despesas, impostos, INSS e retencoes lancados nas obras.</p>
     </div>
 </div>
 {% endblock %}

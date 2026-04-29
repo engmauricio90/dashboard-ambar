@@ -164,12 +164,14 @@ def detalhe_obra(request, obra_id):
             'aditivos': timeline_aditivos,
         },
         'grafico_composicao': {
-            'labels': ['Faturado', 'Despesas', 'Impostos', 'Retencoes'],
+            'labels': ['Faturado', 'Despesas', 'Impostos', 'INSS retido', 'Outras ret. NF', 'Ret. tecnica'],
             'valores': [
                 float(obra.total_notas_fiscais),
                 float(obra.total_despesa_real),
                 float(obra.total_impostos),
-                float(obra.total_retencoes),
+                float(obra.total_retencoes_inss),
+                float(obra.total_retencoes_nf_sem_inss),
+                float(obra.total_retencoes_tecnicas),
             ],
         },
     }
@@ -216,6 +218,8 @@ def relatorio_obra(request, obra_id):
     )
     total_impostos = sum((nota.total_impostos for nota in notas), Decimal('0'))
     total_retencoes_nf = sum((nota.total_retencoes for nota in notas), Decimal('0'))
+    total_retencoes_inss = sum((nota.total_retencoes_inss for nota in notas), Decimal('0'))
+    total_retencoes_nf_sem_inss = total_retencoes_nf - total_retencoes_inss
     total_retencoes_tecnicas = sum((retencao.valor_saldo for retencao in retencoes_tecnicas), Decimal('0'))
     total_retencoes = total_retencoes_nf + total_retencoes_tecnicas
     total_liquido = total_faturado - total_impostos - total_retencoes
@@ -283,6 +287,8 @@ def relatorio_obra(request, obra_id):
             'total_supressoes': total_supressoes,
             'total_impostos': total_impostos,
             'total_retencoes_nf': total_retencoes_nf,
+            'total_retencoes_inss': total_retencoes_inss,
+            'total_retencoes_nf_sem_inss': total_retencoes_nf_sem_inss,
             'total_retencoes_tecnicas': total_retencoes_tecnicas,
             'total_retencoes': total_retencoes,
             'total_liquido': total_liquido,

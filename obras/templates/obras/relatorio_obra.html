@@ -112,20 +112,26 @@
                     <tr>
                         <th>Total de impostos</th>
                         <td>R$ {{ total_impostos|floatformat:2 }}</td>
-                        <th>Retencoes de NF</th>
-                        <td>R$ {{ total_retencoes_nf|floatformat:2 }}</td>
+                        <th>INSS retido</th>
+                        <td>R$ {{ total_retencoes_inss|floatformat:2 }}</td>
                     </tr>
                     <tr>
+                        <th>Outras retencoes de NF</th>
+                        <td>R$ {{ total_retencoes_nf_sem_inss|floatformat:2 }}</td>
                         <th>Retencoes tecnicas</th>
                         <td>R$ {{ total_retencoes_tecnicas|floatformat:2 }}</td>
-                        <th>Total de retencoes</th>
-                        <td>R$ {{ total_retencoes|floatformat:2 }}</td>
                     </tr>
                     <tr>
+                        <th>Total de retencoes</th>
+                        <td>R$ {{ total_retencoes|floatformat:2 }}</td>
                         <th>Saldo contratual atual</th>
                         <td>R$ {{ obra.saldo_contratual|floatformat:2 }}</td>
+                    </tr>
+                    <tr>
                         <th>Contrato atualizado</th>
                         <td>R$ {{ obra.contrato_atualizado|floatformat:2 }}</td>
+                        <th></th>
+                        <td></td>
                     </tr>
                 </tbody>
             </table>

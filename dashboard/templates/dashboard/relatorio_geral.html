@@ -102,8 +102,14 @@
                     <tr>
                         <th>Total de impostos</th>
                         <td>R$ {{ total_impostos|floatformat:2 }}</td>
-                        <th>Total de retencoes</th>
-                        <td>R$ {{ total_retencoes|floatformat:2 }}</td>
+                        <th>INSS retido</th>
+                        <td>R$ {{ total_retencoes_inss|floatformat:2 }}</td>
+                    </tr>
+                    <tr>
+                        <th>Retencoes tecnicas</th>
+                        <td>R$ {{ total_retencoes_tecnicas|floatformat:2 }}</td>
+                        <th>Outras retencoes de NF</th>
+                        <td>R$ {{ total_retencoes_nf_sem_inss|floatformat:2 }}</td>
                     </tr>
                     <tr>
                         <th>Total recebido liquido</th>
@@ -131,7 +137,8 @@
                         <th>Faturado</th>
                         <th>Despesas</th>
                         <th>Impostos</th>
-                        <th>Retencoes</th>
+                        <th>INSS retido</th>
+                        <th>Ret. tecnica</th>
                         <th>Resultado real</th>
                     </tr>
                 </thead>
@@ -145,12 +152,13 @@
                         <td>R$ {{ obra.total_notas_fiscais|floatformat:2 }}</td>
                         <td>R$ {{ obra.total_despesa_real|floatformat:2 }}</td>
                         <td>R$ {{ obra.total_impostos|floatformat:2 }}</td>
-                        <td>R$ {{ obra.total_retencoes|floatformat:2 }}</td>
+                        <td>R$ {{ obra.total_retencoes_inss|floatformat:2 }}</td>
+                        <td>R$ {{ obra.total_retencoes_tecnicas|floatformat:2 }}</td>
                         <td class="{% if obra.resultado_real < 0 %}text-danger{% else %}text-success{% endif %}">R$ {{ obra.resultado_real|floatformat:2 }}</td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="9">Nenhuma obra encontrada com os filtros atuais.</td>
+                        <td colspan="10">Nenhuma obra encontrada com os filtros atuais.</td>
                     </tr>
                     {% endfor %}
                 </tbody>

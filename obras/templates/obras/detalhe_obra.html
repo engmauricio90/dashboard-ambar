@@ -169,7 +169,7 @@
 </div>
 
 <div class="row g-3 mb-4">
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card shadow-sm h-100">
             <div class="card-body">
                 <h6>Total faturado</h6>
@@ -179,17 +179,27 @@
         </div>
     </div>
 
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h6>Total de retencoes</h6>
-                <h4>R$ {{ obra.total_retencoes|floatformat:2 }}</h4>
-                <small class="text-muted">NF: R$ {{ obra.total_retencoes_nf|floatformat:2 }} | Tecnicas: R$ {{ obra.total_retencoes_tecnicas|floatformat:2 }}</small>
+                <h6>Retencao tecnica</h6>
+                <h4>R$ {{ obra.total_retencoes_tecnicas|floatformat:2 }}</h4>
+                <small class="text-muted">Saldo a recuperar/devolver</small>
             </div>
         </div>
     </div>
 
-    <div class="col-md-4">
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>INSS retido</h6>
+                <h4>R$ {{ obra.total_retencoes_inss|floatformat:2 }}</h4>
+                <small class="text-muted">Separado da retencao tecnica</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
         <div class="card shadow-sm h-100">
             <div class="card-body">
                 <h6>Total recebido liquido</h6>
@@ -470,7 +480,7 @@
                 labels: graficoComposicaoObraData.labels,
                 datasets: [{
                     data: graficoComposicaoObraData.valores,
-                    backgroundColor: ['#2d6a4f', '#bc4749', '#6a4c93', '#f4a261'],
+                    backgroundColor: ['#2d6a4f', '#bc4749', '#6a4c93', '#e09f3e', '#457b9d', '#f4a261'],
                 }]
             },
             options: {

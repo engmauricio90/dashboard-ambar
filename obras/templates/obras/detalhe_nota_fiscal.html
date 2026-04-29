@@ -16,7 +16,7 @@
 </div>
 
 <div class="row g-3 mb-4">
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card shadow-sm h-100">
             <div class="card-body">
                 <h6>Valor bruto</h6>
@@ -24,15 +24,23 @@
             </div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h6>Total de retencoes</h6>
-                <h4>R$ {{ nota.total_retencoes|floatformat:2 }}</h4>
+                <h6>INSS retido</h6>
+                <h4>R$ {{ nota.total_retencoes_inss|floatformat:2 }}</h4>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Outras retencoes</h6>
+                <h4>R$ {{ nota.total_retencoes_sem_inss|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
         <div class="card shadow-sm h-100">
             <div class="card-body">
                 <h6>Valor liquido</h6>
