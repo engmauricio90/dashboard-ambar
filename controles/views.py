@@ -1,11 +1,15 @@
 from decimal import Decimal
 from io import BytesIO
+from pathlib import Path
+import textwrap
 import unicodedata
 
+from django.conf import settings
 from django.contrib import messages
 from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from PIL import Image, ImageDraw, ImageFont
 
 from .forms import (
     ApontamentoMaquinaLocacaoForm,
@@ -121,6 +125,122 @@ def _format_date(value):
 
 def _format_money(value):
     return f'R$ {value:.2f}'
+
+
+def _font(size, bold=False):
+    candidates = [
+        Path(settings.BASE_DIR) / 'static' / 'fonts' / ('Arial Bold.ttf' if bold else 'Arial.ttf'),
+        Path('C:/Windows/Fonts') / ('arialbd.ttf' if bold else 'arial.ttf'),
+        Path('/usr/share/fonts/truetype/dejavu') / ('DejaVuSans-Bold.ttf' if bold else 'DejaVuSans.ttf'),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return ImageFont.truetype(str(candidate), size)
+    return ImageFont.load_default()
+
+
+def _clean_pdf_text(value):
+    return unicodedata.normalize('NFKD', str(value)).encode('ascii', 'ignore').decode('ascii')
+
+
+def _draw_wrapped(draw, text, xy, font, fill, width, line_spacing=8):
+    x, y = xy
+    text = _clean_pdf_text(text or '-')
+    avg_char_width = max(font.getlength('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz') / 52, 1)
+    max_chars = max(int(width / avg_char_width), 12)
+    lines = []
+    for paragraph in text.splitlines() or ['-']:
+        lines.extend(textwrap.wrap(paragraph, width=max_chars) or [''])
+    line_height = font.getbbox('Ag')[3] - font.getbbox('Ag')[1] + line_spacing
+    for line in lines:
+        draw.text((x, y), line, font=font, fill=fill)
+        y += line_height
+    return y
+
+
+def _draw_section_title(draw, title, x, y, w):
+    teal = (4, 95, 101)
+    draw.rounded_rectangle((x, y, x + w, y + 38), radius=6, fill=teal)
+    draw.text((x + 16, y + 9), _clean_pdf_text(title).upper(), font=_font(18, True), fill=(255, 255, 255))
+    return y + 52
+
+
+def _draw_key_value_grid(draw, rows, x, y, w, columns=2):
+    label_font = _font(14, True)
+    value_font = _font(15)
+    border = (211, 218, 221)
+    label = (88, 99, 105)
+    text = (44, 49, 52)
+    col_w = w / columns
+    row_h = 70
+    for index, (key, value) in enumerate(rows):
+        col = index % columns
+        row = index // columns
+        x0 = int(x + col * col_w)
+        y0 = int(y + row * row_h)
+        x1 = int(x0 + col_w)
+        y1 = y0 + row_h
+        draw.rectangle((x0, y0, x1, y1), outline=border, width=1)
+        draw.text((x0 + 14, y0 + 10), _clean_pdf_text(key).upper(), font=label_font, fill=label)
+        _draw_wrapped(draw, value, (x0 + 14, y0 + 34), value_font, text, int(col_w - 28), line_spacing=4)
+    return y + (((len(rows) + columns - 1) // columns) * row_h) + 26
+
+
+def _draw_table(draw, headers, rows, x, y, widths):
+    header_font = _font(14, True)
+    value_font = _font(14)
+    header_fill = (236, 241, 242)
+    border = (194, 202, 206)
+    text = (43, 48, 51)
+    row_h = 46
+    x_cursor = x
+    for header, width in zip(headers, widths):
+        draw.rectangle((x_cursor, y, x_cursor + width, y + row_h), fill=header_fill, outline=border, width=1)
+        draw.text((x_cursor + 10, y + 14), _clean_pdf_text(header).upper(), font=header_font, fill=text)
+        x_cursor += width
+    y += row_h
+    for row in rows:
+        x_cursor = x
+        for value, width in zip(row, widths):
+            draw.rectangle((x_cursor, y, x_cursor + width, y + row_h), outline=border, width=1)
+            _draw_wrapped(draw, value, (x_cursor + 10, y + 12), value_font, text, width - 20, line_spacing=3)
+            x_cursor += width
+        y += row_h
+    return y + 28
+
+
+def _draw_notes_box(draw, title, value, x, y, w):
+    y = _draw_section_title(draw, title, x, y, w)
+    border = (211, 218, 221)
+    draw.rectangle((x, y, x + w, y + 150), outline=border, width=1)
+    _draw_wrapped(draw, value or '-', (x + 16, y + 16), _font(15), (44, 49, 52), w - 32, line_spacing=6)
+    return y + 176
+
+
+def _report_background():
+    bg_path = Path(settings.BASE_DIR) / 'static' / 'propostas' / 'reference' / 'page_frame.png'
+    if bg_path.exists():
+        return Image.open(bg_path).convert('RGB')
+    return Image.new('RGB', (1653, 2338), 'white')
+
+
+def _report_pdf_response(image, filename):
+    buffer = BytesIO()
+    image.save(buffer, 'PDF', resolution=150)
+    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="{filename}.pdf"'
+    return response
+
+
+def _draw_report_heading(draw, title, number, date_text):
+    x = 220
+    w = 1213
+    y = 405
+    draw.rounded_rectangle((x, y, x + w, y + 92), radius=10, fill=(250, 251, 251), outline=(207, 216, 220), width=2)
+    draw.text((x + 24, y + 18), _clean_pdf_text(title).upper(), font=_font(28, True), fill=(41, 46, 48))
+    draw.text((x + 24, y + 56), f'Numero: {_clean_pdf_text(number)}', font=_font(17), fill=(92, 101, 105))
+    draw.text((x + w - 260, y + 56), f'Data: {_clean_pdf_text(date_text)}', font=_font(17), fill=(92, 101, 105))
+    return x, y + 132, w
 
 
 def _queryset_locacoes_filtradas(request):
@@ -321,32 +441,45 @@ def ordem_combustivel_pdf(request, ordem_id):
         OrdemCompraCombustivel.objects.select_related('veiculo', 'bombona'),
         id=ordem_id,
     )
-    lines = [
-        'ORDEM DE COMPRA DE COMBUSTIVEL',
-        f'Numero: {ordem.numero}',
-        f'Data: {_format_date(ordem.data_ordem)}',
-        '',
-        'DADOS DA ORDEM',
-        f'Fornecedor/Posto: {ordem.fornecedor}',
-        f'Solicitante: {ordem.solicitante or "-"}',
-        f'Status: {ordem.get_status_display()}',
-        '',
-        'DESTINO',
-        f'Tipo de destino: {ordem.get_tipo_destino_display()}',
-        f'Identificacao: {ordem.destino_display}',
-        '',
-        'COMBUSTIVEL E VALORES',
-        f'Tipo de combustivel: {ordem.get_tipo_combustivel_display()}',
-        f'Quantidade autorizada: {ordem.quantidade_litros:.2f} L',
-        f'Valor por litro previsto: {_format_money(ordem.valor_litro_previsto)}',
-        f'Valor total previsto: {_format_money(ordem.valor_total_previsto)}',
-        '',
-        'OBSERVACOES',
-        ordem.observacoes or '-',
-    ]
-    response = HttpResponse(_build_simple_pdf([lines]), content_type='application/pdf')
-    response['Content-Disposition'] = f'inline; filename="{ordem.numero}.pdf"'
-    return response
+    image = _report_background()
+    draw = ImageDraw.Draw(image)
+    x, y, w = _draw_report_heading(
+        draw,
+        'Ordem de compra de combustivel',
+        ordem.numero,
+        _format_date(ordem.data_ordem),
+    )
+    y = _draw_section_title(draw, 'Dados da ordem', x, y, w)
+    y = _draw_key_value_grid(
+        draw,
+        [
+            ('Fornecedor/Posto', ordem.fornecedor),
+            ('Solicitante', ordem.solicitante or '-'),
+            ('Status', ordem.get_status_display()),
+            ('Destino', f'{ordem.get_tipo_destino_display()} - {ordem.destino_display}'),
+        ],
+        x,
+        y,
+        w,
+    )
+    y = _draw_section_title(draw, 'Item autorizado', x, y, w)
+    y = _draw_table(
+        draw,
+        ['Descricao', 'Quantidade', 'Valor unitario', 'Total previsto'],
+        [
+            [
+                f'Combustivel - {ordem.get_tipo_combustivel_display()}',
+                f'{ordem.quantidade_litros:.2f} L',
+                _format_money(ordem.valor_litro_previsto),
+                _format_money(ordem.valor_total_previsto),
+            ]
+        ],
+        x,
+        y,
+        [540, 210, 230, 233],
+    )
+    _draw_notes_box(draw, 'Observacoes', ordem.observacoes or '-', x, y, w)
+    return _report_pdf_response(image, ordem.numero)
 
 
 def editar_ordem_combustivel(request, ordem_id):
@@ -602,46 +735,68 @@ def ordem_locacao_maquina_pdf(request, ordem_id):
         OrdemServicoLocacaoMaquina.objects.select_related('obra', 'fornecedor', 'maquina'),
         id=ordem_id,
     )
-    lines = [
-        'ORDEM DE SERVICO DE LOCACAO DE MAQUINA',
-        f'Numero: {ordem.numero}',
-        f'Data da solicitacao: {_format_date(ordem.data_solicitacao)}',
-        '',
-        'DADOS DA OS',
-        f'Obra: {ordem.obra}',
-        f'Fornecedor: {ordem.fornecedor}',
-        f'Maquina: {ordem.maquina}',
-        f'Solicitante: {ordem.solicitante or "-"}',
-        f'Responsavel: {ordem.responsavel or "-"}',
-        f'Status: {ordem.get_status_display()}',
-        f'Tipo de cobranca: {ordem.get_tipo_cobranca_display()}',
-        '',
-        'PRAZOS E OPERACAO',
-        f'Periodo previsto: {_format_date(ordem.data_prevista_inicio)} a {_format_date(ordem.data_prevista_fim)}',
-        f'Data de mobilizacao: {_format_date(ordem.data_mobilizacao)}',
-        f'Inicio da operacao: {_format_date(ordem.data_inicio_operacao)}',
-        f'Solicitacao de desmobilizacao: {_format_date(ordem.data_solicitacao_desmobilizacao)}',
-        f'Data de desmobilizacao: {_format_date(ordem.data_desmobilizacao)}',
-        '',
-        'VALORES CONTRATADOS',
-        f'Valor hora: {_format_money(ordem.valor_hora)}',
-        f'Valor diaria: {_format_money(ordem.valor_diaria)}',
-        f'Valor mensal: {_format_money(ordem.valor_mensal)}',
-        f'Franquia de horas: {ordem.franquia_horas:.2f}',
-        f'Valor mobilizacao: {_format_money(ordem.valor_mobilizacao)}',
-        f'Valor desmobilizacao: {_format_money(ordem.valor_desmobilizacao)}',
-        f'Valor previsto manual: {_format_money(ordem.valor_previsto_manual) if ordem.valor_previsto_manual is not None else "-"}',
-        '',
-        'CONDICOES',
-        f'Operador incluso: {"Sim" if ordem.operador_incluso else "Nao"}',
-        f'Combustivel incluso: {"Sim" if ordem.combustivel_incluso else "Nao"}',
-        '',
-        'OBSERVACOES',
-        ordem.observacoes or '-',
-    ]
-    response = HttpResponse(_build_simple_pdf([lines]), content_type='application/pdf')
-    response['Content-Disposition'] = f'inline; filename="{ordem.numero}.pdf"'
-    return response
+    image = _report_background()
+    draw = ImageDraw.Draw(image)
+    x, y, w = _draw_report_heading(
+        draw,
+        'Ordem de servico de locacao de maquina',
+        ordem.numero,
+        _format_date(ordem.data_solicitacao),
+    )
+    y = _draw_section_title(draw, 'Dados da OS', x, y, w)
+    y = _draw_key_value_grid(
+        draw,
+        [
+            ('Obra', ordem.obra),
+            ('Fornecedor', ordem.fornecedor),
+            ('Maquina', ordem.maquina),
+            ('Status', ordem.get_status_display()),
+            ('Solicitante', ordem.solicitante or '-'),
+            ('Responsavel', ordem.responsavel or '-'),
+            ('Tipo de cobranca', ordem.get_tipo_cobranca_display()),
+            ('Condicoes', f'Operador: {"Sim" if ordem.operador_incluso else "Nao"} | Combustivel: {"Sim" if ordem.combustivel_incluso else "Nao"}'),
+        ],
+        x,
+        y,
+        w,
+    )
+    y = _draw_section_title(draw, 'Prazos e operacao', x, y, w)
+    y = _draw_table(
+        draw,
+        ['Periodo previsto', 'Mobilizacao', 'Inicio operacao', 'Desmobilizacao'],
+        [
+            [
+                f'{_format_date(ordem.data_prevista_inicio)} a {_format_date(ordem.data_prevista_fim)}',
+                _format_date(ordem.data_mobilizacao),
+                _format_date(ordem.data_inicio_operacao),
+                _format_date(ordem.data_desmobilizacao),
+            ]
+        ],
+        x,
+        y,
+        [330, 290, 290, 303],
+    )
+    y = _draw_section_title(draw, 'Valores contratados', x, y, w)
+    y = _draw_table(
+        draw,
+        ['Item', 'Valor/Info', 'Item', 'Valor/Info'],
+        [
+            ['Valor hora', _format_money(ordem.valor_hora), 'Valor diaria', _format_money(ordem.valor_diaria)],
+            ['Valor mensal', _format_money(ordem.valor_mensal), 'Franquia horas', f'{ordem.franquia_horas:.2f}'],
+            ['Mobilizacao', _format_money(ordem.valor_mobilizacao), 'Desmobilizacao', _format_money(ordem.valor_desmobilizacao)],
+            [
+                'Valor previsto manual',
+                _format_money(ordem.valor_previsto_manual) if ordem.valor_previsto_manual is not None else '-',
+                'Tipo cobranca',
+                ordem.get_tipo_cobranca_display(),
+            ],
+        ],
+        x,
+        y,
+        [310, 290, 310, 303],
+    )
+    _draw_notes_box(draw, 'Observacoes', ordem.observacoes or '-', x, y, w)
+    return _report_pdf_response(image, ordem.numero)
 
 
 def editar_ordem_locacao_maquina(request, ordem_id):
