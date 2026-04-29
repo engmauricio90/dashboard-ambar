@@ -113,6 +113,16 @@ def _build_simple_pdf(lines_by_page):
     return buffer.getvalue()
 
 
+def _format_date(value):
+    if not value:
+        return '-'
+    return value.strftime('%d/%m/%Y')
+
+
+def _format_money(value):
+    return f'R$ {value:.2f}'
+
+
 def _queryset_locacoes_filtradas(request):
     locacoes = LocacaoEquipamento.objects.select_related('equipamento', 'locadora', 'obra').all()
 
@@ -304,6 +314,39 @@ def detalhe_ordem_combustivel(request, ordem_id):
         id=ordem_id,
     )
     return render(request, 'controles/detalhe_ordem_combustivel.html', {'ordem': ordem})
+
+
+def ordem_combustivel_pdf(request, ordem_id):
+    ordem = get_object_or_404(
+        OrdemCompraCombustivel.objects.select_related('veiculo', 'bombona'),
+        id=ordem_id,
+    )
+    lines = [
+        'ORDEM DE COMPRA DE COMBUSTIVEL',
+        f'Numero: {ordem.numero}',
+        f'Data: {_format_date(ordem.data_ordem)}',
+        '',
+        'DADOS DA ORDEM',
+        f'Fornecedor/Posto: {ordem.fornecedor}',
+        f'Solicitante: {ordem.solicitante or "-"}',
+        f'Status: {ordem.get_status_display()}',
+        '',
+        'DESTINO',
+        f'Tipo de destino: {ordem.get_tipo_destino_display()}',
+        f'Identificacao: {ordem.destino_display}',
+        '',
+        'COMBUSTIVEL E VALORES',
+        f'Tipo de combustivel: {ordem.get_tipo_combustivel_display()}',
+        f'Quantidade autorizada: {ordem.quantidade_litros:.2f} L',
+        f'Valor por litro previsto: {_format_money(ordem.valor_litro_previsto)}',
+        f'Valor total previsto: {_format_money(ordem.valor_total_previsto)}',
+        '',
+        'OBSERVACOES',
+        ordem.observacoes or '-',
+    ]
+    response = HttpResponse(_build_simple_pdf([lines]), content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="{ordem.numero}.pdf"'
+    return response
 
 
 def editar_ordem_combustivel(request, ordem_id):
@@ -552,6 +595,53 @@ def detalhe_ordem_locacao_maquina(request, ordem_id):
         id=ordem_id,
     )
     return render(request, 'controles/detalhe_ordem_locacao_maquina.html', {'ordem': ordem})
+
+
+def ordem_locacao_maquina_pdf(request, ordem_id):
+    ordem = get_object_or_404(
+        OrdemServicoLocacaoMaquina.objects.select_related('obra', 'fornecedor', 'maquina'),
+        id=ordem_id,
+    )
+    lines = [
+        'ORDEM DE SERVICO DE LOCACAO DE MAQUINA',
+        f'Numero: {ordem.numero}',
+        f'Data da solicitacao: {_format_date(ordem.data_solicitacao)}',
+        '',
+        'DADOS DA OS',
+        f'Obra: {ordem.obra}',
+        f'Fornecedor: {ordem.fornecedor}',
+        f'Maquina: {ordem.maquina}',
+        f'Solicitante: {ordem.solicitante or "-"}',
+        f'Responsavel: {ordem.responsavel or "-"}',
+        f'Status: {ordem.get_status_display()}',
+        f'Tipo de cobranca: {ordem.get_tipo_cobranca_display()}',
+        '',
+        'PRAZOS E OPERACAO',
+        f'Periodo previsto: {_format_date(ordem.data_prevista_inicio)} a {_format_date(ordem.data_prevista_fim)}',
+        f'Data de mobilizacao: {_format_date(ordem.data_mobilizacao)}',
+        f'Inicio da operacao: {_format_date(ordem.data_inicio_operacao)}',
+        f'Solicitacao de desmobilizacao: {_format_date(ordem.data_solicitacao_desmobilizacao)}',
+        f'Data de desmobilizacao: {_format_date(ordem.data_desmobilizacao)}',
+        '',
+        'VALORES CONTRATADOS',
+        f'Valor hora: {_format_money(ordem.valor_hora)}',
+        f'Valor diaria: {_format_money(ordem.valor_diaria)}',
+        f'Valor mensal: {_format_money(ordem.valor_mensal)}',
+        f'Franquia de horas: {ordem.franquia_horas:.2f}',
+        f'Valor mobilizacao: {_format_money(ordem.valor_mobilizacao)}',
+        f'Valor desmobilizacao: {_format_money(ordem.valor_desmobilizacao)}',
+        f'Valor previsto manual: {_format_money(ordem.valor_previsto_manual) if ordem.valor_previsto_manual is not None else "-"}',
+        '',
+        'CONDICOES',
+        f'Operador incluso: {"Sim" if ordem.operador_incluso else "Nao"}',
+        f'Combustivel incluso: {"Sim" if ordem.combustivel_incluso else "Nao"}',
+        '',
+        'OBSERVACOES',
+        ordem.observacoes or '-',
+    ]
+    response = HttpResponse(_build_simple_pdf([lines]), content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="{ordem.numero}.pdf"'
+    return response
 
 
 def editar_ordem_locacao_maquina(request, ordem_id):

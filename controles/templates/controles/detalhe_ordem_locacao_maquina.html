@@ -9,6 +9,7 @@
         <p class="text-muted mb-0">{{ ordem.maquina }} | {{ ordem.obra }} | {{ ordem.fornecedor }}</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'ordem_locacao_maquina_pdf' ordem.id %}" class="btn btn-outline-dark">Gerar PDF</a>
         <a href="{% url 'novo_apontamento_maquina' ordem.id %}" class="btn btn-success">Novo apontamento</a>
         <a href="{% url 'nova_nf_locacao_maquina' ordem.id %}" class="btn btn-outline-success">Adicionar NF</a>
         <a href="{% url 'editar_ordem_locacao_maquina' ordem.id %}" class="btn btn-primary">Editar OS</a>

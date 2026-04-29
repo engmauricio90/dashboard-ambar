@@ -148,6 +148,11 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(ordem.saldo_litros, Decimal('20.00'))
         self.assertEqual(HistoricoOrdemCombustivel.objects.count(), 2)
 
+        response = self.client.get(reverse('ordem_combustivel_pdf', args=[ordem.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertTrue(response.content.startswith(b'%PDF'))
+
     def test_cria_ordem_combustivel_para_bombona(self):
         bombona = BombonaCombustivel.objects.create(
             identificacao='bmb-01',
@@ -265,6 +270,11 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(ordem.total_horas_faturadas, Decimal('8.50'))
         self.assertEqual(ordem.saldo_horas, Decimal('0.00'))
         self.assertEqual(HistoricoLocacaoMaquina.objects.count(), 3)
+
+        response = self.client.get(reverse('ordem_locacao_maquina_pdf', args=[ordem.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertTrue(response.content.startswith(b'%PDF'))
 
     def test_cadastros_locacao_maquina_carregam(self):
         response = self.client.post(

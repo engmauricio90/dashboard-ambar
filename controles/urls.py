@@ -15,6 +15,11 @@ urlpatterns = [
         name='detalhe_ordem_combustivel',
     ),
     path(
+        'combustivel/ordens/<int:ordem_id>/pdf/',
+        views.ordem_combustivel_pdf,
+        name='ordem_combustivel_pdf',
+    ),
+    path(
         'combustivel/ordens/<int:ordem_id>/editar/',
         views.editar_ordem_combustivel,
         name='editar_ordem_combustivel',
@@ -45,6 +50,11 @@ urlpatterns = [
         'maquinas-locadas/<int:ordem_id>/',
         views.detalhe_ordem_locacao_maquina,
         name='detalhe_ordem_locacao_maquina',
+    ),
+    path(
+        'maquinas-locadas/<int:ordem_id>/pdf/',
+        views.ordem_locacao_maquina_pdf,
+        name='ordem_locacao_maquina_pdf',
     ),
     path(
         'maquinas-locadas/<int:ordem_id>/editar/',
