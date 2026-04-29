@@ -8,31 +8,41 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from .forms import (
+    ApontamentoMaquinaLocacaoForm,
     BaixarLocacaoEquipamentoForm,
     BombonaCombustivelForm,
     ContratoConcretagemForm,
     EquipamentoLocadoCatalogoForm,
+    FornecedorMaquinaLocacaoForm,
     FaturamentoConcretagemForm,
     LocacaoEquipamentoForm,
     LocadoraEquipamentoForm,
+    MaquinaLocacaoCatalogoForm,
     NotaFiscalCombustivelForm,
+    NotaFiscalLocacaoMaquinaForm,
     OrcamentoRadarObraForm,
     OrdemCompraCombustivelForm,
+    OrdemServicoLocacaoMaquinaForm,
     RegistroAbastecimentoForm,
     SolicitarRetiradaEquipamentoForm,
     SolicitanteConcretagemForm,
     VeiculoMaquinaForm,
 )
 from .models import (
+    ApontamentoMaquinaLocacao,
     BombonaCombustivel,
     ContratoConcretagem,
     EquipamentoLocadoCatalogo,
+    FornecedorMaquinaLocacao,
     FaturamentoConcretagem,
     LocacaoEquipamento,
     LocadoraEquipamento,
+    MaquinaLocacaoCatalogo,
     NotaFiscalCombustivel,
+    NotaFiscalLocacaoMaquina,
     OrcamentoRadarObra,
     OrdemCompraCombustivel,
+    OrdemServicoLocacaoMaquina,
     RegistroAbastecimento,
     SolicitanteConcretagem,
     VeiculoMaquina,
@@ -159,6 +169,15 @@ def _registrar_historico_ordem(ordem, evento, descricao, status_anterior='', sta
     )
 
 
+def _registrar_historico_maquina(ordem, evento, descricao, status_anterior='', status_novo=''):
+    ordem.historico.create(
+        evento=evento,
+        descricao=descricao,
+        status_anterior=status_anterior or '',
+        status_novo=status_novo or '',
+    )
+
+
 def home(request):
     totais = {
         'veiculos': VeiculoMaquina.objects.count(),
@@ -170,6 +189,10 @@ def home(request):
         'bombonas_combustivel': BombonaCombustivel.objects.count(),
         'locacoes_abertas': LocacaoEquipamento.objects.filter(
             status__in=['locado', 'retirada_solicitada'],
+        ).count(),
+        'ordens_maquinas': OrdemServicoLocacaoMaquina.objects.count(),
+        'ordens_maquinas_abertas': OrdemServicoLocacaoMaquina.objects.exclude(
+            status__in=['encerrada', 'cancelada'],
         ).count(),
         'orcamentos_aguardando': OrcamentoRadarObra.objects.filter(situacao='aguardando_resposta').count(),
         'contratos_concretagem': ContratoConcretagem.objects.filter(status='ativo').count(),
@@ -443,6 +466,304 @@ def editar_veiculo(request, veiculo_id):
         request,
         'controles/form_veiculo.html',
         {'form': form, 'titulo': 'Editar Veiculo/Maquina', 'veiculo': veiculo},
+    )
+
+
+def lista_ordens_locacao_maquinas(request):
+    ordens = OrdemServicoLocacaoMaquina.objects.select_related(
+        'obra',
+        'fornecedor',
+        'maquina',
+    ).prefetch_related('apontamentos', 'notas_fiscais')
+
+    obra_id = request.GET.get('obra', '').strip()
+    fornecedor_id = request.GET.get('fornecedor', '').strip()
+    status = request.GET.get('status', '').strip()
+    busca = request.GET.get('busca', '').strip()
+
+    if obra_id.isdigit():
+        ordens = ordens.filter(obra_id=obra_id)
+    if fornecedor_id.isdigit():
+        ordens = ordens.filter(fornecedor_id=fornecedor_id)
+    if status in {choice[0] for choice in OrdemServicoLocacaoMaquina.STATUS_CHOICES}:
+        ordens = ordens.filter(status=status)
+    if busca:
+        ordens = ordens.filter(
+            Q(numero__icontains=busca)
+            | Q(obra__nome_obra__icontains=busca)
+            | Q(fornecedor__nome__icontains=busca)
+            | Q(maquina__nome__icontains=busca)
+            | Q(solicitante__icontains=busca)
+            | Q(responsavel__icontains=busca)
+        )
+
+    return render(
+        request,
+        'controles/lista_ordens_locacao_maquinas.html',
+        {
+            'ordens': ordens,
+            'status_choices': OrdemServicoLocacaoMaquina.STATUS_CHOICES,
+            'filtros': {
+                'obra': obra_id,
+                'fornecedor': fornecedor_id,
+                'status': status,
+                'busca': busca,
+            },
+            'obras_filtro': OrdemServicoLocacaoMaquina.objects.select_related('obra').values_list(
+                'obra_id',
+                'obra__nome_obra',
+            ).distinct().order_by('obra__nome_obra'),
+            'fornecedores_filtro': FornecedorMaquinaLocacao.objects.filter(ordens__isnull=False).distinct().order_by('nome'),
+        },
+    )
+
+
+def nova_ordem_locacao_maquina(request):
+    if request.method == 'POST':
+        form = OrdemServicoLocacaoMaquinaForm(request.POST)
+        if form.is_valid():
+            ordem = form.save()
+            _registrar_historico_maquina(
+                ordem,
+                'OS criada',
+                f'OS {ordem.numero} criada para {ordem.maquina} na obra {ordem.obra}.',
+                '',
+                ordem.status,
+            )
+            messages.success(request, 'OS de locacao de maquina criada com sucesso.')
+            return redirect('detalhe_ordem_locacao_maquina', ordem_id=ordem.id)
+    else:
+        form = OrdemServicoLocacaoMaquinaForm()
+
+    return render(
+        request,
+        'controles/form_ordem_locacao_maquina.html',
+        {'form': form, 'titulo': 'Nova OS de Locacao de Maquina'},
+    )
+
+
+def detalhe_ordem_locacao_maquina(request, ordem_id):
+    ordem = get_object_or_404(
+        OrdemServicoLocacaoMaquina.objects.select_related('obra', 'fornecedor', 'maquina').prefetch_related(
+            'apontamentos',
+            'notas_fiscais',
+            'historico',
+        ),
+        id=ordem_id,
+    )
+    return render(request, 'controles/detalhe_ordem_locacao_maquina.html', {'ordem': ordem})
+
+
+def editar_ordem_locacao_maquina(request, ordem_id):
+    ordem = get_object_or_404(OrdemServicoLocacaoMaquina, id=ordem_id)
+    status_anterior = ordem.status
+
+    if request.method == 'POST':
+        form = OrdemServicoLocacaoMaquinaForm(request.POST, instance=ordem)
+        if form.is_valid():
+            ordem = form.save()
+            if status_anterior != ordem.status:
+                _registrar_historico_maquina(
+                    ordem,
+                    'Status alterado',
+                    f'Status alterado de {status_anterior} para {ordem.status}.',
+                    status_anterior,
+                    ordem.status,
+                )
+            else:
+                _registrar_historico_maquina(ordem, 'OS atualizada', 'Dados da OS foram atualizados.')
+            messages.success(request, 'OS de locacao de maquina atualizada com sucesso.')
+            return redirect('detalhe_ordem_locacao_maquina', ordem_id=ordem.id)
+    else:
+        form = OrdemServicoLocacaoMaquinaForm(instance=ordem)
+
+    return render(
+        request,
+        'controles/form_ordem_locacao_maquina.html',
+        {'form': form, 'titulo': 'Editar OS de Locacao de Maquina', 'ordem': ordem},
+    )
+
+
+def novo_apontamento_maquina(request, ordem_id):
+    ordem = get_object_or_404(OrdemServicoLocacaoMaquina, id=ordem_id)
+
+    if request.method == 'POST':
+        form = ApontamentoMaquinaLocacaoForm(request.POST)
+        if form.is_valid():
+            apontamento = form.save(commit=False)
+            apontamento.ordem = ordem
+            apontamento.save()
+            _registrar_historico_maquina(
+                ordem,
+                'Apontamento adicionado',
+                f'Apontamento de {apontamento.data} com {apontamento.horas_trabalhadas} horas trabalhadas.',
+            )
+            messages.success(request, 'Apontamento da maquina registrado com sucesso.')
+            return redirect('detalhe_ordem_locacao_maquina', ordem_id=ordem.id)
+    else:
+        form = ApontamentoMaquinaLocacaoForm()
+
+    return render(
+        request,
+        'controles/form_apontamento_maquina.html',
+        {'form': form, 'titulo': 'Novo Apontamento', 'ordem': ordem},
+    )
+
+
+def editar_apontamento_maquina(request, apontamento_id):
+    apontamento = get_object_or_404(
+        ApontamentoMaquinaLocacao.objects.select_related('ordem'),
+        id=apontamento_id,
+    )
+    ordem = apontamento.ordem
+
+    if request.method == 'POST':
+        form = ApontamentoMaquinaLocacaoForm(request.POST, instance=apontamento)
+        if form.is_valid():
+            apontamento = form.save()
+            _registrar_historico_maquina(ordem, 'Apontamento atualizado', f'Apontamento de {apontamento.data} atualizado.')
+            messages.success(request, 'Apontamento da maquina atualizado com sucesso.')
+            return redirect('detalhe_ordem_locacao_maquina', ordem_id=ordem.id)
+    else:
+        form = ApontamentoMaquinaLocacaoForm(instance=apontamento)
+
+    return render(
+        request,
+        'controles/form_apontamento_maquina.html',
+        {'form': form, 'titulo': 'Editar Apontamento', 'ordem': ordem, 'apontamento': apontamento},
+    )
+
+
+def nova_nf_locacao_maquina(request, ordem_id):
+    ordem = get_object_or_404(OrdemServicoLocacaoMaquina, id=ordem_id)
+
+    if request.method == 'POST':
+        form = NotaFiscalLocacaoMaquinaForm(request.POST)
+        if form.is_valid():
+            nota = form.save(commit=False)
+            nota.ordem = ordem
+            nota.save()
+            _registrar_historico_maquina(
+                ordem,
+                'NF adicionada',
+                f'NF {nota.numero} adicionada com {nota.horas_faturadas} horas e valor total R$ {nota.valor_total}.',
+            )
+            messages.success(request, 'NF adicionada a OS com sucesso.')
+            return redirect('detalhe_ordem_locacao_maquina', ordem_id=ordem.id)
+    else:
+        form = NotaFiscalLocacaoMaquinaForm()
+
+    return render(
+        request,
+        'controles/form_nf_locacao_maquina.html',
+        {'form': form, 'titulo': 'Nova NF de Locacao de Maquina', 'ordem': ordem},
+    )
+
+
+def editar_nf_locacao_maquina(request, nota_id):
+    nota = get_object_or_404(NotaFiscalLocacaoMaquina.objects.select_related('ordem'), id=nota_id)
+    ordem = nota.ordem
+    status_anterior = nota.status
+
+    if request.method == 'POST':
+        form = NotaFiscalLocacaoMaquinaForm(request.POST, instance=nota)
+        if form.is_valid():
+            nota = form.save()
+            descricao = f'NF {nota.numero} atualizada.'
+            if status_anterior != nota.status:
+                descricao = f'NF {nota.numero} teve status alterado de {status_anterior} para {nota.status}.'
+            _registrar_historico_maquina(ordem, 'NF atualizada', descricao)
+            messages.success(request, 'NF de locacao de maquina atualizada com sucesso.')
+            return redirect('detalhe_ordem_locacao_maquina', ordem_id=ordem.id)
+    else:
+        form = NotaFiscalLocacaoMaquinaForm(instance=nota)
+
+    return render(
+        request,
+        'controles/form_nf_locacao_maquina.html',
+        {'form': form, 'titulo': 'Editar NF de Locacao de Maquina', 'ordem': ordem, 'nota': nota},
+    )
+
+
+def lista_catalogo_maquinas_locacao(request):
+    maquinas = MaquinaLocacaoCatalogo.objects.all()
+    return render(request, 'controles/lista_catalogo_maquinas_locacao.html', {'maquinas': maquinas})
+
+
+def nova_maquina_locacao(request):
+    if request.method == 'POST':
+        form = MaquinaLocacaoCatalogoForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Maquina cadastrada com sucesso.')
+            return redirect('lista_catalogo_maquinas_locacao')
+    else:
+        form = MaquinaLocacaoCatalogoForm()
+
+    return render(
+        request,
+        'controles/form_maquina_locacao.html',
+        {'form': form, 'titulo': 'Nova Maquina'},
+    )
+
+
+def editar_maquina_locacao(request, maquina_id):
+    maquina = get_object_or_404(MaquinaLocacaoCatalogo, id=maquina_id)
+
+    if request.method == 'POST':
+        form = MaquinaLocacaoCatalogoForm(request.POST, instance=maquina)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Maquina atualizada com sucesso.')
+            return redirect('lista_catalogo_maquinas_locacao')
+    else:
+        form = MaquinaLocacaoCatalogoForm(instance=maquina)
+
+    return render(
+        request,
+        'controles/form_maquina_locacao.html',
+        {'form': form, 'titulo': 'Editar Maquina', 'maquina': maquina},
+    )
+
+
+def lista_fornecedores_maquinas(request):
+    fornecedores = FornecedorMaquinaLocacao.objects.all()
+    return render(request, 'controles/lista_fornecedores_maquinas.html', {'fornecedores': fornecedores})
+
+
+def novo_fornecedor_maquina(request):
+    if request.method == 'POST':
+        form = FornecedorMaquinaLocacaoForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Fornecedor de maquina cadastrado com sucesso.')
+            return redirect('lista_fornecedores_maquinas')
+    else:
+        form = FornecedorMaquinaLocacaoForm()
+
+    return render(
+        request,
+        'controles/form_fornecedor_maquina.html',
+        {'form': form, 'titulo': 'Novo Fornecedor de Maquina'},
+    )
+
+
+def editar_fornecedor_maquina(request, fornecedor_id):
+    fornecedor = get_object_or_404(FornecedorMaquinaLocacao, id=fornecedor_id)
+
+    if request.method == 'POST':
+        form = FornecedorMaquinaLocacaoForm(request.POST, instance=fornecedor)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Fornecedor de maquina atualizado com sucesso.')
+            return redirect('lista_fornecedores_maquinas')
+    else:
+        form = FornecedorMaquinaLocacaoForm(instance=fornecedor)
+
+    return render(
+        request,
+        'controles/form_fornecedor_maquina.html',
+        {'form': form, 'titulo': 'Editar Fornecedor de Maquina', 'fornecedor': fornecedor},
     )
 
 

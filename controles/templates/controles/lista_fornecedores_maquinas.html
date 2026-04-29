@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+
+{% block title %}Fornecedores de Maquinas{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Fornecedores de Maquinas</h1>
+        <p class="text-muted mb-0">Cadastro separado das locadoras de equipamentos pequenos.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'novo_fornecedor_maquina' %}" class="btn btn-success">Novo fornecedor</a>
+        <a href="{% url 'lista_ordens_locacao_maquinas' %}" class="btn btn-secondary">Voltar</a>
+    </div>
+</div>
+
+<div class="card shadow-sm"><div class="card-body"><div class="table-responsive">
+    <table class="table table-bordered table-striped align-middle mb-0">
+        <thead><tr><th>Nome</th><th>Contato</th><th>Telefone</th><th>Email</th><th></th></tr></thead>
+        <tbody>
+            {% for fornecedor in fornecedores %}
+            <tr>
+                <td>{{ fornecedor.nome }}</td>
+                <td>{{ fornecedor.contato|default:'-' }}</td>
+                <td>{{ fornecedor.telefone|default:'-' }}</td>
+                <td>{{ fornecedor.email|default:'-' }}</td>
+                <td class="text-end"><a href="{% url 'editar_fornecedor_maquina' fornecedor.id %}" class="btn btn-sm btn-outline-primary">Editar</a></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5">Nenhum fornecedor cadastrado.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div></div></div>
+{% endblock %}

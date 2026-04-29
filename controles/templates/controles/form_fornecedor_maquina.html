@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        <p class="text-muted mb-0">Fornecedor usado apenas no fluxo de locacao de maquinas pesadas.</p>
+    </div>
+    <a href="{% url 'lista_fornecedores_maquinas' %}" class="btn btn-secondary">Voltar</a>
+</div>
+
+<form method="post" class="card shadow-sm">
+    {% csrf_token %}
+    <div class="card-body"><div class="row g-3">
+        <div class="col-md-4"><label class="form-label">Nome</label>{{ form.nome }}</div>
+        <div class="col-md-4"><label class="form-label">Contato</label>{{ form.contato }}</div>
+        <div class="col-md-4"><label class="form-label">Telefone</label>{{ form.telefone }}</div>
+        <div class="col-md-6"><label class="form-label">Email</label>{{ form.email }}</div>
+        <div class="col-12"><label class="form-label">Observacoes</label>{{ form.observacoes }}</div>
+    </div></div>
+    <div class="card-footer text-end"><button type="submit" class="btn btn-success">Salvar fornecedor</button></div>
+</form>
+{% endblock %}

@@ -39,6 +39,52 @@ urlpatterns = [
     path('veiculos/', views.lista_veiculos, name='lista_veiculos'),
     path('veiculos/novo/', views.novo_veiculo, name='novo_veiculo'),
     path('veiculos/<int:veiculo_id>/editar/', views.editar_veiculo, name='editar_veiculo'),
+    path('maquinas-locadas/', views.lista_ordens_locacao_maquinas, name='lista_ordens_locacao_maquinas'),
+    path('maquinas-locadas/nova/', views.nova_ordem_locacao_maquina, name='nova_ordem_locacao_maquina'),
+    path(
+        'maquinas-locadas/<int:ordem_id>/',
+        views.detalhe_ordem_locacao_maquina,
+        name='detalhe_ordem_locacao_maquina',
+    ),
+    path(
+        'maquinas-locadas/<int:ordem_id>/editar/',
+        views.editar_ordem_locacao_maquina,
+        name='editar_ordem_locacao_maquina',
+    ),
+    path(
+        'maquinas-locadas/<int:ordem_id>/apontamentos/novo/',
+        views.novo_apontamento_maquina,
+        name='novo_apontamento_maquina',
+    ),
+    path(
+        'maquinas-locadas/apontamentos/<int:apontamento_id>/editar/',
+        views.editar_apontamento_maquina,
+        name='editar_apontamento_maquina',
+    ),
+    path(
+        'maquinas-locadas/<int:ordem_id>/notas/nova/',
+        views.nova_nf_locacao_maquina,
+        name='nova_nf_locacao_maquina',
+    ),
+    path(
+        'maquinas-locadas/notas/<int:nota_id>/editar/',
+        views.editar_nf_locacao_maquina,
+        name='editar_nf_locacao_maquina',
+    ),
+    path('maquinas-locadas/catalogo/', views.lista_catalogo_maquinas_locacao, name='lista_catalogo_maquinas_locacao'),
+    path('maquinas-locadas/catalogo/nova/', views.nova_maquina_locacao, name='nova_maquina_locacao'),
+    path(
+        'maquinas-locadas/catalogo/<int:maquina_id>/editar/',
+        views.editar_maquina_locacao,
+        name='editar_maquina_locacao',
+    ),
+    path('maquinas-locadas/fornecedores/', views.lista_fornecedores_maquinas, name='lista_fornecedores_maquinas'),
+    path('maquinas-locadas/fornecedores/novo/', views.novo_fornecedor_maquina, name='novo_fornecedor_maquina'),
+    path(
+        'maquinas-locadas/fornecedores/<int:fornecedor_id>/editar/',
+        views.editar_fornecedor_maquina,
+        name='editar_fornecedor_maquina',
+    ),
     path('equipamentos-locados/', views.lista_equipamentos_locados, name='lista_equipamentos_locados'),
     path(
         'equipamentos-locados/relatorio.pdf/',

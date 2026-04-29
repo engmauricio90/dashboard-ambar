@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        <p class="text-muted mb-0">{{ ordem.numero }} | {{ ordem.maquina }} | {{ ordem.obra }}</p>
+    </div>
+    <a href="{% url 'detalhe_ordem_locacao_maquina' ordem.id %}" class="btn btn-secondary">Voltar</a>
+</div>
+
+<form method="post" class="card shadow-sm">
+    {% csrf_token %}
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3"><label class="form-label">Data</label>{{ form.data }}</div>
+            <div class="col-md-3"><label class="form-label">Horimetro inicial</label>{{ form.horimetro_inicial }}</div>
+            <div class="col-md-3"><label class="form-label">Horimetro final</label>{{ form.horimetro_final }}</div>
+            <div class="col-md-3"><label class="form-label">Horas trabalhadas</label>{{ form.horas_trabalhadas }}</div>
+            <div class="col-md-3"><label class="form-label">Horas paradas</label>{{ form.horas_paradas }}</div>
+            <div class="col-md-9"><label class="form-label">Motivo parada</label>{{ form.motivo_parada }}</div>
+            <div class="col-md-6"><label class="form-label">Operador</label>{{ form.operador }}</div>
+            <div class="col-md-6"><label class="form-label">Responsavel apontamento</label>{{ form.responsavel_apontamento }}</div>
+            <div class="col-12"><label class="form-label">Observacoes</label>{{ form.observacoes }}</div>
+        </div>
+        {% if form.non_field_errors %}<div class="alert alert-danger mt-3">{{ form.non_field_errors|join:', ' }}</div>{% endif %}
+    </div>
+    <div class="card-footer text-end"><button type="submit" class="btn btn-success">Salvar apontamento</button></div>
+</form>
+{% endblock %}

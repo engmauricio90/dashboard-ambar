@@ -2,15 +2,20 @@ from django import forms
 from django.db.models import Q
 
 from .models import (
+    ApontamentoMaquinaLocacao,
     BombonaCombustivel,
     ContratoConcretagem,
     EquipamentoLocadoCatalogo,
+    FornecedorMaquinaLocacao,
     FaturamentoConcretagem,
+    MaquinaLocacaoCatalogo,
     NotaFiscalCombustivel,
+    NotaFiscalLocacaoMaquina,
     LocacaoEquipamento,
     LocadoraEquipamento,
     OrcamentoRadarObra,
     OrdemCompraCombustivel,
+    OrdemServicoLocacaoMaquina,
     RegistroAbastecimento,
     SolicitanteConcretagem,
     VeiculoMaquina,
@@ -223,6 +228,152 @@ class BaixarLocacaoEquipamentoForm(BootstrapModelForm):
         fields = ['data_retirada', 'observacoes']
         widgets = {
             'data_retirada': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+
+
+class MaquinaLocacaoCatalogoForm(BootstrapModelForm):
+    class Meta:
+        model = MaquinaLocacaoCatalogo
+        fields = ['nome', 'categoria', 'status', 'observacoes']
+        widgets = {
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+
+
+class FornecedorMaquinaLocacaoForm(BootstrapModelForm):
+    class Meta:
+        model = FornecedorMaquinaLocacao
+        fields = ['nome', 'contato', 'telefone', 'email', 'observacoes']
+        widgets = {
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+
+
+class OrdemServicoLocacaoMaquinaForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name in [
+            'valor_hora',
+            'valor_diaria',
+            'valor_mensal',
+            'franquia_horas',
+            'valor_mobilizacao',
+            'valor_desmobilizacao',
+            'valor_previsto_manual',
+        ]:
+            self.fields[field_name].required = False
+
+    class Meta:
+        model = OrdemServicoLocacaoMaquina
+        fields = [
+            'numero',
+            'data_solicitacao',
+            'obra',
+            'fornecedor',
+            'maquina',
+            'solicitante',
+            'responsavel',
+            'status',
+            'tipo_cobranca',
+            'data_prevista_inicio',
+            'data_prevista_fim',
+            'data_mobilizacao',
+            'data_inicio_operacao',
+            'data_solicitacao_desmobilizacao',
+            'data_desmobilizacao',
+            'valor_hora',
+            'valor_diaria',
+            'valor_mensal',
+            'franquia_horas',
+            'valor_mobilizacao',
+            'valor_desmobilizacao',
+            'valor_previsto_manual',
+            'operador_incluso',
+            'combustivel_incluso',
+            'observacoes',
+        ]
+        widgets = {
+            'data_solicitacao': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'data_prevista_inicio': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'data_prevista_fim': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'data_mobilizacao': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'data_inicio_operacao': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'data_solicitacao_desmobilizacao': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'data_desmobilizacao': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'valor_hora': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_diaria': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_mensal': forms.NumberInput(attrs={'step': '0.01'}),
+            'franquia_horas': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_mobilizacao': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_desmobilizacao': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_previsto_manual': forms.NumberInput(attrs={'step': '0.01'}),
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+        help_texts = {
+            'numero': 'Deixe em branco para gerar automaticamente.',
+            'valor_previsto_manual': 'Use quando a cobranca nao for por hora ou precisar travar um valor fechado.',
+        }
+
+
+class ApontamentoMaquinaLocacaoForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['horas_trabalhadas'].required = False
+        self.fields['horas_paradas'].required = False
+
+    class Meta:
+        model = ApontamentoMaquinaLocacao
+        fields = [
+            'data',
+            'horimetro_inicial',
+            'horimetro_final',
+            'horas_trabalhadas',
+            'horas_paradas',
+            'motivo_parada',
+            'operador',
+            'responsavel_apontamento',
+            'observacoes',
+        ]
+        widgets = {
+            'data': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'horimetro_inicial': forms.NumberInput(attrs={'step': '0.01'}),
+            'horimetro_final': forms.NumberInput(attrs={'step': '0.01'}),
+            'horas_trabalhadas': forms.NumberInput(attrs={'step': '0.01'}),
+            'horas_paradas': forms.NumberInput(attrs={'step': '0.01'}),
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+
+
+class NotaFiscalLocacaoMaquinaForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['valor_total'].required = False
+
+    class Meta:
+        model = NotaFiscalLocacaoMaquina
+        fields = [
+            'numero',
+            'data_emissao',
+            'periodo_inicio',
+            'periodo_fim',
+            'horas_faturadas',
+            'valor_maquina',
+            'valor_mobilizacao',
+            'valor_desmobilizacao',
+            'valor_total',
+            'status',
+            'observacoes',
+        ]
+        widgets = {
+            'data_emissao': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'periodo_inicio': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'periodo_fim': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'horas_faturadas': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_maquina': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_mobilizacao': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_desmobilizacao': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_total': forms.NumberInput(attrs={'step': '0.01'}),
             'observacoes': forms.Textarea(attrs={'rows': 3}),
         }
 

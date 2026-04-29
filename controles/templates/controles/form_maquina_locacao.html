@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        <p class="text-muted mb-0">Cadastre maquinas pesadas para uso nas OS.</p>
+    </div>
+    <a href="{% url 'lista_catalogo_maquinas_locacao' %}" class="btn btn-secondary">Voltar</a>
+</div>
+
+<form method="post" class="card shadow-sm">
+    {% csrf_token %}
+    <div class="card-body"><div class="row g-3">
+        <div class="col-md-5"><label class="form-label">Nome</label>{{ form.nome }}</div>
+        <div class="col-md-4"><label class="form-label">Categoria</label>{{ form.categoria }}</div>
+        <div class="col-md-3"><label class="form-label">Status</label>{{ form.status }}</div>
+        <div class="col-12"><label class="form-label">Observacoes</label>{{ form.observacoes }}</div>
+    </div></div>
+    <div class="card-footer text-end"><button type="submit" class="btn btn-success">Salvar maquina</button></div>
+</form>
+{% endblock %}

@@ -1,0 +1,101 @@
+{% extends 'base.html' %}
+
+{% block title %}Locacao de Maquinas{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Locacao de Maquinas</h1>
+        <p class="text-muted mb-0">Ordens de servico para maquinas pesadas com apontamentos, NFs e historico.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'nova_ordem_locacao_maquina' %}" class="btn btn-success">Nova OS</a>
+        <a href="{% url 'lista_catalogo_maquinas_locacao' %}" class="btn btn-outline-dark">Maquinas</a>
+        <a href="{% url 'lista_fornecedores_maquinas' %}" class="btn btn-outline-dark">Fornecedores</a>
+    </div>
+</div>
+
+<form method="get" class="card shadow-sm mb-4">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Obra</label>
+                <select name="obra" class="form-select">
+                    <option value="">Todas</option>
+                    {% for id,nome in obras_filtro %}
+                        <option value="{{ id }}" {% if filtros.obra == id|stringformat:'s' %}selected{% endif %}>{{ nome }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Fornecedor</label>
+                <select name="fornecedor" class="form-select">
+                    <option value="">Todos</option>
+                    {% for fornecedor in fornecedores_filtro %}
+                        <option value="{{ fornecedor.id }}" {% if filtros.fornecedor == fornecedor.id|stringformat:'s' %}selected{% endif %}>{{ fornecedor.nome }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Status</label>
+                <select name="status" class="form-select">
+                    <option value="">Todos</option>
+                    {% for value,label in status_choices %}
+                        <option value="{{ value }}" {% if filtros.status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Busca</label>
+                <input type="search" name="busca" value="{{ filtros.busca }}" class="form-control" placeholder="OS, obra, maquina ou fornecedor">
+            </div>
+            <div class="col-md-1">
+                <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+            </div>
+        </div>
+    </div>
+</form>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>OS</th>
+                        <th>Data</th>
+                        <th>Obra</th>
+                        <th>Maquina</th>
+                        <th>Fornecedor</th>
+                        <th>Status</th>
+                        <th>Horas apontadas</th>
+                        <th>Horas faturadas</th>
+                        <th>Faturado</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ordem in ordens %}
+                    <tr>
+                        <td>{{ ordem.numero }}</td>
+                        <td>{{ ordem.data_solicitacao }}</td>
+                        <td>{{ ordem.obra }}</td>
+                        <td>{{ ordem.maquina }}</td>
+                        <td>{{ ordem.fornecedor }}</td>
+                        <td>{{ ordem.get_status_display }}</td>
+                        <td>{{ ordem.total_horas_apontadas|floatformat:2 }}</td>
+                        <td>{{ ordem.total_horas_faturadas|floatformat:2 }}</td>
+                        <td>R$ {{ ordem.total_faturado|floatformat:2 }}</td>
+                        <td class="text-end"><a href="{% url 'detalhe_ordem_locacao_maquina' ordem.id %}" class="btn btn-sm btn-outline-dark">Detalhar</a></td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="10">Nenhuma OS de locacao de maquina cadastrada.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

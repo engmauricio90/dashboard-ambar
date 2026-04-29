@@ -1,16 +1,22 @@
 from django.contrib import admin
 
 from .models import (
+    ApontamentoMaquinaLocacao,
     BombonaCombustivel,
     ContratoConcretagem,
     EquipamentoLocadoCatalogo,
+    FornecedorMaquinaLocacao,
     FaturamentoConcretagem,
+    HistoricoLocacaoMaquina,
     LocacaoEquipamento,
     LocadoraEquipamento,
     HistoricoOrdemCombustivel,
+    MaquinaLocacaoCatalogo,
     NotaFiscalCombustivel,
+    NotaFiscalLocacaoMaquina,
     OrcamentoRadarObra,
     OrdemCompraCombustivel,
+    OrdemServicoLocacaoMaquina,
     RegistroAbastecimento,
     SolicitanteConcretagem,
     VeiculoMaquina,
@@ -125,6 +131,82 @@ class LocacaoEquipamentoAdmin(admin.ModelAdmin):
         'numero_contrato',
     )
     list_filter = ('status', 'data_locacao', 'locadora')
+
+
+@admin.register(MaquinaLocacaoCatalogo)
+class MaquinaLocacaoCatalogoAdmin(admin.ModelAdmin):
+    list_display = ('nome', 'categoria', 'status')
+    search_fields = ('nome', 'categoria')
+    list_filter = ('status', 'categoria')
+
+
+@admin.register(FornecedorMaquinaLocacao)
+class FornecedorMaquinaLocacaoAdmin(admin.ModelAdmin):
+    list_display = ('nome', 'contato', 'telefone', 'email')
+    search_fields = ('nome', 'contato', 'telefone', 'email')
+
+
+class ApontamentoMaquinaLocacaoInline(admin.TabularInline):
+    model = ApontamentoMaquinaLocacao
+    extra = 0
+
+
+class NotaFiscalLocacaoMaquinaInline(admin.TabularInline):
+    model = NotaFiscalLocacaoMaquina
+    extra = 0
+
+
+class HistoricoLocacaoMaquinaInline(admin.TabularInline):
+    model = HistoricoLocacaoMaquina
+    extra = 0
+    readonly_fields = ('data_hora', 'evento', 'descricao', 'status_anterior', 'status_novo')
+    can_delete = False
+
+
+@admin.register(OrdemServicoLocacaoMaquina)
+class OrdemServicoLocacaoMaquinaAdmin(admin.ModelAdmin):
+    list_display = (
+        'numero',
+        'data_solicitacao',
+        'obra',
+        'fornecedor',
+        'maquina',
+        'tipo_cobranca',
+        'status',
+        'total_horas_apontadas',
+        'total_faturado',
+    )
+    search_fields = (
+        'numero',
+        'obra__nome_obra',
+        'fornecedor__nome',
+        'maquina__nome',
+        'solicitante',
+        'responsavel',
+    )
+    list_filter = ('status', 'tipo_cobranca', 'fornecedor', 'maquina', 'data_solicitacao')
+    inlines = [ApontamentoMaquinaLocacaoInline, NotaFiscalLocacaoMaquinaInline, HistoricoLocacaoMaquinaInline]
+
+
+@admin.register(ApontamentoMaquinaLocacao)
+class ApontamentoMaquinaLocacaoAdmin(admin.ModelAdmin):
+    list_display = ('ordem', 'data', 'horas_trabalhadas', 'horas_paradas', 'operador')
+    search_fields = ('ordem__numero', 'operador', 'responsavel_apontamento', 'motivo_parada')
+    list_filter = ('data',)
+
+
+@admin.register(NotaFiscalLocacaoMaquina)
+class NotaFiscalLocacaoMaquinaAdmin(admin.ModelAdmin):
+    list_display = ('numero', 'ordem', 'data_emissao', 'horas_faturadas', 'valor_total', 'status')
+    search_fields = ('numero', 'ordem__numero', 'ordem__fornecedor__nome')
+    list_filter = ('status', 'data_emissao')
+
+
+@admin.register(HistoricoLocacaoMaquina)
+class HistoricoLocacaoMaquinaAdmin(admin.ModelAdmin):
+    list_display = ('ordem', 'data_hora', 'evento', 'status_anterior', 'status_novo')
+    search_fields = ('ordem__numero', 'evento', 'descricao')
+    list_filter = ('evento', 'data_hora')
 
 
 @admin.register(OrcamentoRadarObra)

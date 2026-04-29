@@ -1,0 +1,127 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ ordem.numero }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">{{ ordem.numero }}</h1>
+        <p class="text-muted mb-0">{{ ordem.maquina }} | {{ ordem.obra }} | {{ ordem.fornecedor }}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'novo_apontamento_maquina' ordem.id %}" class="btn btn-success">Novo apontamento</a>
+        <a href="{% url 'nova_nf_locacao_maquina' ordem.id %}" class="btn btn-outline-success">Adicionar NF</a>
+        <a href="{% url 'editar_ordem_locacao_maquina' ordem.id %}" class="btn btn-primary">Editar OS</a>
+        <a href="{% url 'lista_ordens_locacao_maquinas' %}" class="btn btn-secondary">Voltar</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>Horas apontadas</h6><h4>{{ ordem.total_horas_apontadas|floatformat:2 }}</h4></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>Horas faturadas</h6><h4>{{ ordem.total_horas_faturadas|floatformat:2 }}</h4></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>Saldo horas</h6><h4 class="{% if ordem.saldo_horas < 0 %}text-danger{% endif %}">{{ ordem.saldo_horas|floatformat:2 }}</h4></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>Total faturado</h6><h4>R$ {{ ordem.total_faturado|floatformat:2 }}</h4></div></div></div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h5 class="mb-3">Dados da OS</h5>
+        <div class="row g-3">
+            <div class="col-md-3"><strong>Status:</strong> {{ ordem.get_status_display }}</div>
+            <div class="col-md-3"><strong>Cobranca:</strong> {{ ordem.get_tipo_cobranca_display }}</div>
+            <div class="col-md-3"><strong>Solicitante:</strong> {{ ordem.solicitante|default:'-' }}</div>
+            <div class="col-md-3"><strong>Responsavel:</strong> {{ ordem.responsavel|default:'-' }}</div>
+            <div class="col-md-3"><strong>Prev. inicio:</strong> {{ ordem.data_prevista_inicio|default:'-' }}</div>
+            <div class="col-md-3"><strong>Prev. fim:</strong> {{ ordem.data_prevista_fim|default:'-' }}</div>
+            <div class="col-md-3"><strong>Mobilizacao:</strong> {{ ordem.data_mobilizacao|default:'-' }}</div>
+            <div class="col-md-3"><strong>Desmobilizacao:</strong> {{ ordem.data_desmobilizacao|default:'-' }}</div>
+            <div class="col-md-3"><strong>Valor hora:</strong> R$ {{ ordem.valor_hora|floatformat:2 }}</div>
+            <div class="col-md-3"><strong>Previsto:</strong> R$ {{ ordem.valor_previsto_total|floatformat:2 }}</div>
+            <div class="col-md-3"><strong>Diferenca:</strong> R$ {{ ordem.diferenca_valor|floatformat:2 }}</div>
+            <div class="col-md-3"><strong>Operador:</strong> {% if ordem.operador_incluso %}Incluso{% else %}Nao incluso{% endif %}</div>
+            {% if ordem.observacoes %}<div class="col-12"><strong>Observacoes:</strong> {{ ordem.observacoes }}</div>{% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Apontamentos</h5>
+            <a href="{% url 'novo_apontamento_maquina' ordem.id %}" class="btn btn-sm btn-outline-success">Novo apontamento</a>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle mb-0">
+                <thead><tr><th>Data</th><th>Horimetro inicial</th><th>Horimetro final</th><th>Horas</th><th>Paradas</th><th>Operador</th><th></th></tr></thead>
+                <tbody>
+                    {% for apontamento in ordem.apontamentos.all %}
+                    <tr>
+                        <td>{{ apontamento.data }}</td>
+                        <td>{{ apontamento.horimetro_inicial|default:'-' }}</td>
+                        <td>{{ apontamento.horimetro_final|default:'-' }}</td>
+                        <td>{{ apontamento.horas_trabalhadas|floatformat:2 }}</td>
+                        <td>{{ apontamento.horas_paradas|floatformat:2 }}</td>
+                        <td>{{ apontamento.operador|default:'-' }}</td>
+                        <td class="text-end"><a href="{% url 'editar_apontamento_maquina' apontamento.id %}" class="btn btn-sm btn-outline-primary">Editar</a></td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="7">Nenhum apontamento registrado.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Notas fiscais</h5>
+            <a href="{% url 'nova_nf_locacao_maquina' ordem.id %}" class="btn btn-sm btn-outline-success">Adicionar NF</a>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle mb-0">
+                <thead><tr><th>Numero</th><th>Emissao</th><th>Periodo</th><th>Horas</th><th>Total</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                    {% for nota in ordem.notas_fiscais.all %}
+                    <tr>
+                        <td>{{ nota.numero }}</td>
+                        <td>{{ nota.data_emissao }}</td>
+                        <td>{{ nota.periodo_inicio|default:'-' }} a {{ nota.periodo_fim|default:'-' }}</td>
+                        <td>{{ nota.horas_faturadas|floatformat:2 }}</td>
+                        <td>R$ {{ nota.valor_total|floatformat:2 }}</td>
+                        <td>{{ nota.get_status_display }}</td>
+                        <td class="text-end"><a href="{% url 'editar_nf_locacao_maquina' nota.id %}" class="btn btn-sm btn-outline-primary">Editar</a></td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="7">Nenhuma NF vinculada a esta OS.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <h5 class="mb-3">Historico</h5>
+        <div class="table-responsive">
+            <table class="table table-bordered align-middle mb-0">
+                <thead><tr><th>Data/Hora</th><th>Evento</th><th>Descricao</th><th>Status</th></tr></thead>
+                <tbody>
+                    {% for item in ordem.historico.all %}
+                    <tr>
+                        <td>{{ item.data_hora }}</td>
+                        <td>{{ item.evento }}</td>
+                        <td>{{ item.descricao }}</td>
+                        <td>{% if item.status_anterior or item.status_novo %}{{ item.status_anterior|default:'-' }} &gt; {{ item.status_novo|default:'-' }}{% else %}-{% endif %}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4">Nenhum historico registrado para esta OS.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

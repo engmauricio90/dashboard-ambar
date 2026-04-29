@@ -367,6 +367,292 @@ class LocacaoEquipamento(models.Model):
         return f'{self.equipamento} - {self.obra}'
 
 
+class MaquinaLocacaoCatalogo(models.Model):
+    STATUS_CHOICES = [
+        ('ativa', 'Ativa'),
+        ('inativa', 'Inativa'),
+    ]
+
+    nome = models.CharField(max_length=150, unique=True)
+    categoria = models.CharField(max_length=100, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ativa')
+    observacoes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['nome']
+        verbose_name = 'Maquina para locacao'
+        verbose_name_plural = 'Catalogo de maquinas para locacao'
+
+    def __str__(self):
+        return self.nome
+
+
+class FornecedorMaquinaLocacao(models.Model):
+    nome = models.CharField(max_length=150, unique=True)
+    contato = models.CharField(max_length=120, blank=True)
+    telefone = models.CharField(max_length=40, blank=True)
+    email = models.EmailField(blank=True)
+    observacoes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['nome']
+        verbose_name = 'Fornecedor de maquina'
+        verbose_name_plural = 'Fornecedores de maquinas'
+
+    def __str__(self):
+        return self.nome
+
+
+class OrdemServicoLocacaoMaquina(models.Model):
+    STATUS_CHOICES = [
+        ('rascunho', 'Rascunho'),
+        ('solicitada', 'Solicitada'),
+        ('aprovada', 'Aprovada'),
+        ('aguardando_mobilizacao', 'Aguardando mobilizacao'),
+        ('em_operacao', 'Em operacao'),
+        ('paralisada', 'Paralisada'),
+        ('desmobilizacao_solicitada', 'Desmobilizacao solicitada'),
+        ('desmobilizada', 'Desmobilizada'),
+        ('faturada', 'Faturada'),
+        ('conferida', 'Conferida'),
+        ('encerrada', 'Encerrada'),
+        ('cancelada', 'Cancelada'),
+    ]
+    TIPO_COBRANCA_CHOICES = [
+        ('por_hora', 'Por hora'),
+        ('diaria', 'Diaria'),
+        ('semanal', 'Semanal'),
+        ('mensal', 'Mensal'),
+        ('empreitada', 'Empreitada'),
+    ]
+
+    numero = models.CharField(max_length=40, unique=True, blank=True)
+    data_solicitacao = models.DateField(default=timezone.localdate)
+    obra = models.ForeignKey(
+        'obras.Obra',
+        on_delete=models.PROTECT,
+        related_name='ordens_locacao_maquinas',
+    )
+    fornecedor = models.ForeignKey(
+        FornecedorMaquinaLocacao,
+        on_delete=models.PROTECT,
+        related_name='ordens',
+    )
+    maquina = models.ForeignKey(
+        MaquinaLocacaoCatalogo,
+        on_delete=models.PROTECT,
+        related_name='ordens',
+    )
+    solicitante = models.CharField(max_length=120, blank=True)
+    responsavel = models.CharField(max_length=120, blank=True)
+    status = models.CharField(max_length=40, choices=STATUS_CHOICES, default='solicitada')
+    tipo_cobranca = models.CharField(max_length=20, choices=TIPO_COBRANCA_CHOICES, default='por_hora')
+    data_prevista_inicio = models.DateField(blank=True, null=True)
+    data_prevista_fim = models.DateField(blank=True, null=True)
+    data_mobilizacao = models.DateField(blank=True, null=True)
+    data_inicio_operacao = models.DateField(blank=True, null=True)
+    data_solicitacao_desmobilizacao = models.DateField(blank=True, null=True)
+    data_desmobilizacao = models.DateField(blank=True, null=True)
+    valor_hora = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    valor_diaria = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    valor_mensal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    franquia_horas = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    valor_mobilizacao = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    valor_desmobilizacao = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    valor_previsto_manual = models.DecimalField(max_digits=14, decimal_places=2, blank=True, null=True)
+    operador_incluso = models.BooleanField(default=False)
+    combustivel_incluso = models.BooleanField(default=False)
+    observacoes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-data_solicitacao', '-id']
+        verbose_name = 'OS de locacao de maquina'
+        verbose_name_plural = 'OS de locacao de maquinas'
+
+    def save(self, *args, **kwargs):
+        for field_name in [
+            'valor_hora',
+            'valor_diaria',
+            'valor_mensal',
+            'franquia_horas',
+            'valor_mobilizacao',
+            'valor_desmobilizacao',
+        ]:
+            if getattr(self, field_name) is None:
+                setattr(self, field_name, Decimal('0'))
+        if not self.numero:
+            year = (self.data_solicitacao or timezone.localdate()).year
+            prefix = f'OS-MAQ-{year}-'
+            last = (
+                self.__class__.objects.filter(numero__startswith=prefix)
+                .order_by('-numero')
+                .values_list('numero', flat=True)
+                .first()
+            )
+            next_number = 1
+            if last:
+                try:
+                    next_number = int(last.rsplit('-', 1)[-1]) + 1
+                except ValueError:
+                    next_number = self.__class__.objects.filter(numero__startswith=prefix).count() + 1
+            self.numero = f'{prefix}{next_number:04d}'
+        super().save(*args, **kwargs)
+
+    @property
+    def total_horas_apontadas(self):
+        return sum((apontamento.horas_trabalhadas for apontamento in self.apontamentos.all()), Decimal('0'))
+
+    @property
+    def total_horas_paradas(self):
+        return sum((apontamento.horas_paradas for apontamento in self.apontamentos.all()), Decimal('0'))
+
+    @property
+    def total_horas_faturadas(self):
+        return sum((nota.horas_faturadas for nota in self.notas_fiscais.all()), Decimal('0'))
+
+    @property
+    def total_faturado(self):
+        return sum((nota.valor_total for nota in self.notas_fiscais.all()), Decimal('0'))
+
+    @property
+    def saldo_horas(self):
+        return self.total_horas_apontadas - self.total_horas_faturadas
+
+    @property
+    def valor_operacao_previsto(self):
+        if self.valor_previsto_manual is not None:
+            return self.valor_previsto_manual
+        if self.tipo_cobranca == 'por_hora':
+            return self.total_horas_apontadas * self.valor_hora
+        return Decimal('0')
+
+    @property
+    def valor_previsto_total(self):
+        return self.valor_operacao_previsto + self.valor_mobilizacao + self.valor_desmobilizacao
+
+    @property
+    def diferenca_valor(self):
+        return self.total_faturado - self.valor_previsto_total
+
+    def __str__(self):
+        return f'{self.numero} - {self.maquina} - {self.obra}'
+
+
+class ApontamentoMaquinaLocacao(models.Model):
+    ordem = models.ForeignKey(
+        OrdemServicoLocacaoMaquina,
+        on_delete=models.CASCADE,
+        related_name='apontamentos',
+    )
+    data = models.DateField()
+    horimetro_inicial = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    horimetro_final = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    horas_trabalhadas = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    horas_paradas = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    motivo_parada = models.CharField(max_length=255, blank=True)
+    operador = models.CharField(max_length=120, blank=True)
+    responsavel_apontamento = models.CharField(max_length=120, blank=True)
+    observacoes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-data', '-id']
+        verbose_name = 'Apontamento de maquina'
+        verbose_name_plural = 'Apontamentos de maquinas'
+
+    def save(self, *args, **kwargs):
+        if self.horas_trabalhadas is None:
+            self.horas_trabalhadas = Decimal('0')
+        if self.horas_paradas is None:
+            self.horas_paradas = Decimal('0')
+        if (
+            not self.horas_trabalhadas
+            and self.horimetro_inicial is not None
+            and self.horimetro_final is not None
+            and self.horimetro_final >= self.horimetro_inicial
+        ):
+            self.horas_trabalhadas = self.horimetro_final - self.horimetro_inicial
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.ordem.numero} - {self.data}'
+
+
+class NotaFiscalLocacaoMaquina(models.Model):
+    STATUS_CHOICES = [
+        ('emitida', 'Emitida'),
+        ('recebida', 'Recebida'),
+        ('conferida', 'Conferida'),
+        ('cancelada', 'Cancelada'),
+    ]
+
+    ordem = models.ForeignKey(
+        OrdemServicoLocacaoMaquina,
+        on_delete=models.CASCADE,
+        related_name='notas_fiscais',
+    )
+    numero = models.CharField(max_length=50)
+    data_emissao = models.DateField()
+    periodo_inicio = models.DateField(blank=True, null=True)
+    periodo_fim = models.DateField(blank=True, null=True)
+    horas_faturadas = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    valor_maquina = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    valor_mobilizacao = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    valor_desmobilizacao = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    valor_total = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='emitida')
+    observacoes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-data_emissao', '-id']
+        verbose_name = 'NF de locacao de maquina'
+        verbose_name_plural = 'NFs de locacao de maquinas'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['ordem', 'numero'],
+                name='unique_nf_locacao_maquina_por_ordem',
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        for field_name in ['horas_faturadas', 'valor_maquina', 'valor_mobilizacao', 'valor_desmobilizacao']:
+            if getattr(self, field_name) is None:
+                setattr(self, field_name, Decimal('0'))
+        if not self.valor_total:
+            self.valor_total = self.valor_maquina + self.valor_mobilizacao + self.valor_desmobilizacao
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'NF {self.numero} - {self.ordem.numero}'
+
+
+class HistoricoLocacaoMaquina(models.Model):
+    ordem = models.ForeignKey(
+        OrdemServicoLocacaoMaquina,
+        on_delete=models.CASCADE,
+        related_name='historico',
+    )
+    data_hora = models.DateTimeField(auto_now_add=True)
+    evento = models.CharField(max_length=80)
+    descricao = models.TextField()
+    status_anterior = models.CharField(max_length=40, blank=True)
+    status_novo = models.CharField(max_length=40, blank=True)
+
+    class Meta:
+        ordering = ['-data_hora', '-id']
+        verbose_name = 'Historico de locacao de maquina'
+        verbose_name_plural = 'Historicos de locacao de maquinas'
+
+    def __str__(self):
+        return f'{self.ordem.numero} - {self.evento}'
+
+
 class OrcamentoRadarObra(models.Model):
     SITUACAO_CHOICES = [
         ('aguardando_resposta', 'Aguardando resposta'),

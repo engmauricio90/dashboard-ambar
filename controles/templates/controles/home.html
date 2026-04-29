@@ -32,9 +32,9 @@
     <div class="col-md">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h6>Locacoes em aberto</h6>
-                <h4>{{ locacoes_abertas }}</h4>
-                <small class="text-muted">Equipamentos ainda em obra ou aguardando retirada</small>
+                <h6>OS maquinas</h6>
+                <h4>{{ ordens_maquinas_abertas }}</h4>
+                <small class="text-muted">Ordens abertas de {{ ordens_maquinas }} cadastradas</small>
             </div>
         </div>
     </div>
@@ -78,8 +78,23 @@
     <div class="col-lg-6">
         <div class="card shadow-sm h-100">
             <div class="card-body">
+                <h5 class="mb-2">Locacao de maquinas</h5>
+                <p class="text-muted">Controle OS de retroescavadeira, escavadeira e maquinas pesadas por obra, apontamento e NF.</p>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="{% url 'lista_ordens_locacao_maquinas' %}" class="btn btn-primary">Ver OS</a>
+                    <a href="{% url 'nova_ordem_locacao_maquina' %}" class="btn btn-outline-primary">Nova OS</a>
+                    <a href="{% url 'lista_catalogo_maquinas_locacao' %}" class="btn btn-outline-dark">Maquinas</a>
+                    <a href="{% url 'lista_fornecedores_maquinas' %}" class="btn btn-outline-dark">Fornecedores</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
                 <h5 class="mb-2">Equipamentos locados</h5>
-                <p class="text-muted">Controle locacoes, locadoras, obras, solicitantes e retirada/baixa.</p>
+                <p class="text-muted">Controle locacoes, locadoras, obras, solicitantes e retirada/baixa de equipamentos menores.</p>
                 <div class="d-flex gap-2 flex-wrap">
                     <a href="{% url 'lista_equipamentos_locados' %}" class="btn btn-primary">Ver locacoes</a>
                     <a href="{% url 'nova_locacao_equipamento' %}" class="btn btn-outline-primary">Nova locacao</a>

@@ -11,16 +11,22 @@ from openpyxl import Workbook
 from obras.models import Obra
 
 from .models import (
+    ApontamentoMaquinaLocacao,
     BombonaCombustivel,
     EquipamentoLocadoCatalogo,
     ContratoConcretagem,
+    FornecedorMaquinaLocacao,
     FaturamentoConcretagem,
+    HistoricoLocacaoMaquina,
     HistoricoOrdemCombustivel,
     LocacaoEquipamento,
     LocadoraEquipamento,
+    MaquinaLocacaoCatalogo,
     NotaFiscalCombustivel,
+    NotaFiscalLocacaoMaquina,
     OrcamentoRadarObra,
     OrdemCompraCombustivel,
+    OrdemServicoLocacaoMaquina,
     RegistroAbastecimento,
     SolicitanteConcretagem,
     VeiculoMaquina,
@@ -173,6 +179,120 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(ordem.bombona, bombona)
         self.assertIsNone(ordem.veiculo)
         self.assertEqual(str(ordem.destino_display), 'BMB-01')
+
+    def test_cria_ordem_locacao_maquina_com_apontamento_e_nf(self):
+        obra = Obra.objects.create(nome_obra='Obra Maquinas')
+        fornecedor = FornecedorMaquinaLocacao.objects.create(nome='Maquinas Pesadas Ltda')
+        maquina = MaquinaLocacaoCatalogo.objects.create(nome='Retroescavadeira', categoria='Linha amarela')
+
+        response = self.client.post(
+            reverse('nova_ordem_locacao_maquina'),
+            {
+                'numero': '',
+                'data_solicitacao': '2026-04-29',
+                'obra': obra.id,
+                'fornecedor': fornecedor.id,
+                'maquina': maquina.id,
+                'solicitante': 'Equipe obra',
+                'responsavel': 'Mauricio',
+                'status': 'solicitada',
+                'tipo_cobranca': 'por_hora',
+                'data_prevista_inicio': '2026-04-30',
+                'data_prevista_fim': '',
+                'data_mobilizacao': '',
+                'data_inicio_operacao': '',
+                'data_solicitacao_desmobilizacao': '',
+                'data_desmobilizacao': '',
+                'valor_hora': '250.00',
+                'valor_diaria': '',
+                'valor_mensal': '',
+                'franquia_horas': '',
+                'valor_mobilizacao': '500.00',
+                'valor_desmobilizacao': '400.00',
+                'valor_previsto_manual': '',
+                'operador_incluso': 'on',
+                'combustivel_incluso': '',
+                'observacoes': 'Servico de escavacao',
+            },
+        )
+
+        ordem = OrdemServicoLocacaoMaquina.objects.get()
+        self.assertRedirects(response, reverse('detalhe_ordem_locacao_maquina', args=[ordem.id]))
+        self.assertTrue(ordem.numero.startswith('OS-MAQ-2026-'))
+        self.assertEqual(HistoricoLocacaoMaquina.objects.count(), 1)
+
+        response = self.client.post(
+            reverse('novo_apontamento_maquina', args=[ordem.id]),
+            {
+                'data': '2026-04-30',
+                'horimetro_inicial': '100.00',
+                'horimetro_final': '108.50',
+                'horas_trabalhadas': '',
+                'horas_paradas': '1.00',
+                'motivo_parada': 'Chuva',
+                'operador': 'Joao',
+                'responsavel_apontamento': 'Mestre obra',
+                'observacoes': '',
+            },
+        )
+
+        self.assertRedirects(response, reverse('detalhe_ordem_locacao_maquina', args=[ordem.id]))
+        apontamento = ApontamentoMaquinaLocacao.objects.get()
+        self.assertEqual(apontamento.horas_trabalhadas, Decimal('8.50'))
+        self.assertEqual(ordem.total_horas_apontadas, Decimal('8.50'))
+        self.assertEqual(ordem.valor_previsto_total, Decimal('3025.0000'))
+
+        response = self.client.post(
+            reverse('nova_nf_locacao_maquina', args=[ordem.id]),
+            {
+                'numero': 'NF-MAQ-001',
+                'data_emissao': '2026-05-02',
+                'periodo_inicio': '2026-04-30',
+                'periodo_fim': '2026-04-30',
+                'horas_faturadas': '8.50',
+                'valor_maquina': '2125.00',
+                'valor_mobilizacao': '500.00',
+                'valor_desmobilizacao': '400.00',
+                'valor_total': '',
+                'status': 'emitida',
+                'observacoes': '',
+            },
+        )
+
+        self.assertRedirects(response, reverse('detalhe_ordem_locacao_maquina', args=[ordem.id]))
+        nota = NotaFiscalLocacaoMaquina.objects.get()
+        self.assertEqual(nota.valor_total, Decimal('3025.0000'))
+        self.assertEqual(ordem.total_horas_faturadas, Decimal('8.50'))
+        self.assertEqual(ordem.saldo_horas, Decimal('0.00'))
+        self.assertEqual(HistoricoLocacaoMaquina.objects.count(), 3)
+
+    def test_cadastros_locacao_maquina_carregam(self):
+        response = self.client.post(
+            reverse('nova_maquina_locacao'),
+            {
+                'nome': 'Escavadeira hidraulica',
+                'categoria': 'Linha amarela',
+                'status': 'ativa',
+                'observacoes': '',
+            },
+        )
+
+        self.assertRedirects(response, reverse('lista_catalogo_maquinas_locacao'))
+        self.assertEqual(MaquinaLocacaoCatalogo.objects.get().nome, 'Escavadeira hidraulica')
+
+        response = self.client.post(
+            reverse('novo_fornecedor_maquina'),
+            {
+                'nome': 'Fornecedor Linha Amarela',
+                'contato': 'Carlos',
+                'telefone': '11999990000',
+                'email': 'contato@example.com',
+                'observacoes': '',
+            },
+        )
+
+        self.assertRedirects(response, reverse('lista_fornecedores_maquinas'))
+        self.assertEqual(FornecedorMaquinaLocacao.objects.get().nome, 'Fornecedor Linha Amarela')
 
     def test_cria_locacao_equipamento(self):
         equipamento = EquipamentoLocadoCatalogo.objects.create(nome='Plataforma elevatoria')

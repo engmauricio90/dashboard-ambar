@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        <p class="text-muted mb-0">{{ ordem.numero }} | {{ ordem.maquina }} | {{ ordem.obra }}</p>
+    </div>
+    <a href="{% url 'detalhe_ordem_locacao_maquina' ordem.id %}" class="btn btn-secondary">Voltar</a>
+</div>
+
+<form method="post" class="card shadow-sm">
+    {% csrf_token %}
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3"><label class="form-label">Numero NF</label>{{ form.numero }}</div>
+            <div class="col-md-3"><label class="form-label">Data emissao</label>{{ form.data_emissao }}</div>
+            <div class="col-md-3"><label class="form-label">Status</label>{{ form.status }}</div>
+            <div class="col-md-3"><label class="form-label">Horas faturadas</label>{{ form.horas_faturadas }}</div>
+            <div class="col-md-3"><label class="form-label">Periodo inicio</label>{{ form.periodo_inicio }}</div>
+            <div class="col-md-3"><label class="form-label">Periodo fim</label>{{ form.periodo_fim }}</div>
+            <div class="col-md-3"><label class="form-label">Valor maquina</label>{{ form.valor_maquina }}</div>
+            <div class="col-md-3"><label class="form-label">Valor mobilizacao</label>{{ form.valor_mobilizacao }}</div>
+            <div class="col-md-3"><label class="form-label">Valor desmobilizacao</label>{{ form.valor_desmobilizacao }}</div>
+            <div class="col-md-3"><label class="form-label">Valor total</label>{{ form.valor_total }}</div>
+            <div class="col-12"><label class="form-label">Observacoes</label>{{ form.observacoes }}</div>
+        </div>
+        {% if form.non_field_errors %}<div class="alert alert-danger mt-3">{{ form.non_field_errors|join:', ' }}</div>{% endif %}
+    </div>
+    <div class="card-footer text-end"><button type="submit" class="btn btn-success">Salvar NF</button></div>
+</form>
+{% endblock %}
