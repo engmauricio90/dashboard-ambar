@@ -26,7 +26,9 @@ from .models import (
     NotaFiscalLocacaoMaquina,
     OrcamentoRadarObra,
     OrdemCompraCombustivel,
+    OrdemCompraGeral,
     OrdemServicoLocacaoMaquina,
+    ItemOrdemCompraGeral,
     RegistroAbastecimento,
     SolicitanteConcretagem,
     VeiculoMaquina,
@@ -93,6 +95,79 @@ class ControleAbastecimentoTests(TestCase):
         response = self.client.get(reverse('lista_abastecimentos'))
 
         self.assertRedirects(response, f"{reverse('login')}?next={reverse('lista_abastecimentos')}")
+
+    def test_cria_ordem_compra_geral_com_item_e_pdf(self):
+        response = self.client.post(
+            reverse('nova_ordem_compra_geral'),
+            {
+                'numero': '',
+                'data_emissao': '2026-04-30',
+                'status': 'emitida',
+                'comprador': 'Mauricio',
+                'empresa_razao_social': 'AMBAR ENGENHARIA',
+                'empresa_cnpj': '00.000.000/0001-00',
+                'empresa_endereco': 'Rua Teste, 100',
+                'fornecedor': 'ENCOPAV ENGENHARIA LTDA',
+                'fornecedor_cpf_cnpj': '00.061.493/0012-22',
+                'fornecedor_fone': '(51) 99637-1400',
+                'fornecedor_endereco': 'Estrada do Sertao Capivara, 815',
+                'fornecedor_bairro': 'Sertao Capivara',
+                'fornecedor_cidade': 'Portao',
+                'fornecedor_uf': 'RS',
+                'fornecedor_cep': '93180-000',
+                'fornecedor_ie': '213/0055081',
+                'observacoes': 'Frete CIF',
+                'itens-TOTAL_FORMS': '5',
+                'itens-INITIAL_FORMS': '0',
+                'itens-MIN_NUM_FORMS': '0',
+                'itens-MAX_NUM_FORMS': '1000',
+                'itens-0-item': '1',
+                'itens-0-descricao': 'BASE BRITADA - BGS',
+                'itens-0-quantidade': '60.00',
+                'itens-0-unidade': 'ton',
+                'itens-0-valor_unitario': '80.00',
+                'itens-0-valor_total': '',
+                'itens-0-data_entrega': '2026-04-30',
+                'itens-1-item': '',
+                'itens-1-descricao': '',
+                'itens-1-quantidade': '',
+                'itens-1-unidade': '',
+                'itens-1-valor_unitario': '',
+                'itens-1-valor_total': '',
+                'itens-1-data_entrega': '',
+                'itens-2-item': '',
+                'itens-2-descricao': '',
+                'itens-2-quantidade': '',
+                'itens-2-unidade': '',
+                'itens-2-valor_unitario': '',
+                'itens-2-valor_total': '',
+                'itens-2-data_entrega': '',
+                'itens-3-item': '',
+                'itens-3-descricao': '',
+                'itens-3-quantidade': '',
+                'itens-3-unidade': '',
+                'itens-3-valor_unitario': '',
+                'itens-3-valor_total': '',
+                'itens-3-data_entrega': '',
+                'itens-4-item': '',
+                'itens-4-descricao': '',
+                'itens-4-quantidade': '',
+                'itens-4-unidade': '',
+                'itens-4-valor_unitario': '',
+                'itens-4-valor_total': '',
+                'itens-4-data_entrega': '',
+            },
+        )
+
+        ordem = OrdemCompraGeral.objects.get()
+        self.assertRedirects(response, reverse('detalhe_ordem_compra_geral', args=[ordem.id]))
+        self.assertEqual(ordem.numero, '001/2026')
+        self.assertEqual(ordem.total, Decimal('4800.00'))
+        self.assertEqual(ItemOrdemCompraGeral.objects.get().unidade, 'ton')
+
+        pdf_response = self.client.get(reverse('ordem_compra_geral_pdf', args=[ordem.id]))
+        self.assertEqual(pdf_response['Content-Type'], 'application/pdf')
+        self.assertTrue(pdf_response.content.startswith(b'%PDF'))
 
     def test_cria_ordem_combustivel_para_veiculo_e_nf(self):
         veiculo = VeiculoMaquina.objects.create(

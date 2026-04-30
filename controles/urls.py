@@ -7,6 +7,23 @@ urlpatterns = [
     path('', views.home, name='controles_home'),
     path('abastecimentos/', views.lista_abastecimentos, name='lista_abastecimentos'),
     path('abastecimentos/novo/', views.novo_abastecimento, name='novo_abastecimento'),
+    path('ordens-compra/', views.lista_ordens_compra_gerais, name='lista_ordens_compra_gerais'),
+    path('ordens-compra/nova/', views.nova_ordem_compra_geral, name='nova_ordem_compra_geral'),
+    path(
+        'ordens-compra/<int:ordem_id>/',
+        views.detalhe_ordem_compra_geral,
+        name='detalhe_ordem_compra_geral',
+    ),
+    path(
+        'ordens-compra/<int:ordem_id>/editar/',
+        views.editar_ordem_compra_geral,
+        name='editar_ordem_compra_geral',
+    ),
+    path(
+        'ordens-compra/<int:ordem_id>/pdf/',
+        views.ordem_compra_geral_pdf,
+        name='ordem_compra_geral_pdf',
+    ),
     path('combustivel/ordens/', views.lista_ordens_combustivel, name='lista_ordens_combustivel'),
     path('combustivel/ordens/nova/', views.nova_ordem_combustivel, name='nova_ordem_combustivel'),
     path(

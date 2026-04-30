@@ -26,6 +26,8 @@ from .forms import (
     NotaFiscalLocacaoMaquinaForm,
     OrcamentoRadarObraForm,
     OrdemCompraCombustivelForm,
+    OrdemCompraGeralForm,
+    ItemOrdemCompraGeralFormSet,
     OrdemServicoLocacaoMaquinaForm,
     RegistroAbastecimentoForm,
     SolicitarRetiradaEquipamentoForm,
@@ -46,6 +48,7 @@ from .models import (
     NotaFiscalLocacaoMaquina,
     OrcamentoRadarObra,
     OrdemCompraCombustivel,
+    OrdemCompraGeral,
     OrdemServicoLocacaoMaquina,
     RegistroAbastecimento,
     SolicitanteConcretagem,
@@ -312,6 +315,10 @@ def home(request):
     totais = {
         'veiculos': VeiculoMaquina.objects.count(),
         'abastecimentos': RegistroAbastecimento.objects.count(),
+        'ordens_compra_gerais': OrdemCompraGeral.objects.count(),
+        'ordens_compra_gerais_abertas': OrdemCompraGeral.objects.exclude(
+            status__in=['encerrada', 'cancelada'],
+        ).count(),
         'ordens_combustivel': OrdemCompraCombustivel.objects.count(),
         'ordens_combustivel_abertas': OrdemCompraCombustivel.objects.exclude(
             status__in=['encerrada', 'cancelada'],
@@ -362,6 +369,151 @@ def novo_abastecimento(request):
         'controles/form_abastecimento.html',
         {'form': form, 'titulo': 'Novo Abastecimento'},
     )
+
+
+def lista_ordens_compra_gerais(request):
+    ordens = OrdemCompraGeral.objects.prefetch_related('itens')
+    status = request.GET.get('status', '').strip()
+    busca = request.GET.get('busca', '').strip()
+
+    if status in {choice[0] for choice in OrdemCompraGeral.STATUS_CHOICES}:
+        ordens = ordens.filter(status=status)
+    if busca:
+        ordens = ordens.filter(
+            Q(numero__icontains=busca)
+            | Q(fornecedor__icontains=busca)
+            | Q(comprador__icontains=busca)
+            | Q(fornecedor_cpf_cnpj__icontains=busca)
+        )
+
+    return render(
+        request,
+        'controles/lista_ordens_compra_gerais.html',
+        {
+            'ordens': ordens,
+            'status_choices': OrdemCompraGeral.STATUS_CHOICES,
+            'filtros': {'status': status, 'busca': busca},
+        },
+    )
+
+
+def _salvar_ordem_compra_geral(request, ordem=None):
+    if request.method == 'POST':
+        form = OrdemCompraGeralForm(request.POST, instance=ordem)
+        if form.is_valid():
+            ordem_salva = form.save()
+            formset = ItemOrdemCompraGeralFormSet(request.POST, instance=ordem_salva)
+            if formset.is_valid():
+                formset.save()
+                messages.success(request, 'Ordem de compra salva com sucesso.')
+                return form, formset, redirect('detalhe_ordem_compra_geral', ordem_id=ordem_salva.id)
+        else:
+            formset = ItemOrdemCompraGeralFormSet(request.POST, instance=ordem)
+    else:
+        form = OrdemCompraGeralForm(instance=ordem)
+        formset = ItemOrdemCompraGeralFormSet(instance=ordem)
+    return form, formset, None
+
+
+def nova_ordem_compra_geral(request):
+    form, formset, response = _salvar_ordem_compra_geral(request)
+    if response:
+        return response
+    return render(
+        request,
+        'controles/form_ordem_compra_geral.html',
+        {'form': form, 'formset': formset, 'titulo': 'Nova Ordem de Compra'},
+    )
+
+
+def detalhe_ordem_compra_geral(request, ordem_id):
+    ordem = get_object_or_404(OrdemCompraGeral.objects.prefetch_related('itens'), id=ordem_id)
+    return render(request, 'controles/detalhe_ordem_compra_geral.html', {'ordem': ordem})
+
+
+def editar_ordem_compra_geral(request, ordem_id):
+    ordem = get_object_or_404(OrdemCompraGeral, id=ordem_id)
+    form, formset, response = _salvar_ordem_compra_geral(request, ordem)
+    if response:
+        return response
+    return render(
+        request,
+        'controles/form_ordem_compra_geral.html',
+        {'form': form, 'formset': formset, 'titulo': 'Editar Ordem de Compra', 'ordem': ordem},
+    )
+
+
+def ordem_compra_geral_pdf(request, ordem_id):
+    ordem = get_object_or_404(OrdemCompraGeral.objects.prefetch_related('itens'), id=ordem_id)
+    image = _report_background()
+    draw = ImageDraw.Draw(image)
+    x, y, w = _draw_report_heading(draw, 'Ordem de compra', ordem.numero, _format_date(ordem.data_emissao))
+
+    y = _draw_section_title(draw, 'Empresa compradora', x, y, w)
+    y = _draw_key_value_grid(
+        draw,
+        [
+            ('Razao social', ordem.empresa_razao_social),
+            ('CNPJ', ordem.empresa_cnpj or '-'),
+            ('Endereco', ordem.empresa_endereco or '-'),
+            ('Comprador', ordem.comprador or '-'),
+        ],
+        x,
+        y,
+        w,
+        columns=2,
+    )
+
+    y = _draw_section_title(draw, 'Fornecedor', x, y, w)
+    y = _draw_key_value_grid(
+        draw,
+        [
+            ('Fornecedor', ordem.fornecedor),
+            ('CPF/CNPJ', ordem.fornecedor_cpf_cnpj or '-'),
+            ('Endereco', ordem.fornecedor_endereco or '-'),
+            ('Bairro', ordem.fornecedor_bairro or '-'),
+            ('Cidade/UF', f'{ordem.fornecedor_cidade or "-"} / {ordem.fornecedor_uf or "-"}'),
+            ('CEP', ordem.fornecedor_cep or '-'),
+            ('Fone', ordem.fornecedor_fone or '-'),
+            ('IE', ordem.fornecedor_ie or '-'),
+        ],
+        x,
+        y,
+        w,
+        columns=2,
+    )
+
+    aviso = 'Nas notas fiscais e faturas e obrigatorio aparecer o numero desta ordem de compra.'
+    draw.rounded_rectangle((x, y, x + w, y + 48), radius=6, fill=(255, 248, 230), outline=(228, 191, 92), width=1)
+    _draw_wrapped(draw, aviso, (x + 16, y + 14), _font(16, True), (73, 60, 32), w - 32, line_spacing=4)
+    y += 72
+
+    rows = [
+        [
+            f'{item.item:02d}',
+            item.descricao,
+            f'{item.quantidade:.2f}',
+            item.unidade,
+            _format_money(item.valor_unitario),
+            _format_money(item.valor_total),
+            _format_date(item.data_entrega),
+        ]
+        for item in ordem.itens.all()
+    ]
+    y = _draw_section_title(draw, 'Itens', x, y, w)
+    y = _draw_table(draw, ['Item', 'Descricao', 'Qtd', 'Un', 'Vlr.', 'Total', 'Entrega'], rows, x, y, [70, 420, 100, 70, 145, 160, 160])
+
+    total_y = y
+    draw.rounded_rectangle((x + w - 360, total_y, x + w, total_y + 58), radius=6, fill=(4, 95, 101))
+    draw.text((x + w - 332, total_y + 16), f'TOTAL: {_format_money(ordem.total)}', font=_font(22, True), fill=(255, 255, 255))
+    y = total_y + 86
+
+    y = _draw_notes_box(draw, 'Observacoes', ordem.observacoes or '-', x, y, w)
+    draw.text((x, y + 20), _clean_pdf_text(f'Comprador: {ordem.comprador or "-"}'), font=_font(17), fill=(43, 48, 51))
+    draw.text((x, y + 66), '________________________________________', font=_font(17), fill=(43, 48, 51))
+    draw.text((x, y + 92), _clean_pdf_text(ordem.comprador or 'Assinatura'), font=_font(15), fill=(43, 48, 51))
+
+    return _report_pdf_response(image, f'OC {ordem.numero}'.replace('/', '-'))
 
 
 def lista_ordens_combustivel(request):

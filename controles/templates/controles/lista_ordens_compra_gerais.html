@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+
+{% block title %}Ordens de Compra{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Ordens de Compra</h1>
+        <p class="text-muted mb-0">OCs gerais para materiais e servicos, com emissao em PDF.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'nova_ordem_compra_geral' %}" class="btn btn-success">Nova OC</a>
+        <a href="{% url 'controles_home' %}" class="btn btn-secondary">Voltar</a>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Status</label>
+                <select name="status" class="form-select">
+                    <option value="">Todos</option>
+                    {% for value,label in status_choices %}
+                    <option value="{{ value }}" {% if filtros.status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Busca</label>
+                <input type="search" name="busca" value="{{ filtros.busca }}" class="form-control" placeholder="OC, fornecedor, comprador ou CNPJ">
+            </div>
+            <div class="col-md-2 d-flex align-items-end gap-2">
+                <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+                <a href="{% url 'lista_ordens_compra_gerais' %}" class="btn btn-outline-secondary">Limpar</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>OC</th>
+                        <th>Emissao</th>
+                        <th>Fornecedor</th>
+                        <th>Comprador</th>
+                        <th>Status</th>
+                        <th>Total</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ordem in ordens %}
+                    <tr>
+                        <td>{{ ordem.numero }}</td>
+                        <td>{{ ordem.data_emissao }}</td>
+                        <td>{{ ordem.fornecedor }}</td>
+                        <td>{{ ordem.comprador|default:'-' }}</td>
+                        <td>{{ ordem.get_status_display }}</td>
+                        <td>R$ {{ ordem.total|floatformat:2 }}</td>
+                        <td class="text-end">
+                            <a href="{% url 'detalhe_ordem_compra_geral' ordem.id %}" class="btn btn-sm btn-outline-dark">Detalhar</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="7">Nenhuma ordem de compra cadastrada.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

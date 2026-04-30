@@ -258,6 +258,98 @@ class NotaFiscalCombustivel(models.Model):
         return f'NF {self.numero} - {self.ordem.numero}'
 
 
+class OrdemCompraGeral(models.Model):
+    STATUS_CHOICES = [
+        ('rascunho', 'Rascunho'),
+        ('emitida', 'Emitida'),
+        ('aprovada', 'Aprovada'),
+        ('parcialmente_entregue', 'Parcialmente entregue'),
+        ('entregue', 'Entregue'),
+        ('faturada', 'Faturada'),
+        ('encerrada', 'Encerrada'),
+        ('cancelada', 'Cancelada'),
+    ]
+
+    numero = models.CharField(max_length=40, unique=True, blank=True)
+    data_emissao = models.DateField(default=timezone.localdate)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='emitida')
+    comprador = models.CharField(max_length=120, blank=True)
+    empresa_razao_social = models.CharField(max_length=180, default='AMBAR ENGENHARIA')
+    empresa_cnpj = models.CharField(max_length=30, blank=True)
+    empresa_endereco = models.CharField(max_length=255, blank=True)
+    fornecedor = models.CharField(max_length=180)
+    fornecedor_endereco = models.CharField(max_length=255, blank=True)
+    fornecedor_bairro = models.CharField(max_length=120, blank=True)
+    fornecedor_cidade = models.CharField(max_length=120, blank=True)
+    fornecedor_uf = models.CharField(max_length=2, blank=True)
+    fornecedor_cpf_cnpj = models.CharField(max_length=30, blank=True)
+    fornecedor_cep = models.CharField(max_length=20, blank=True)
+    fornecedor_fone = models.CharField(max_length=40, blank=True)
+    fornecedor_ie = models.CharField(max_length=40, blank=True)
+    observacoes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-data_emissao', '-id']
+        verbose_name = 'Ordem de compra geral'
+        verbose_name_plural = 'Ordens de compra gerais'
+
+    def save(self, *args, **kwargs):
+        if not self.numero:
+            year = (self.data_emissao or timezone.localdate()).year
+            suffix = f'/{year}'
+            last = (
+                self.__class__.objects.filter(numero__endswith=suffix)
+                .order_by('-numero')
+                .values_list('numero', flat=True)
+                .first()
+            )
+            next_number = 1
+            if last:
+                try:
+                    next_number = int(last.split('/', 1)[0]) + 1
+                except ValueError:
+                    next_number = self.__class__.objects.filter(numero__endswith=suffix).count() + 1
+            self.numero = f'{next_number:03d}/{year}'
+        super().save(*args, **kwargs)
+
+    @property
+    def total(self):
+        return sum((item.valor_total for item in self.itens.all()), Decimal('0'))
+
+    def __str__(self):
+        return f'OC {self.numero} - {self.fornecedor}'
+
+
+class ItemOrdemCompraGeral(models.Model):
+    ordem = models.ForeignKey(
+        OrdemCompraGeral,
+        on_delete=models.CASCADE,
+        related_name='itens',
+    )
+    item = models.PositiveIntegerField(default=1)
+    descricao = models.CharField(max_length=255)
+    quantidade = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    unidade = models.CharField(max_length=20, default='un')
+    valor_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    valor_total = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    data_entrega = models.DateField(blank=True, null=True)
+
+    class Meta:
+        ordering = ['item', 'id']
+        verbose_name = 'Item da ordem de compra'
+        verbose_name_plural = 'Itens da ordem de compra'
+
+    def save(self, *args, **kwargs):
+        if not self.valor_total and self.quantidade and self.valor_unitario:
+            self.valor_total = self.quantidade * self.valor_unitario
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.item:02d} - {self.descricao}'
+
+
 class HistoricoOrdemCombustivel(models.Model):
     ordem = models.ForeignKey(
         OrdemCompraCombustivel,

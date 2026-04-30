@@ -16,6 +16,8 @@ from .models import (
     NotaFiscalLocacaoMaquina,
     OrcamentoRadarObra,
     OrdemCompraCombustivel,
+    OrdemCompraGeral,
+    ItemOrdemCompraGeral,
     OrdemServicoLocacaoMaquina,
     RegistroAbastecimento,
     SolicitanteConcretagem,
@@ -93,6 +95,19 @@ class HistoricoOrdemCombustivelAdmin(admin.ModelAdmin):
     list_display = ('ordem', 'data_hora', 'evento', 'status_anterior', 'status_novo')
     search_fields = ('ordem__numero', 'evento', 'descricao')
     list_filter = ('evento', 'data_hora')
+
+
+class ItemOrdemCompraGeralInline(admin.TabularInline):
+    model = ItemOrdemCompraGeral
+    extra = 0
+
+
+@admin.register(OrdemCompraGeral)
+class OrdemCompraGeralAdmin(admin.ModelAdmin):
+    list_display = ('numero', 'data_emissao', 'fornecedor', 'comprador', 'total', 'status')
+    search_fields = ('numero', 'fornecedor', 'comprador', 'fornecedor_cpf_cnpj')
+    list_filter = ('status', 'data_emissao')
+    inlines = [ItemOrdemCompraGeralInline]
 
 
 @admin.register(EquipamentoLocadoCatalogo)

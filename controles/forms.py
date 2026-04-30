@@ -1,5 +1,6 @@
 from django import forms
 from django.db.models import Q
+from django.forms import inlineformset_factory
 
 from .models import (
     ApontamentoMaquinaLocacao,
@@ -15,7 +16,9 @@ from .models import (
     LocadoraEquipamento,
     OrcamentoRadarObra,
     OrdemCompraCombustivel,
+    OrdemCompraGeral,
     OrdemServicoLocacaoMaquina,
+    ItemOrdemCompraGeral,
     RegistroAbastecimento,
     SolicitanteConcretagem,
     VeiculoMaquina,
@@ -164,6 +167,69 @@ class NotaFiscalCombustivelForm(BootstrapModelForm):
             'valor_total': forms.NumberInput(attrs={'step': '0.01'}),
             'observacoes': forms.Textarea(attrs={'rows': 3}),
         }
+
+
+class OrdemCompraGeralForm(BootstrapModelForm):
+    class Meta:
+        model = OrdemCompraGeral
+        fields = [
+            'numero',
+            'data_emissao',
+            'status',
+            'comprador',
+            'empresa_razao_social',
+            'empresa_cnpj',
+            'empresa_endereco',
+            'fornecedor',
+            'fornecedor_cpf_cnpj',
+            'fornecedor_endereco',
+            'fornecedor_bairro',
+            'fornecedor_cidade',
+            'fornecedor_uf',
+            'fornecedor_cep',
+            'fornecedor_fone',
+            'fornecedor_ie',
+            'observacoes',
+        ]
+        widgets = {
+            'data_emissao': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+        help_texts = {
+            'numero': 'Deixe em branco para gerar automaticamente no formato 001/2026.',
+        }
+
+
+class ItemOrdemCompraGeralForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['valor_total'].required = False
+
+    def has_changed(self):
+        if self.data and self.prefix and not self.data.get(f'{self.prefix}-id'):
+            relevant_fields = ['descricao', 'quantidade', 'valor_unitario', 'valor_total', 'data_entrega']
+            if not any((self.data.get(f'{self.prefix}-{field}') or '').strip() for field in relevant_fields):
+                return False
+        return super().has_changed()
+
+    class Meta:
+        model = ItemOrdemCompraGeral
+        fields = ['item', 'descricao', 'quantidade', 'unidade', 'valor_unitario', 'valor_total', 'data_entrega']
+        widgets = {
+            'quantidade': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_unitario': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_total': forms.NumberInput(attrs={'step': '0.01'}),
+            'data_entrega': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+        }
+
+
+ItemOrdemCompraGeralFormSet = inlineformset_factory(
+    OrdemCompraGeral,
+    ItemOrdemCompraGeral,
+    form=ItemOrdemCompraGeralForm,
+    extra=5,
+    can_delete=True,
+)
 
 
 class EquipamentoLocadoCatalogoForm(BootstrapModelForm):

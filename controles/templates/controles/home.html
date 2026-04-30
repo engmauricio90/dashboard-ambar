@@ -23,9 +23,9 @@
     <div class="col-md">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h6>Ordens combustivel</h6>
-                <h4>{{ ordens_combustivel_abertas }}</h4>
-                <small class="text-muted">Ordens abertas de {{ ordens_combustivel }} cadastradas</small>
+                <h6>Ordens de compra</h6>
+                <h4>{{ ordens_compra_gerais_abertas }}</h4>
+                <small class="text-muted">Ordens abertas de {{ ordens_compra_gerais }} cadastradas</small>
             </div>
         </div>
     </div>
@@ -59,6 +59,19 @@
 </div>
 
 <div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-2">Ordens de compra gerais</h5>
+                <p class="text-muted">Emita OCs para materiais e servicos, com dados do fornecedor, itens, total e PDF para envio.</p>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="{% url 'lista_ordens_compra_gerais' %}" class="btn btn-primary">Ver OCs</a>
+                    <a href="{% url 'nova_ordem_compra_geral' %}" class="btn btn-outline-primary">Nova OC</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="col-lg-6">
         <div class="card shadow-sm h-100">
             <div class="card-body">
