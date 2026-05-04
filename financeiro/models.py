@@ -5,6 +5,34 @@ from django.db import models, transaction
 from obras.models import DespesaObra, NotaFiscal, Obra, RetencaoNotaFiscal, RetencaoTecnicaObra
 
 
+class Fornecedor(models.Model):
+    nome = models.CharField(max_length=180)
+    cpf_cnpj = models.CharField(max_length=30, blank=True)
+    ie_identidade = models.CharField(max_length=40, blank=True)
+    endereco = models.CharField(max_length=255, blank=True)
+    municipio = models.CharField(max_length=120, blank=True)
+    cep = models.CharField(max_length=20, blank=True)
+    telefone = models.CharField(max_length=40, blank=True)
+    ativo = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['nome']
+        verbose_name = 'Fornecedor'
+        verbose_name_plural = 'Fornecedores'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['nome', 'cpf_cnpj'],
+                name='unique_fornecedor_nome_documento',
+            )
+        ]
+
+    def __str__(self):
+        if self.cpf_cnpj:
+            return f'{self.nome} - {self.cpf_cnpj}'
+        return self.nome
+
+
 class CentroCusto(models.Model):
     nome = models.CharField(max_length=120, unique=True)
     descricao = models.TextField(blank=True)
@@ -180,6 +208,13 @@ class ContaPagar(models.Model):
     ]
 
     fornecedor = models.CharField(max_length=150)
+    fornecedor_cadastro = models.ForeignKey(
+        Fornecedor,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='contas_pagar',
+    )
     obra = models.ForeignKey(Obra, on_delete=models.SET_NULL, blank=True, null=True, related_name='contas_pagar')
     centro_custo = models.ForeignKey(
         CentroCusto,
@@ -219,6 +254,8 @@ class ContaPagar(models.Model):
         return f'{self.fornecedor} - R$ {self.valor}'
 
     def save(self, *args, **kwargs):
+        if self.fornecedor_cadastro_id:
+            self.fornecedor = self.fornecedor_cadastro.nome
         with transaction.atomic():
             super().save(*args, **kwargs)
             self.sincronizar_obra()

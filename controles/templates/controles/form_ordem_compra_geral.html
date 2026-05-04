@@ -35,9 +35,10 @@
         <div class="card-body">
             <h5 class="mb-3">Fornecedor</h5>
             <div class="row g-3">
-                <div class="col-md-5"><label class="form-label">Fornecedor</label>{{ form.fornecedor }}{% if form.fornecedor.errors %}<div class="text-danger small mt-1">{{ form.fornecedor.errors|join:', ' }}</div>{% endif %}</div>
-                <div class="col-md-3"><label class="form-label">CPF/CNPJ</label>{{ form.fornecedor_cpf_cnpj }}</div>
-                <div class="col-md-4"><label class="form-label">Fone</label>{{ form.fornecedor_fone }}</div>
+                <div class="col-md-4"><label class="form-label">Fornecedor cadastrado</label>{{ form.fornecedor_cadastro }}{% if form.fornecedor_cadastro.errors %}<div class="text-danger small mt-1">{{ form.fornecedor_cadastro.errors|join:', ' }}</div>{% endif %}</div>
+                <div class="col-md-4"><label class="form-label">Fornecedor manual</label>{{ form.fornecedor }}{% if form.fornecedor.errors %}<div class="text-danger small mt-1">{{ form.fornecedor.errors|join:', ' }}</div>{% endif %}</div>
+                <div class="col-md-2"><label class="form-label">CPF/CNPJ</label>{{ form.fornecedor_cpf_cnpj }}</div>
+                <div class="col-md-2"><label class="form-label">Fone</label>{{ form.fornecedor_fone }}</div>
                 <div class="col-md-6"><label class="form-label">Endereco</label>{{ form.fornecedor_endereco }}</div>
                 <div class="col-md-3"><label class="form-label">Bairro</label>{{ form.fornecedor_bairro }}</div>
                 <div class="col-md-3"><label class="form-label">Cidade</label>{{ form.fornecedor_cidade }}</div>

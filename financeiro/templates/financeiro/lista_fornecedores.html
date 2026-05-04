@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+
+{% block title %}Fornecedores{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Fornecedores</h1>
+        <p class="text-muted mb-0">Cadastro central usado em despesas, ordens de compra e ordens de servico.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'novo_fornecedor' %}" class="btn btn-success">Novo Fornecedor</a>
+        <a href="{% url 'financeiro_home' %}" class="btn btn-secondary">Voltar</a>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-10">
+                <label class="form-label">Busca</label>
+                <input type="search" name="busca" value="{{ busca }}" class="form-control" placeholder="Nome, CNPJ/CPF ou municipio">
+            </div>
+            <div class="col-md-2 d-flex align-items-end gap-2">
+                <button class="btn btn-primary w-100" type="submit">Filtrar</button>
+                <a href="{% url 'lista_fornecedores' %}" class="btn btn-outline-secondary">Limpar</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Fornecedor</th>
+                        <th>CNPJ/CPF</th>
+                        <th>IE/Identidade</th>
+                        <th>Municipio</th>
+                        <th>Telefone</th>
+                        <th>Ativo</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for fornecedor in fornecedores %}
+                    <tr>
+                        <td>{{ fornecedor.nome }}</td>
+                        <td>{{ fornecedor.cpf_cnpj|default:'-' }}</td>
+                        <td>{{ fornecedor.ie_identidade|default:'-' }}</td>
+                        <td>{{ fornecedor.municipio|default:'-' }}</td>
+                        <td>{{ fornecedor.telefone|default:'-' }}</td>
+                        <td>{% if fornecedor.ativo %}Sim{% else %}Nao{% endif %}</td>
+                        <td class="text-end"><a href="{% url 'editar_fornecedor' fornecedor.id %}" class="btn btn-sm btn-outline-primary">Editar</a></td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="7">Nenhum fornecedor cadastrado.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

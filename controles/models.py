@@ -125,6 +125,13 @@ class OrdemCompraCombustivel(models.Model):
     numero = models.CharField(max_length=40, unique=True, blank=True)
     data_ordem = models.DateField(default=timezone.localdate)
     fornecedor = models.CharField(max_length=150)
+    fornecedor_cadastro = models.ForeignKey(
+        'financeiro.Fornecedor',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='ordens_combustivel',
+    )
     solicitante = models.CharField(max_length=120, blank=True)
     tipo_combustivel = models.CharField(max_length=20, choices=COMBUSTIVEL_CHOICES, default='diesel')
     tipo_destino = models.CharField(max_length=20, choices=TIPO_DESTINO_CHOICES, default=DESTINO_VEICULO)
@@ -169,6 +176,8 @@ class OrdemCompraCombustivel(models.Model):
                 raise ValidationError({'veiculo': 'Nao informe veiculo/maquina quando o destino for bombona.'})
 
     def save(self, *args, **kwargs):
+        if self.fornecedor_cadastro_id:
+            self.fornecedor = self.fornecedor_cadastro.nome
         if not self.valor_total_previsto and self.quantidade_litros and self.valor_litro_previsto:
             self.valor_total_previsto = self.quantidade_litros * self.valor_litro_previsto
         if not self.numero:
@@ -278,6 +287,13 @@ class OrdemCompraGeral(models.Model):
     empresa_cnpj = models.CharField(max_length=30, blank=True)
     empresa_endereco = models.CharField(max_length=255, blank=True)
     fornecedor = models.CharField(max_length=180)
+    fornecedor_cadastro = models.ForeignKey(
+        'financeiro.Fornecedor',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='ordens_compra_gerais',
+    )
     fornecedor_endereco = models.CharField(max_length=255, blank=True)
     fornecedor_bairro = models.CharField(max_length=120, blank=True)
     fornecedor_cidade = models.CharField(max_length=120, blank=True)
@@ -296,6 +312,15 @@ class OrdemCompraGeral(models.Model):
         verbose_name_plural = 'Ordens de compra gerais'
 
     def save(self, *args, **kwargs):
+        if self.fornecedor_cadastro_id:
+            fornecedor = self.fornecedor_cadastro
+            self.fornecedor = fornecedor.nome
+            self.fornecedor_cpf_cnpj = fornecedor.cpf_cnpj
+            self.fornecedor_ie = fornecedor.ie_identidade
+            self.fornecedor_endereco = fornecedor.endereco
+            self.fornecedor_cidade = fornecedor.municipio
+            self.fornecedor_cep = fornecedor.cep
+            self.fornecedor_fone = fornecedor.telefone
         if not self.numero:
             year = (self.data_emissao or timezone.localdate()).year
             suffix = f'/{year}'
@@ -532,6 +557,13 @@ class OrdemServicoLocacaoMaquina(models.Model):
         on_delete=models.PROTECT,
         related_name='ordens',
     )
+    fornecedor_cadastro = models.ForeignKey(
+        'financeiro.Fornecedor',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='ordens_locacao_maquinas',
+    )
     maquina = models.ForeignKey(
         MaquinaLocacaoCatalogo,
         on_delete=models.PROTECT,
@@ -566,6 +598,15 @@ class OrdemServicoLocacaoMaquina(models.Model):
         verbose_name_plural = 'OS de locacao de maquinas'
 
     def save(self, *args, **kwargs):
+        if self.fornecedor_cadastro_id:
+            fornecedor, _ = FornecedorMaquinaLocacao.objects.get_or_create(
+                nome=self.fornecedor_cadastro.nome,
+                defaults={
+                    'telefone': self.fornecedor_cadastro.telefone,
+                    'observacoes': f'Criado a partir do cadastro central. Documento: {self.fornecedor_cadastro.cpf_cnpj}',
+                },
+            )
+            self.fornecedor = fornecedor
         for field_name in [
             'valor_hora',
             'valor_diaria',
@@ -788,6 +829,13 @@ class ContratoConcretagem(models.Model):
     )
     numero_contrato = models.CharField(max_length=80, blank=True)
     fornecedor = models.CharField(max_length=150)
+    fornecedor_cadastro = models.ForeignKey(
+        'financeiro.Fornecedor',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='contratos_concretagem',
+    )
     descricao = models.CharField(max_length=255)
     data_inicio = models.DateField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ativo')
@@ -820,6 +868,11 @@ class ContratoConcretagem(models.Model):
 
     def __str__(self):
         return f'{self.obra} - {self.fornecedor}'
+
+    def save(self, *args, **kwargs):
+        if self.fornecedor_cadastro_id:
+            self.fornecedor = self.fornecedor_cadastro.nome
+        super().save(*args, **kwargs)
 
 
 class SolicitanteConcretagem(models.Model):

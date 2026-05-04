@@ -20,9 +20,10 @@
             <div class="col-md-3"><label class="form-label">Status</label>{{ form.status }}{% if form.status.errors %}<div class="text-danger small mt-1">{{ form.status.errors|join:', ' }}</div>{% endif %}</div>
             <div class="col-md-3"><label class="form-label">Tipo cobranca</label>{{ form.tipo_cobranca }}{% if form.tipo_cobranca.errors %}<div class="text-danger small mt-1">{{ form.tipo_cobranca.errors|join:', ' }}</div>{% endif %}</div>
 
-            <div class="col-md-4"><label class="form-label">Obra</label>{{ form.obra }}{% if form.obra.errors %}<div class="text-danger small mt-1">{{ form.obra.errors|join:', ' }}</div>{% endif %}</div>
-            <div class="col-md-4"><label class="form-label">Fornecedor</label>{{ form.fornecedor }}{% if form.fornecedor.errors %}<div class="text-danger small mt-1">{{ form.fornecedor.errors|join:', ' }}</div>{% endif %}</div>
-            <div class="col-md-4"><label class="form-label">Maquina</label>{{ form.maquina }}{% if form.maquina.errors %}<div class="text-danger small mt-1">{{ form.maquina.errors|join:', ' }}</div>{% endif %}</div>
+            <div class="col-md-3"><label class="form-label">Obra</label>{{ form.obra }}{% if form.obra.errors %}<div class="text-danger small mt-1">{{ form.obra.errors|join:', ' }}</div>{% endif %}</div>
+            <div class="col-md-3"><label class="form-label">Fornecedor cadastrado</label>{{ form.fornecedor_cadastro }}{% if form.fornecedor_cadastro.errors %}<div class="text-danger small mt-1">{{ form.fornecedor_cadastro.errors|join:', ' }}</div>{% endif %}</div>
+            <div class="col-md-3"><label class="form-label">Fornecedor maquina</label>{{ form.fornecedor }}{% if form.fornecedor.errors %}<div class="text-danger small mt-1">{{ form.fornecedor.errors|join:', ' }}</div>{% endif %}</div>
+            <div class="col-md-3"><label class="form-label">Maquina</label>{{ form.maquina }}{% if form.maquina.errors %}<div class="text-danger small mt-1">{{ form.maquina.errors|join:', ' }}</div>{% endif %}</div>
 
             <div class="col-md-6"><label class="form-label">Solicitante</label>{{ form.solicitante }}{% if form.solicitante.errors %}<div class="text-danger small mt-1">{{ form.solicitante.errors|join:', ' }}</div>{% endif %}</div>
             <div class="col-md-6"><label class="form-label">Responsavel</label>{{ form.responsavel }}{% if form.responsavel.errors %}<div class="text-danger small mt-1">{{ form.responsavel.errors|join:', ' }}</div>{% endif %}</div>

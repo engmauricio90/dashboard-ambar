@@ -38,7 +38,12 @@
             </div>
 
             <div class="col-md-6">
-                <label class="form-label">Fornecedor/Posto</label>
+                <label class="form-label">Fornecedor cadastrado</label>
+                {{ form.fornecedor_cadastro }}
+                {% if form.fornecedor_cadastro.errors %}<div class="text-danger small mt-1">{{ form.fornecedor_cadastro.errors|join:', ' }}</div>{% endif %}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Fornecedor/Posto manual</label>
                 {{ form.fornecedor }}
                 {% if form.fornecedor.errors %}<div class="text-danger small mt-1">{{ form.fornecedor.errors|join:', ' }}</div>{% endif %}
             </div>

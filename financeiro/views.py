@@ -11,8 +11,8 @@ from django.utils import timezone
 
 from controles.views import _build_simple_pdf
 
-from .forms import CentroCustoForm, ContaPagarForm, ContaReceberForm, FinanceiroFiltroForm
-from .models import CentroCusto, ContaPagar, ContaReceber
+from .forms import CentroCustoForm, ContaPagarForm, ContaReceberForm, FinanceiroFiltroForm, FornecedorForm
+from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor
 
 
 def _status_visual(conta, tipo):
@@ -255,6 +255,43 @@ def baixar_conta_pagar(request, conta_id):
 def lista_centros_custo(request):
     centros = CentroCusto.objects.all()
     return render(request, 'financeiro/lista_centros_custo.html', {'centros': centros})
+
+
+def lista_fornecedores(request):
+    fornecedores = Fornecedor.objects.all()
+    busca = request.GET.get('busca', '').strip()
+    if busca:
+        fornecedores = fornecedores.filter(
+            Q(nome__icontains=busca)
+            | Q(cpf_cnpj__icontains=busca)
+            | Q(municipio__icontains=busca)
+        )
+    return render(request, 'financeiro/lista_fornecedores.html', {'fornecedores': fornecedores, 'busca': busca})
+
+
+def novo_fornecedor(request):
+    if request.method == 'POST':
+        form = FornecedorForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Fornecedor cadastrado com sucesso.')
+            return redirect('lista_fornecedores')
+    else:
+        form = FornecedorForm()
+    return render(request, 'financeiro/form_conta.html', {'form': form, 'titulo': 'Novo Fornecedor'})
+
+
+def editar_fornecedor(request, fornecedor_id):
+    fornecedor = get_object_or_404(Fornecedor, id=fornecedor_id)
+    if request.method == 'POST':
+        form = FornecedorForm(request.POST, instance=fornecedor)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Fornecedor atualizado com sucesso.')
+            return redirect('lista_fornecedores')
+    else:
+        form = FornecedorForm(instance=fornecedor)
+    return render(request, 'financeiro/form_conta.html', {'form': form, 'titulo': 'Editar Fornecedor'})
 
 
 def novo_centro_custo(request):

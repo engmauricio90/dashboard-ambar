@@ -2,7 +2,13 @@ from django import forms
 
 from obras.forms import BootstrapForm, BootstrapModelForm
 
-from .models import CentroCusto, ContaPagar, ContaReceber
+from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor
+
+
+class FornecedorForm(BootstrapModelForm):
+    class Meta:
+        model = Fornecedor
+        fields = ['nome', 'cpf_cnpj', 'ie_identidade', 'endereco', 'municipio', 'cep', 'telefone', 'ativo']
 
 
 class CentroCustoForm(BootstrapModelForm):
@@ -65,6 +71,7 @@ class ContaPagarForm(BootstrapModelForm):
         model = ContaPagar
         fields = [
             'fornecedor',
+            'fornecedor_cadastro',
             'obra',
             'centro_custo',
             'categoria',

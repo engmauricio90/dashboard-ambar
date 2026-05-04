@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from .models import CentroCusto, ContaPagar, ContaReceber
+from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor
+
+
+@admin.register(Fornecedor)
+class FornecedorAdmin(admin.ModelAdmin):
+    list_display = ('nome', 'cpf_cnpj', 'municipio', 'telefone', 'ativo')
+    search_fields = ('nome', 'cpf_cnpj', 'municipio', 'telefone')
+    list_filter = ('ativo',)
 
 
 @admin.register(CentroCusto)

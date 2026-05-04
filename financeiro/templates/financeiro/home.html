@@ -11,6 +11,7 @@
     <div class="d-flex gap-2 flex-wrap">
         <a href="{% url 'nova_conta_receber' %}" class="btn btn-success">Nova Receita</a>
         <a href="{% url 'nova_conta_pagar' %}" class="btn btn-outline-danger">Nova Despesa</a>
+        <a href="{% url 'lista_fornecedores' %}" class="btn btn-outline-dark">Fornecedores</a>
         <a href="{% url 'lista_centros_custo' %}" class="btn btn-outline-secondary">Centros de Custo</a>
         <a href="{% url 'relatorio_financeiro' %}" class="btn btn-outline-dark">Relatorio</a>
     </div>
@@ -67,6 +68,7 @@
                 <div class="list-group list-group-flush">
                     <a class="list-group-item list-group-item-action" href="{% url 'lista_contas_receber' %}">Contas a receber</a>
                     <a class="list-group-item list-group-item-action" href="{% url 'lista_contas_pagar' %}">Contas a pagar</a>
+                    <a class="list-group-item list-group-item-action" href="{% url 'lista_fornecedores' %}">Fornecedores</a>
                     <a class="list-group-item list-group-item-action" href="{% url 'lista_centros_custo' %}">Centros de custo</a>
                     <a class="list-group-item list-group-item-action" href="{% url 'relatorio_financeiro' %}">Relatorio financeiro</a>
                 </div>

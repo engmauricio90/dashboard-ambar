@@ -104,6 +104,7 @@ class BombonaCombustivelForm(BootstrapModelForm):
 class OrdemCompraCombustivelForm(BootstrapModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['fornecedor'].required = False
         self.fields['valor_total_previsto'].required = False
 
     class Meta:
@@ -111,6 +112,7 @@ class OrdemCompraCombustivelForm(BootstrapModelForm):
         fields = [
             'numero',
             'data_ordem',
+            'fornecedor_cadastro',
             'fornecedor',
             'solicitante',
             'tipo_combustivel',
@@ -139,6 +141,11 @@ class OrdemCompraCombustivelForm(BootstrapModelForm):
         tipo_destino = cleaned_data.get('tipo_destino')
         veiculo = cleaned_data.get('veiculo')
         bombona = cleaned_data.get('bombona')
+        fornecedor = cleaned_data.get('fornecedor')
+        fornecedor_cadastro = cleaned_data.get('fornecedor_cadastro')
+
+        if not fornecedor and not fornecedor_cadastro:
+            self.add_error('fornecedor_cadastro', 'Informe um fornecedor do cadastro central ou digite o fornecedor/posto.')
 
         if tipo_destino == OrdemCompraCombustivel.DESTINO_VEICULO:
             if not veiculo:
@@ -170,6 +177,10 @@ class NotaFiscalCombustivelForm(BootstrapModelForm):
 
 
 class OrdemCompraGeralForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['fornecedor'].required = False
+
     class Meta:
         model = OrdemCompraGeral
         fields = [
@@ -181,6 +192,7 @@ class OrdemCompraGeralForm(BootstrapModelForm):
             'empresa_cnpj',
             'empresa_endereco',
             'fornecedor',
+            'fornecedor_cadastro',
             'fornecedor_cpf_cnpj',
             'fornecedor_endereco',
             'fornecedor_bairro',
@@ -198,6 +210,12 @@ class OrdemCompraGeralForm(BootstrapModelForm):
         help_texts = {
             'numero': 'Deixe em branco para gerar automaticamente no formato 001/2026.',
         }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if not cleaned_data.get('fornecedor') and not cleaned_data.get('fornecedor_cadastro'):
+            self.add_error('fornecedor_cadastro', 'Informe um fornecedor do cadastro central ou digite o fornecedor.')
+        return cleaned_data
 
 
 class ItemOrdemCompraGeralForm(BootstrapModelForm):
@@ -329,6 +347,7 @@ class OrdemServicoLocacaoMaquinaForm(BootstrapModelForm):
             'valor_previsto_manual',
         ]:
             self.fields[field_name].required = False
+        self.fields['fornecedor'].required = False
 
     class Meta:
         model = OrdemServicoLocacaoMaquina
@@ -336,6 +355,7 @@ class OrdemServicoLocacaoMaquinaForm(BootstrapModelForm):
             'numero',
             'data_solicitacao',
             'obra',
+            'fornecedor_cadastro',
             'fornecedor',
             'maquina',
             'solicitante',
@@ -380,6 +400,12 @@ class OrdemServicoLocacaoMaquinaForm(BootstrapModelForm):
             'numero': 'Deixe em branco para gerar automaticamente.',
             'valor_previsto_manual': 'Use quando a cobranca nao for por hora ou precisar travar um valor fechado.',
         }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if not cleaned_data.get('fornecedor') and not cleaned_data.get('fornecedor_cadastro'):
+            self.add_error('fornecedor_cadastro', 'Informe um fornecedor do cadastro central ou selecione um fornecedor de maquina.')
+        return cleaned_data
 
 
 class ApontamentoMaquinaLocacaoForm(BootstrapModelForm):
@@ -466,11 +492,16 @@ class OrcamentoRadarObraForm(BootstrapModelForm):
 
 
 class ContratoConcretagemForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['fornecedor'].required = False
+
     class Meta:
         model = ContratoConcretagem
         fields = [
             'obra',
             'numero_contrato',
+            'fornecedor_cadastro',
             'fornecedor',
             'descricao',
             'data_inicio',
@@ -493,6 +524,12 @@ class ContratoConcretagemForm(BootstrapModelForm):
             'volume_minimo_m3': forms.NumberInput(attrs={'step': '0.01'}),
             'observacoes': forms.Textarea(attrs={'rows': 3}),
         }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if not cleaned_data.get('fornecedor') and not cleaned_data.get('fornecedor_cadastro'):
+            self.add_error('fornecedor_cadastro', 'Informe um fornecedor do cadastro central ou digite o fornecedor.')
+        return cleaned_data
 
 
 class SolicitanteConcretagemForm(BootstrapModelForm):
