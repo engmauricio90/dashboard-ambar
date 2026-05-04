@@ -552,7 +552,7 @@ class ControleAbastecimentoTests(TestCase):
         )
 
         self.assertRedirects(response, reverse('lista_radar_obras'))
-        orcamento = OrcamentoRadarObra.objects.get()
+        orcamento = OrcamentoRadarObra.objects.get(numero='ORC-001')
         self.assertEqual(orcamento.numero, 'ORC-001')
         self.assertEqual(orcamento.situacao, 'aguardando_resposta')
 
