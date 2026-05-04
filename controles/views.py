@@ -11,6 +11,8 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from PIL import Image, ImageDraw, ImageFont
 
+from financeiro.models import Fornecedor
+
 from .forms import (
     ApontamentoMaquinaLocacaoForm,
     BaixarLocacaoEquipamentoForm,
@@ -311,6 +313,22 @@ def _registrar_historico_maquina(ordem, evento, descricao, status_anterior='', s
     )
 
 
+def _fornecedores_json():
+    return [
+        {
+            'id': fornecedor.id,
+            'nome': fornecedor.nome,
+            'cpf_cnpj': fornecedor.cpf_cnpj,
+            'ie_identidade': fornecedor.ie_identidade,
+            'endereco': fornecedor.endereco,
+            'municipio': fornecedor.municipio,
+            'cep': fornecedor.cep,
+            'telefone': fornecedor.telefone,
+        }
+        for fornecedor in Fornecedor.objects.filter(ativo=True).order_by('nome')
+    ]
+
+
 def home(request):
     totais = {
         'veiculos': VeiculoMaquina.objects.count(),
@@ -422,7 +440,12 @@ def nova_ordem_compra_geral(request):
     return render(
         request,
         'controles/form_ordem_compra_geral.html',
-        {'form': form, 'formset': formset, 'titulo': 'Nova Ordem de Compra'},
+        {
+            'form': form,
+            'formset': formset,
+            'titulo': 'Nova Ordem de Compra',
+            'fornecedores_json': _fornecedores_json(),
+        },
     )
 
 
@@ -439,7 +462,13 @@ def editar_ordem_compra_geral(request, ordem_id):
     return render(
         request,
         'controles/form_ordem_compra_geral.html',
-        {'form': form, 'formset': formset, 'titulo': 'Editar Ordem de Compra', 'ordem': ordem},
+        {
+            'form': form,
+            'formset': formset,
+            'titulo': 'Editar Ordem de Compra',
+            'ordem': ordem,
+            'fornecedores_json': _fornecedores_json(),
+        },
     )
 
 

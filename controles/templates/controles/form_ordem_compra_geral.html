@@ -103,4 +103,56 @@
         <a href="{% url 'lista_ordens_compra_gerais' %}" class="btn btn-outline-secondary">Cancelar</a>
     </div>
 </form>
+{{ fornecedores_json|json_script:"fornecedores-oc-data" }}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const fornecedoresOc = JSON.parse(document.getElementById('fornecedores-oc-data').textContent);
+    const fornecedoresPorId = new Map(fornecedoresOc.map((fornecedor) => [String(fornecedor.id), fornecedor]));
+    const fornecedorSelect = document.getElementById('id_fornecedor_cadastro');
+
+    function setValue(id, value) {
+        const field = document.getElementById(id);
+        if (field) {
+            field.value = value || '';
+        }
+    }
+
+    function separarMunicipio(municipio) {
+        const texto = (municipio || '').trim();
+        const match = texto.match(/([^/]+)\/([A-Z]{2})$/);
+        if (!match) {
+            return { cidade: texto, uf: '' };
+        }
+        return {
+            cidade: match[1].replace(/^[-\s]+/, '').trim(),
+            uf: match[2],
+        };
+    }
+
+    function preencherFornecedor() {
+        const fornecedor = fornecedoresPorId.get(fornecedorSelect.value);
+        if (!fornecedor) {
+            return;
+        }
+
+        const municipio = separarMunicipio(fornecedor.municipio);
+        setValue('id_fornecedor', fornecedor.nome);
+        setValue('id_fornecedor_cpf_cnpj', fornecedor.cpf_cnpj);
+        setValue('id_fornecedor_fone', fornecedor.telefone);
+        setValue('id_fornecedor_endereco', fornecedor.endereco);
+        setValue('id_fornecedor_cidade', municipio.cidade);
+        setValue('id_fornecedor_uf', municipio.uf);
+        setValue('id_fornecedor_cep', fornecedor.cep);
+        setValue('id_fornecedor_ie', fornecedor.ie_identidade);
+    }
+
+    if (fornecedorSelect) {
+        fornecedorSelect.addEventListener('change', preencherFornecedor);
+        if (fornecedorSelect.value) {
+            preencherFornecedor();
+        }
+    }
+</script>
 {% endblock %}
