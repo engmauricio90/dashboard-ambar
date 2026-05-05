@@ -78,6 +78,8 @@ def _next_numero(model, **filters):
 
 def _read_csv(file):
     raw = file.read()
+    if not raw:
+        return None, 'O arquivo CSV esta vazio.'
     for encoding in ['utf-8-sig', 'latin-1']:
         try:
             content = raw.decode(encoding)
@@ -88,7 +90,13 @@ def _read_csv(file):
         content = raw.decode('utf-8', errors='ignore')
     sample = content[:2048]
     delimiter = ';' if sample.count(';') >= sample.count(',') else ','
-    return csv.DictReader(StringIO(content), delimiter=delimiter)
+    reader = csv.DictReader(StringIO(content), delimiter=delimiter)
+    if not reader.fieldnames:
+        return None, 'O CSV precisa ter cabecalho na primeira linha.'
+    normalized_headers = {_normalize_header(header) for header in reader.fieldnames}
+    if not any(alias in normalized_headers for alias in HEADER_ALIASES['descricao']):
+        return None, 'Nao encontrei a coluna descricao no CSV.'
+    return reader, ''
 
 
 def medicoes_home(request):
@@ -109,7 +117,10 @@ def importar_orcamento(request):
     if request.method == 'POST':
         form = ImportarOrcamentoForm(request.POST, request.FILES)
         if form.is_valid():
-            reader = _read_csv(form.cleaned_data['arquivo'])
+            reader, error = _read_csv(form.cleaned_data['arquivo'])
+            if error:
+                form.add_error('arquivo', error)
+                return render(request, 'medicoes/importar_orcamento.html', {'form': form})
             with transaction.atomic():
                 orcamento = OrcamentoMedicao.objects.create(
                     obra=form.cleaned_data['obra'],
@@ -135,6 +146,10 @@ def importar_orcamento(request):
                         )
                     )
                 ItemOrcamentoMedicao.objects.bulk_create(itens)
+                if not itens:
+                    transaction.set_rollback(True)
+                    form.add_error('arquivo', 'Nenhum item valido foi encontrado no CSV.')
+                    return render(request, 'medicoes/importar_orcamento.html', {'form': form})
             messages.success(request, f'Orcamento importado com {len(itens)} itens.')
             return redirect('detalhe_orcamento_medicao', orcamento_id=orcamento.id)
     else:

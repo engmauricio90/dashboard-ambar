@@ -258,7 +258,7 @@ class ItemMedicaoEmpreiteiro(models.Model):
 
     @property
     def valor_periodo(self):
-        return self.quantidade_periodo * self.valor_unitario
+        return (self.quantidade_periodo or Decimal('0')) * (self.valor_unitario or Decimal('0'))
 
     @property
     def quantidade_acumulada_anterior(self):

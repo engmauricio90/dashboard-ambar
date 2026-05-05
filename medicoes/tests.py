@@ -68,6 +68,31 @@ class MedicoesTests(TestCase):
         self.assertEqual(item.quantidade, Decimal('10.5'))
         self.assertEqual(item.preco_unitario_total, Decimal('125.00'))
 
+    def test_importacao_sem_cabecalho_retorna_erro_no_formulario(self):
+        arquivo = SimpleUploadedFile(
+            'orcamento.csv',
+            '1;Drenagem;m;10,5\n'.encode('utf-8'),
+            content_type='text/csv',
+        )
+
+        response = self.client.post(
+            reverse('importar_orcamento_medicao'),
+            {
+                'obra': self.obra.id,
+                'nome': 'Planilha invalida',
+                'tipo': OrcamentoMedicao.TIPO_CONSTRUTORA,
+                'arquivo': arquivo,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(OrcamentoMedicao.objects.filter(nome='Planilha invalida').exists())
+
+    def test_abre_formulario_medicao_simples(self):
+        response = self.client.get(reverse('nova_medicao_empreiteiro_simples'))
+
+        self.assertEqual(response.status_code, 200)
+
     def test_medicao_construtora_calcula_acumulado_e_liquido(self):
         orcamento, item = self._orcamento()
         primeira = MedicaoConstrutora.objects.create(
