@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        {% if medicao %}<p class="text-muted mb-0">{{ medicao.empreiteiro }} - {{ medicao.get_tipo_display }}</p>{% endif %}
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        {% if medicao %}
+        <a class="btn btn-outline-danger" href="{% url 'medicao_empreiteiro_pdf' medicao.id %}" target="_blank">PDF</a>
+        <a class="btn btn-outline-success" href="{% url 'medicao_empreiteiro_excel' medicao.id %}">Excel</a>
+        {% endif %}
+        <a class="btn btn-secondary" href="{% url 'medicoes_home' %}">Voltar</a>
+    </div>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="row g-3">
+                {% for field in form %}
+                <div class="{% if field.name == 'observacoes' %}col-12{% else %}col-md-3{% endif %}">
+                    <label class="form-label">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.errors %}<div class="text-danger small">{{ field.errors|join:', ' }}</div>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="mb-3">Itens</h5>
+            {{ formset.management_form }}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead>
+                        <tr><th>Base</th><th>Item</th><th>Descricao</th><th>Und</th><th>Qtd periodo</th><th>Valor unit.</th><th>Valor</th><th>Excluir</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for item_form in formset %}
+                        <tr>
+                            <td style="min-width: 150px;">{{ item_form.item_orcamento }}{{ item_form.id }}</td>
+                            <td style="min-width: 90px;">{{ item_form.item }}</td>
+                            <td style="min-width: 260px;">{{ item_form.descricao }}</td>
+                            <td style="min-width: 80px;">{{ item_form.unidade }}</td>
+                            <td style="min-width: 130px;">{{ item_form.quantidade_periodo }}</td>
+                            <td style="min-width: 130px;">{{ item_form.valor_unitario }}</td>
+                            <td>R$ {{ item_form.instance.valor_periodo|floatformat:2 }}</td>
+                            <td>{% if item_form.DELETE %}{{ item_form.DELETE }}{% endif %}</td>
+                        </tr>
+                        {% if item_form.non_field_errors %}<tr><td colspan="8" class="text-danger small">{{ item_form.non_field_errors }}</td></tr>{% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if medicao %}
+            <div class="row g-3 mt-3">
+                <div class="col-md-4"><strong>Subtotal:</strong> R$ {{ medicao.subtotal_periodo|floatformat:2 }}</div>
+                <div class="col-md-4"><strong>Descontos:</strong> R$ {{ medicao.total_descontos|floatformat:2 }}</div>
+                <div class="col-md-4"><strong>Liquido:</strong> R$ {{ medicao.total_liquido|floatformat:2 }}</div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    <button class="btn btn-primary" type="submit">Salvar medicao</button>
+</form>
+{% endblock %}

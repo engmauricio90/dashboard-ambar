@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+
+{% block title %}Medicoes{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Medicoes</h1>
+        <p class="text-muted mb-0">Boletins da construtora, empreiteiros, importacao CSV e exportacao em PDF/Excel.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-primary" href="{% url 'importar_orcamento_medicao' %}">Importar Orcamento</a>
+        <a class="btn btn-outline-dark" href="{% url 'nova_medicao_empreiteiro_simples' %}">Medicao Simples</a>
+        <a class="btn btn-outline-secondary" href="{% url 'lista_orcamentos_medicao' %}">Orcamentos</a>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-3">Orcamentos importados</h5>
+                <div class="list-group list-group-flush">
+                    {% for orcamento in orcamentos %}
+                    <a class="list-group-item list-group-item-action" href="{% url 'detalhe_orcamento_medicao' orcamento.id %}">
+                        {{ orcamento.nome }}<br><small class="text-muted">{{ orcamento.obra }}</small>
+                    </a>
+                    {% empty %}
+                    <div class="text-muted">Nenhum orcamento importado.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-3">Construtora</h5>
+                <div class="list-group list-group-flush">
+                    {% for medicao in medicoes_construtora %}
+                    <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_construtora' medicao.id %}">
+                        Medicao {{ medicao.numero }} - {{ medicao.orcamento.obra }}<br>
+                        <small class="text-muted">Liquido R$ {{ medicao.total_liquido|floatformat:2 }}</small>
+                    </a>
+                    {% empty %}
+                    <div class="text-muted">Nenhuma medicao da construtora.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-3">Empreiteiros</h5>
+                <div class="list-group list-group-flush">
+                    {% for medicao in medicoes_empreiteiro %}
+                    <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_empreiteiro' medicao.id %}">
+                        {{ medicao.empreiteiro }} - {{ medicao.get_tipo_display }}<br>
+                        <small class="text-muted">Liquido R$ {{ medicao.total_liquido|floatformat:2 }}</small>
+                    </a>
+                    {% empty %}
+                    <div class="text-muted">Nenhuma medicao de empreiteiro.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

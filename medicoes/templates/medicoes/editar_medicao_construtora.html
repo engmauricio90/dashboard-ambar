@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+
+{% block title %}Medicao Construtora{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Medicao {{ medicao.numero }} - Construtora</h1>
+        <p class="text-muted mb-0">{{ medicao.orcamento.obra }} - {{ medicao.periodo_inicio }} a {{ medicao.periodo_fim }}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-danger" href="{% url 'medicao_construtora_pdf' medicao.id %}" target="_blank">PDF</a>
+        <a class="btn btn-outline-success" href="{% url 'medicao_construtora_excel' medicao.id %}">Excel</a>
+        <a class="btn btn-secondary" href="{% url 'detalhe_orcamento_medicao' medicao.orcamento.id %}">Voltar</a>
+    </div>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="row g-3">
+                {% for field in form %}
+                <div class="{% if field.name == 'observacoes' or field.name == 'descricao_faturamento_direto' %}col-12{% else %}col-md-3{% endif %}">
+                    {% if field.field.widget.input_type == 'checkbox' %}
+                    <div class="form-check mt-4">{{ field }} <label class="form-check-label">{{ field.label }}</label></div>
+                    {% else %}
+                    <label class="form-label">{{ field.label }}</label>{{ field }}
+                    {% endif %}
+                    {% if field.errors %}<div class="text-danger small">{{ field.errors|join:', ' }}</div>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="mb-3">Itens medidos</h5>
+            {{ formset.management_form }}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead><tr><th>Item</th><th>Descricao</th><th>Und</th><th>Contrato</th><th>Anterior</th><th>No periodo</th><th>Atual</th><th>Saldo</th><th>Valor</th></tr></thead>
+                    <tbody>
+                        {% for item_form in formset %}
+                        <tr>
+                            <td>{{ item_form.instance.item_orcamento.item }}{{ item_form.id }}</td>
+                            <td>{{ item_form.instance.item_orcamento.descricao }}</td>
+                            <td>{{ item_form.instance.item_orcamento.unidade }}</td>
+                            <td>{{ item_form.instance.item_orcamento.quantidade|floatformat:4 }}</td>
+                            <td>{{ item_form.instance.quantidade_acumulada_anterior|floatformat:4 }}</td>
+                            <td style="min-width: 130px;">{{ item_form.quantidade_periodo }}</td>
+                            <td>{{ item_form.instance.quantidade_acumulada_atual|floatformat:4 }}</td>
+                            <td>{{ item_form.instance.saldo_quantidade|floatformat:4 }}</td>
+                            <td>R$ {{ item_form.instance.valor_periodo|floatformat:2 }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="row g-3 mt-3">
+                <div class="col-md-3"><strong>Subtotal:</strong> R$ {{ medicao.subtotal_periodo|floatformat:2 }}</div>
+                <div class="col-md-3"><strong>Descontos:</strong> R$ {{ medicao.total_descontos|floatformat:2 }}</div>
+                <div class="col-md-3"><strong>Faturamento direto:</strong> R$ {{ medicao.valor_faturamento_direto|floatformat:2 }}</div>
+                <div class="col-md-3"><strong>Liquido:</strong> R$ {{ medicao.total_liquido|floatformat:2 }}</div>
+            </div>
+        </div>
+    </div>
+    <button class="btn btn-primary" type="submit">Salvar medicao</button>
+</form>
+{% endblock %}

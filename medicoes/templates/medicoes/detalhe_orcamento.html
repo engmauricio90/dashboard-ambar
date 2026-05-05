@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ orcamento.nome }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">{{ orcamento.nome }}</h1>
+        <p class="text-muted mb-0">{{ orcamento.obra }} - {{ orcamento.get_tipo_display }}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        {% if orcamento.tipo == 'construtora' %}
+        <a class="btn btn-primary" href="{% url 'nova_medicao_construtora' orcamento.id %}">Nova Medicao Construtora</a>
+        {% endif %}
+        <a class="btn btn-outline-dark" href="{% url 'nova_medicao_empreiteiro_cumulativa' orcamento.id %}">Medicao Empreiteiro Cumulativa</a>
+        <a class="btn btn-secondary" href="{% url 'lista_orcamentos_medicao' %}">Voltar</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3"><div class="card shadow-sm"><div class="card-body"><h6>Material</h6><h4>R$ {{ orcamento.total_material|floatformat:2 }}</h4></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm"><div class="card-body"><h6>Mao de obra</h6><h4>R$ {{ orcamento.total_mao_obra|floatformat:2 }}</h4></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm"><div class="card-body"><h6>Equipamentos</h6><h4>R$ {{ orcamento.total_equipamentos|floatformat:2 }}</h4></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm"><div class="card-body"><h6>Total</h6><h4>R$ {{ orcamento.total_orcamento|floatformat:2 }}</h4></div></div></div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h5 class="mb-3">Itens do orcamento</h5>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead><tr><th>Item</th><th>Descricao</th><th>Und</th><th>Qtd</th><th>Unitario</th><th>Total</th></tr></thead>
+                <tbody>
+                    {% for item in itens %}
+                    <tr>
+                        <td>{{ item.item }}</td>
+                        <td>{{ item.descricao }}</td>
+                        <td>{{ item.unidade }}</td>
+                        <td>{{ item.quantidade|floatformat:4 }}</td>
+                        <td>R$ {{ item.preco_unitario_total|floatformat:2 }}</td>
+                        <td>R$ {{ item.valor_total|floatformat:2 }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="6">Nenhum item importado.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100"><div class="card-body">
+            <h5 class="mb-3">Medicoes da construtora</h5>
+            <div class="list-group list-group-flush">
+                {% for medicao in medicoes_construtora %}
+                <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_construtora' medicao.id %}">Medicao {{ medicao.numero }} - R$ {{ medicao.total_liquido|floatformat:2 }}</a>
+                {% empty %}<div class="text-muted">Nenhuma medicao.</div>{% endfor %}
+            </div>
+        </div></div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100"><div class="card-body">
+            <h5 class="mb-3">Medicoes de empreiteiros</h5>
+            <div class="list-group list-group-flush">
+                {% for medicao in medicoes_empreiteiro %}
+                <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_empreiteiro' medicao.id %}">{{ medicao.empreiteiro }} - Medicao {{ medicao.numero }} - R$ {{ medicao.total_liquido|floatformat:2 }}</a>
+                {% empty %}<div class="text-muted">Nenhuma medicao.</div>{% endfor %}
+            </div>
+        </div></div>
+    </div>
+</div>
+{% endblock %}
