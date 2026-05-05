@@ -37,9 +37,13 @@ class MedicaoConstrutoraForm(BootstrapModelForm):
             'periodo_fim',
             'data_medicao',
             'retencao_tecnica',
+            'retencao_tecnica_percentual',
             'issqn',
+            'issqn_percentual',
             'inss',
+            'inss_percentual',
             'desconto_adicional',
+            'desconto_adicional_percentual',
             'faturamento_direto',
             'descricao_faturamento_direto',
             'valor_faturamento_direto',
@@ -50,12 +54,32 @@ class MedicaoConstrutoraForm(BootstrapModelForm):
             'periodo_fim': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'data_medicao': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'retencao_tecnica': forms.NumberInput(attrs={'step': '0.01'}),
+            'retencao_tecnica_percentual': forms.NumberInput(attrs={'step': '0.0001'}),
             'issqn': forms.NumberInput(attrs={'step': '0.01'}),
+            'issqn_percentual': forms.NumberInput(attrs={'step': '0.0001'}),
             'inss': forms.NumberInput(attrs={'step': '0.01'}),
+            'inss_percentual': forms.NumberInput(attrs={'step': '0.0001'}),
             'desconto_adicional': forms.NumberInput(attrs={'step': '0.01'}),
+            'desconto_adicional_percentual': forms.NumberInput(attrs={'step': '0.0001'}),
             'valor_faturamento_direto': forms.NumberInput(attrs={'step': '0.01'}),
             'observacoes': forms.Textarea(attrs={'rows': 3}),
         }
+        labels = {
+            'retencao_tecnica': 'Retencao tecnica (R$)',
+            'retencao_tecnica_percentual': 'Retencao tecnica (%)',
+            'issqn': 'ISSQN (R$)',
+            'issqn_percentual': 'ISSQN (%)',
+            'inss': 'INSS (R$)',
+            'inss_percentual': 'INSS (%)',
+            'desconto_adicional': 'Desconto adicional (R$)',
+            'desconto_adicional_percentual': 'Desconto adicional (%)',
+            'valor_faturamento_direto': 'Faturamento direto (R$)',
+        }
+
+
+class MedicaoConstrutoraCabecalhoForm(MedicaoConstrutoraForm):
+    class Meta(MedicaoConstrutoraForm.Meta):
+        fields = ['numero', 'periodo_inicio', 'periodo_fim', 'data_medicao', 'observacoes']
 
 
 class ItemMedicaoConstrutoraForm(BootstrapModelForm):
@@ -80,7 +104,9 @@ class MedicaoEmpreiteiroForm(BootstrapModelForm):
             'periodo_fim',
             'data_medicao',
             'retencao_tecnica',
+            'retencao_tecnica_percentual',
             'desconto_adicional',
+            'desconto_adicional_percentual',
             'observacoes',
         ]
         widgets = {
@@ -88,9 +114,32 @@ class MedicaoEmpreiteiroForm(BootstrapModelForm):
             'periodo_fim': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'data_medicao': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'retencao_tecnica': forms.NumberInput(attrs={'step': '0.01'}),
+            'retencao_tecnica_percentual': forms.NumberInput(attrs={'step': '0.0001'}),
             'desconto_adicional': forms.NumberInput(attrs={'step': '0.01'}),
+            'desconto_adicional_percentual': forms.NumberInput(attrs={'step': '0.0001'}),
             'observacoes': forms.Textarea(attrs={'rows': 3}),
         }
+        labels = {
+            'retencao_tecnica': 'Retencao tecnica (R$)',
+            'retencao_tecnica_percentual': 'Retencao tecnica (%)',
+            'desconto_adicional': 'Desconto adicional (R$)',
+            'desconto_adicional_percentual': 'Desconto adicional (%)',
+        }
+
+
+class MedicaoEmpreiteiroCabecalhoForm(MedicaoEmpreiteiroForm):
+    class Meta(MedicaoEmpreiteiroForm.Meta):
+        fields = [
+            'obra',
+            'empreiteiro',
+            'cpf_cnpj',
+            'pix',
+            'numero',
+            'periodo_inicio',
+            'periodo_fim',
+            'data_medicao',
+            'observacoes',
+        ]
 
 
 class ItemMedicaoEmpreiteiroForm(BootstrapModelForm):

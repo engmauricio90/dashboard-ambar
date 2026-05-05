@@ -21,6 +21,7 @@
         <div class="card-body">
             <div class="row g-3">
                 {% for field in form %}
+                {% if field.name == 'numero' or field.name == 'periodo_inicio' or field.name == 'periodo_fim' or field.name == 'data_medicao' or field.name == 'observacoes' %}
                 <div class="{% if field.name == 'observacoes' or field.name == 'descricao_faturamento_direto' %}col-12{% else %}col-md-3{% endif %}">
                     {% if field.field.widget.input_type == 'checkbox' %}
                     <div class="form-check mt-4">{{ field }} <label class="form-check-label">{{ field.label }}</label></div>
@@ -29,6 +30,7 @@
                     {% endif %}
                     {% if field.errors %}<div class="text-danger small">{{ field.errors|join:', ' }}</div>{% endif %}
                 </div>
+                {% endif %}
                 {% endfor %}
             </div>
         </div>
@@ -63,6 +65,27 @@
                 <div class="col-md-3"><strong>Descontos:</strong> R$ {{ medicao.total_descontos|floatformat:2 }}</div>
                 <div class="col-md-3"><strong>Faturamento direto:</strong> R$ {{ medicao.valor_faturamento_direto|floatformat:2 }}</div>
                 <div class="col-md-3"><strong>Liquido:</strong> R$ {{ medicao.total_liquido|floatformat:2 }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="mb-3">Retencoes, impostos e faturamento direto</h5>
+            <p class="text-muted small mb-3">Informe o percentual para calcular automaticamente sobre o valor medido. Se preferir, deixe o percentual zerado e preencha o valor em reais.</p>
+            <div class="row g-3">
+                {% for field in form %}
+                {% if field.name == 'retencao_tecnica' or field.name == 'retencao_tecnica_percentual' or field.name == 'issqn' or field.name == 'issqn_percentual' or field.name == 'inss' or field.name == 'inss_percentual' or field.name == 'desconto_adicional' or field.name == 'desconto_adicional_percentual' or field.name == 'faturamento_direto' or field.name == 'descricao_faturamento_direto' or field.name == 'valor_faturamento_direto' %}
+                <div class="{% if field.name == 'descricao_faturamento_direto' %}col-12{% else %}col-md-3{% endif %}">
+                    {% if field.field.widget.input_type == 'checkbox' %}
+                    <div class="form-check mt-4">{{ field }} <label class="form-check-label">{{ field.label }}</label></div>
+                    {% else %}
+                    <label class="form-label">{{ field.label }}</label>{{ field }}
+                    {% endif %}
+                    {% if field.errors %}<div class="text-danger small">{{ field.errors|join:', ' }}</div>{% endif %}
+                </div>
+                {% endif %}
+                {% endfor %}
             </div>
         </div>
     </div>

@@ -17,7 +17,9 @@ from .forms import (
     ImportarOrcamentoForm,
     ItemMedicaoConstrutoraFormSet,
     ItemMedicaoEmpreiteiroFormSet,
+    MedicaoConstrutoraCabecalhoForm,
     MedicaoConstrutoraForm,
+    MedicaoEmpreiteiroCabecalhoForm,
     MedicaoEmpreiteiroForm,
 )
 from .models import (
@@ -74,6 +76,46 @@ def _value(row, field):
 def _next_numero(model, **filters):
     last = model.objects.filter(**filters).order_by('-numero').first()
     return (last.numero + 1) if last else 1
+
+
+def _percent_value(base, percent):
+    if not percent:
+        return None
+    return (base * percent / Decimal('100')).quantize(Decimal('0.01'))
+
+
+def _aplicar_percentuais_construtora(medicao):
+    base = medicao.total_bruto
+    campos = {
+        'retencao_tecnica': medicao.retencao_tecnica_percentual,
+        'issqn': medicao.issqn_percentual,
+        'inss': medicao.inss_percentual,
+        'desconto_adicional': medicao.desconto_adicional_percentual,
+    }
+    updates = []
+    for field, percent in campos.items():
+        value = _percent_value(base, percent)
+        if value is not None:
+            setattr(medicao, field, value)
+            updates.append(field)
+    if updates:
+        medicao.save(update_fields=updates + ['updated_at'])
+
+
+def _aplicar_percentuais_empreiteiro(medicao):
+    base = medicao.subtotal_periodo
+    campos = {
+        'retencao_tecnica': medicao.retencao_tecnica_percentual,
+        'desconto_adicional': medicao.desconto_adicional_percentual,
+    }
+    updates = []
+    for field, percent in campos.items():
+        value = _percent_value(base, percent)
+        if value is not None:
+            setattr(medicao, field, value)
+            updates.append(field)
+    if updates:
+        medicao.save(update_fields=updates + ['updated_at'])
 
 
 def _read_csv(file):
@@ -183,7 +225,7 @@ def nova_medicao_construtora(request, orcamento_id):
         'periodo_fim': timezone.localdate(),
     }
     if request.method == 'POST':
-        form = MedicaoConstrutoraForm(request.POST)
+        form = MedicaoConstrutoraCabecalhoForm(request.POST)
         if form.is_valid():
             with transaction.atomic():
                 medicao = form.save(commit=False)
@@ -195,7 +237,7 @@ def nova_medicao_construtora(request, orcamento_id):
             messages.success(request, 'Medicao criada. Agora preencha as quantidades medidas.')
             return redirect('editar_medicao_construtora', medicao_id=medicao.id)
     else:
-        form = MedicaoConstrutoraForm(initial=initial)
+        form = MedicaoConstrutoraCabecalhoForm(initial=initial)
     return render(request, 'medicoes/form_medicao.html', {'form': form, 'titulo': 'Nova medicao da construtora'})
 
 
@@ -211,6 +253,7 @@ def editar_medicao_construtora(request, medicao_id):
         if form.is_valid() and formset.is_valid():
             form.save()
             formset.save()
+            _aplicar_percentuais_construtora(medicao)
             messages.success(request, 'Medicao da construtora atualizada com sucesso.')
             return redirect('editar_medicao_construtora', medicao_id=medicao.id)
     else:
@@ -225,7 +268,7 @@ def editar_medicao_construtora(request, medicao_id):
 
 def nova_medicao_empreiteiro_simples(request):
     if request.method == 'POST':
-        form = MedicaoEmpreiteiroForm(request.POST)
+        form = MedicaoEmpreiteiroCabecalhoForm(request.POST)
         if form.is_valid():
             medicao = form.save(commit=False)
             medicao.tipo = MedicaoEmpreiteiro.TIPO_SIMPLES
@@ -237,7 +280,7 @@ def nova_medicao_empreiteiro_simples(request):
                 return redirect('editar_medicao_empreiteiro', medicao_id=medicao.id)
             medicao.delete()
     else:
-        form = MedicaoEmpreiteiroForm(
+        form = MedicaoEmpreiteiroCabecalhoForm(
             initial={
                 'numero': _next_numero(MedicaoEmpreiteiro, tipo=MedicaoEmpreiteiro.TIPO_SIMPLES),
                 'data_medicao': timezone.localdate(),
@@ -263,7 +306,7 @@ def nova_medicao_empreiteiro_cumulativa(request, orcamento_id):
         'periodo_fim': timezone.localdate(),
     }
     if request.method == 'POST':
-        form = MedicaoEmpreiteiroForm(request.POST)
+        form = MedicaoEmpreiteiroCabecalhoForm(request.POST)
         if form.is_valid():
             with transaction.atomic():
                 medicao = form.save(commit=False)
@@ -287,7 +330,7 @@ def nova_medicao_empreiteiro_cumulativa(request, orcamento_id):
             messages.success(request, 'Medicao cumulativa criada. Agora preencha as quantidades medidas.')
             return redirect('editar_medicao_empreiteiro', medicao_id=medicao.id)
     else:
-        form = MedicaoEmpreiteiroForm(initial=initial)
+        form = MedicaoEmpreiteiroCabecalhoForm(initial=initial)
     return render(request, 'medicoes/form_medicao.html', {'form': form, 'titulo': 'Nova medicao cumulativa de empreiteiro'})
 
 
@@ -299,6 +342,7 @@ def editar_medicao_empreiteiro(request, medicao_id):
         if form.is_valid() and formset.is_valid():
             form.save()
             formset.save()
+            _aplicar_percentuais_empreiteiro(medicao)
             messages.success(request, 'Medicao de empreiteiro atualizada com sucesso.')
             return redirect('editar_medicao_empreiteiro', medicao_id=medicao.id)
     else:

@@ -23,11 +23,13 @@
         <div class="card-body">
             <div class="row g-3">
                 {% for field in form %}
+                {% if field.name == 'obra' or field.name == 'empreiteiro' or field.name == 'cpf_cnpj' or field.name == 'pix' or field.name == 'numero' or field.name == 'periodo_inicio' or field.name == 'periodo_fim' or field.name == 'data_medicao' or field.name == 'observacoes' %}
                 <div class="{% if field.name == 'observacoes' %}col-12{% else %}col-md-3{% endif %}">
                     <label class="form-label">{{ field.label }}</label>
                     {{ field }}
                     {% if field.errors %}<div class="text-danger small">{{ field.errors|join:', ' }}</div>{% endif %}
                 </div>
+                {% endif %}
                 {% endfor %}
             </div>
         </div>
@@ -68,6 +70,26 @@
             {% endif %}
         </div>
     </div>
+
+    {% if medicao %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="mb-3">Retencao e descontos</h5>
+            <p class="text-muted small mb-3">Informe o percentual para calcular sobre o subtotal medido. Se preferir, deixe o percentual zerado e preencha o valor em reais.</p>
+            <div class="row g-3">
+                {% for field in form %}
+                {% if field.name == 'retencao_tecnica' or field.name == 'retencao_tecnica_percentual' or field.name == 'desconto_adicional' or field.name == 'desconto_adicional_percentual' %}
+                <div class="col-md-3">
+                    <label class="form-label">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.errors %}<div class="text-danger small">{{ field.errors|join:', ' }}</div>{% endif %}
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
     <button class="btn btn-primary" type="submit">Salvar medicao</button>
 </form>
 {% endblock %}
