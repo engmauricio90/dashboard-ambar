@@ -180,8 +180,80 @@ def lista_contas_receber(request):
 
 
 def lista_contas_pagar(request):
-    contas = _base_pagar()
-    return render(request, 'financeiro/lista_contas_pagar.html', {'contas': contas})
+    contas = _base_pagar().filter(status=ContaPagar.STATUS_ABERTO)
+    return render(
+        request,
+        'financeiro/lista_contas_pagar.html',
+        {
+            'contas': contas,
+            'titulo': 'Contas a Pagar',
+            'descricao': 'Despesas em aberto para baixa ou cancelamento em massa.',
+            'mostrar_acoes_massa': True,
+        },
+    )
+
+
+def lista_contas_pagas(request):
+    contas = _base_pagar().filter(status=ContaPagar.STATUS_PAGO).order_by('-data_pagamento', '-id')
+    return render(
+        request,
+        'financeiro/lista_contas_pagar.html',
+        {
+            'contas': contas,
+            'titulo': 'Contas Pagas',
+            'descricao': 'Historico das despesas ja baixadas.',
+            'mostrar_acoes_massa': False,
+        },
+    )
+
+
+def lista_contas_pagar_canceladas(request):
+    contas = _base_pagar().filter(status=ContaPagar.STATUS_CANCELADO).order_by('-updated_at', '-id')
+    return render(
+        request,
+        'financeiro/lista_contas_pagar.html',
+        {
+            'contas': contas,
+            'titulo': 'Contas Canceladas',
+            'descricao': 'Despesas canceladas e retiradas da lista principal.',
+            'mostrar_acoes_massa': False,
+        },
+    )
+
+
+def acao_massa_contas_pagar(request):
+    if request.method != 'POST':
+        return redirect('lista_contas_pagar')
+
+    ids = request.POST.getlist('contas')
+    acao = request.POST.get('acao')
+    data_baixa = request.POST.get('data_baixa') or timezone.localdate()
+    contas = ContaPagar.objects.filter(id__in=ids, status=ContaPagar.STATUS_ABERTO)
+
+    if not ids:
+        messages.warning(request, 'Selecione ao menos uma conta.')
+        return redirect('lista_contas_pagar')
+
+    if acao not in {'pagar', 'cancelar'}:
+        messages.warning(request, 'Escolha uma acao valida.')
+        return redirect('lista_contas_pagar')
+
+    total = 0
+    for conta in contas:
+        if acao == 'pagar':
+            conta.status = ContaPagar.STATUS_PAGO
+            conta.data_pagamento = data_baixa
+        else:
+            conta.status = ContaPagar.STATUS_CANCELADO
+        conta.save()
+        total += 1
+
+    if acao == 'pagar':
+        messages.success(request, f'{total} conta(s) marcada(s) como pagas.')
+        return redirect('lista_contas_pagas')
+
+    messages.success(request, f'{total} conta(s) cancelada(s).')
+    return redirect('lista_contas_pagar_canceladas')
 
 
 def nova_conta_receber(request):

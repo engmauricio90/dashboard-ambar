@@ -57,6 +57,97 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertEqual(despesa.valor, Decimal('350.00'))
         self.assertEqual(self.obra.total_despesa_real, Decimal('350.00'))
 
+    def test_lista_contas_pagar_mostra_apenas_abertas(self):
+        ContaPagar.objects.create(
+            fornecedor='Fornecedor Aberto',
+            obra=self.obra,
+            centro_custo=self.centro,
+            categoria='material',
+            descricao='Aberta',
+            data_emissao=date(2026, 4, 2),
+            data_vencimento=date(2026, 4, 20),
+            valor=Decimal('350.00'),
+        )
+        ContaPagar.objects.create(
+            fornecedor='Fornecedor Pago',
+            obra=self.obra,
+            centro_custo=self.centro,
+            categoria='material',
+            descricao='Paga',
+            data_emissao=date(2026, 4, 2),
+            data_vencimento=date(2026, 4, 20),
+            data_pagamento=date(2026, 4, 21),
+            valor=Decimal('200.00'),
+            status=ContaPagar.STATUS_PAGO,
+        )
+
+        response = self.client.get(reverse('lista_contas_pagar'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Fornecedor Aberto')
+        self.assertNotContains(response, 'Fornecedor Pago')
+
+    def test_acao_massa_marca_contas_como_pagas(self):
+        conta_1 = ContaPagar.objects.create(
+            fornecedor='Fornecedor A',
+            obra=self.obra,
+            categoria='material',
+            descricao='Conta 1',
+            data_emissao=date(2026, 4, 2),
+            data_vencimento=date(2026, 4, 20),
+            valor=Decimal('100.00'),
+        )
+        conta_2 = ContaPagar.objects.create(
+            fornecedor='Fornecedor B',
+            obra=self.obra,
+            categoria='material',
+            descricao='Conta 2',
+            data_emissao=date(2026, 4, 2),
+            data_vencimento=date(2026, 4, 20),
+            valor=Decimal('150.00'),
+        )
+
+        response = self.client.post(
+            reverse('acao_massa_contas_pagar'),
+            {
+                'contas': [str(conta_1.id), str(conta_2.id)],
+                'acao': 'pagar',
+                'data_baixa': '2026-04-25',
+            },
+        )
+
+        self.assertRedirects(response, reverse('lista_contas_pagas'))
+        conta_1.refresh_from_db()
+        conta_2.refresh_from_db()
+        self.assertEqual(conta_1.status, ContaPagar.STATUS_PAGO)
+        self.assertEqual(conta_1.data_pagamento, date(2026, 4, 25))
+        self.assertEqual(conta_2.status, ContaPagar.STATUS_PAGO)
+
+    def test_acao_massa_cancela_e_remove_despesa_da_obra(self):
+        conta = ContaPagar.objects.create(
+            fornecedor='Fornecedor A',
+            obra=self.obra,
+            categoria='material',
+            descricao='Conta cancelada',
+            data_emissao=date(2026, 4, 2),
+            data_vencimento=date(2026, 4, 20),
+            valor=Decimal('100.00'),
+        )
+        self.assertTrue(DespesaObra.objects.filter(descricao='Conta cancelada').exists())
+
+        response = self.client.post(
+            reverse('acao_massa_contas_pagar'),
+            {
+                'contas': [str(conta.id)],
+                'acao': 'cancelar',
+            },
+        )
+
+        self.assertRedirects(response, reverse('lista_contas_pagar_canceladas'))
+        conta.refresh_from_db()
+        self.assertEqual(conta.status, ContaPagar.STATUS_CANCELADO)
+        self.assertFalse(DespesaObra.objects.filter(descricao='Conta cancelada').exists())
+
     def test_dashboard_financeiro_responde(self):
         response = self.client.get(reverse('financeiro_home'))
 

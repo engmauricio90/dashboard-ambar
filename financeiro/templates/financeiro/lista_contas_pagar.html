@@ -1,25 +1,48 @@
 {% extends 'base.html' %}
 
-{% block title %}Contas a Pagar{% endblock %}
+{% block title %}{{ titulo|default:'Contas a Pagar' }}{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
-        <h1 class="mb-1">Contas a Pagar</h1>
-        <p class="text-muted mb-0">Despesas lancadas pelo financeiro e integradas com obra quando vinculadas.</p>
+        <h1 class="mb-1">{{ titulo|default:'Contas a Pagar' }}</h1>
+        <p class="text-muted mb-0">{{ descricao|default:'Despesas lancadas pelo financeiro e integradas com obra quando vinculadas.' }}</p>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 flex-wrap">
         <a href="{% url 'nova_conta_pagar' %}" class="btn btn-danger">Nova Despesa</a>
+        <a href="{% url 'lista_contas_pagar' %}" class="btn btn-outline-dark">Em aberto</a>
+        <a href="{% url 'lista_contas_pagas' %}" class="btn btn-outline-success">Pagas</a>
+        <a href="{% url 'lista_contas_pagar_canceladas' %}" class="btn btn-outline-secondary">Canceladas</a>
         <a href="{% url 'financeiro_home' %}" class="btn btn-secondary">Voltar</a>
     </div>
 </div>
 
 <div class="card shadow-sm">
     <div class="card-body">
+        {% if mostrar_acoes_massa %}
+        <form method="post" action="{% url 'acao_massa_contas_pagar' %}">
+            {% csrf_token %}
+            <div class="d-flex gap-2 align-items-end flex-wrap mb-3">
+                <div>
+                    <label class="form-label">Acao em massa</label>
+                    <select class="form-select" name="acao" required>
+                        <option value="">Selecione</option>
+                        <option value="pagar">Marcar como pagas</option>
+                        <option value="cancelar">Cancelar selecionadas</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">Data de pagamento</label>
+                    <input type="date" class="form-control" name="data_baixa">
+                </div>
+                <button type="submit" class="btn btn-success">Aplicar nas selecionadas</button>
+            </div>
+        {% endif %}
         <div class="table-responsive">
             <table class="table table-bordered table-striped align-middle mb-0">
                 <thead>
                     <tr>
+                        {% if mostrar_acoes_massa %}<th style="width: 44px;"><input type="checkbox" class="form-check-input" id="selecionarTodas"></th>{% endif %}
                         <th>Vencimento</th>
                         <th>Fornecedor</th>
                         <th>Obra</th>
@@ -33,6 +56,9 @@
                 <tbody>
                     {% for conta in contas %}
                     <tr>
+                        {% if mostrar_acoes_massa %}
+                        <td><input type="checkbox" class="form-check-input conta-checkbox" name="contas" value="{{ conta.id }}"></td>
+                        {% endif %}
                         <td>{{ conta.data_vencimento }}</td>
                         <td>{{ conta.fornecedor }}</td>
                         <td>{{ conta.obra|default:'-' }}</td>
@@ -41,18 +67,34 @@
                         <td>R$ {{ conta.valor|floatformat:2 }}</td>
                         <td>{{ conta.get_status_display }}</td>
                         <td class="text-end">
-                            {% if not conta.esta_baixada %}
+                            {% if mostrar_acoes_massa %}
                             <a href="{% url 'baixar_conta_pagar' conta.id %}" class="btn btn-sm btn-outline-success">Pagar</a>
                             {% endif %}
                             <a href="{% url 'editar_conta_pagar' conta.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
                         </td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="8">Nenhuma conta a pagar cadastrada.</td></tr>
+                    <tr><td colspan="{% if mostrar_acoes_massa %}9{% else %}8{% endif %}">Nenhuma conta encontrada.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
+        {% if mostrar_acoes_massa %}
+        </form>
+        {% endif %}
     </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const selecionarTodas = document.getElementById('selecionarTodas');
+    if (selecionarTodas) {
+        selecionarTodas.addEventListener('change', () => {
+            document.querySelectorAll('.conta-checkbox').forEach((checkbox) => {
+                checkbox.checked = selecionarTodas.checked;
+            });
+        });
+    }
+</script>
 {% endblock %}

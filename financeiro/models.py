@@ -261,7 +261,14 @@ class ContaPagar(models.Model):
             self.sincronizar_obra()
 
     def sincronizar_obra(self):
-        if not self.obra or self.status == self.STATUS_CANCELADO:
+        if self.status == self.STATUS_CANCELADO:
+            if self.despesa_obra_id:
+                self.despesa_obra.delete()
+                ContaPagar.objects.filter(pk=self.pk).update(despesa_obra=None)
+                self.despesa_obra = None
+            return
+
+        if not self.obra:
             return
 
         if self.despesa_obra_id:
