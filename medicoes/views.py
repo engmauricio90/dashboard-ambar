@@ -1,15 +1,19 @@
 import csv
+import textwrap
 import unicodedata
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from io import BytesIO, StringIO
+from pathlib import Path
 
+from django.conf import settings
 from django.contrib import messages
 from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from openpyxl import Workbook
+from PIL import Image, ImageDraw, ImageFont
 
 from controles.views import _build_simple_pdf
 
@@ -35,6 +39,70 @@ from .models import (
 def _money(value):
     value = value or Decimal('0')
     return f'R$ {value:,.2f}'.replace(',', 'X').replace('.', ',').replace('X', '.')
+
+
+def _clean_text(value):
+    return unicodedata.normalize('NFKD', str(value or '-')).encode('ascii', 'ignore').decode('ascii')
+
+
+def _font(size, bold=False):
+    candidates = [
+        settings.BASE_DIR / 'static' / 'fonts' / ('Arial Bold.ttf' if bold else 'Arial.ttf'),
+        settings.BASE_DIR / 'static' / 'fonts' / ('arialbd.ttf' if bold else 'arial.ttf'),
+        settings.BASE_DIR / 'static' / 'fonts' / ('DejaVuSans-Bold.ttf' if bold else 'DejaVuSans.ttf'),
+        settings.BASE_DIR / 'static' / 'propostas' / 'fonts' / ('Arial Bold.ttf' if bold else 'Arial.ttf'),
+        Path('C:/Windows/Fonts') / ('arialbd.ttf' if bold else 'arial.ttf'),
+        Path('/usr/share/fonts/truetype/dejavu') / ('DejaVuSans-Bold.ttf' if bold else 'DejaVuSans.ttf'),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return ImageFont.truetype(str(candidate), size)
+    return ImageFont.load_default()
+
+
+def _draw_wrapped_cell(draw, value, x, y, w, h, font, fill=(31, 41, 55), align='left'):
+    text = _clean_text(value)
+    avg_char_width = max(font.getlength('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz') / 52, 1)
+    max_chars = max(int((w - 18) / avg_char_width), 8)
+    lines = textwrap.wrap(text, width=max_chars) or ['']
+    line_height = font.getbbox('Ag')[3] - font.getbbox('Ag')[1] + 7
+    visible_lines = lines[: max(int((h - 12) / line_height), 1)]
+    y_text = y + max((h - (line_height * len(visible_lines))) // 2, 6)
+    for line in visible_lines:
+        if align == 'right':
+            x_text = x + w - font.getlength(line) - 10
+        elif align == 'center':
+            x_text = x + (w - font.getlength(line)) / 2
+        else:
+            x_text = x + 10
+        draw.text((x_text, y_text), line, font=font, fill=fill)
+        y_text += line_height
+
+
+def _draw_pdf_table(draw, headers, rows, x, y, widths, row_h=54):
+    border = (203, 213, 225)
+    header_fill = (229, 236, 240)
+    zebra = (248, 250, 252)
+    header_font = _font(20, True)
+    cell_font = _font(19)
+    x_cursor = x
+    for header, width in zip(headers, widths):
+        draw.rectangle((x_cursor, y, x_cursor + width, y + row_h), fill=header_fill, outline=border, width=2)
+        _draw_wrapped_cell(draw, header, x_cursor, y, width, row_h, header_font, fill=(15, 23, 42), align='center')
+        x_cursor += width
+    y += row_h
+    for index, row in enumerate(rows):
+        x_cursor = x
+        fill = zebra if index % 2 else (255, 255, 255)
+        for cell_index, (value, width) in enumerate(zip(row, widths)):
+            draw.rectangle((x_cursor, y, x_cursor + width, y + row_h), fill=fill, outline=border, width=1)
+            align = 'right' if cell_index >= len(row) - 3 else 'left'
+            if cell_index in (0, 2):
+                align = 'center'
+            _draw_wrapped_cell(draw, value, x_cursor, y, width, row_h, cell_font, align=align)
+            x_cursor += width
+        y += row_h
+    return y
 
 
 def _decimal(value):
@@ -413,12 +481,138 @@ def medicao_construtora_pdf(request, medicao_id):
 
 def medicao_empreiteiro_pdf(request, medicao_id):
     medicao = get_object_or_404(MedicaoEmpreiteiro.objects.select_related('obra', 'orcamento'), id=medicao_id)
-    response = HttpResponse(
-        _linhas_pdf_medicao(medicao, medicao.itens.select_related('item_orcamento'), 'Boletim de medicao de empreiteiro'),
-        content_type='application/pdf',
-    )
+    response = HttpResponse(_pdf_medicao_empreiteiro(medicao), content_type='application/pdf')
     response['Content-Disposition'] = f'inline; filename="medicao_empreiteiro_{medicao.numero}.pdf"'
     return response
+
+
+def _pdf_medicao_empreiteiro(medicao):
+    itens = list(medicao.itens.select_related('item_orcamento'))
+    page_w, page_h = 1654, 2339
+    margin = 92
+    table_w = page_w - (margin * 2)
+    rows_per_page = 25 if medicao.tipo == MedicaoEmpreiteiro.TIPO_SIMPLES else 22
+    chunks = [itens[i : i + rows_per_page] for i in range(0, len(itens), rows_per_page)] or [[]]
+    pages = []
+
+    for page_index, chunk in enumerate(chunks):
+        image = Image.new('RGB', (page_w, page_h), 'white')
+        draw = ImageDraw.Draw(image)
+        navy = (15, 23, 42)
+        muted = (100, 116, 139)
+        border = (203, 213, 225)
+        soft = (248, 250, 252)
+
+        draw.rectangle((0, 0, page_w, 130), fill=navy)
+        draw.text((margin, 42), 'BOLETIM DE MEDICAO DE EMPREITEIRO', font=_font(34, True), fill='white')
+        draw.text(
+            (page_w - margin - 330, 50),
+            f'Medicao no {medicao.numero}',
+            font=_font(24, True),
+            fill=(226, 232, 240),
+        )
+
+        y = 170
+        draw.rounded_rectangle((margin, y, page_w - margin, y + 235), radius=10, fill=soft, outline=border, width=2)
+        info = [
+            ('Empreiteiro', medicao.empreiteiro),
+            ('CPF/CNPJ', medicao.cpf_cnpj or '-'),
+            ('PIX', medicao.pix or '-'),
+            ('Obra', medicao.obra or getattr(medicao.orcamento, 'obra', '-') or '-'),
+            ('Periodo', f'{medicao.periodo_inicio:%d/%m/%Y} a {medicao.periodo_fim:%d/%m/%Y}'),
+            ('Data da medicao', f'{medicao.data_medicao:%d/%m/%Y}'),
+        ]
+        col_w = table_w / 3
+        row_h = 105
+        for index, (label, value) in enumerate(info):
+            col = index % 3
+            row = index // 3
+            x0 = int(margin + col * col_w)
+            y0 = y + 18 + row * row_h
+            draw.text((x0 + 18, y0), label.upper(), font=_font(17, True), fill=muted)
+            _draw_wrapped_cell(draw, value, x0 + 8, y0 + 26, int(col_w - 16), 60, _font(21), fill=navy)
+
+        y += 285
+        if medicao.tipo == MedicaoEmpreiteiro.TIPO_SIMPLES:
+            headers = ['Item', 'Descricao', 'Und', 'Qtd', 'Valor unit.', 'Total']
+            widths = [110, 610, 105, 150, 245, 250]
+            rows = [
+                [
+                    item.item or '-',
+                    item.descricao,
+                    item.unidade or '-',
+                    f'{item.quantidade_periodo:.4f}',
+                    _money(item.valor_unitario),
+                    _money(item.valor_periodo),
+                ]
+                for item in chunk
+            ]
+        else:
+            headers = ['Item', 'Descricao', 'Und', 'Anterior', 'Periodo', 'Atual', 'Saldo', 'Total']
+            widths = [95, 500, 85, 135, 135, 135, 135, 250]
+            rows = [
+                [
+                    item.item or '-',
+                    item.descricao,
+                    item.unidade or '-',
+                    f'{item.quantidade_acumulada_anterior:.4f}',
+                    f'{item.quantidade_periodo:.4f}',
+                    f'{item.quantidade_acumulada_atual:.4f}',
+                    f'{item.saldo_quantidade:.4f}',
+                    _money(item.valor_periodo),
+                ]
+                for item in chunk
+            ]
+
+        y = _draw_pdf_table(draw, headers, rows, margin, y, widths)
+
+        if page_index == len(chunks) - 1:
+            y += 35
+            summary_x = page_w - margin - 540
+            summary_w = 540
+            summary_rows = [
+                ('Subtotal medido', medicao.subtotal_periodo),
+                ('Retencao tecnica', -medicao.retencao_tecnica),
+                ('Desconto adicional', -medicao.desconto_adicional),
+                ('Total liquido', medicao.total_liquido),
+            ]
+            draw.rounded_rectangle((summary_x, y, summary_x + summary_w, y + 240), radius=8, fill=soft, outline=border, width=2)
+            row_y = y + 18
+            for label, value in summary_rows:
+                is_total = label == 'Total liquido'
+                draw.text((summary_x + 24, row_y), label, font=_font(21, is_total), fill=navy)
+                amount = _money(abs(value))
+                if value < 0:
+                    amount = f'- {amount}'
+                draw.text(
+                    (summary_x + summary_w - 28 - _font(21, is_total).getlength(amount), row_y),
+                    amount,
+                    font=_font(21, is_total),
+                    fill=navy,
+                )
+                row_y += 52
+
+            if medicao.observacoes:
+                notes_y = min(y, page_h - 300)
+                draw.text((margin, notes_y), 'Observacoes', font=_font(20, True), fill=navy)
+                _draw_wrapped_cell(
+                    draw,
+                    medicao.observacoes,
+                    margin - 8,
+                    notes_y + 34,
+                    table_w - summary_w - 40,
+                    160,
+                    _font(19),
+                    fill=(51, 65, 85),
+                )
+
+        footer = f'Pagina {page_index + 1} de {len(chunks)}'
+        draw.text((page_w - margin - _font(17).getlength(footer), page_h - 60), footer, font=_font(17), fill=muted)
+        pages.append(image)
+
+    buffer = BytesIO()
+    pages[0].save(buffer, 'PDF', save_all=True, append_images=pages[1:], resolution=150)
+    return buffer.getvalue()
 
 
 def _xlsx_medicao(medicao, itens):
