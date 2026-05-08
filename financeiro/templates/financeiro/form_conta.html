@@ -34,6 +34,37 @@
                 </div>
                 {% endfor %}
             </div>
+            {% if item_formset %}
+            <div class="mt-4">
+                <h5 class="mb-3">Itens da OC</h5>
+                <p class="text-muted small mb-3">Use somente quando a despesa possuir OC. Informe o item e a quantidade faturada; o valor unitario vem da propria OC.</p>
+                {{ item_formset.management_form }}
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Item da OC</th>
+                                <th>Quantidade</th>
+                                <th>Excluir</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item_form in item_formset.forms %}
+                            <tr>
+                                {% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
+                                <td>{{ item_form.item_ordem_compra }}</td>
+                                <td style="max-width: 180px;">{{ item_form.quantidade }}</td>
+                                <td>{% if item_form.DELETE %}{{ item_form.DELETE }}{% endif %}</td>
+                            </tr>
+                            {% if item_form.errors %}
+                            <tr><td colspan="3" class="text-danger small">{{ item_form.errors }}</td></tr>
+                            {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
             <div class="d-flex gap-2 mt-4">
                 <button type="submit" class="btn btn-primary">Salvar</button>
                 <a href="{% url 'financeiro_home' %}" class="btn btn-outline-secondary">Cancelar</a>
@@ -46,35 +77,41 @@
 {% block extra_scripts %}
 <script>
     const ordemCompraSelect = document.getElementById('id_ordem_compra');
-    const itemOrdemSelect = document.getElementById('id_item_ordem_compra');
+    const itemOrdemSelects = Array.from(document.querySelectorAll('select[id$="-item_ordem_compra"]'));
 
-    if (ordemCompraSelect && itemOrdemSelect) {
-        const todasOpcoesItem = Array.from(itemOrdemSelect.options).map((option) => ({
-            value: option.value,
-            text: option.text,
-            selected: option.selected,
-        }));
+    if (ordemCompraSelect && itemOrdemSelects.length) {
+        const opcoesPorSelect = new Map(itemOrdemSelects.map((select) => [
+            select.id,
+            Array.from(select.options).map((option) => ({
+                value: option.value,
+                text: option.text,
+                selected: option.selected,
+            }))
+        ]));
 
         function filtrarItensOc() {
             const ordemId = ordemCompraSelect.value;
-            const valorAtual = itemOrdemSelect.value;
-            itemOrdemSelect.innerHTML = '';
+            itemOrdemSelects.forEach((select) => {
+                const valorAtual = select.value;
+                select.innerHTML = '';
 
-            todasOpcoesItem.forEach((optionData) => {
-                if (!optionData.value) {
-                    itemOrdemSelect.add(new Option(optionData.text, optionData.value));
-                    return;
-                }
-                const texto = optionData.text || '';
-                if (!ordemId || texto.includes(`OC ${ordemId}`) || texto.includes(`(${ordemId})`)) {
-                    const option = new Option(optionData.text, optionData.value);
-                    option.selected = optionData.value === valorAtual;
-                    itemOrdemSelect.add(option);
-                }
+                opcoesPorSelect.get(select.id).forEach((optionData) => {
+                    if (!optionData.value) {
+                        select.add(new Option(optionData.text, optionData.value));
+                        return;
+                    }
+                    const texto = optionData.text || '';
+                    if (!ordemId || texto.includes(`OC ${ordemId} `) || texto.includes(`OC ${ordemId} -`)) {
+                        const option = new Option(optionData.text, optionData.value);
+                        option.selected = optionData.value === valorAtual;
+                        select.add(option);
+                    }
+                });
             });
         }
 
         ordemCompraSelect.addEventListener('change', filtrarItensOc);
+        filtrarItensOc();
     }
 </script>
 {% endblock %}

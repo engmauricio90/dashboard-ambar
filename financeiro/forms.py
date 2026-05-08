@@ -1,8 +1,9 @@
 from django import forms
+from django.forms import inlineformset_factory
 
 from obras.forms import BootstrapForm, BootstrapModelForm
 
-from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor
+from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor, ItemContaPagarOrdemCompra
 
 
 class FornecedorForm(BootstrapModelForm):
@@ -71,8 +72,6 @@ class ContaPagarForm(BootstrapModelForm):
         super().__init__(*args, **kwargs)
         from controles.models import ItemOrdemCompraGeral, OrdemCompraGeral
 
-        self.fields['quantidade_oc'].required = False
-        self.fields['valor_unitario_oc'].required = False
         self.fields['valor_pago'].required = False
         self.fields['ordem_compra'].queryset = OrdemCompraGeral.objects.all()
         self.fields['ordem_compra'].empty_label = 'Nao possui OC'
@@ -85,14 +84,6 @@ class ContaPagarForm(BootstrapModelForm):
         elif self.initial.get('ordem_compra'):
             ordem_id = self.initial['ordem_compra']
 
-        if ordem_id:
-            self.fields['item_ordem_compra'].queryset = ItemOrdemCompraGeral.objects.filter(ordem_id=ordem_id)
-        else:
-            self.fields['item_ordem_compra'].queryset = ItemOrdemCompraGeral.objects.all()
-        self.fields['item_ordem_compra'].empty_label = 'Selecione o item da OC'
-        self.fields['item_ordem_compra'].label_from_instance = (
-            lambda item: f'OC {item.ordem_id} - {item.item:02d} - {item.descricao}'
-        )
 
     class Meta:
         model = ContaPagar
@@ -103,10 +94,7 @@ class ContaPagarForm(BootstrapModelForm):
             'centro_custo',
             'categoria',
             'ordem_compra',
-            'item_ordem_compra',
             'numero_nf',
-            'quantidade_oc',
-            'valor_unitario_oc',
             'descricao',
             'data_emissao',
             'data_vencimento',
@@ -120,18 +108,13 @@ class ContaPagarForm(BootstrapModelForm):
             'data_emissao': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'data_vencimento': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'data_pagamento': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
-            'quantidade_oc': forms.NumberInput(attrs={'step': '0.01'}),
-            'valor_unitario_oc': forms.NumberInput(attrs={'step': '0.01'}),
             'valor': forms.NumberInput(attrs={'step': '0.01'}),
             'valor_pago': forms.NumberInput(attrs={'step': '0.01'}),
             'observacoes': forms.Textarea(attrs={'rows': 3}),
         }
         labels = {
             'ordem_compra': 'Ordem de compra',
-            'item_ordem_compra': 'Item da OC',
             'numero_nf': 'Numero da NF',
-            'quantidade_oc': 'Quantidade faturada da OC',
-            'valor_unitario_oc': 'Valor unitario da OC',
             'valor_pago': 'Valor pago efetivamente',
         }
 
@@ -140,21 +123,78 @@ class ContaPagarForm(BootstrapModelForm):
         status = cleaned_data.get('status')
         data_pagamento = cleaned_data.get('data_pagamento')
         ordem_compra = cleaned_data.get('ordem_compra')
-        item_ordem_compra = cleaned_data.get('item_ordem_compra')
         numero_nf = cleaned_data.get('numero_nf')
-        quantidade_oc = cleaned_data.get('quantidade_oc')
         if status == ContaPagar.STATUS_PAGO and not data_pagamento:
             self.add_error('data_pagamento', 'Informe a data de pagamento.')
         if ordem_compra:
-            if not item_ordem_compra:
-                self.add_error('item_ordem_compra', 'Selecione o item da OC para vincular a nota.')
             if not numero_nf:
                 self.add_error('numero_nf', 'Informe o numero da NF para vincular a OC.')
-            if not quantidade_oc or quantidade_oc <= 0:
-                self.add_error('quantidade_oc', 'Informe a quantidade faturada da OC.')
-            if item_ordem_compra and item_ordem_compra.ordem_id != ordem_compra.id:
-                self.add_error('item_ordem_compra', 'O item selecionado nao pertence a OC.')
         return cleaned_data
+
+
+class ItemContaPagarOrdemCompraForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        ordem = kwargs.pop('ordem', None)
+        super().__init__(*args, **kwargs)
+        from controles.models import ItemOrdemCompraGeral
+
+        self.fields['item_ordem_compra'].queryset = (
+            ItemOrdemCompraGeral.objects.filter(ordem=ordem) if ordem else ItemOrdemCompraGeral.objects.all()
+        )
+        self.fields['item_ordem_compra'].empty_label = 'Selecione o item'
+        self.fields['item_ordem_compra'].label_from_instance = (
+            lambda item: f'OC {item.ordem_id} - {item.item:02d} - {item.descricao} - R$ {item.valor_unitario:.2f}'
+        )
+        for field in self.fields.values():
+            field.required = False
+
+    def has_changed(self):
+        if self.data and self.prefix and not self.data.get(f'{self.prefix}-id'):
+            relevant_fields = ['item_ordem_compra', 'quantidade']
+            if not any((self.data.get(f'{self.prefix}-{field}') or '').strip() for field in relevant_fields):
+                return False
+        return super().has_changed()
+
+    class Meta:
+        model = ItemContaPagarOrdemCompra
+        fields = ['item_ordem_compra', 'quantidade']
+        widgets = {
+            'quantidade': forms.NumberInput(attrs={'step': '0.01'}),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        marked_delete = cleaned_data.get('DELETE')
+        if marked_delete:
+            return cleaned_data
+        item = cleaned_data.get('item_ordem_compra')
+        quantidade = cleaned_data.get('quantidade')
+        if item or quantidade not in (None, ''):
+            if not item:
+                self.add_error('item_ordem_compra', 'Selecione o item da OC.')
+            if not quantidade or quantidade <= 0:
+                self.add_error('quantidade', 'Informe a quantidade faturada.')
+        return cleaned_data
+
+
+class BaseItemContaPagarOrdemCompraFormSet(forms.BaseInlineFormSet):
+    def __init__(self, *args, **kwargs):
+        self.ordem = kwargs.pop('ordem', None)
+        super().__init__(*args, **kwargs)
+
+    def _construct_form(self, i, **kwargs):
+        kwargs['ordem'] = self.ordem
+        return super()._construct_form(i, **kwargs)
+
+
+ItemContaPagarOrdemCompraFormSet = inlineformset_factory(
+    ContaPagar,
+    ItemContaPagarOrdemCompra,
+    form=ItemContaPagarOrdemCompraForm,
+    formset=BaseItemContaPagarOrdemCompraFormSet,
+    extra=5,
+    can_delete=True,
+)
 
 
 class FinanceiroFiltroForm(BootstrapForm):

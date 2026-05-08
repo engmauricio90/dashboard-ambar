@@ -8,7 +8,7 @@ from django.urls import reverse
 from obras.models import DespesaObra, NotaFiscal, Obra
 from controles.models import ItemOrdemCompraGeral, NotaFiscalOrdemCompraGeral, OrdemCompraGeral
 
-from .models import CentroCusto, ContaPagar, ContaReceber
+from .models import CentroCusto, ContaPagar, ContaReceber, ItemContaPagarOrdemCompra
 
 
 class FinanceiroIntegracaoObraTests(TestCase):
@@ -74,6 +74,14 @@ class FinanceiroIntegracaoObraTests(TestCase):
             unidade='ton',
             valor_unitario=Decimal('80.00'),
         )
+        item_2 = ItemOrdemCompraGeral.objects.create(
+            ordem=ordem,
+            item=2,
+            descricao='Pedrisco',
+            quantidade=Decimal('100.00'),
+            unidade='ton',
+            valor_unitario=Decimal('50.00'),
+        )
 
         conta = ContaPagar.objects.create(
             fornecedor='Fornecedor OC',
@@ -81,24 +89,27 @@ class FinanceiroIntegracaoObraTests(TestCase):
             centro_custo=self.centro,
             categoria='material',
             ordem_compra=ordem,
-            item_ordem_compra=item,
             numero_nf='1001',
-            quantidade_oc=Decimal('30.00'),
-            valor_unitario_oc=Decimal('82.00'),
             descricao='NF 1001 - po de brita',
             data_emissao=date(2026, 5, 8),
             data_vencimento=date(2026, 5, 20),
-            valor=Decimal('2460.00'),
+            valor=Decimal('0.00'),
         )
+        ItemContaPagarOrdemCompra.objects.create(conta=conta, item_ordem_compra=item, quantidade=Decimal('30.00'))
+        ItemContaPagarOrdemCompra.objects.create(conta=conta, item_ordem_compra=item_2, quantidade=Decimal('10.00'))
+        conta.recalcular_valor_por_itens_oc()
+        conta.save()
 
-        nota = NotaFiscalOrdemCompraGeral.objects.get()
-        self.assertEqual(nota.conta_pagar, conta)
-        self.assertEqual(nota.ordem, ordem)
-        self.assertEqual(nota.item, item)
-        self.assertEqual(nota.numero, '1001')
-        self.assertEqual(nota.quantidade, Decimal('30.00'))
-        self.assertEqual(nota.valor_total, Decimal('2460.00'))
-        self.assertEqual(ordem.total_faturado, Decimal('2460.00'))
+        notas = NotaFiscalOrdemCompraGeral.objects.order_by('item__item')
+        self.assertEqual(notas.count(), 2)
+        self.assertEqual(notas[0].conta_pagar, conta)
+        self.assertEqual(notas[0].item, item)
+        self.assertEqual(notas[0].quantidade, Decimal('30.00'))
+        self.assertEqual(notas[0].valor_total, Decimal('2400.00'))
+        self.assertEqual(notas[1].item, item_2)
+        self.assertEqual(notas[1].valor_total, Decimal('500.00'))
+        self.assertEqual(conta.valor, Decimal('2900.00'))
+        self.assertEqual(ordem.total_faturado, Decimal('2900.00'))
         self.assertEqual(item.saldo_quantidade, Decimal('170.00'))
 
     def test_form_conta_pagar_permite_sem_oc(self):
@@ -111,10 +122,7 @@ class FinanceiroIntegracaoObraTests(TestCase):
                 'centro_custo': self.centro.id,
                 'categoria': 'material',
                 'ordem_compra': '',
-                'item_ordem_compra': '',
                 'numero_nf': '',
-                'quantidade_oc': '',
-                'valor_unitario_oc': '',
                 'descricao': 'Despesa sem OC',
                 'data_emissao': '2026-05-08',
                 'data_vencimento': '2026-05-20',
@@ -122,6 +130,20 @@ class FinanceiroIntegracaoObraTests(TestCase):
                 'valor': '100.00',
                 'status': ContaPagar.STATUS_ABERTO,
                 'observacoes': '',
+                'itens_oc-TOTAL_FORMS': '5',
+                'itens_oc-INITIAL_FORMS': '0',
+                'itens_oc-MIN_NUM_FORMS': '0',
+                'itens_oc-MAX_NUM_FORMS': '1000',
+                'itens_oc-0-item_ordem_compra': '',
+                'itens_oc-0-quantidade': '',
+                'itens_oc-1-item_ordem_compra': '',
+                'itens_oc-1-quantidade': '',
+                'itens_oc-2-item_ordem_compra': '',
+                'itens_oc-2-quantidade': '',
+                'itens_oc-3-item_ordem_compra': '',
+                'itens_oc-3-quantidade': '',
+                'itens_oc-4-item_ordem_compra': '',
+                'itens_oc-4-quantidade': '',
             },
         )
 
@@ -216,10 +238,7 @@ class FinanceiroIntegracaoObraTests(TestCase):
                 'centro_custo': '',
                 'categoria': 'material',
                 'ordem_compra': '',
-                'item_ordem_compra': '',
                 'numero_nf': '',
-                'quantidade_oc': '',
-                'valor_unitario_oc': '',
                 'descricao': 'Conta com juros',
                 'data_emissao': '2026-04-02',
                 'data_vencimento': '2026-04-20',
@@ -228,6 +247,20 @@ class FinanceiroIntegracaoObraTests(TestCase):
                 'valor_pago': '112.50',
                 'status': ContaPagar.STATUS_PAGO,
                 'observacoes': '',
+                'itens_oc-TOTAL_FORMS': '5',
+                'itens_oc-INITIAL_FORMS': '0',
+                'itens_oc-MIN_NUM_FORMS': '0',
+                'itens_oc-MAX_NUM_FORMS': '1000',
+                'itens_oc-0-item_ordem_compra': '',
+                'itens_oc-0-quantidade': '',
+                'itens_oc-1-item_ordem_compra': '',
+                'itens_oc-1-quantidade': '',
+                'itens_oc-2-item_ordem_compra': '',
+                'itens_oc-2-quantidade': '',
+                'itens_oc-3-item_ordem_compra': '',
+                'itens_oc-3-quantidade': '',
+                'itens_oc-4-item_ordem_compra': '',
+                'itens_oc-4-quantidade': '',
             },
         )
 

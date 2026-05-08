@@ -11,7 +11,14 @@ from django.utils import timezone
 
 from controles.views import _build_simple_pdf
 
-from .forms import CentroCustoForm, ContaPagarForm, ContaReceberForm, FinanceiroFiltroForm, FornecedorForm
+from .forms import (
+    CentroCustoForm,
+    ContaPagarForm,
+    ContaReceberForm,
+    FinanceiroFiltroForm,
+    FornecedorForm,
+    ItemContaPagarOrdemCompraFormSet,
+)
 from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor
 
 
@@ -33,6 +40,14 @@ def _base_receber():
 
 def _base_pagar():
     return ContaPagar.objects.select_related('obra', 'centro_custo', 'despesa_obra')
+
+
+def _formset_tem_itens_oc(formset):
+    return any(
+        form.cleaned_data.get('item_ordem_compra') and not form.cleaned_data.get('DELETE')
+        for form in formset.forms
+        if hasattr(form, 'cleaned_data')
+    )
 
 
 def _filtrar_contas(request):
@@ -293,30 +308,57 @@ def baixar_conta_receber(request, conta_id):
 def nova_conta_pagar(request):
     if request.method == 'POST':
         form = ContaPagarForm(request.POST)
-        if form.is_valid():
-            form.save()
-            messages.success(request, 'Conta a pagar cadastrada com sucesso.')
-            return redirect('lista_contas_pagar')
+        ordem = form.data.get('ordem_compra') or None
+        formset = ItemContaPagarOrdemCompraFormSet(request.POST, ordem=ordem, prefix='itens_oc')
+        if form.is_valid() and formset.is_valid():
+            if form.cleaned_data.get('ordem_compra') and not _formset_tem_itens_oc(formset):
+                form.add_error('ordem_compra', 'Informe ao menos um item da OC.')
+            else:
+                conta = form.save()
+                formset.instance = conta
+                formset.save()
+                conta.recalcular_valor_por_itens_oc()
+                conta.save()
+                messages.success(request, 'Conta a pagar cadastrada com sucesso.')
+                return redirect('lista_contas_pagar')
     else:
         initial = {}
         ordem_id = request.GET.get('ordem_compra')
         if ordem_id:
             initial['ordem_compra'] = ordem_id
         form = ContaPagarForm(initial=initial)
-    return render(request, 'financeiro/form_conta.html', {'form': form, 'titulo': 'Nova Conta a Pagar'})
+        formset = ItemContaPagarOrdemCompraFormSet(ordem=ordem_id, prefix='itens_oc')
+    return render(
+        request,
+        'financeiro/form_conta.html',
+        {'form': form, 'item_formset': formset, 'titulo': 'Nova Conta a Pagar'},
+    )
 
 
 def editar_conta_pagar(request, conta_id):
     conta = get_object_or_404(ContaPagar, id=conta_id)
     if request.method == 'POST':
         form = ContaPagarForm(request.POST, instance=conta)
-        if form.is_valid():
-            form.save()
-            messages.success(request, 'Conta a pagar atualizada com sucesso.')
-            return redirect('lista_contas_pagar')
+        ordem = form.data.get('ordem_compra') or None
+        formset = ItemContaPagarOrdemCompraFormSet(request.POST, instance=conta, ordem=ordem, prefix='itens_oc')
+        if form.is_valid() and formset.is_valid():
+            if form.cleaned_data.get('ordem_compra') and not _formset_tem_itens_oc(formset):
+                form.add_error('ordem_compra', 'Informe ao menos um item da OC.')
+            else:
+                conta = form.save()
+                formset.save()
+                conta.recalcular_valor_por_itens_oc()
+                conta.save()
+                messages.success(request, 'Conta a pagar atualizada com sucesso.')
+                return redirect('lista_contas_pagar')
     else:
         form = ContaPagarForm(instance=conta)
-    return render(request, 'financeiro/form_conta.html', {'form': form, 'titulo': 'Editar Conta a Pagar'})
+        formset = ItemContaPagarOrdemCompraFormSet(instance=conta, ordem=conta.ordem_compra, prefix='itens_oc')
+    return render(
+        request,
+        'financeiro/form_conta.html',
+        {'form': form, 'item_formset': formset, 'titulo': 'Editar Conta a Pagar'},
+    )
 
 
 def baixar_conta_pagar(request, conta_id):

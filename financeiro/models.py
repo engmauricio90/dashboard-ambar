@@ -334,37 +334,79 @@ class ContaPagar(models.Model):
     def sincronizar_ordem_compra(self):
         from controles.models import NotaFiscalOrdemCompraGeral
 
-        nota_existente = getattr(self, 'nota_ordem_compra', None)
         if self.status == self.STATUS_CANCELADO:
-            if nota_existente:
-                nota_existente.status = NotaFiscalOrdemCompraGeral.STATUS_CANCELADA
-                nota_existente.save(update_fields=['status', 'updated_at'])
+            self.notas_ordem_compra.update(status=NotaFiscalOrdemCompraGeral.STATUS_CANCELADA)
             return
 
-        if not self.ordem_compra_id or not self.item_ordem_compra_id or not self.numero_nf:
-            if nota_existente:
-                nota_existente.delete()
+        if not self.ordem_compra_id or not self.numero_nf:
+            self.notas_ordem_compra.all().delete()
             return
 
-        valor_unitario = self.valor_unitario_oc or self.item_ordem_compra.valor_unitario
-        quantidade = self.quantidade_oc or Decimal('0')
-        defaults = {
-            'ordem': self.ordem_compra,
-            'item': self.item_ordem_compra,
-            'numero': self.numero_nf,
-            'data_emissao': self.data_emissao,
-            'data_vencimento': self.data_vencimento,
-            'quantidade': quantidade,
-            'valor_unitario': valor_unitario,
-            'valor_total': self.valor,
-            'status': NotaFiscalOrdemCompraGeral.STATUS_LANCADA_FINANCEIRO,
-            'observacoes': self.observacoes,
-        }
+        itens = list(self.itens_ordem_compra.select_related('item_ordem_compra'))
+        if not itens and self.item_ordem_compra_id and self.quantidade_oc:
+            itens = [
+                ItemContaPagarOrdemCompra(
+                    conta=self,
+                    item_ordem_compra=self.item_ordem_compra,
+                    quantidade=self.quantidade_oc,
+                )
+            ]
 
-        if nota_existente:
-            for field, value in defaults.items():
-                setattr(nota_existente, field, value)
-            nota_existente.save()
-            return
+        item_ids = [item.item_ordem_compra_id for item in itens if item.item_ordem_compra_id]
+        self.notas_ordem_compra.exclude(item_id__in=item_ids).delete()
+        for item_conta in itens:
+            item_oc = item_conta.item_ordem_compra
+            if not item_oc:
+                continue
+            NotaFiscalOrdemCompraGeral.objects.update_or_create(
+                conta_pagar=self,
+                item=item_oc,
+                defaults={
+                    'ordem': self.ordem_compra,
+                    'numero': self.numero_nf,
+                    'data_emissao': self.data_emissao,
+                    'data_vencimento': self.data_vencimento,
+                    'quantidade': item_conta.quantidade,
+                    'valor_unitario': item_oc.valor_unitario,
+                    'valor_total': item_conta.valor_total,
+                    'status': NotaFiscalOrdemCompraGeral.STATUS_LANCADA_FINANCEIRO,
+                    'observacoes': self.observacoes,
+                },
+            )
 
-        NotaFiscalOrdemCompraGeral.objects.create(conta_pagar=self, **defaults)
+    def recalcular_valor_por_itens_oc(self):
+        total = sum((item.valor_total for item in self.itens_ordem_compra.select_related('item_ordem_compra')), Decimal('0'))
+        if total:
+            self.valor = total
+            if self.status == self.STATUS_PAGO and not self.valor_pago:
+                self.valor_pago = total
+
+
+class ItemContaPagarOrdemCompra(models.Model):
+    conta = models.ForeignKey(
+        ContaPagar,
+        on_delete=models.CASCADE,
+        related_name='itens_ordem_compra',
+    )
+    item_ordem_compra = models.ForeignKey(
+        'controles.ItemOrdemCompraGeral',
+        on_delete=models.PROTECT,
+        related_name='itens_contas_pagar',
+    )
+    quantidade = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    class Meta:
+        ordering = ['id']
+        verbose_name = 'Item de OC da conta a pagar'
+        verbose_name_plural = 'Itens de OC das contas a pagar'
+        constraints = [
+            models.UniqueConstraint(fields=['conta', 'item_ordem_compra'], name='unique_item_oc_por_conta_pagar')
+        ]
+
+    @property
+    def valor_unitario(self):
+        return self.item_ordem_compra.valor_unitario
+
+    @property
+    def valor_total(self):
+        return self.quantidade * self.valor_unitario

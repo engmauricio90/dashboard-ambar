@@ -449,12 +449,12 @@ class NotaFiscalOrdemCompraGeral(models.Model):
         on_delete=models.PROTECT,
         related_name='notas_fiscais',
     )
-    conta_pagar = models.OneToOneField(
+    conta_pagar = models.ForeignKey(
         'financeiro.ContaPagar',
         on_delete=models.SET_NULL,
         blank=True,
         null=True,
-        related_name='nota_ordem_compra',
+        related_name='notas_ordem_compra',
     )
     numero = models.CharField(max_length=50)
     data_emissao = models.DateField()

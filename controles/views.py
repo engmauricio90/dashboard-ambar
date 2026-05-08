@@ -512,6 +512,8 @@ def gerar_conta_pagar_nf_ordem_compra(request, nota_id):
         messages.info(request, 'Esta NF ja possui conta a pagar vinculada.')
         return redirect('detalhe_ordem_compra_geral', ordem_id=nota.ordem_id)
 
+    from financeiro.models import ItemContaPagarOrdemCompra
+
     conta = ContaPagar.objects.create(
         fornecedor=nota.ordem.fornecedor,
         fornecedor_cadastro=nota.ordem.fornecedor_cadastro,
@@ -523,6 +525,11 @@ def gerar_conta_pagar_nf_ordem_compra(request, nota_id):
         data_vencimento=nota.data_vencimento or nota.data_emissao,
         valor=nota.valor_total,
         observacoes=f'Gerada a partir da OC {nota.ordem.numero}. {nota.observacoes}'.strip(),
+    )
+    ItemContaPagarOrdemCompra.objects.create(
+        conta=conta,
+        item_ordem_compra=nota.item,
+        quantidade=nota.quantidade,
     )
     nota.conta_pagar = conta
     nota.status = NotaFiscalOrdemCompraGeral.STATUS_LANCADA_FINANCEIRO
