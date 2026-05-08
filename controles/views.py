@@ -11,7 +11,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from PIL import Image, ImageDraw, ImageFont
 
-from financeiro.models import Fornecedor
+from financeiro.models import ContaPagar, Fornecedor
 
 from .forms import (
     ApontamentoMaquinaLocacaoForm,
@@ -26,6 +26,7 @@ from .forms import (
     MaquinaLocacaoCatalogoForm,
     NotaFiscalCombustivelForm,
     NotaFiscalLocacaoMaquinaForm,
+    NotaFiscalOrdemCompraGeralForm,
     OrcamentoRadarObraForm,
     OrdemCompraCombustivelForm,
     OrdemCompraGeralForm,
@@ -48,6 +49,7 @@ from .models import (
     MaquinaLocacaoCatalogo,
     NotaFiscalCombustivel,
     NotaFiscalLocacaoMaquina,
+    NotaFiscalOrdemCompraGeral,
     OrcamentoRadarObra,
     OrdemCompraCombustivel,
     OrdemCompraGeral,
@@ -56,8 +58,6 @@ from .models import (
     SolicitanteConcretagem,
     VeiculoMaquina,
 )
-
-
 def _pdf_escape(value):
     text = unicodedata.normalize('NFKD', str(value)).encode('ascii', 'ignore').decode('ascii')
     return text.replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)')
@@ -450,7 +450,14 @@ def nova_ordem_compra_geral(request):
 
 
 def detalhe_ordem_compra_geral(request, ordem_id):
-    ordem = get_object_or_404(OrdemCompraGeral.objects.prefetch_related('itens'), id=ordem_id)
+    ordem = get_object_or_404(
+        OrdemCompraGeral.objects.select_related('obra', 'centro_custo').prefetch_related(
+            'itens__notas_fiscais',
+            'notas_fiscais__item',
+            'notas_fiscais__conta_pagar',
+        ),
+        id=ordem_id,
+    )
     return render(request, 'controles/detalhe_ordem_compra_geral.html', {'ordem': ordem})
 
 
@@ -470,6 +477,70 @@ def editar_ordem_compra_geral(request, ordem_id):
             'fornecedores_json': _fornecedores_json(),
         },
     )
+
+
+def nova_nf_ordem_compra_geral(request, ordem_id):
+    ordem = get_object_or_404(OrdemCompraGeral.objects.prefetch_related('itens'), id=ordem_id)
+    if request.method == 'POST':
+        form = NotaFiscalOrdemCompraGeralForm(request.POST, ordem=ordem)
+        if form.is_valid():
+            nota = form.save(commit=False)
+            nota.ordem = ordem
+            nota.save()
+            messages.success(request, 'Nota vinculada a OC com sucesso.')
+            return redirect('detalhe_ordem_compra_geral', ordem_id=ordem.id)
+    else:
+        form = NotaFiscalOrdemCompraGeralForm(ordem=ordem)
+    return render(
+        request,
+        'controles/form_nf_ordem_compra_geral.html',
+        {'form': form, 'ordem': ordem, 'titulo': 'Nova NF da OC'},
+    )
+
+
+def editar_nf_ordem_compra_geral(request, nota_id):
+    nota = get_object_or_404(NotaFiscalOrdemCompraGeral.objects.select_related('ordem'), id=nota_id)
+    if request.method == 'POST':
+        form = NotaFiscalOrdemCompraGeralForm(request.POST, instance=nota, ordem=nota.ordem)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Nota da OC atualizada com sucesso.')
+            return redirect('detalhe_ordem_compra_geral', ordem_id=nota.ordem_id)
+    else:
+        form = NotaFiscalOrdemCompraGeralForm(instance=nota, ordem=nota.ordem)
+    return render(
+        request,
+        'controles/form_nf_ordem_compra_geral.html',
+        {'form': form, 'ordem': nota.ordem, 'nota': nota, 'titulo': 'Editar NF da OC'},
+    )
+
+
+def gerar_conta_pagar_nf_ordem_compra(request, nota_id):
+    nota = get_object_or_404(
+        NotaFiscalOrdemCompraGeral.objects.select_related('ordem', 'item', 'conta_pagar'),
+        id=nota_id,
+    )
+    if nota.conta_pagar_id:
+        messages.info(request, 'Esta NF ja possui conta a pagar vinculada.')
+        return redirect('detalhe_ordem_compra_geral', ordem_id=nota.ordem_id)
+
+    conta = ContaPagar.objects.create(
+        fornecedor=nota.ordem.fornecedor,
+        fornecedor_cadastro=nota.ordem.fornecedor_cadastro,
+        obra=nota.ordem.obra,
+        centro_custo=nota.ordem.centro_custo,
+        categoria=nota.ordem.categoria_despesa or 'material',
+        descricao=f'NF {nota.numero} - OC {nota.ordem.numero} - {nota.item.descricao}',
+        data_emissao=nota.data_emissao,
+        data_vencimento=nota.data_vencimento or nota.data_emissao,
+        valor=nota.valor_total,
+        observacoes=f'Gerada a partir da OC {nota.ordem.numero}. {nota.observacoes}'.strip(),
+    )
+    nota.conta_pagar = conta
+    nota.status = NotaFiscalOrdemCompraGeral.STATUS_LANCADA_FINANCEIRO
+    nota.save(update_fields=['conta_pagar', 'status', 'updated_at'])
+    messages.success(request, 'Conta a pagar gerada a partir da NF da OC.')
+    return redirect('detalhe_ordem_compra_geral', ordem_id=nota.ordem_id)
 
 
 def ordem_compra_geral_pdf(request, ordem_id):

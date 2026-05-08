@@ -9,6 +9,7 @@
         <p class="text-muted mb-0">{{ ordem.fornecedor }} | {{ ordem.data_emissao }} | {{ ordem.get_status_display }}</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'nova_nf_ordem_compra_geral' ordem.id %}" class="btn btn-success">Vincular NF</a>
         <a href="{% url 'ordem_compra_geral_pdf' ordem.id %}" class="btn btn-outline-dark">Gerar PDF</a>
         <a href="{% url 'editar_ordem_compra_geral' ordem.id %}" class="btn btn-primary">Editar OC</a>
         <a href="{% url 'lista_ordens_compra_gerais' %}" class="btn btn-secondary">Voltar</a>
@@ -18,8 +19,8 @@
 <div class="row g-3 mb-4">
     <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>Status</h6><h4>{{ ordem.get_status_display }}</h4></div></div></div>
     <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>Total</h6><h4>R$ {{ ordem.total|floatformat:2 }}</h4></div></div></div>
-    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>Itens</h6><h4>{{ ordem.itens.count }}</h4></div></div></div>
-    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>Comprador</h6><h4>{{ ordem.comprador|default:'-' }}</h4></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>Faturado</h6><h4>R$ {{ ordem.total_faturado|floatformat:2 }}</h4></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>Saldo</h6><h4>R$ {{ ordem.saldo_financeiro|floatformat:2 }}</h4></div></div></div>
 </div>
 
 <div class="card shadow-sm mb-4">
@@ -29,6 +30,9 @@
             <div class="col-md-4"><strong>Compradora:</strong> {{ ordem.empresa_razao_social }}</div>
             <div class="col-md-4"><strong>CNPJ:</strong> {{ ordem.empresa_cnpj|default:'-' }}</div>
             <div class="col-md-4"><strong>Endereco:</strong> {{ ordem.empresa_endereco|default:'-' }}</div>
+            <div class="col-md-4"><strong>Obra:</strong> {{ ordem.obra|default:'-' }}</div>
+            <div class="col-md-4"><strong>Centro:</strong> {{ ordem.centro_custo|default:'-' }}</div>
+            <div class="col-md-4"><strong>Categoria:</strong> {{ ordem.categoria_despesa|default:'-' }}</div>
             <div class="col-md-4"><strong>Fornecedor:</strong> {{ ordem.fornecedor }}</div>
             <div class="col-md-4"><strong>CPF/CNPJ:</strong> {{ ordem.fornecedor_cpf_cnpj|default:'-' }}</div>
             <div class="col-md-4"><strong>Fone:</strong> {{ ordem.fornecedor_fone|default:'-' }}</div>
@@ -51,6 +55,10 @@
                         <th>Un</th>
                         <th>Vlr.</th>
                         <th>Total</th>
+                        <th>Qtd faturada</th>
+                        <th>Saldo qtd</th>
+                        <th>Valor faturado</th>
+                        <th>Dif.</th>
                         <th>Entrega</th>
                     </tr>
                 </thead>
@@ -63,10 +71,64 @@
                         <td>{{ item.unidade }}</td>
                         <td>R$ {{ item.valor_unitario|floatformat:2 }}</td>
                         <td>R$ {{ item.valor_total|floatformat:2 }}</td>
+                        <td>{{ item.quantidade_faturada|floatformat:2 }}</td>
+                        <td>{{ item.saldo_quantidade|floatformat:2 }}</td>
+                        <td>R$ {{ item.valor_faturado|floatformat:2 }}</td>
+                        <td>R$ {{ item.diferenca_valor|floatformat:2 }}</td>
                         <td>{{ item.data_entrega|default:'-' }}</td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="7">Nenhum item cadastrado.</td></tr>
+                    <tr><td colspan="11">Nenhum item cadastrado.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <h5 class="mb-0">Notas vinculadas a OC</h5>
+            <a href="{% url 'nova_nf_ordem_compra_geral' ordem.id %}" class="btn btn-sm btn-success">Nova NF</a>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>NF</th>
+                        <th>Emissao</th>
+                        <th>Vencimento</th>
+                        <th>Item</th>
+                        <th>Qtd</th>
+                        <th>Unit.</th>
+                        <th>Total</th>
+                        <th>Status</th>
+                        <th>Financeiro</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for nota in ordem.notas_fiscais.all %}
+                    <tr>
+                        <td>{{ nota.numero }}</td>
+                        <td>{{ nota.data_emissao }}</td>
+                        <td>{{ nota.data_vencimento|default:'-' }}</td>
+                        <td>{{ nota.item.item|stringformat:"02d" }} - {{ nota.item.descricao }}</td>
+                        <td>{{ nota.quantidade|floatformat:2 }}</td>
+                        <td>R$ {{ nota.valor_unitario|floatformat:2 }}</td>
+                        <td>R$ {{ nota.valor_total|floatformat:2 }}</td>
+                        <td>{{ nota.get_status_display }}</td>
+                        <td>{% if nota.conta_pagar %}Conta #{{ nota.conta_pagar.id }}{% else %}-{% endif %}</td>
+                        <td class="text-end">
+                            {% if not nota.conta_pagar and nota.status != 'cancelada' %}
+                            <a href="{% url 'gerar_conta_pagar_nf_ordem_compra' nota.id %}" class="btn btn-sm btn-outline-success">Gerar conta</a>
+                            {% endif %}
+                            <a href="{% url 'editar_nf_ordem_compra_geral' nota.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="10">Nenhuma NF vinculada.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

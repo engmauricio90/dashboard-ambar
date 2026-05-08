@@ -283,6 +283,21 @@ class OrdemCompraGeral(models.Model):
     data_emissao = models.DateField(default=timezone.localdate)
     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='emitida')
     comprador = models.CharField(max_length=120, blank=True)
+    obra = models.ForeignKey(
+        'obras.Obra',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='ordens_compra_gerais',
+    )
+    centro_custo = models.ForeignKey(
+        'financeiro.CentroCusto',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='ordens_compra_gerais',
+    )
+    categoria_despesa = models.CharField(max_length=30, default='material')
     empresa_razao_social = models.CharField(max_length=180, default='AMBAR ENGENHARIA')
     empresa_cnpj = models.CharField(max_length=30, blank=True)
     empresa_endereco = models.CharField(max_length=255, blank=True)
@@ -344,6 +359,20 @@ class OrdemCompraGeral(models.Model):
     def total(self):
         return sum((item.valor_total for item in self.itens.all()), Decimal('0'))
 
+    @property
+    def total_faturado(self):
+        return sum((nota.valor_total for nota in self.notas_fiscais.all() if nota.status != NotaFiscalOrdemCompraGeral.STATUS_CANCELADA), Decimal('0'))
+
+    @property
+    def saldo_financeiro(self):
+        return self.total - self.total_faturado
+
+    @property
+    def percentual_faturado(self):
+        if self.total > 0:
+            return (self.total_faturado / self.total) * 100
+        return Decimal('0')
+
     def __str__(self):
         return f'OC {self.numero} - {self.fornecedor}'
 
@@ -374,6 +403,87 @@ class ItemOrdemCompraGeral(models.Model):
 
     def __str__(self):
         return f'{self.item:02d} - {self.descricao}'
+
+    @property
+    def quantidade_faturada(self):
+        return sum(
+            (nota.quantidade for nota in self.notas_fiscais.all() if nota.status != NotaFiscalOrdemCompraGeral.STATUS_CANCELADA),
+            Decimal('0'),
+        )
+
+    @property
+    def saldo_quantidade(self):
+        return self.quantidade - self.quantidade_faturada
+
+    @property
+    def valor_faturado(self):
+        return sum(
+            (nota.valor_total for nota in self.notas_fiscais.all() if nota.status != NotaFiscalOrdemCompraGeral.STATUS_CANCELADA),
+            Decimal('0'),
+        )
+
+    @property
+    def diferenca_valor(self):
+        return self.valor_faturado - self.valor_total
+
+
+class NotaFiscalOrdemCompraGeral(models.Model):
+    STATUS_RECEBIDA = 'recebida'
+    STATUS_CONFERIDA = 'conferida'
+    STATUS_LANCADA_FINANCEIRO = 'lancada_financeiro'
+    STATUS_CANCELADA = 'cancelada'
+    STATUS_CHOICES = [
+        (STATUS_RECEBIDA, 'Recebida'),
+        (STATUS_CONFERIDA, 'Conferida'),
+        (STATUS_LANCADA_FINANCEIRO, 'Lancada no financeiro'),
+        (STATUS_CANCELADA, 'Cancelada'),
+    ]
+
+    ordem = models.ForeignKey(
+        OrdemCompraGeral,
+        on_delete=models.CASCADE,
+        related_name='notas_fiscais',
+    )
+    item = models.ForeignKey(
+        ItemOrdemCompraGeral,
+        on_delete=models.PROTECT,
+        related_name='notas_fiscais',
+    )
+    conta_pagar = models.OneToOneField(
+        'financeiro.ContaPagar',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='nota_ordem_compra',
+    )
+    numero = models.CharField(max_length=50)
+    data_emissao = models.DateField()
+    data_vencimento = models.DateField(blank=True, null=True)
+    quantidade = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    valor_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    valor_total = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_RECEBIDA)
+    observacoes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-data_emissao', '-id']
+        verbose_name = 'Nota fiscal de ordem de compra'
+        verbose_name_plural = 'Notas fiscais de ordens de compra'
+        constraints = [
+            models.UniqueConstraint(fields=['ordem', 'numero', 'item'], name='unique_nf_oc_geral_por_item')
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.item_id and not self.valor_unitario:
+            self.valor_unitario = self.item.valor_unitario
+        if not self.valor_total and self.quantidade and self.valor_unitario:
+            self.valor_total = self.quantidade * self.valor_unitario
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'NF {self.numero} - {self.ordem.numero}'
 
 
 class HistoricoOrdemCombustivel(models.Model):

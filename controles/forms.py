@@ -1,6 +1,7 @@
 from django import forms
 from django.db.models import Q
 from django.forms import inlineformset_factory
+from obras.models import DespesaObra
 
 from .models import (
     ApontamentoMaquinaLocacao,
@@ -12,6 +13,7 @@ from .models import (
     MaquinaLocacaoCatalogo,
     NotaFiscalCombustivel,
     NotaFiscalLocacaoMaquina,
+    NotaFiscalOrdemCompraGeral,
     LocacaoEquipamento,
     LocadoraEquipamento,
     OrcamentoRadarObra,
@@ -177,6 +179,8 @@ class NotaFiscalCombustivelForm(BootstrapModelForm):
 
 
 class OrdemCompraGeralForm(BootstrapModelForm):
+    categoria_despesa = forms.ChoiceField(choices=DespesaObra.CATEGORIA_CHOICES)
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['fornecedor'].required = False
@@ -188,6 +192,9 @@ class OrdemCompraGeralForm(BootstrapModelForm):
             'data_emissao',
             'status',
             'comprador',
+            'obra',
+            'centro_custo',
+            'categoria_despesa',
             'empresa_razao_social',
             'empresa_cnpj',
             'empresa_endereco',
@@ -250,6 +257,37 @@ ItemOrdemCompraGeralFormSet = inlineformset_factory(
     extra=5,
     can_delete=True,
 )
+
+
+class NotaFiscalOrdemCompraGeralForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        ordem = kwargs.pop('ordem', None)
+        super().__init__(*args, **kwargs)
+        self.fields['valor_total'].required = False
+        if ordem:
+            self.fields['item'].queryset = ordem.itens.all()
+
+    class Meta:
+        model = NotaFiscalOrdemCompraGeral
+        fields = [
+            'item',
+            'numero',
+            'data_emissao',
+            'data_vencimento',
+            'quantidade',
+            'valor_unitario',
+            'valor_total',
+            'status',
+            'observacoes',
+        ]
+        widgets = {
+            'data_emissao': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'data_vencimento': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'quantidade': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_unitario': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_total': forms.NumberInput(attrs={'step': '0.01'}),
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
 
 
 class EquipamentoLocadoCatalogoForm(BootstrapModelForm):

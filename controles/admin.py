@@ -14,6 +14,7 @@ from .models import (
     MaquinaLocacaoCatalogo,
     NotaFiscalCombustivel,
     NotaFiscalLocacaoMaquina,
+    NotaFiscalOrdemCompraGeral,
     OrcamentoRadarObra,
     OrdemCompraCombustivel,
     OrdemCompraGeral,
@@ -102,12 +103,24 @@ class ItemOrdemCompraGeralInline(admin.TabularInline):
     extra = 0
 
 
+class NotaFiscalOrdemCompraGeralInline(admin.TabularInline):
+    model = NotaFiscalOrdemCompraGeral
+    extra = 0
+
+
 @admin.register(OrdemCompraGeral)
 class OrdemCompraGeralAdmin(admin.ModelAdmin):
-    list_display = ('numero', 'data_emissao', 'fornecedor', 'comprador', 'total', 'status')
+    list_display = ('numero', 'data_emissao', 'fornecedor', 'comprador', 'total', 'total_faturado', 'status')
     search_fields = ('numero', 'fornecedor', 'comprador', 'fornecedor_cpf_cnpj')
     list_filter = ('status', 'data_emissao')
-    inlines = [ItemOrdemCompraGeralInline]
+    inlines = [ItemOrdemCompraGeralInline, NotaFiscalOrdemCompraGeralInline]
+
+
+@admin.register(NotaFiscalOrdemCompraGeral)
+class NotaFiscalOrdemCompraGeralAdmin(admin.ModelAdmin):
+    list_display = ('numero', 'ordem', 'item', 'data_emissao', 'quantidade', 'valor_total', 'status')
+    search_fields = ('numero', 'ordem__numero', 'ordem__fornecedor', 'item__descricao')
+    list_filter = ('status', 'data_emissao')
 
 
 @admin.register(EquipamentoLocadoCatalogo)

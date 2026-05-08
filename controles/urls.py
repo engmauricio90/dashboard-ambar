@@ -24,6 +24,21 @@ urlpatterns = [
         views.ordem_compra_geral_pdf,
         name='ordem_compra_geral_pdf',
     ),
+    path(
+        'ordens-compra/<int:ordem_id>/notas/nova/',
+        views.nova_nf_ordem_compra_geral,
+        name='nova_nf_ordem_compra_geral',
+    ),
+    path(
+        'ordens-compra/notas/<int:nota_id>/editar/',
+        views.editar_nf_ordem_compra_geral,
+        name='editar_nf_ordem_compra_geral',
+    ),
+    path(
+        'ordens-compra/notas/<int:nota_id>/gerar-conta/',
+        views.gerar_conta_pagar_nf_ordem_compra,
+        name='gerar_conta_pagar_nf_ordem_compra',
+    ),
     path('combustivel/ordens/', views.lista_ordens_combustivel, name='lista_ordens_combustivel'),
     path('combustivel/ordens/nova/', views.nova_ordem_combustivel, name='nova_ordem_combustivel'),
     path(
