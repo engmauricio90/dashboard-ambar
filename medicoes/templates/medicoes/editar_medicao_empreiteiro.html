@@ -12,6 +12,7 @@
         {% if medicao %}
         <a class="btn btn-outline-danger" href="{% url 'medicao_empreiteiro_pdf' medicao.id %}" target="_blank">PDF</a>
         <a class="btn btn-outline-success" href="{% url 'medicao_empreiteiro_excel' medicao.id %}">Excel</a>
+        <a class="btn btn-outline-danger" href="{% url 'excluir_medicao_empreiteiro' medicao.id %}">Excluir</a>
         {% endif %}
         <a class="btn btn-secondary" href="{% url 'medicoes_home' %}">Voltar</a>
     </div>

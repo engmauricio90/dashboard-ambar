@@ -125,6 +125,23 @@ class MedicoesTests(TestCase):
         self.assertEqual(segunda.subtotal_periodo, Decimal('510.00'))
         self.assertEqual(segunda.total_liquido, Decimal('490.00'))
 
+    def test_exclui_medicao_construtora(self):
+        orcamento, item = self._orcamento()
+        medicao = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=1,
+            periodo_inicio=date(2026, 1, 1),
+            periodo_fim=date(2026, 1, 31),
+            data_medicao=date(2026, 1, 31),
+        )
+        ItemMedicaoConstrutora.objects.create(medicao=medicao, item_orcamento=item, quantidade_periodo=Decimal('20'))
+
+        response = self.client.post(reverse('excluir_medicao_construtora', args=[medicao.id]))
+
+        self.assertRedirects(response, reverse('detalhe_orcamento_medicao', args=[orcamento.id]))
+        self.assertFalse(MedicaoConstrutora.objects.filter(id=medicao.id).exists())
+        self.assertTrue(OrcamentoMedicao.objects.filter(id=orcamento.id).exists())
+
     def test_medicao_empreiteiro_simples_e_exportacoes(self):
         medicao = MedicaoEmpreiteiro.objects.create(
             tipo=MedicaoEmpreiteiro.TIPO_SIMPLES,
@@ -154,3 +171,27 @@ class MedicoesTests(TestCase):
         self.assertEqual(pdf['Content-Type'], 'application/pdf')
         self.assertEqual(excel.status_code, 200)
         self.assertIn('spreadsheetml', excel['Content-Type'])
+
+    def test_exclui_medicao_empreiteiro_simples(self):
+        medicao = MedicaoEmpreiteiro.objects.create(
+            tipo=MedicaoEmpreiteiro.TIPO_SIMPLES,
+            obra=self.obra,
+            empreiteiro='Empreiteiro',
+            numero=1,
+            periodo_inicio=date(2026, 3, 1),
+            periodo_fim=date(2026, 3, 31),
+            data_medicao=date(2026, 3, 31),
+        )
+        ItemMedicaoEmpreiteiro.objects.create(
+            medicao=medicao,
+            item='1',
+            descricao='Servico simples',
+            unidade='un',
+            quantidade_periodo=Decimal('2'),
+            valor_unitario=Decimal('100.00'),
+        )
+
+        response = self.client.post(reverse('excluir_medicao_empreiteiro', args=[medicao.id]))
+
+        self.assertRedirects(response, reverse('medicoes_home'))
+        self.assertFalse(MedicaoEmpreiteiro.objects.filter(id=medicao.id).exists())

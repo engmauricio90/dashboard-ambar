@@ -11,6 +11,7 @@
     <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-outline-danger" href="{% url 'medicao_construtora_pdf' medicao.id %}" target="_blank">PDF</a>
         <a class="btn btn-outline-success" href="{% url 'medicao_construtora_excel' medicao.id %}">Excel</a>
+        <a class="btn btn-outline-danger" href="{% url 'excluir_medicao_construtora' medicao.id %}">Excluir</a>
         <a class="btn btn-secondary" href="{% url 'detalhe_orcamento_medicao' medicao.orcamento.id %}">Voltar</a>
     </div>
 </div>

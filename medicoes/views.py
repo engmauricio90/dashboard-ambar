@@ -334,6 +334,25 @@ def editar_medicao_construtora(request, medicao_id):
     )
 
 
+def excluir_medicao_construtora(request, medicao_id):
+    medicao = get_object_or_404(MedicaoConstrutora.objects.select_related('orcamento'), id=medicao_id)
+    orcamento_id = medicao.orcamento_id
+    if request.method == 'POST':
+        medicao.delete()
+        messages.success(request, 'Medicao da construtora excluida com sucesso.')
+        return redirect('detalhe_orcamento_medicao', orcamento_id=orcamento_id)
+    return render(
+        request,
+        'medicoes/confirmar_exclusao_medicao.html',
+        {
+            'titulo': 'Excluir medicao da construtora',
+            'descricao': f'Medicao {medicao.numero} - {medicao.orcamento}',
+            'voltar_url': 'editar_medicao_construtora',
+            'voltar_arg': medicao.id,
+        },
+    )
+
+
 def nova_medicao_empreiteiro_simples(request):
     if request.method == 'POST':
         form = MedicaoEmpreiteiroCabecalhoForm(request.POST)
@@ -420,6 +439,27 @@ def editar_medicao_empreiteiro(request, medicao_id):
         request,
         'medicoes/editar_medicao_empreiteiro.html',
         {'medicao': medicao, 'form': form, 'formset': formset, 'titulo': 'Medicao de empreiteiro'},
+    )
+
+
+def excluir_medicao_empreiteiro(request, medicao_id):
+    medicao = get_object_or_404(MedicaoEmpreiteiro.objects.select_related('orcamento'), id=medicao_id)
+    orcamento_id = medicao.orcamento_id
+    if request.method == 'POST':
+        medicao.delete()
+        messages.success(request, 'Medicao de empreiteiro excluida com sucesso.')
+        if orcamento_id:
+            return redirect('detalhe_orcamento_medicao', orcamento_id=orcamento_id)
+        return redirect('medicoes_home')
+    return render(
+        request,
+        'medicoes/confirmar_exclusao_medicao.html',
+        {
+            'titulo': 'Excluir medicao de empreiteiro',
+            'descricao': f'Medicao {medicao.numero} - {medicao.empreiteiro}',
+            'voltar_url': 'editar_medicao_empreiteiro',
+            'voltar_arg': medicao.id,
+        },
     )
 
 

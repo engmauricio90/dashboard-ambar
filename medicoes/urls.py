@@ -14,6 +14,7 @@ urlpatterns = [
         name='nova_medicao_construtora',
     ),
     path('construtora/<int:medicao_id>/editar/', views.editar_medicao_construtora, name='editar_medicao_construtora'),
+    path('construtora/<int:medicao_id>/excluir/', views.excluir_medicao_construtora, name='excluir_medicao_construtora'),
     path('construtora/<int:medicao_id>/pdf/', views.medicao_construtora_pdf, name='medicao_construtora_pdf'),
     path('construtora/<int:medicao_id>/excel/', views.medicao_construtora_excel, name='medicao_construtora_excel'),
     path('empreiteiros/simples/nova/', views.nova_medicao_empreiteiro_simples, name='nova_medicao_empreiteiro_simples'),
@@ -23,6 +24,7 @@ urlpatterns = [
         name='nova_medicao_empreiteiro_cumulativa',
     ),
     path('empreiteiros/<int:medicao_id>/editar/', views.editar_medicao_empreiteiro, name='editar_medicao_empreiteiro'),
+    path('empreiteiros/<int:medicao_id>/excluir/', views.excluir_medicao_empreiteiro, name='excluir_medicao_empreiteiro'),
     path('empreiteiros/<int:medicao_id>/pdf/', views.medicao_empreiteiro_pdf, name='medicao_empreiteiro_pdf'),
     path('empreiteiros/<int:medicao_id>/excel/', views.medicao_empreiteiro_excel, name='medicao_empreiteiro_excel'),
 ]

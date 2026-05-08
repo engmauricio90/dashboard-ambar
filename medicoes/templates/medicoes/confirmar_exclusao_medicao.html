@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm border-danger">
+    <div class="card-body">
+        <h1 class="h4 mb-3">{{ titulo }}</h1>
+        <p class="mb-1">Tem certeza que deseja excluir?</p>
+        <p class="text-muted">{{ descricao }}</p>
+        <div class="alert alert-warning">Esta acao remove a medicao e seus itens medidos. O orcamento importado permanece no sistema.</div>
+        <form method="post" class="d-flex gap-2">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger">Excluir</button>
+            <a href="{% url voltar_url voltar_arg %}" class="btn btn-outline-secondary">Cancelar</a>
+        </form>
+    </div>
+</div>
+{% endblock %}
