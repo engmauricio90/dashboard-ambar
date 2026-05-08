@@ -49,6 +49,7 @@
                         <th>Centro</th>
                         <th>Categoria</th>
                         <th>Valor</th>
+                        {% if not mostrar_acoes_massa %}<th>Valor pago</th><th>Dif.</th>{% endif %}
                         <th>Status</th>
                         <th></th>
                     </tr>
@@ -65,6 +66,10 @@
                         <td>{{ conta.centro_custo|default:'-' }}</td>
                         <td>{{ conta.get_categoria_display }}</td>
                         <td>R$ {{ conta.valor|floatformat:2 }}</td>
+                        {% if not mostrar_acoes_massa %}
+                        <td>R$ {{ conta.valor_pago_efetivo|floatformat:2 }}</td>
+                        <td class="{% if conta.diferenca_pagamento > 0 %}text-danger{% elif conta.diferenca_pagamento < 0 %}text-success{% endif %}">R$ {{ conta.diferenca_pagamento|floatformat:2 }}</td>
+                        {% endif %}
                         <td>{{ conta.get_status_display }}</td>
                         <td class="text-end">
                             {% if mostrar_acoes_massa %}
@@ -74,7 +79,7 @@
                         </td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="{% if mostrar_acoes_massa %}9{% else %}8{% endif %}">Nenhuma conta encontrada.</td></tr>
+                    <tr><td colspan="{% if mostrar_acoes_massa %}9{% else %}10{% endif %}">Nenhuma conta encontrada.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

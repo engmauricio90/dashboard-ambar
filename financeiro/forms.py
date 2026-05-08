@@ -73,6 +73,7 @@ class ContaPagarForm(BootstrapModelForm):
 
         self.fields['quantidade_oc'].required = False
         self.fields['valor_unitario_oc'].required = False
+        self.fields['valor_pago'].required = False
         self.fields['ordem_compra'].queryset = OrdemCompraGeral.objects.all()
         self.fields['ordem_compra'].empty_label = 'Nao possui OC'
 
@@ -111,6 +112,7 @@ class ContaPagarForm(BootstrapModelForm):
             'data_vencimento',
             'data_pagamento',
             'valor',
+            'valor_pago',
             'status',
             'observacoes',
         ]
@@ -121,6 +123,7 @@ class ContaPagarForm(BootstrapModelForm):
             'quantidade_oc': forms.NumberInput(attrs={'step': '0.01'}),
             'valor_unitario_oc': forms.NumberInput(attrs={'step': '0.01'}),
             'valor': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_pago': forms.NumberInput(attrs={'step': '0.01'}),
             'observacoes': forms.Textarea(attrs={'rows': 3}),
         }
         labels = {
@@ -129,6 +132,7 @@ class ContaPagarForm(BootstrapModelForm):
             'numero_nf': 'Numero da NF',
             'quantidade_oc': 'Quantidade faturada da OC',
             'valor_unitario_oc': 'Valor unitario da OC',
+            'valor_pago': 'Valor pago efetivamente',
         }
 
     def clean(self):

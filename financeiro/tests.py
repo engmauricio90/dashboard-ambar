@@ -193,7 +193,48 @@ class FinanceiroIntegracaoObraTests(TestCase):
         conta_2.refresh_from_db()
         self.assertEqual(conta_1.status, ContaPagar.STATUS_PAGO)
         self.assertEqual(conta_1.data_pagamento, date(2026, 4, 25))
+        self.assertEqual(conta_1.valor_pago, Decimal('100.00'))
         self.assertEqual(conta_2.status, ContaPagar.STATUS_PAGO)
+
+    def test_conta_paga_aceita_valor_pago_diferente(self):
+        conta = ContaPagar.objects.create(
+            fornecedor='Fornecedor A',
+            obra=self.obra,
+            categoria='material',
+            descricao='Conta com juros',
+            data_emissao=date(2026, 4, 2),
+            data_vencimento=date(2026, 4, 20),
+            valor=Decimal('100.00'),
+        )
+
+        response = self.client.post(
+            reverse('editar_conta_pagar', args=[conta.id]),
+            {
+                'fornecedor': 'Fornecedor A',
+                'fornecedor_cadastro': '',
+                'obra': self.obra.id,
+                'centro_custo': '',
+                'categoria': 'material',
+                'ordem_compra': '',
+                'item_ordem_compra': '',
+                'numero_nf': '',
+                'quantidade_oc': '',
+                'valor_unitario_oc': '',
+                'descricao': 'Conta com juros',
+                'data_emissao': '2026-04-02',
+                'data_vencimento': '2026-04-20',
+                'data_pagamento': '2026-04-25',
+                'valor': '100.00',
+                'valor_pago': '112.50',
+                'status': ContaPagar.STATUS_PAGO,
+                'observacoes': '',
+            },
+        )
+
+        self.assertRedirects(response, reverse('lista_contas_pagar'))
+        conta.refresh_from_db()
+        self.assertEqual(conta.valor_pago_efetivo, Decimal('112.50'))
+        self.assertEqual(conta.diferenca_pagamento, Decimal('12.50'))
 
     def test_acao_massa_cancela_e_remove_despesa_da_obra(self):
         conta = ContaPagar.objects.create(

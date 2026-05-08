@@ -246,6 +246,7 @@ class ContaPagar(models.Model):
     data_vencimento = models.DateField()
     data_pagamento = models.DateField(blank=True, null=True)
     valor = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    valor_pago = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_ABERTO)
     observacoes = models.TextField(blank=True)
     despesa_obra = models.OneToOneField(
@@ -267,6 +268,18 @@ class ContaPagar(models.Model):
     def esta_baixada(self):
         return self.status == self.STATUS_PAGO
 
+    @property
+    def valor_pago_efetivo(self):
+        if self.status == self.STATUS_PAGO and self.valor_pago:
+            return self.valor_pago
+        return self.valor
+
+    @property
+    def diferenca_pagamento(self):
+        if self.status != self.STATUS_PAGO:
+            return Decimal('0')
+        return self.valor_pago_efetivo - self.valor
+
     def __str__(self):
         return f'{self.fornecedor} - R$ {self.valor}'
 
@@ -281,6 +294,8 @@ class ContaPagar(models.Model):
             self.quantidade_oc = Decimal('0')
         if self.valor_unitario_oc is None:
             self.valor_unitario_oc = Decimal('0')
+        if self.status == self.STATUS_PAGO and not self.valor_pago:
+            self.valor_pago = self.valor
         with transaction.atomic():
             super().save(*args, **kwargs)
             self.sincronizar_obra()

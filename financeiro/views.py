@@ -112,7 +112,7 @@ def _eventos_fluxo(receber, pagar):
                 'obra': conta.obra,
                 'centro_custo': conta.centro_custo,
                 'status': _status_visual(conta, 'pagar'),
-                'valor': -conta.valor,
+                'valor': -conta.valor_pago_efetivo if conta.status == ContaPagar.STATUS_PAGO else -conta.valor,
             }
         )
     return sorted(eventos, key=lambda item: (item['data'], item['tipo'], item['descricao']))
@@ -125,7 +125,7 @@ def _resumo(receber, pagar):
     total_receber_aberto = sum((c.valor_liquido for c in receber if c.status == ContaReceber.STATUS_ABERTO), Decimal('0'))
     total_recebido = sum((c.valor_liquido for c in receber if c.status == ContaReceber.STATUS_RECEBIDO), Decimal('0'))
     total_pagar_aberto = sum((c.valor for c in pagar if c.status == ContaPagar.STATUS_ABERTO), Decimal('0'))
-    total_pago = sum((c.valor for c in pagar if c.status == ContaPagar.STATUS_PAGO), Decimal('0'))
+    total_pago = sum((c.valor_pago_efetivo for c in pagar if c.status == ContaPagar.STATUS_PAGO), Decimal('0'))
     atrasado_receber = sum(
         (c.valor_liquido for c in receber if c.status == ContaReceber.STATUS_ABERTO and c.data_vencimento < hoje),
         Decimal('0'),
