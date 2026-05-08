@@ -537,6 +537,7 @@ def ordem_compra_geral_pdf(request, ordem_id):
     draw.text((x + w - 332, total_y + 16), f'TOTAL: {_format_money(ordem.total)}', font=_font(22, True), fill=(255, 255, 255))
     y = total_y + 86
 
+    y = _draw_notes_box(draw, 'Condicoes de pagamento', ordem.condicoes_pagamento or '-', x, y, w)
     y = _draw_notes_box(draw, 'Observacoes', ordem.observacoes or '-', x, y, w)
     draw.text((x, y + 20), _clean_pdf_text(f'Comprador: {ordem.comprador or "-"}'), font=_font(17), fill=(43, 48, 51))
     draw.text((x, y + 66), '________________________________________', font=_font(17), fill=(43, 48, 51))

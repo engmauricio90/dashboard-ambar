@@ -116,6 +116,7 @@ class ControleAbastecimentoTests(TestCase):
                 'fornecedor_uf': 'RS',
                 'fornecedor_cep': '93180-000',
                 'fornecedor_ie': '213/0055081',
+                'condicoes_pagamento': '30 dias apos emissao da NF',
                 'observacoes': 'Frete CIF',
                 'itens-TOTAL_FORMS': '5',
                 'itens-INITIAL_FORMS': '0',
@@ -163,6 +164,7 @@ class ControleAbastecimentoTests(TestCase):
         self.assertRedirects(response, reverse('detalhe_ordem_compra_geral', args=[ordem.id]))
         self.assertEqual(ordem.numero, '001/2026')
         self.assertEqual(ordem.total, Decimal('4800.00'))
+        self.assertEqual(ordem.condicoes_pagamento, '30 dias apos emissao da NF')
         self.assertEqual(ItemOrdemCompraGeral.objects.get().unidade, 'ton')
 
         pdf_response = self.client.get(reverse('ordem_compra_geral_pdf', args=[ordem.id]))

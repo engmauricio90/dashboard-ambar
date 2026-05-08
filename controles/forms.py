@@ -201,10 +201,12 @@ class OrdemCompraGeralForm(BootstrapModelForm):
             'fornecedor_cep',
             'fornecedor_fone',
             'fornecedor_ie',
+            'condicoes_pagamento',
             'observacoes',
         ]
         widgets = {
             'data_emissao': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'condicoes_pagamento': forms.Textarea(attrs={'rows': 3}),
             'observacoes': forms.Textarea(attrs={'rows': 3}),
         }
         help_texts = {

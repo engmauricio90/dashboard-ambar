@@ -302,6 +302,7 @@ class OrdemCompraGeral(models.Model):
     fornecedor_cep = models.CharField(max_length=20, blank=True)
     fornecedor_fone = models.CharField(max_length=40, blank=True)
     fornecedor_ie = models.CharField(max_length=40, blank=True)
+    condicoes_pagamento = models.TextField(blank=True)
     observacoes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -74,6 +74,15 @@
     </div>
 </div>
 
+{% if ordem.condicoes_pagamento %}
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h5 class="mb-2">Condicoes de pagamento</h5>
+        <p class="mb-0">{{ ordem.condicoes_pagamento }}</p>
+    </div>
+</div>
+{% endif %}
+
 {% if ordem.observacoes %}
 <div class="card shadow-sm">
     <div class="card-body">
