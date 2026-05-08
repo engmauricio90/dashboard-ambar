@@ -224,6 +224,23 @@ class ContaPagar(models.Model):
         related_name='contas_pagar',
     )
     categoria = models.CharField(max_length=30, choices=DespesaObra.CATEGORIA_CHOICES, default='outra')
+    ordem_compra = models.ForeignKey(
+        'controles.OrdemCompraGeral',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='contas_pagar',
+    )
+    item_ordem_compra = models.ForeignKey(
+        'controles.ItemOrdemCompraGeral',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='contas_pagar',
+    )
+    numero_nf = models.CharField(max_length=50, blank=True)
+    quantidade_oc = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    valor_unitario_oc = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     descricao = models.CharField(max_length=255)
     data_emissao = models.DateField()
     data_vencimento = models.DateField()
@@ -256,9 +273,18 @@ class ContaPagar(models.Model):
     def save(self, *args, **kwargs):
         if self.fornecedor_cadastro_id:
             self.fornecedor = self.fornecedor_cadastro.nome
+        if self.ordem_compra_id:
+            self.obra = self.obra or self.ordem_compra.obra
+            self.centro_custo = self.centro_custo or self.ordem_compra.centro_custo
+            self.categoria = self.categoria or self.ordem_compra.categoria_despesa
+        if self.quantidade_oc is None:
+            self.quantidade_oc = Decimal('0')
+        if self.valor_unitario_oc is None:
+            self.valor_unitario_oc = Decimal('0')
         with transaction.atomic():
             super().save(*args, **kwargs)
             self.sincronizar_obra()
+            self.sincronizar_ordem_compra()
 
     def sincronizar_obra(self):
         if self.status == self.STATUS_CANCELADO:
@@ -289,3 +315,41 @@ class ContaPagar(models.Model):
             )
             ContaPagar.objects.filter(pk=self.pk).update(despesa_obra=despesa)
             self.despesa_obra = despesa
+
+    def sincronizar_ordem_compra(self):
+        from controles.models import NotaFiscalOrdemCompraGeral
+
+        nota_existente = getattr(self, 'nota_ordem_compra', None)
+        if self.status == self.STATUS_CANCELADO:
+            if nota_existente:
+                nota_existente.status = NotaFiscalOrdemCompraGeral.STATUS_CANCELADA
+                nota_existente.save(update_fields=['status', 'updated_at'])
+            return
+
+        if not self.ordem_compra_id or not self.item_ordem_compra_id or not self.numero_nf:
+            if nota_existente:
+                nota_existente.delete()
+            return
+
+        valor_unitario = self.valor_unitario_oc or self.item_ordem_compra.valor_unitario
+        quantidade = self.quantidade_oc or Decimal('0')
+        defaults = {
+            'ordem': self.ordem_compra,
+            'item': self.item_ordem_compra,
+            'numero': self.numero_nf,
+            'data_emissao': self.data_emissao,
+            'data_vencimento': self.data_vencimento,
+            'quantidade': quantidade,
+            'valor_unitario': valor_unitario,
+            'valor_total': self.valor,
+            'status': NotaFiscalOrdemCompraGeral.STATUS_LANCADA_FINANCEIRO,
+            'observacoes': self.observacoes,
+        }
+
+        if nota_existente:
+            for field, value in defaults.items():
+                setattr(nota_existente, field, value)
+            nota_existente.save()
+            return
+
+        NotaFiscalOrdemCompraGeral.objects.create(conta_pagar=self, **defaults)

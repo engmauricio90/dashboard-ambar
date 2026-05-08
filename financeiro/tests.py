@@ -6,6 +6,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from obras.models import DespesaObra, NotaFiscal, Obra
+from controles.models import ItemOrdemCompraGeral, NotaFiscalOrdemCompraGeral, OrdemCompraGeral
 
 from .models import CentroCusto, ContaPagar, ContaReceber
 
@@ -56,6 +57,77 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertEqual(conta.despesa_obra, despesa)
         self.assertEqual(despesa.valor, Decimal('350.00'))
         self.assertEqual(self.obra.total_despesa_real, Decimal('350.00'))
+
+    def test_conta_pagar_com_oc_cria_nota_vinculada_na_oc(self):
+        ordem = OrdemCompraGeral.objects.create(
+            fornecedor='Fornecedor OC',
+            obra=self.obra,
+            centro_custo=self.centro,
+            categoria_despesa='material',
+            data_emissao=date(2026, 5, 1),
+        )
+        item = ItemOrdemCompraGeral.objects.create(
+            ordem=ordem,
+            item=1,
+            descricao='Po de brita',
+            quantidade=Decimal('200.00'),
+            unidade='ton',
+            valor_unitario=Decimal('80.00'),
+        )
+
+        conta = ContaPagar.objects.create(
+            fornecedor='Fornecedor OC',
+            obra=self.obra,
+            centro_custo=self.centro,
+            categoria='material',
+            ordem_compra=ordem,
+            item_ordem_compra=item,
+            numero_nf='1001',
+            quantidade_oc=Decimal('30.00'),
+            valor_unitario_oc=Decimal('82.00'),
+            descricao='NF 1001 - po de brita',
+            data_emissao=date(2026, 5, 8),
+            data_vencimento=date(2026, 5, 20),
+            valor=Decimal('2460.00'),
+        )
+
+        nota = NotaFiscalOrdemCompraGeral.objects.get()
+        self.assertEqual(nota.conta_pagar, conta)
+        self.assertEqual(nota.ordem, ordem)
+        self.assertEqual(nota.item, item)
+        self.assertEqual(nota.numero, '1001')
+        self.assertEqual(nota.quantidade, Decimal('30.00'))
+        self.assertEqual(nota.valor_total, Decimal('2460.00'))
+        self.assertEqual(ordem.total_faturado, Decimal('2460.00'))
+        self.assertEqual(item.saldo_quantidade, Decimal('170.00'))
+
+    def test_form_conta_pagar_permite_sem_oc(self):
+        response = self.client.post(
+            reverse('nova_conta_pagar'),
+            {
+                'fornecedor': 'Fornecedor sem OC',
+                'fornecedor_cadastro': '',
+                'obra': self.obra.id,
+                'centro_custo': self.centro.id,
+                'categoria': 'material',
+                'ordem_compra': '',
+                'item_ordem_compra': '',
+                'numero_nf': '',
+                'quantidade_oc': '',
+                'valor_unitario_oc': '',
+                'descricao': 'Despesa sem OC',
+                'data_emissao': '2026-05-08',
+                'data_vencimento': '2026-05-20',
+                'data_pagamento': '',
+                'valor': '100.00',
+                'status': ContaPagar.STATUS_ABERTO,
+                'observacoes': '',
+            },
+        )
+
+        self.assertRedirects(response, reverse('lista_contas_pagar'))
+        self.assertEqual(ContaPagar.objects.get().descricao, 'Despesa sem OC')
+        self.assertFalse(NotaFiscalOrdemCompraGeral.objects.exists())
 
     def test_lista_contas_pagar_mostra_apenas_abertas(self):
         ContaPagar.objects.create(

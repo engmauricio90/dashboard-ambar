@@ -42,3 +42,39 @@
     </div>
 </div>
 {% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const ordemCompraSelect = document.getElementById('id_ordem_compra');
+    const itemOrdemSelect = document.getElementById('id_item_ordem_compra');
+
+    if (ordemCompraSelect && itemOrdemSelect) {
+        const todasOpcoesItem = Array.from(itemOrdemSelect.options).map((option) => ({
+            value: option.value,
+            text: option.text,
+            selected: option.selected,
+        }));
+
+        function filtrarItensOc() {
+            const ordemId = ordemCompraSelect.value;
+            const valorAtual = itemOrdemSelect.value;
+            itemOrdemSelect.innerHTML = '';
+
+            todasOpcoesItem.forEach((optionData) => {
+                if (!optionData.value) {
+                    itemOrdemSelect.add(new Option(optionData.text, optionData.value));
+                    return;
+                }
+                const texto = optionData.text || '';
+                if (!ordemId || texto.includes(`OC ${ordemId}`) || texto.includes(`(${ordemId})`)) {
+                    const option = new Option(optionData.text, optionData.value);
+                    option.selected = optionData.value === valorAtual;
+                    itemOrdemSelect.add(option);
+                }
+            });
+        }
+
+        ordemCompraSelect.addEventListener('change', filtrarItensOc);
+    }
+</script>
+{% endblock %}

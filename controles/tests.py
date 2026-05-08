@@ -177,7 +177,7 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(pdf_response['Content-Type'], 'application/pdf')
         self.assertTrue(pdf_response.content.startswith(b'%PDF'))
 
-    def test_nf_ordem_compra_geral_atualiza_saldo_e_gera_conta_pagar(self):
+    def test_botao_nf_ordem_compra_direciona_para_conta_pagar(self):
         obra = Obra.objects.create(nome_obra='Obra OC', cliente='Cliente')
         centro = CentroCusto.objects.create(nome='Obras')
         ordem = OrdemCompraGeral.objects.create(
@@ -196,37 +196,9 @@ class ControleAbastecimentoTests(TestCase):
             valor_unitario=Decimal('80.00'),
         )
 
-        response = self.client.post(
-            reverse('nova_nf_ordem_compra_geral', args=[ordem.id]),
-            {
-                'item': item.id,
-                'numero': '1001',
-                'data_emissao': '2026-05-08',
-                'data_vencimento': '2026-05-20',
-                'quantidade': '30.00',
-                'valor_unitario': '82.00',
-                'valor_total': '',
-                'status': 'recebida',
-                'observacoes': '',
-            },
-        )
+        response = self.client.get(reverse('nova_nf_ordem_compra_geral', args=[ordem.id]))
 
-        self.assertRedirects(response, reverse('detalhe_ordem_compra_geral', args=[ordem.id]))
-        nota = NotaFiscalOrdemCompraGeral.objects.get()
-        self.assertEqual(nota.valor_total, Decimal('2460.00'))
-        self.assertEqual(item.quantidade_faturada, Decimal('30.00'))
-        self.assertEqual(item.saldo_quantidade, Decimal('170.00'))
-        self.assertEqual(ordem.total_faturado, Decimal('2460.00'))
-
-        response = self.client.get(reverse('gerar_conta_pagar_nf_ordem_compra', args=[nota.id]))
-        self.assertRedirects(response, reverse('detalhe_ordem_compra_geral', args=[ordem.id]))
-        nota.refresh_from_db()
-        conta = ContaPagar.objects.get()
-        self.assertEqual(nota.conta_pagar, conta)
-        self.assertEqual(conta.obra, obra)
-        self.assertEqual(conta.centro_custo, centro)
-        self.assertEqual(conta.valor, Decimal('2460.00'))
-        self.assertEqual(conta.status, ContaPagar.STATUS_ABERTO)
+        self.assertRedirects(response, f'{reverse("nova_conta_pagar")}?ordem_compra={ordem.id}')
 
     def test_cria_ordem_combustivel_para_veiculo_e_nf(self):
         veiculo = VeiculoMaquina.objects.create(

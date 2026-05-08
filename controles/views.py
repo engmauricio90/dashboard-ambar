@@ -9,6 +9,7 @@ from django.contrib import messages
 from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from PIL import Image, ImageDraw, ImageFont
 
 from financeiro.models import ContaPagar, Fornecedor
@@ -480,22 +481,9 @@ def editar_ordem_compra_geral(request, ordem_id):
 
 
 def nova_nf_ordem_compra_geral(request, ordem_id):
-    ordem = get_object_or_404(OrdemCompraGeral.objects.prefetch_related('itens'), id=ordem_id)
-    if request.method == 'POST':
-        form = NotaFiscalOrdemCompraGeralForm(request.POST, ordem=ordem)
-        if form.is_valid():
-            nota = form.save(commit=False)
-            nota.ordem = ordem
-            nota.save()
-            messages.success(request, 'Nota vinculada a OC com sucesso.')
-            return redirect('detalhe_ordem_compra_geral', ordem_id=ordem.id)
-    else:
-        form = NotaFiscalOrdemCompraGeralForm(ordem=ordem)
-    return render(
-        request,
-        'controles/form_nf_ordem_compra_geral.html',
-        {'form': form, 'ordem': ordem, 'titulo': 'Nova NF da OC'},
-    )
+    ordem = get_object_or_404(OrdemCompraGeral, id=ordem_id)
+    messages.info(request, 'Lance a conta a pagar no financeiro e selecione a OC para vincular a NF automaticamente.')
+    return redirect(f'{reverse("nova_conta_pagar")}?ordem_compra={ordem.id}')
 
 
 def editar_nf_ordem_compra_geral(request, nota_id):

@@ -298,7 +298,11 @@ def nova_conta_pagar(request):
             messages.success(request, 'Conta a pagar cadastrada com sucesso.')
             return redirect('lista_contas_pagar')
     else:
-        form = ContaPagarForm()
+        initial = {}
+        ordem_id = request.GET.get('ordem_compra')
+        if ordem_id:
+            initial['ordem_compra'] = ordem_id
+        form = ContaPagarForm(initial=initial)
     return render(request, 'financeiro/form_conta.html', {'form': form, 'titulo': 'Nova Conta a Pagar'})
 
 

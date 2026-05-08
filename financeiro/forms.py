@@ -67,6 +67,32 @@ class ContaReceberForm(BootstrapModelForm):
 
 
 class ContaPagarForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from controles.models import ItemOrdemCompraGeral, OrdemCompraGeral
+
+        self.fields['quantidade_oc'].required = False
+        self.fields['valor_unitario_oc'].required = False
+        self.fields['ordem_compra'].queryset = OrdemCompraGeral.objects.all()
+        self.fields['ordem_compra'].empty_label = 'Nao possui OC'
+
+        ordem_id = None
+        if self.is_bound:
+            ordem_id = self.data.get(self.add_prefix('ordem_compra'))
+        elif self.instance and self.instance.ordem_compra_id:
+            ordem_id = self.instance.ordem_compra_id
+        elif self.initial.get('ordem_compra'):
+            ordem_id = self.initial['ordem_compra']
+
+        if ordem_id:
+            self.fields['item_ordem_compra'].queryset = ItemOrdemCompraGeral.objects.filter(ordem_id=ordem_id)
+        else:
+            self.fields['item_ordem_compra'].queryset = ItemOrdemCompraGeral.objects.all()
+        self.fields['item_ordem_compra'].empty_label = 'Selecione o item da OC'
+        self.fields['item_ordem_compra'].label_from_instance = (
+            lambda item: f'OC {item.ordem_id} - {item.item:02d} - {item.descricao}'
+        )
+
     class Meta:
         model = ContaPagar
         fields = [
@@ -75,6 +101,11 @@ class ContaPagarForm(BootstrapModelForm):
             'obra',
             'centro_custo',
             'categoria',
+            'ordem_compra',
+            'item_ordem_compra',
+            'numero_nf',
+            'quantidade_oc',
+            'valor_unitario_oc',
             'descricao',
             'data_emissao',
             'data_vencimento',
@@ -87,16 +118,38 @@ class ContaPagarForm(BootstrapModelForm):
             'data_emissao': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'data_vencimento': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'data_pagamento': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'quantidade_oc': forms.NumberInput(attrs={'step': '0.01'}),
+            'valor_unitario_oc': forms.NumberInput(attrs={'step': '0.01'}),
             'valor': forms.NumberInput(attrs={'step': '0.01'}),
             'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+        labels = {
+            'ordem_compra': 'Ordem de compra',
+            'item_ordem_compra': 'Item da OC',
+            'numero_nf': 'Numero da NF',
+            'quantidade_oc': 'Quantidade faturada da OC',
+            'valor_unitario_oc': 'Valor unitario da OC',
         }
 
     def clean(self):
         cleaned_data = super().clean()
         status = cleaned_data.get('status')
         data_pagamento = cleaned_data.get('data_pagamento')
+        ordem_compra = cleaned_data.get('ordem_compra')
+        item_ordem_compra = cleaned_data.get('item_ordem_compra')
+        numero_nf = cleaned_data.get('numero_nf')
+        quantidade_oc = cleaned_data.get('quantidade_oc')
         if status == ContaPagar.STATUS_PAGO and not data_pagamento:
             self.add_error('data_pagamento', 'Informe a data de pagamento.')
+        if ordem_compra:
+            if not item_ordem_compra:
+                self.add_error('item_ordem_compra', 'Selecione o item da OC para vincular a nota.')
+            if not numero_nf:
+                self.add_error('numero_nf', 'Informe o numero da NF para vincular a OC.')
+            if not quantidade_oc or quantidade_oc <= 0:
+                self.add_error('quantidade_oc', 'Informe a quantidade faturada da OC.')
+            if item_ordem_compra and item_ordem_compra.ordem_id != ordem_compra.id:
+                self.add_error('item_ordem_compra', 'O item selecionado nao pertence a OC.')
         return cleaned_data
 
 
