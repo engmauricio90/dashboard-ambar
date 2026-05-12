@@ -8,6 +8,7 @@ import unicodedata
 
 from django.db import transaction
 
+from obras.models import DespesaObra
 from obras.models import Obra
 
 from .models import CentroCusto, ContaPagar, Fornecedor
@@ -88,7 +89,6 @@ def garantir_cadastros_relatorio_credores():
     return resultado
 
 
-@transaction.atomic
 def importar_contas_pagar_credores_csv(conteudo):
     resultado = garantir_cadastros_relatorio_credores()
     centro_atual = None
@@ -135,10 +135,10 @@ def importar_contas_pagar_credores_csv(conteudo):
     return resultado
 
 
-@transaction.atomic
 def importar_contas_pagas_credores_csv(conteudo):
     resultado = garantir_cadastros_relatorio_credores()
     centro_atual = None
+    linhas_validas = []
 
     reader = csv.reader(StringIO(conteudo), delimiter=';')
     for row in reader:
@@ -158,17 +158,134 @@ def importar_contas_pagas_credores_csv(conteudo):
             continue
 
         try:
-            _, created = _importar_linha_conta_paga(row, centro_atual)
+            linhas_validas.append(_preparar_linha_conta_paga(row, centro_atual))
         except (ValueError, InvalidOperation):
             resultado.ignoradas += 1
             continue
 
-        if created:
-            resultado.criadas += 1
-        else:
-            resultado.atualizadas += 1
+    codigos_criados = _criar_contas_pagas_em_lote(linhas_validas)
+    resultado.criadas += len(codigos_criados)
+
+    for codigo_externo, dados in linhas_validas:
+        if codigo_externo in codigos_criados:
+            continue
+        updated = ContaPagar.objects.filter(
+            origem_importacao=ORIGEM_SIENGE_PAGOS,
+            codigo_externo=codigo_externo,
+        ).update(**dados)
+        if not updated:
+            continue
+        conta = ContaPagar.objects.get(
+            origem_importacao=ORIGEM_SIENGE_PAGOS,
+            codigo_externo=codigo_externo,
+        )
+        conta.sincronizar_obra()
+        resultado.atualizadas += 1
 
     return resultado
+
+
+def _criar_contas_pagas_em_lote(linhas_validas):
+    if not linhas_validas:
+        return 0
+
+    codigos = [codigo for codigo, _ in linhas_validas]
+    existentes = set(
+        ContaPagar.objects.filter(
+            origem_importacao=ORIGEM_SIENGE_PAGOS,
+            codigo_externo__in=codigos,
+        ).values_list('codigo_externo', flat=True)
+    )
+    novas_linhas = [(codigo, dados) for codigo, dados in linhas_validas if codigo not in existentes]
+    if not novas_linhas:
+        return set()
+
+    contas = [
+        ContaPagar(
+            origem_importacao=ORIGEM_SIENGE_PAGOS,
+            codigo_externo=codigo,
+            **dados,
+        )
+        for codigo, dados in novas_linhas
+    ]
+    with transaction.atomic():
+        contas_criadas = ContaPagar.objects.bulk_create(contas, batch_size=500)
+        despesas = [
+            DespesaObra(
+                obra=conta.obra,
+                data_referencia=conta.data_emissao,
+                categoria=conta.categoria,
+                descricao=conta.descricao,
+                valor=conta.valor,
+            )
+            for conta in contas_criadas
+            if conta.obra_id
+        ]
+        despesas_criadas = DespesaObra.objects.bulk_create(despesas, batch_size=500)
+        despesa_index = 0
+        contas_com_despesa = []
+        for conta in contas_criadas:
+            if not conta.obra_id:
+                continue
+            conta.despesa_obra = despesas_criadas[despesa_index]
+            contas_com_despesa.append(conta)
+            despesa_index += 1
+        ContaPagar.objects.bulk_update(contas_com_despesa, ['despesa_obra'], batch_size=500)
+
+    return {codigo for codigo, _ in novas_linhas}
+
+
+def _importar_linha_conta_paga(row, centro_atual):
+    codigo_externo, dados = _preparar_linha_conta_paga(row, centro_atual)
+    return ContaPagar.objects.update_or_create(
+        origem_importacao=ORIGEM_SIENGE_PAGOS,
+        codigo_externo=codigo_externo,
+        defaults=dados,
+    )
+
+
+def _preparar_linha_conta_paga(row, centro_atual):
+    credor = row[0].strip()
+    codigo_credor = row[1].strip()
+    documento = row[2].strip()
+    lancamento = row[3].strip()
+    quantidade = row[4].strip()
+    data_pagamento = _parse_data(row[5])
+    sequencia = row[6].strip()
+    valor_baixa = _parse_decimal(row[7])
+    acrescimo = _parse_decimal(row[8])
+    desconto = _parse_decimal(row[9])
+    liquido = _parse_decimal(row[10])
+
+    codigo = centro_atual['codigo']
+    obra, centro_custo = _resolver_destino(codigo)
+    fornecedor_cadastro, _ = Fornecedor.objects.get_or_create(nome=credor, cpf_cnpj='')
+    codigo_externo = f'{codigo}:{lancamento}:{sequencia}:{documento}:{data_pagamento.isoformat()}'
+    descricao = _limitar_texto(f'{documento or "Documento sem numero"} - lancamento {lancamento}', 255)
+    observacoes = '\n'.join(
+        [
+            f'Importado do relatorio de contas pagas. Centro original: {centro_atual["original"]}.',
+            f'Valor baixa: R$ {valor_baixa:.2f}. Acrescimo: R$ {acrescimo:.2f}. Desconto: R$ {desconto:.2f}.',
+            f'Codigo credor: {codigo_credor}. Qt.: {quantidade}. Seq.: {sequencia}.',
+        ]
+    )
+
+    return codigo_externo, {
+        'fornecedor': credor,
+        'fornecedor_cadastro': fornecedor_cadastro,
+        'obra': obra,
+        'centro_custo': centro_custo,
+        'categoria': 'outra',
+        'numero_nf': documento,
+        'descricao': descricao,
+        'data_emissao': data_pagamento,
+        'data_vencimento': data_pagamento,
+        'data_pagamento': data_pagamento,
+        'valor': valor_baixa,
+        'valor_pago': liquido,
+        'status': ContaPagar.STATUS_PAGO,
+        'observacoes': observacoes,
+    }
 
 
 def _importar_linha_conta(row, centro_atual):
@@ -222,56 +339,6 @@ def _importar_linha_conta(row, centro_atual):
             setattr(conta, field, value)
         conta.save()
     return conta, created
-
-
-def _importar_linha_conta_paga(row, centro_atual):
-    credor = row[0].strip()
-    codigo_credor = row[1].strip()
-    documento = row[2].strip()
-    lancamento = row[3].strip()
-    quantidade = row[4].strip()
-    data_pagamento = _parse_data(row[5])
-    sequencia = row[6].strip()
-    valor_baixa = _parse_decimal(row[7])
-    acrescimo = _parse_decimal(row[8])
-    desconto = _parse_decimal(row[9])
-    liquido = _parse_decimal(row[10])
-
-    codigo = centro_atual['codigo']
-    obra, centro_custo = _resolver_destino(codigo)
-    fornecedor_cadastro, _ = Fornecedor.objects.get_or_create(nome=credor, cpf_cnpj='')
-    codigo_externo = f'{codigo}:{lancamento}:{sequencia}:{documento}:{data_pagamento.isoformat()}'
-    descricao = _limitar_texto(f'{documento or "Documento sem numero"} - lancamento {lancamento}', 255)
-    observacoes = '\n'.join(
-        [
-            f'Importado do relatorio de contas pagas. Centro original: {centro_atual["original"]}.',
-            f'Valor baixa: R$ {valor_baixa:.2f}. Acrescimo: R$ {acrescimo:.2f}. Desconto: R$ {desconto:.2f}.',
-            f'Codigo credor: {codigo_credor}. Qt.: {quantidade}. Seq.: {sequencia}.',
-        ]
-    )
-
-    dados = {
-        'fornecedor': credor,
-        'fornecedor_cadastro': fornecedor_cadastro,
-        'obra': obra,
-        'centro_custo': centro_custo,
-        'categoria': 'outra',
-        'numero_nf': documento,
-        'descricao': descricao,
-        'data_emissao': data_pagamento,
-        'data_vencimento': data_pagamento,
-        'data_pagamento': data_pagamento,
-        'valor': valor_baixa,
-        'valor_pago': liquido,
-        'status': ContaPagar.STATUS_PAGO,
-        'observacoes': observacoes,
-    }
-
-    return ContaPagar.objects.update_or_create(
-        origem_importacao=ORIGEM_SIENGE_PAGOS,
-        codigo_externo=codigo_externo,
-        defaults=dados,
-    )
 
 
 def _resolver_destino(codigo):

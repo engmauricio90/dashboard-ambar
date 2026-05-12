@@ -3,6 +3,7 @@ from datetime import date
 from decimal import Decimal
 
 from django.contrib import messages
+from django.db import DatabaseError
 from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -216,15 +217,18 @@ def importar_contas_pagar_sienge(request):
         form = ImportarCredoresSiengeForm(request.POST, request.FILES)
         if form.is_valid():
             conteudo = decodificar_csv_upload(form.cleaned_data['arquivo'])
-            if form.cleaned_data['tipo_relatorio'] == 'pago':
-                resultado = importar_contas_pagas_credores_csv(conteudo)
-            else:
-                resultado = importar_contas_pagar_credores_csv(conteudo)
-            messages.success(
-                request,
-                f'Importacao concluida: {resultado.criadas} criada(s), '
-                f'{resultado.atualizadas} atualizada(s), {resultado.ignoradas} ignorada(s).',
-            )
+            try:
+                if form.cleaned_data['tipo_relatorio'] == 'pago':
+                    resultado = importar_contas_pagas_credores_csv(conteudo)
+                else:
+                    resultado = importar_contas_pagar_credores_csv(conteudo)
+                messages.success(
+                    request,
+                    f'Importacao concluida: {resultado.criadas} criada(s), '
+                    f'{resultado.atualizadas} atualizada(s), {resultado.ignoradas} ignorada(s).',
+                )
+            except DatabaseError as exc:
+                messages.error(request, f'Nao foi possivel importar agora. Tente novamente em instantes. Detalhe: {exc}')
     else:
         form = ImportarCredoresSiengeForm()
 
