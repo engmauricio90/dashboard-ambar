@@ -19,7 +19,7 @@ ORIGEM_SIENGE_PAGOS = 'sienge_pagos'
 
 
 OBRAS_POR_CODIGO_CENTRO = {
-    '4': 'IPANEMA',
+    '4': 'Orla de Ipanema',
     '6': 'GARTEN HAUS',
     '7': 'Hulha Negra - Senar',
     '8': 'Casa Ramona E Patrick',
