@@ -20,7 +20,7 @@ ORIGEM_SIENGE_PAGOS = 'sienge_pagos'
 
 OBRAS_POR_CODIGO_CENTRO = {
     '4': 'Orla de Ipanema',
-    '6': 'GARTEN HAUS',
+    '6': 'Jardim das Extremosas',
     '7': 'Hulha Negra - Senar',
     '8': 'Casa Ramona E Patrick',
     '9': 'Casa Kj',
@@ -34,7 +34,7 @@ OBRAS_POR_CODIGO_CENTRO = {
     '28': 'PHORBIS',
     '31': 'MC3 ENGENHARIA LTDA',
     '33': 'Orla do Guaiba - Trecho 3',
-    '34': 'Rede de Esgoto - CORSAN',
+    '34': 'Rede de Esgoto Sapiranga (CORSAN)',
     '35': 'ORLA 1',
     '36': 'ORLA 1',
     '37': 'HERTZ',
@@ -49,8 +49,10 @@ ALIASES_OBRAS = {
     'Condomínio Rithmo': ['Condominio Rithmo'],
     'Orla Do Lami': ['LAMI'],
     'MC3 ENGENHARIA LTDA': ['MC3'],
-    'Rede de Esgoto - CORSAN': ['CORSAN'],
+    'Jardim das Extremosas': ['GARTEN HAUS'],
+    'Rede de Esgoto Sapiranga (CORSAN)': ['Rede de Esgoto - CORSAN', 'CORSAN'],
     'ORLA 1': ['Orla 1 - Ambulantes', 'Orla 1 - Bares 1,2 e 3'],
+    'EMEB DARCY BORGES DE CASTILHOS': ['EMEB DARCY BORGES', 'EMEB Darcy Borges de Castilhos'],
 }
 
 
