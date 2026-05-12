@@ -17,8 +17,10 @@ from .forms import (
     ContaReceberForm,
     FinanceiroFiltroForm,
     FornecedorForm,
+    ImportarCredoresSiengeForm,
     ItemContaPagarOrdemCompraFormSet,
 )
+from .importadores import decodificar_csv_upload, importar_contas_pagar_credores_csv
 from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor
 
 
@@ -205,6 +207,28 @@ def lista_contas_pagar(request):
             'descricao': 'Despesas em aberto para baixa ou cancelamento em massa.',
             'mostrar_acoes_massa': True,
         },
+    )
+
+
+def importar_contas_pagar_sienge(request):
+    resultado = None
+    if request.method == 'POST':
+        form = ImportarCredoresSiengeForm(request.POST, request.FILES)
+        if form.is_valid():
+            conteudo = decodificar_csv_upload(form.cleaned_data['arquivo'])
+            resultado = importar_contas_pagar_credores_csv(conteudo)
+            messages.success(
+                request,
+                f'Importacao concluida: {resultado.criadas} criada(s), '
+                f'{resultado.atualizadas} atualizada(s), {resultado.ignoradas} ignorada(s).',
+            )
+    else:
+        form = ImportarCredoresSiengeForm()
+
+    return render(
+        request,
+        'financeiro/importar_credores_sienge.html',
+        {'form': form, 'resultado': resultado},
     )
 
 

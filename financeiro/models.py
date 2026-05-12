@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.db import models, transaction
+from django.db.models import Q
 
 from obras.models import DespesaObra, NotaFiscal, Obra, RetencaoNotaFiscal, RetencaoTecnicaObra
 
@@ -249,6 +250,8 @@ class ContaPagar(models.Model):
     valor_pago = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_ABERTO)
     observacoes = models.TextField(blank=True)
+    origem_importacao = models.CharField(max_length=50, blank=True)
+    codigo_externo = models.CharField(max_length=120, blank=True)
     despesa_obra = models.OneToOneField(
         DespesaObra,
         on_delete=models.SET_NULL,
@@ -263,6 +266,13 @@ class ContaPagar(models.Model):
         ordering = ['data_vencimento', 'id']
         verbose_name = 'Conta a pagar'
         verbose_name_plural = 'Contas a pagar'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['origem_importacao', 'codigo_externo'],
+                condition=~Q(origem_importacao='') & ~Q(codigo_externo=''),
+                name='unique_conta_pagar_origem_codigo_externo',
+            )
+        ]
 
     @property
     def esta_baixada(self):

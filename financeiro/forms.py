@@ -6,6 +6,10 @@ from obras.forms import BootstrapForm, BootstrapModelForm
 from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor, ItemContaPagarOrdemCompra
 
 
+class ImportarCredoresSiengeForm(forms.Form):
+    arquivo = forms.FileField(label='Arquivo CSV')
+
+
 class FornecedorForm(BootstrapModelForm):
     class Meta:
         model = Fornecedor

@@ -13,6 +13,7 @@ urlpatterns = [
     path('pagar/pagas/', views.lista_contas_pagas, name='lista_contas_pagas'),
     path('pagar/canceladas/', views.lista_contas_pagar_canceladas, name='lista_contas_pagar_canceladas'),
     path('pagar/acao-massa/', views.acao_massa_contas_pagar, name='acao_massa_contas_pagar'),
+    path('pagar/importar-credores/', views.importar_contas_pagar_sienge, name='importar_contas_pagar_sienge'),
     path('pagar/nova/', views.nova_conta_pagar, name='nova_conta_pagar'),
     path('pagar/<int:conta_id>/editar/', views.editar_conta_pagar, name='editar_conta_pagar'),
     path('pagar/<int:conta_id>/baixar/', views.baixar_conta_pagar, name='baixar_conta_pagar'),

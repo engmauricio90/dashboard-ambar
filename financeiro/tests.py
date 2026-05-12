@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
@@ -293,6 +294,71 @@ class FinanceiroIntegracaoObraTests(TestCase):
         conta.refresh_from_db()
         self.assertEqual(conta.status, ContaPagar.STATUS_CANCELADO)
         self.assertFalse(DespesaObra.objects.filter(descricao='Conta cancelada').exists())
+
+    def test_importa_credores_sienge_cria_contas_e_despesas(self):
+        Obra.objects.create(nome_obra='IPANEMA')
+        csv_text = (
+            '"";\n'
+            '"Centro de Custo: ";"4 - Orla de Ipanema";\n'
+            '"Credor";"Documento";"Lançamento";"Qt.";"Ind.";"Data vencto";"%";"Dias";"Valor no vencto";"Acréscimo";"Desconto";"Total";\n'
+            '"Fornecedor Obra";"NFM. 123";"1706/1";"1";"0";"08/04/2026";"100,00";"34";"1.000,00";"10,00";"5,00";"1.005,00";\n'
+            '"                          Obs: BOLETO";\n'
+            '"Centro de Custo: ";"14 - Maquinas E Veículos";\n'
+            '"Credor";"Documento";"Lançamento";"Qt.";"Ind.";"Data vencto";"%";"Dias";"Valor no vencto";"Acréscimo";"Desconto";"Total";\n'
+            '"Fornecedor Centro";"NFS. 88";"2000/1";"1";"0";"10/05/2026";"100,00";"0";"500,00";"0,00";"0,00";"500,00";\n'
+        )
+        arquivo = SimpleUploadedFile('credores.csv', csv_text.encode('cp1252'), content_type='text/csv')
+
+        response = self.client.post(reverse('importar_contas_pagar_sienge'), {'arquivo': arquivo})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(ContaPagar.objects.count(), 2)
+        conta_obra = ContaPagar.objects.get(fornecedor='Fornecedor Obra')
+        self.assertEqual(conta_obra.obra.nome_obra, 'IPANEMA')
+        self.assertIsNone(conta_obra.centro_custo)
+        self.assertEqual(conta_obra.valor, Decimal('1005.00'))
+        self.assertTrue(DespesaObra.objects.filter(obra__nome_obra='IPANEMA', valor=Decimal('1005.00')).exists())
+        self.assertIn('BOLETO', conta_obra.observacoes)
+        conta_centro = ContaPagar.objects.get(fornecedor='Fornecedor Centro')
+        self.assertIsNone(conta_centro.obra)
+        self.assertEqual(conta_centro.centro_custo.nome, 'Maquinas E Veículos')
+
+    def test_importa_credores_sienge_e_idempotente(self):
+        csv_text = (
+            '"Centro de Custo: ";"35 - Orla 1 - Ambulantes";\n'
+            '"Credor";"Documento";"Lançamento";"Qt.";"Ind.";"Data vencto";"%";"Dias";"Valor no vencto";"Acréscimo";"Desconto";"Total";\n'
+            '"Fornecedor Orla";"NFM. 77";"3000/1";"1";"0";"12/05/2026";"100,00";"0";"300,00";"0,00";"0,00";"300,00";\n'
+        )
+
+        for _ in range(2):
+            arquivo = SimpleUploadedFile('credores.csv', csv_text.encode('cp1252'), content_type='text/csv')
+            self.client.post(reverse('importar_contas_pagar_sienge'), {'arquivo': arquivo})
+
+        self.assertEqual(ContaPagar.objects.count(), 1)
+        conta = ContaPagar.objects.get()
+        self.assertEqual(conta.obra.nome_obra, 'ORLA 1')
+
+    def test_reimportacao_preserva_status_baixado(self):
+        csv_text = (
+            '"Centro de Custo: ";"35 - Orla 1 - Ambulantes";\n'
+            '"Credor";"Documento";"Lançamento";"Qt.";"Ind.";"Data vencto";"%";"Dias";"Valor no vencto";"Acréscimo";"Desconto";"Total";\n'
+            '"Fornecedor Orla";"NFM. 77";"3000/1";"1";"0";"12/05/2026";"100,00";"0";"300,00";"0,00";"0,00";"300,00";\n'
+        )
+
+        arquivo = SimpleUploadedFile('credores.csv', csv_text.encode('cp1252'), content_type='text/csv')
+        self.client.post(reverse('importar_contas_pagar_sienge'), {'arquivo': arquivo})
+        conta = ContaPagar.objects.get()
+        conta.status = ContaPagar.STATUS_PAGO
+        conta.data_pagamento = date(2026, 5, 20)
+        conta.valor_pago = Decimal('305.00')
+        conta.save()
+
+        arquivo = SimpleUploadedFile('credores.csv', csv_text.encode('cp1252'), content_type='text/csv')
+        self.client.post(reverse('importar_contas_pagar_sienge'), {'arquivo': arquivo})
+
+        conta.refresh_from_db()
+        self.assertEqual(conta.status, ContaPagar.STATUS_PAGO)
+        self.assertEqual(conta.valor_pago, Decimal('305.00'))
 
     def test_dashboard_financeiro_responde(self):
         response = self.client.get(reverse('financeiro_home'))
