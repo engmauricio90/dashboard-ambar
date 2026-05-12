@@ -24,23 +24,33 @@ OBRAS_POR_CODIGO_CENTRO = {
     '7': 'Hulha Negra - Senar',
     '8': 'Casa Ramona E Patrick',
     '9': 'Casa Kj',
-    '10': 'Condominio Rithmo',
-    '11': 'LAMI',
+    '10': 'Condomínio Rithmo',
+    '11': 'Orla Do Lami',
     '12': 'Escritório Ana Patrícia Orsi',
     '15': 'Parque Harmonia',
     '20': 'POS OBRA',
     '26': 'Contenções BR 116',
     '27': 'SUELO',
     '28': 'PHORBIS',
-    '31': 'MC3',
+    '31': 'MC3 ENGENHARIA LTDA',
     '33': 'Orla do Guaiba - Trecho 3',
-    '34': 'CORSAN',
+    '34': 'Rede de Esgoto - CORSAN',
     '35': 'ORLA 1',
     '36': 'ORLA 1',
     '37': 'HERTZ',
     '38': 'CASA RA',
     '40': 'EMEI JOÃO DE BARRO',
     '41': 'EMEB DARCY BORGES DE CASTILHOS',
+}
+
+
+ALIASES_OBRAS = {
+    'Orla de Ipanema': ['IPANEMA'],
+    'Condomínio Rithmo': ['Condominio Rithmo'],
+    'Orla Do Lami': ['LAMI'],
+    'MC3 ENGENHARIA LTDA': ['MC3'],
+    'Rede de Esgoto - CORSAN': ['CORSAN'],
+    'ORLA 1': ['Orla 1 - Ambulantes', 'Orla 1 - Bares 1,2 e 3'],
 }
 
 
@@ -362,9 +372,16 @@ def _get_or_create_obra_normalizada(nome):
 
 
 def _buscar_obra_normalizada(nome):
-    alvo = _normalizar(nome)
+    alvo_canonico = _normalizar(nome)
     for obra in Obra.objects.all():
-        if _normalizar(obra.nome_obra) == alvo:
+        if _normalizar(obra.nome_obra) == alvo_canonico:
+            return obra
+
+    alvos = {_normalizar(nome_possivel) for nome_possivel in ALIASES_OBRAS.get(nome, [])}
+    for obra in Obra.objects.all():
+        if _normalizar(obra.nome_obra) in alvos:
+            obra.nome_obra = nome
+            obra.save(update_fields=['nome_obra', 'updated_at'])
             return obra
     return None
 
