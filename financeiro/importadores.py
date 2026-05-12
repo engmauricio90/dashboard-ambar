@@ -14,6 +14,7 @@ from .models import CentroCusto, ContaPagar, Fornecedor
 
 
 ORIGEM_SIENGE_CREDORES = 'sienge_credores'
+ORIGEM_SIENGE_PAGOS = 'sienge_pagos'
 
 
 OBRAS_POR_CODIGO_CENTRO = {
@@ -134,6 +135,42 @@ def importar_contas_pagar_credores_csv(conteudo):
     return resultado
 
 
+@transaction.atomic
+def importar_contas_pagas_credores_csv(conteudo):
+    resultado = garantir_cadastros_relatorio_credores()
+    centro_atual = None
+
+    reader = csv.reader(StringIO(conteudo), delimiter=';')
+    for row in reader:
+        if not row or not any((coluna or '').strip() for coluna in row):
+            continue
+
+        primeira_coluna = (row[0] or '').strip()
+        if _is_linha_centro_custo(primeira_coluna):
+            centro_atual = _parse_centro_custo(row[1] if len(row) > 1 else '')
+            continue
+
+        if primeira_coluna == 'Credor':
+            continue
+
+        if not centro_atual or len(row) < 11:
+            resultado.ignoradas += 1
+            continue
+
+        try:
+            _, created = _importar_linha_conta_paga(row, centro_atual)
+        except (ValueError, InvalidOperation):
+            resultado.ignoradas += 1
+            continue
+
+        if created:
+            resultado.criadas += 1
+        else:
+            resultado.atualizadas += 1
+
+    return resultado
+
+
 def _importar_linha_conta(row, centro_atual):
     credor = row[0].strip()
     documento = row[1].strip()
@@ -187,6 +224,56 @@ def _importar_linha_conta(row, centro_atual):
     return conta, created
 
 
+def _importar_linha_conta_paga(row, centro_atual):
+    credor = row[0].strip()
+    codigo_credor = row[1].strip()
+    documento = row[2].strip()
+    lancamento = row[3].strip()
+    quantidade = row[4].strip()
+    data_pagamento = _parse_data(row[5])
+    sequencia = row[6].strip()
+    valor_baixa = _parse_decimal(row[7])
+    acrescimo = _parse_decimal(row[8])
+    desconto = _parse_decimal(row[9])
+    liquido = _parse_decimal(row[10])
+
+    codigo = centro_atual['codigo']
+    obra, centro_custo = _resolver_destino(codigo)
+    fornecedor_cadastro, _ = Fornecedor.objects.get_or_create(nome=credor, cpf_cnpj='')
+    codigo_externo = f'{codigo}:{lancamento}:{sequencia}:{documento}:{data_pagamento.isoformat()}'
+    descricao = _limitar_texto(f'{documento or "Documento sem numero"} - lancamento {lancamento}', 255)
+    observacoes = '\n'.join(
+        [
+            f'Importado do relatorio de contas pagas. Centro original: {centro_atual["original"]}.',
+            f'Valor baixa: R$ {valor_baixa:.2f}. Acrescimo: R$ {acrescimo:.2f}. Desconto: R$ {desconto:.2f}.',
+            f'Codigo credor: {codigo_credor}. Qt.: {quantidade}. Seq.: {sequencia}.',
+        ]
+    )
+
+    dados = {
+        'fornecedor': credor,
+        'fornecedor_cadastro': fornecedor_cadastro,
+        'obra': obra,
+        'centro_custo': centro_custo,
+        'categoria': 'outra',
+        'numero_nf': documento,
+        'descricao': descricao,
+        'data_emissao': data_pagamento,
+        'data_vencimento': data_pagamento,
+        'data_pagamento': data_pagamento,
+        'valor': valor_baixa,
+        'valor_pago': liquido,
+        'status': ContaPagar.STATUS_PAGO,
+        'observacoes': observacoes,
+    }
+
+    return ContaPagar.objects.update_or_create(
+        origem_importacao=ORIGEM_SIENGE_PAGOS,
+        codigo_externo=codigo_externo,
+        defaults=dados,
+    )
+
+
 def _resolver_destino(codigo):
     if codigo in CENTROS_CUSTO_POR_CODIGO:
         centro, _ = CentroCusto.objects.get_or_create(nome=CENTROS_CUSTO_POR_CODIGO[codigo])
@@ -227,12 +314,16 @@ def _parse_centro_custo(valor):
     }
 
 
+def _is_linha_centro_custo(valor):
+    return _normalizar(valor).startswith('centro de custo')
+
+
 def _parse_data(valor):
     return datetime.strptime((valor or '').strip(), '%d/%m/%Y').date()
 
 
 def _parse_decimal(valor):
-    texto = (valor or '0').strip().replace('.', '').replace(',', '.')
+    texto = (valor or '0').strip().replace('T', '').replace('.', '').replace(',', '.')
     return Decimal(texto or '0')
 
 

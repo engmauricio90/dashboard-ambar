@@ -309,7 +309,10 @@ class FinanceiroIntegracaoObraTests(TestCase):
         )
         arquivo = SimpleUploadedFile('credores.csv', csv_text.encode('cp1252'), content_type='text/csv')
 
-        response = self.client.post(reverse('importar_contas_pagar_sienge'), {'arquivo': arquivo})
+        response = self.client.post(
+            reverse('importar_contas_pagar_sienge'),
+            {'tipo_relatorio': 'aberto', 'arquivo': arquivo},
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(ContaPagar.objects.count(), 2)
@@ -332,7 +335,10 @@ class FinanceiroIntegracaoObraTests(TestCase):
 
         for _ in range(2):
             arquivo = SimpleUploadedFile('credores.csv', csv_text.encode('cp1252'), content_type='text/csv')
-            self.client.post(reverse('importar_contas_pagar_sienge'), {'arquivo': arquivo})
+            self.client.post(
+                reverse('importar_contas_pagar_sienge'),
+                {'tipo_relatorio': 'aberto', 'arquivo': arquivo},
+            )
 
         self.assertEqual(ContaPagar.objects.count(), 1)
         conta = ContaPagar.objects.get()
@@ -346,7 +352,10 @@ class FinanceiroIntegracaoObraTests(TestCase):
         )
 
         arquivo = SimpleUploadedFile('credores.csv', csv_text.encode('cp1252'), content_type='text/csv')
-        self.client.post(reverse('importar_contas_pagar_sienge'), {'arquivo': arquivo})
+        self.client.post(
+            reverse('importar_contas_pagar_sienge'),
+            {'tipo_relatorio': 'aberto', 'arquivo': arquivo},
+        )
         conta = ContaPagar.objects.get()
         conta.status = ContaPagar.STATUS_PAGO
         conta.data_pagamento = date(2026, 5, 20)
@@ -354,11 +363,44 @@ class FinanceiroIntegracaoObraTests(TestCase):
         conta.save()
 
         arquivo = SimpleUploadedFile('credores.csv', csv_text.encode('cp1252'), content_type='text/csv')
-        self.client.post(reverse('importar_contas_pagar_sienge'), {'arquivo': arquivo})
+        self.client.post(
+            reverse('importar_contas_pagar_sienge'),
+            {'tipo_relatorio': 'aberto', 'arquivo': arquivo},
+        )
 
         conta.refresh_from_db()
         self.assertEqual(conta.status, ContaPagar.STATUS_PAGO)
         self.assertEqual(conta.valor_pago, Decimal('305.00'))
+
+    def test_importa_credores_pagos_sienge_cria_contas_pagas(self):
+        csv_text = (
+            'Centro de custo;4 - Orla de Ipanema;;;;;;;;;\n'
+            'Credor;Cd. cred.;Documento;Lançamento;Qt.;Dt. pagto.;Seq.;Valor baixa;Acréscimo;Desconto;Líquido\n'
+            'Fornecedor Pago;133;NFM.7284;2548/1;1;13/06/2025;1;1.000,00T;15,50;0;1.015,50\n'
+            'Centro de custo;14 - Maquinas E Veículos;;;;;;;;;\n'
+            'Credor;Cd. cred.;Documento;Lançamento;Qt.;Dt. pagto.;Seq.;Valor baixa;Acréscimo;Desconto;Líquido\n'
+            'Fornecedor Centro Pago;200;NFS.10;3000/1;1;14/06/2025;1;500,00T;0;25,00;475,00\n'
+        )
+        arquivo = SimpleUploadedFile('pagas.csv', csv_text.encode('cp1252'), content_type='text/csv')
+
+        response = self.client.post(
+            reverse('importar_contas_pagar_sienge'),
+            {'tipo_relatorio': 'pago', 'arquivo': arquivo},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        conta_obra = ContaPagar.objects.get(fornecedor='Fornecedor Pago')
+        self.assertEqual(conta_obra.status, ContaPagar.STATUS_PAGO)
+        self.assertEqual(conta_obra.data_pagamento, date(2025, 6, 13))
+        self.assertEqual(conta_obra.valor, Decimal('1000.00'))
+        self.assertEqual(conta_obra.valor_pago, Decimal('1015.50'))
+        self.assertEqual(conta_obra.diferenca_pagamento, Decimal('15.50'))
+        self.assertEqual(conta_obra.obra.nome_obra, 'IPANEMA')
+        self.assertTrue(DespesaObra.objects.filter(obra__nome_obra='IPANEMA', valor=Decimal('1000.00')).exists())
+        conta_centro = ContaPagar.objects.get(fornecedor='Fornecedor Centro Pago')
+        self.assertIsNone(conta_centro.obra)
+        self.assertEqual(conta_centro.centro_custo.nome, 'Maquinas E Veículos')
+        self.assertEqual(conta_centro.valor_pago, Decimal('475.00'))
 
     def test_dashboard_financeiro_responde(self):
         response = self.client.get(reverse('financeiro_home'))

@@ -20,7 +20,7 @@ from .forms import (
     ImportarCredoresSiengeForm,
     ItemContaPagarOrdemCompraFormSet,
 )
-from .importadores import decodificar_csv_upload, importar_contas_pagar_credores_csv
+from .importadores import decodificar_csv_upload, importar_contas_pagar_credores_csv, importar_contas_pagas_credores_csv
 from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor
 
 
@@ -216,7 +216,10 @@ def importar_contas_pagar_sienge(request):
         form = ImportarCredoresSiengeForm(request.POST, request.FILES)
         if form.is_valid():
             conteudo = decodificar_csv_upload(form.cleaned_data['arquivo'])
-            resultado = importar_contas_pagar_credores_csv(conteudo)
+            if form.cleaned_data['tipo_relatorio'] == 'pago':
+                resultado = importar_contas_pagas_credores_csv(conteudo)
+            else:
+                resultado = importar_contas_pagar_credores_csv(conteudo)
             messages.success(
                 request,
                 f'Importacao concluida: {resultado.criadas} criada(s), '

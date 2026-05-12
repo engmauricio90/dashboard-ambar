@@ -7,6 +7,12 @@ from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor, ItemConta
 
 
 class ImportarCredoresSiengeForm(forms.Form):
+    TIPO_RELATORIO_CHOICES = [
+        ('aberto', 'Contas em aberto'),
+        ('pago', 'Contas pagas'),
+    ]
+
+    tipo_relatorio = forms.ChoiceField(label='Tipo de relatório', choices=TIPO_RELATORIO_CHOICES)
     arquivo = forms.FileField(label='Arquivo CSV')
 
 
