@@ -3,6 +3,64 @@
 {% block title %}Relatorio Financeiro{% endblock %}
 
 {% block content %}
+<style>
+    .finance-report-card {
+        border: 1px solid #dfe5e7;
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 1px 4px rgba(20, 30, 35, 0.06);
+    }
+    .finance-summary {
+        border: 1px solid #dde5e7;
+        border-radius: 8px;
+        background: #fbfcfc;
+        padding: 16px;
+        height: 100%;
+    }
+    .finance-summary span {
+        color: #6c757d;
+        font-size: .86rem;
+    }
+    .finance-summary strong {
+        display: block;
+        margin-top: 4px;
+        font-size: 1.25rem;
+    }
+    .finance-table {
+        border-collapse: separate;
+        border-spacing: 0;
+        font-size: .92rem;
+    }
+    .finance-table thead th {
+        background: #f3f6f7;
+        border-bottom: 1px solid #cfd8dc;
+        color: #263238;
+        font-size: .78rem;
+        letter-spacing: 0;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+    .finance-table td {
+        border-color: #edf1f2;
+        vertical-align: middle;
+    }
+    .finance-table tbody tr:hover {
+        background: #f8fbfb;
+    }
+    .finance-description {
+        max-width: 340px;
+        white-space: normal;
+    }
+    .finance-muted {
+        color: #6c757d;
+        font-size: .82rem;
+    }
+    .finance-value {
+        font-weight: 700;
+        white-space: nowrap;
+    }
+</style>
+
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
         <h1 class="mb-1">Relatorio Financeiro</h1>
@@ -14,7 +72,7 @@
     </div>
 </div>
 
-<div class="card shadow-sm mb-4">
+<div class="finance-report-card mb-4">
     <div class="card-body">
         <form method="get" class="row g-3">
             {% for field in filtro_form %}
@@ -36,16 +94,22 @@
 </div>
 
 <div class="row g-3 mb-4">
-    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>A receber aberto</h6><h4>R$ {{ total_receber_aberto|floatformat:2 }}</h4></div></div></div>
-    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>A pagar aberto</h6><h4>R$ {{ total_pagar_aberto|floatformat:2 }}</h4></div></div></div>
-    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>Saldo previsto</h6><h4>R$ {{ saldo_previsto|floatformat:2 }}</h4></div></div></div>
-    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>Saldo realizado</h6><h4>R$ {{ saldo_realizado|floatformat:2 }}</h4></div></div></div>
+    <div class="col-md-3"><div class="finance-summary"><span>A receber aberto</span><strong class="text-success">R$ {{ total_receber_aberto|floatformat:2 }}</strong></div></div>
+    <div class="col-md-3"><div class="finance-summary"><span>A pagar aberto</span><strong class="text-danger">R$ {{ total_pagar_aberto|floatformat:2 }}</strong></div></div>
+    <div class="col-md-3"><div class="finance-summary"><span>Saldo previsto</span><strong class="{% if saldo_previsto < 0 %}text-danger{% else %}text-success{% endif %}">R$ {{ saldo_previsto|floatformat:2 }}</strong></div></div>
+    <div class="col-md-3"><div class="finance-summary"><span>Saldo realizado</span><strong class="{% if saldo_realizado < 0 %}text-danger{% else %}text-success{% endif %}">R$ {{ saldo_realizado|floatformat:2 }}</strong></div></div>
 </div>
 
-<div class="card shadow-sm">
+<div class="finance-report-card">
     <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <div>
+                <h5 class="mb-0">Lançamentos</h5>
+                <div class="finance-muted">{{ total_eventos }} item(ns) encontrados</div>
+            </div>
+        </div>
         <div class="table-responsive">
-            <table class="table table-bordered table-striped align-middle mb-0">
+            <table class="table finance-table align-middle mb-0">
                 <thead>
                     <tr>
                         <th>Data</th>
@@ -61,14 +125,26 @@
                 <tbody>
                     {% for evento in eventos %}
                     <tr>
-                        <td>{{ evento.data }}</td>
-                        <td>{{ evento.tipo }}</td>
-                        <td>{{ evento.descricao }}</td>
+                        <td class="text-nowrap">{{ evento.data|date:"d/m/Y" }}</td>
+                        <td>
+                            <span class="badge {% if evento.tipo == 'Receber' %}bg-success{% else %}bg-danger{% endif %}">
+                                {{ evento.tipo }}
+                            </span>
+                        </td>
+                        <td class="finance-description">
+                            <strong>{{ evento.descricao }}</strong>
+                            <div class="finance-muted">{{ evento.pessoa }}</div>
+                        </td>
                         <td>{{ evento.pessoa }}</td>
-                        <td>{{ evento.obra|default:'-' }}</td>
+                        <td>
+                            {{ evento.obra|default:'-' }}
+                            {% if evento.centro_custo %}<div class="finance-muted">{{ evento.centro_custo }}</div>{% endif %}
+                        </td>
                         <td>{{ evento.centro_custo|default:'-' }}</td>
-                        <td>{{ evento.status }}</td>
-                        <td>R$ {{ evento.valor|floatformat:2 }}</td>
+                        <td><span class="badge bg-light text-dark border">{{ evento.status }}</span></td>
+                        <td class="text-end finance-value {% if evento.valor < 0 %}text-danger{% else %}text-success{% endif %}">
+                            R$ {{ evento.valor|floatformat:2 }}
+                        </td>
                     </tr>
                     {% empty %}
                     <tr><td colspan="8">Nenhum lancamento encontrado.</td></tr>

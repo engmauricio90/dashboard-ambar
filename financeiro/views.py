@@ -1,7 +1,10 @@
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
+from pathlib import Path
 
+from django.conf import settings
 from django.contrib import messages
 from django.db import DatabaseError
 from django.db.models import Q
@@ -9,8 +12,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
-
-from controles.views import _build_simple_pdf
+from PIL import Image, ImageDraw, ImageFont
 
 from .forms import (
     CentroCustoForm,
@@ -178,6 +180,144 @@ def _grafico_fluxo(eventos):
         'receber': [float(meses[label]['receber']) for label in labels],
         'pagar': [float(meses[label]['pagar']) for label in labels],
     }
+
+
+def _format_currency_br(value):
+    value = value or Decimal('0')
+    formatted = f'{value:,.2f}'.replace(',', 'X').replace('.', ',').replace('X', '.')
+    return f'R$ {formatted}'
+
+
+def _pdf_font(size, bold=False):
+    font_dir = Path('C:/Windows/Fonts')
+    candidates = ['arialbd.ttf' if bold else 'arial.ttf', 'calibrib.ttf' if bold else 'calibri.ttf']
+    for name in candidates:
+        path = font_dir / name
+        if path.exists():
+            return ImageFont.truetype(str(path), size)
+    return ImageFont.load_default()
+
+
+def _clean_pdf_text(value):
+    return str(value or '-')
+
+
+def _fit_text(draw, text, font, max_width):
+    text = _clean_pdf_text(text)
+    if draw.textlength(text, font=font) <= max_width:
+        return text
+    ellipsis = '...'
+    while text and draw.textlength(text + ellipsis, font=font) > max_width:
+        text = text[:-1]
+    return text + ellipsis if text else ellipsis
+
+
+def _draw_table_cell(draw, text, box, font, fill, align='left'):
+    x1, y1, x2, y2 = box
+    text = _fit_text(draw, text, font, x2 - x1 - 18)
+    text_width = draw.textlength(text, font=font)
+    x = x1 + 9
+    if align == 'right':
+        x = x2 - text_width - 9
+    elif align == 'center':
+        x = x1 + ((x2 - x1) - text_width) / 2
+    draw.text((x, y1 + 10), text, font=font, fill=fill)
+
+
+def _financial_report_background():
+    bg_path = Path(settings.BASE_DIR) / 'static' / 'propostas' / 'reference' / 'page_frame.png'
+    if bg_path.exists():
+        return Image.open(bg_path).convert('RGB')
+    return Image.new('RGB', (1653, 2338), 'white')
+
+
+def _financial_report_pdf(eventos, resumo, filtros):
+    page_h = 2338
+    margin_x = 150
+    top_y = 360
+    row_h = 44
+    first_table_y = 760
+    rows_per_page = 28
+    pages = []
+    chunks = [eventos[i : i + rows_per_page] for i in range(0, len(eventos), rows_per_page)] or [[]]
+
+    title_font = _pdf_font(34, True)
+    small_font = _pdf_font(18)
+    label_font = _pdf_font(18, True)
+    head_font = _pdf_font(16, True)
+    cell_font = _pdf_font(15)
+    dark = (39, 45, 48)
+    muted = (94, 103, 107)
+    line = (204, 212, 216)
+    header_fill = (239, 243, 244)
+    positive = (42, 111, 84)
+    negative = (176, 55, 49)
+
+    for page_index, chunk in enumerate(chunks, start=1):
+        image = _financial_report_background()
+        draw = ImageDraw.Draw(image)
+
+        draw.text((margin_x, top_y), 'RELATÓRIO FINANCEIRO', font=title_font, fill=dark)
+        draw.text((margin_x, top_y + 46), f'Emitido em {date.today().strftime("%d/%m/%Y")}', font=small_font, fill=muted)
+        draw.text((margin_x, top_y + 76), f'Filtros: {filtros or "sem filtros"}', font=small_font, fill=muted)
+
+        summary_y = top_y + 130
+        cards = [
+            ('A receber aberto', resumo['total_receber_aberto'], positive),
+            ('A pagar aberto', resumo['total_pagar_aberto'], negative),
+            ('Saldo previsto', resumo['saldo_previsto'], positive if resumo['saldo_previsto'] >= 0 else negative),
+            ('Saldo realizado', resumo['saldo_realizado'], positive if resumo['saldo_realizado'] >= 0 else negative),
+        ]
+        card_w = 315
+        for idx, (label, value, color) in enumerate(cards):
+            x = margin_x + idx * (card_w + 22)
+            draw.rounded_rectangle((x, summary_y, x + card_w, summary_y + 100), radius=8, fill=(250, 251, 251), outline=line, width=2)
+            draw.text((x + 18, summary_y + 18), label, font=small_font, fill=muted)
+            draw.text((x + 18, summary_y + 52), _format_currency_br(value), font=label_font, fill=color)
+
+        table_y = first_table_y
+        columns = [
+            ('Data', 110, 'left'),
+            ('Tipo', 90, 'center'),
+            ('Descrição', 330, 'left'),
+            ('Cliente/Fornecedor', 260, 'left'),
+            ('Obra/Centro', 270, 'left'),
+            ('Status', 130, 'center'),
+            ('Valor', 160, 'right'),
+        ]
+        x = margin_x
+        draw.rounded_rectangle((margin_x, table_y, margin_x + sum(col[1] for col in columns), table_y + row_h), radius=6, fill=header_fill, outline=line, width=1)
+        for label, width, align in columns:
+            _draw_table_cell(draw, label, (x, table_y, x + width, table_y + row_h), head_font, dark, align)
+            x += width
+
+        y = table_y + row_h
+        for idx, evento in enumerate(chunk):
+            row_fill = (255, 255, 255) if idx % 2 == 0 else (248, 250, 250)
+            draw.rectangle((margin_x, y, margin_x + sum(col[1] for col in columns), y + row_h), fill=row_fill, outline=line, width=1)
+            destino = evento['obra'] or evento['centro_custo'] or '-'
+            values = [
+                evento['data'].strftime('%d/%m/%Y'),
+                evento['tipo'],
+                evento['descricao'],
+                evento['pessoa'],
+                destino,
+                evento['status'],
+                _format_currency_br(evento['valor']),
+            ]
+            x = margin_x
+            for (label, width, align), value in zip(columns, values):
+                color = positive if label == 'Valor' and evento['valor'] >= 0 else negative if label == 'Valor' else dark
+                _draw_table_cell(draw, value, (x, y, x + width, y + row_h), cell_font, color, align)
+                x += width
+            y += row_h
+
+        draw.text((margin_x, page_h - 170), f'Página {page_index} de {len(chunks)}', font=small_font, fill=muted)
+        pages.append(image)
+
+    buffer = BytesIO()
+    pages[0].save(buffer, 'PDF', resolution=150, save_all=True, append_images=pages[1:])
+    return buffer.getvalue()
 
 
 def financeiro_home(request):
@@ -474,6 +614,7 @@ def relatorio_financeiro(request):
     contexto = {
         'filtro_form': form,
         'eventos': eventos,
+        'total_eventos': len(eventos),
         **_resumo(receber, pagar),
     }
     return render(request, 'financeiro/relatorio.html', contexto)
@@ -484,35 +625,6 @@ def relatorio_financeiro_pdf(request):
     eventos = _eventos_fluxo(receber, pagar)
     resumo = _resumo(receber, pagar)
     filtros = request.GET.urlencode()
-    lines = [
-        'RELATORIO FINANCEIRO',
-        f'Emitido em {date.today().strftime("%d/%m/%Y")}',
-        f'Filtros: {filtros or "sem filtros"}',
-        '',
-        f'A receber aberto: R$ {resumo["total_receber_aberto"]:,.2f}',
-        f'Recebido: R$ {resumo["total_recebido"]:,.2f}',
-        f'A pagar aberto: R$ {resumo["total_pagar_aberto"]:,.2f}',
-        f'Pago: R$ {resumo["total_pago"]:,.2f}',
-        f'Saldo previsto: R$ {resumo["saldo_previsto"]:,.2f}',
-        '',
-        'DATA | TIPO | DESCRICAO | PESSOA | CENTRO | STATUS | VALOR',
-    ]
-    for evento in eventos:
-        lines.append(
-            ' | '.join(
-                [
-                    evento['data'].strftime('%d/%m/%Y'),
-                    evento['tipo'],
-                    evento['descricao'][:28],
-                    evento['pessoa'][:22],
-                    str(evento['centro_custo'] or '-')[:18],
-                    evento['status'],
-                    f'R$ {evento["valor"]:,.2f}',
-                ]
-            )
-        )
-
-    pages = [lines[i : i + 34] for i in range(0, len(lines), 34)] or [[]]
-    response = HttpResponse(_build_simple_pdf(pages), content_type='application/pdf')
+    response = HttpResponse(_financial_report_pdf(eventos, resumo, filtros), content_type='application/pdf')
     response['Content-Disposition'] = 'inline; filename="relatorio_financeiro.pdf"'
     return response
