@@ -4,6 +4,7 @@ from tempfile import NamedTemporaryFile
 from datetime import date
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
@@ -42,6 +43,7 @@ class ControleAbastecimentoTests(TestCase):
     def setUp(self):
         user_model = get_user_model()
         self.user = user_model.objects.create_user(username='operador', password='senha-forte-123')
+        self.user.groups.add(Group.objects.get_or_create(name='Financeiro')[0])
         self.client.force_login(self.user)
 
     def test_home_controles_carrega(self):

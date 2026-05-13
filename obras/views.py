@@ -106,6 +106,8 @@ def detalhe_obra(request, obra_id):
     timeline = defaultdict(lambda: {'faturado': 0, 'despesas': 0, 'aditivos': 0})
 
     for nota in obra.notas_fiscais.all():
+        if nota.status == NotaFiscal.STATUS_CANCELADA:
+            continue
         chave = nota.data_emissao.strftime('%Y-%m')
         timeline[chave]['faturado'] += float(nota.valor_bruto)
 
@@ -192,7 +194,7 @@ def relatorio_obra(request, obra_id):
     obra = get_object_or_404(_obra_base_queryset(), id=obra_id)
     filtro_form = RelatorioObraFiltroForm(request.GET or None)
 
-    notas = list(obra.notas_fiscais.all())
+    notas = [nota for nota in obra.notas_fiscais.all() if nota.status != NotaFiscal.STATUS_CANCELADA]
     despesas = list(obra.despesas_registradas.all())
     aditivos = list(obra.aditivos_registrados.all())
     retencoes_tecnicas = list(obra.retencoes_tecnicas_registradas.all())
@@ -320,6 +322,7 @@ def historico_financeiro(request, obra_id):
             'link': ('detalhe_nota_fiscal', nota.id),
         }
         for nota in obra.notas_fiscais.all()
+        if nota.status != NotaFiscal.STATUS_CANCELADA
     ]
 
     eventos_despesas = [
@@ -379,38 +382,8 @@ def historico_financeiro(request, obra_id):
 
 def nova_nota_fiscal(request, obra_id):
     obra = get_object_or_404(Obra, id=obra_id)
-
-    if request.method == 'POST':
-        form = NotaFiscalForm(request.POST)
-        nota = NotaFiscal(obra=obra)
-        retencoes_formset, impostos_formset = _build_nota_formsets(request.POST, instance=nota)
-        if form.is_valid() and retencoes_formset.is_valid() and impostos_formset.is_valid():
-            with transaction.atomic():
-                nota = form.save(commit=False)
-                nota.obra = obra
-                nota.save()
-                retencoes_formset.instance = nota
-                impostos_formset.instance = nota
-                _save_inline_formset(retencoes_formset, 'nota_fiscal')
-                _save_inline_formset(impostos_formset, 'nota_fiscal')
-            messages.success(request, 'Nota fiscal cadastrada com sucesso.')
-            return redirect('detalhe_nota_fiscal', obra_id=obra.id, nota_id=nota.id)
-    else:
-        form = NotaFiscalForm()
-        nota = NotaFiscal(obra=obra)
-        retencoes_formset, impostos_formset = _build_nota_formsets(instance=nota)
-
-    return render(
-        request,
-        'obras/form_nota_fiscal.html',
-        {
-            'form': form,
-            'obra': obra,
-            'titulo': 'Nova Nota Fiscal',
-            'retencoes_formset': retencoes_formset,
-            'impostos_formset': impostos_formset,
-        },
-    )
+    messages.info(request, 'As NFs da obra agora devem ser lancadas pelo Financeiro em Contas a Receber.')
+    return redirect(f'{reverse("nova_conta_receber")}?obra={obra.id}')
 
 
 def editar_nota_fiscal(request, obra_id, nota_id):
@@ -488,23 +461,8 @@ def detalhe_nota_fiscal(request, obra_id, nota_id):
 
 def nova_despesa(request, obra_id):
     obra = get_object_or_404(Obra, id=obra_id)
-
-    if request.method == 'POST':
-        form = DespesaObraForm(request.POST)
-        if form.is_valid():
-            despesa = form.save(commit=False)
-            despesa.obra = obra
-            despesa.save()
-            messages.success(request, 'Despesa cadastrada com sucesso.')
-            return redirect('historico_financeiro', obra_id=obra.id)
-    else:
-        form = DespesaObraForm()
-
-    return render(
-        request,
-        'obras/form_despesa.html',
-        {'form': form, 'obra': obra, 'titulo': 'Nova Despesa'},
-    )
+    messages.info(request, 'As despesas da obra agora devem ser lancadas pelo Financeiro em Contas a Pagar.')
+    return redirect(f'{reverse("nova_conta_pagar")}?obra={obra.id}')
 
 
 def novo_aditivo(request, obra_id):

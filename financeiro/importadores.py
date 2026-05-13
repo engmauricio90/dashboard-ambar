@@ -228,7 +228,7 @@ def _criar_contas_pagas_em_lote(linhas_validas):
                 data_referencia=conta.data_emissao,
                 categoria=conta.categoria,
                 descricao=conta.descricao,
-                valor=conta.valor,
+                valor=conta.valor_pago_efetivo,
             )
             for conta in contas_criadas
             if conta.obra_id

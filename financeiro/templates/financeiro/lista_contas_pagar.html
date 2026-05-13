@@ -74,7 +74,7 @@
                         <td>{{ conta.get_status_display }}</td>
                         <td class="text-end">
                             {% if mostrar_acoes_massa %}
-                            <a href="{% url 'baixar_conta_pagar' conta.id %}" class="btn btn-sm btn-outline-success">Pagar</a>
+                            <button type="submit" formaction="{% url 'baixar_conta_pagar' conta.id %}" class="btn btn-sm btn-outline-success">Pagar</button>
                             {% endif %}
                             <a href="{% url 'editar_conta_pagar' conta.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
                         </td>
@@ -88,6 +88,7 @@
         {% if mostrar_acoes_massa %}
         </form>
         {% endif %}
+        {% include 'includes/pagination.html' %}
     </div>
 </div>
 {% endblock %}

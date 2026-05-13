@@ -9,8 +9,8 @@
         <p class="text-muted mb-0">{{ obra.nome_obra }} | visao consolidada dos lancamentos</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a href="{% url 'nova_nota_fiscal' obra.id %}" class="btn btn-success">Nova NF</a>
-        <a href="{% url 'nova_despesa' obra.id %}" class="btn btn-outline-danger">Nova Despesa</a>
+        <a href="{% url 'nova_conta_receber' %}?obra={{ obra.id }}" class="btn btn-success">Nova Receita/NF</a>
+        <a href="{% url 'nova_conta_pagar' %}?obra={{ obra.id }}" class="btn btn-outline-danger">Nova Despesa</a>
         <a href="{% url 'nova_retencao_tecnica' obra.id %}" class="btn btn-outline-warning">Nova Retencao Tecnica</a>
         <a href="{% url 'novo_aditivo' obra.id %}" class="btn btn-outline-info">Novo Aditivo/Supressao</a>
         <a href="{% url 'detalhe_obra' obra.id %}" class="btn btn-secondary">Voltar para a obra</a>

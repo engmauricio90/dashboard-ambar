@@ -29,7 +29,7 @@ class ObraFluxoFinanceiroTests(TestCase):
         self.assertIn('grafico_evolucao', response.context)
         self.assertIn('grafico_composicao', response.context)
 
-    def test_cria_nota_fiscal_e_redireciona_para_detalhe(self):
+    def test_nova_nota_fiscal_redireciona_para_financeiro(self):
         response = self.client.post(
             reverse('nova_nota_fiscal', args=[self.obra.id]),
             {
@@ -61,13 +61,12 @@ class ObraFluxoFinanceiroTests(TestCase):
             },
         )
 
-        nota = NotaFiscal.objects.get(obra=self.obra, numero='NF-001')
-        self.assertRedirects(response, reverse('detalhe_nota_fiscal', args=[self.obra.id, nota.id]))
-        self.assertEqual(nota.total_retencoes, Decimal('15.00'))
-        self.assertEqual(nota.total_impostos, Decimal('10.00'))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], f'{reverse("nova_conta_receber")}?obra={self.obra.id}')
+        self.assertFalse(NotaFiscal.objects.filter(obra=self.obra, numero='NF-001').exists())
 
-    def test_cria_despesa_e_aparece_no_historico(self):
-        self.client.post(
+    def test_nova_despesa_redireciona_para_financeiro(self):
+        response = self.client.post(
             reverse('nova_despesa', args=[self.obra.id]),
             {
                 'data_referencia': '2026-04-20',
@@ -77,9 +76,9 @@ class ObraFluxoFinanceiroTests(TestCase):
             },
         )
 
-        response = self.client.get(reverse('historico_financeiro', args=[self.obra.id]))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Compra de material')
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], f'{reverse("nova_conta_pagar")}?obra={self.obra.id}')
+        self.assertFalse(DespesaObra.objects.filter(obra=self.obra, descricao='Compra de material').exists())
 
     def test_cria_aditivo_e_agregado_da_obra_e_atualizado(self):
         AditivoContrato.objects.create(

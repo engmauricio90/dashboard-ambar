@@ -6,14 +6,19 @@ from financeiro.importadores import importar_contas_pagar_credores_csv, importar
 
 
 class Command(BaseCommand):
-    help = 'Importa o relatorio de credores do Sienge como contas a pagar.'
+    help = 'Importa relatorio de credores do Sienge para contas a pagar.'
 
     def add_arguments(self, parser):
-        parser.add_argument('arquivo_csv', type=str)
-        parser.add_argument('--pagas', action='store_true', help='Importa como contas ja pagas.')
+        parser.add_argument('arquivo', type=str)
+        parser.add_argument(
+            '--tipo',
+            choices=['aberto', 'pago'],
+            default='aberto',
+            help='Tipo de relatorio: aberto ou pago.',
+        )
 
     def handle(self, *args, **options):
-        caminho = Path(options['arquivo_csv'])
+        caminho = Path(options['arquivo'])
         if not caminho.exists():
             raise CommandError(f'Arquivo nao encontrado: {caminho}')
 
@@ -27,14 +32,11 @@ class Command(BaseCommand):
         if conteudo is None:
             conteudo = caminho.read_text(encoding='latin-1', errors='replace')
 
-        if options['pagas']:
-            resultado = importar_contas_pagas_credores_csv(conteudo)
-        else:
-            resultado = importar_contas_pagar_credores_csv(conteudo)
+        importador = importar_contas_pagas_credores_csv if options['tipo'] == 'pago' else importar_contas_pagar_credores_csv
+        resultado = importador(conteudo)
         self.stdout.write(
             self.style.SUCCESS(
-                f'{resultado.criadas} criada(s), {resultado.atualizadas} atualizada(s), '
-                f'{resultado.ignoradas} ignorada(s). Obras criadas: {resultado.obras_criadas}. '
-                f'Centros criados: {resultado.centros_criados}.'
+                f'Importacao concluida: {resultado.criadas} criada(s), '
+                f'{resultado.atualizadas} atualizada(s), {resultado.ignoradas} ignorada(s).'
             )
         )

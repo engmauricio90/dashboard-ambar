@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
@@ -16,6 +17,7 @@ class FinanceiroIntegracaoObraTests(TestCase):
     def setUp(self):
         user_model = get_user_model()
         self.user = user_model.objects.create_user(username='financeiro', password='senha-forte-123')
+        self.user.groups.add(Group.objects.get_or_create(name='Financeiro')[0])
         self.client.force_login(self.user)
         self.obra = Obra.objects.create(nome_obra='Obra Financeira', cliente='Cliente X')
         self.centro = CentroCusto.objects.create(nome='Obras')
@@ -112,6 +114,16 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertEqual(conta.valor, Decimal('2900.00'))
         self.assertEqual(ordem.total_faturado, Decimal('2900.00'))
         self.assertEqual(item.saldo_quantidade, Decimal('170.00'))
+
+        item.valor_unitario = Decimal('90.00')
+        item.save()
+        self.assertEqual(item.valor_total, Decimal('18000.00'))
+
+        nota = notas[0]
+        nota.quantidade = Decimal('20.00')
+        nota.valor_unitario = Decimal('90.00')
+        nota.save()
+        self.assertEqual(nota.valor_total, Decimal('1800.00'))
 
     def test_form_conta_pagar_permite_sem_oc(self):
         response = self.client.post(
@@ -269,6 +281,54 @@ class FinanceiroIntegracaoObraTests(TestCase):
         conta.refresh_from_db()
         self.assertEqual(conta.valor_pago_efetivo, Decimal('112.50'))
         self.assertEqual(conta.diferenca_pagamento, Decimal('12.50'))
+        self.assertEqual(conta.despesa_obra.valor, Decimal('112.50'))
+
+    def test_baixa_direta_de_conta_pagar_exige_post(self):
+        conta = ContaPagar.objects.create(
+            fornecedor='Fornecedor A',
+            obra=self.obra,
+            categoria='material',
+            descricao='Conta baixa post',
+            data_emissao=date(2026, 4, 2),
+            data_vencimento=date(2026, 4, 20),
+            valor=Decimal('100.00'),
+        )
+
+        response_get = self.client.get(reverse('baixar_conta_pagar', args=[conta.id]))
+        self.assertEqual(response_get.status_code, 405)
+
+        response_post = self.client.post(reverse('baixar_conta_pagar', args=[conta.id]))
+        self.assertRedirects(response_post, reverse('lista_contas_pagar'))
+        conta.refresh_from_db()
+        self.assertEqual(conta.status, ContaPagar.STATUS_PAGO)
+
+    def test_conta_receber_cancelada_nao_entra_no_total_da_obra(self):
+        ContaReceber.objects.create(
+            cliente='Cliente X',
+            obra=self.obra,
+            centro_custo=self.centro,
+            numero_nf='NF-OK',
+            descricao='NF valida',
+            data_emissao=date(2026, 4, 1),
+            data_vencimento=date(2026, 4, 30),
+            valor_bruto=Decimal('1000.00'),
+            issqn_retido=Decimal('25.00'),
+        )
+        ContaReceber.objects.create(
+            cliente='Cliente X',
+            obra=self.obra,
+            centro_custo=self.centro,
+            numero_nf='NF-CAN',
+            descricao='NF cancelada',
+            data_emissao=date(2026, 4, 2),
+            data_vencimento=date(2026, 4, 30),
+            valor_bruto=Decimal('500.00'),
+            issqn_retido=Decimal('10.00'),
+            status=ContaReceber.STATUS_CANCELADO,
+        )
+
+        self.assertEqual(self.obra.total_notas_fiscais, Decimal('1000.00'))
+        self.assertEqual(self.obra.total_retencoes_nf, Decimal('25.00'))
 
     def test_acao_massa_cancela_e_remove_despesa_da_obra(self):
         conta = ContaPagar.objects.create(
@@ -396,7 +456,7 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertEqual(conta_obra.valor_pago, Decimal('1015.50'))
         self.assertEqual(conta_obra.diferenca_pagamento, Decimal('15.50'))
         self.assertEqual(conta_obra.obra.nome_obra, 'Orla de Ipanema')
-        self.assertTrue(DespesaObra.objects.filter(obra__nome_obra='Orla de Ipanema', valor=Decimal('1000.00')).exists())
+        self.assertTrue(DespesaObra.objects.filter(obra__nome_obra='Orla de Ipanema', valor=Decimal('1015.50')).exists())
         conta_centro = ContaPagar.objects.get(fornecedor='Fornecedor Centro Pago')
         self.assertIsNone(conta_centro.obra)
         self.assertEqual(conta_centro.centro_custo.nome, 'Maquinas E Veículos')

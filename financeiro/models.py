@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.db import models, transaction
 from django.db.models import Q
 
-from obras.models import DespesaObra, NotaFiscal, Obra, RetencaoNotaFiscal, RetencaoTecnicaObra
+from obras.models import DespesaObra, NotaFiscal, Obra, RetencaoTecnicaObra
 
 
 class Fornecedor(models.Model):
@@ -123,40 +123,9 @@ class ContaReceber(models.Model):
             self.sincronizar_obra()
 
     def sincronizar_obra(self):
-        if not self.obra or not self.numero_nf:
-            return
+        from .services import sincronizar_conta_receber_obra
 
-        status_nf = 'cancelada' if self.status == self.STATUS_CANCELADO else 'emitida'
-        if self.status == self.STATUS_RECEBIDO:
-            status_nf = 'recebida'
-
-        nota, _ = NotaFiscal.objects.update_or_create(
-            obra=self.obra,
-            numero=self.numero_nf,
-            defaults={
-                'data_emissao': self.data_emissao,
-                'valor_bruto': self.valor_bruto,
-                'status': status_nf,
-                'observacoes': self.observacoes or f'Gerada pelo financeiro: {self.descricao}',
-            },
-        )
-
-        updates = {}
-        if self.nota_fiscal_id != nota.id:
-            updates['nota_fiscal'] = nota
-
-        self._sincronizar_retencao_nf(nota, RetencaoNotaFiscal.TIPO_ISS, 'ISSQN retido', self.issqn_retido)
-        self._sincronizar_retencao_nf(nota, RetencaoNotaFiscal.TIPO_INSS, 'INSS retido', self.inss_retido)
-        self._sincronizar_retencao_nf(nota, RetencaoNotaFiscal.TIPO_OUTRA, 'Outras retencoes', self.outras_retencoes)
-
-        retencao_tecnica = self._sincronizar_retencao_tecnica()
-        if self.retencao_tecnica_obra_id != getattr(retencao_tecnica, 'id', None):
-            updates['retencao_tecnica_obra'] = retencao_tecnica
-
-        if updates:
-            ContaReceber.objects.filter(pk=self.pk).update(**updates)
-            for field, value in updates.items():
-                setattr(self, field, value)
+        sincronizar_conta_receber_obra(self)
 
     def _sincronizar_retencao_nf(self, nota, tipo, descricao, valor):
         valor = valor or Decimal('0')
@@ -312,84 +281,19 @@ class ContaPagar(models.Model):
             self.sincronizar_ordem_compra()
 
     def sincronizar_obra(self):
-        if self.status == self.STATUS_CANCELADO:
-            if self.despesa_obra_id:
-                self.despesa_obra.delete()
-                ContaPagar.objects.filter(pk=self.pk).update(despesa_obra=None)
-                self.despesa_obra = None
-            return
+        from .services import sincronizar_conta_pagar_obra
 
-        if not self.obra:
-            return
-
-        if self.despesa_obra_id:
-            despesa = self.despesa_obra
-            despesa.obra = self.obra
-            despesa.data_referencia = self.data_emissao
-            despesa.categoria = self.categoria
-            despesa.descricao = self.descricao
-            despesa.valor = self.valor
-            despesa.save()
-        else:
-            despesa = DespesaObra.objects.create(
-                obra=self.obra,
-                data_referencia=self.data_emissao,
-                categoria=self.categoria,
-                descricao=self.descricao,
-                valor=self.valor,
-            )
-            ContaPagar.objects.filter(pk=self.pk).update(despesa_obra=despesa)
-            self.despesa_obra = despesa
+        sincronizar_conta_pagar_obra(self)
 
     def sincronizar_ordem_compra(self):
-        from controles.models import NotaFiscalOrdemCompraGeral
+        from .services import sincronizar_conta_pagar_ordem_compra
 
-        if self.status == self.STATUS_CANCELADO:
-            self.notas_ordem_compra.update(status=NotaFiscalOrdemCompraGeral.STATUS_CANCELADA)
-            return
-
-        if not self.ordem_compra_id or not self.numero_nf:
-            self.notas_ordem_compra.all().delete()
-            return
-
-        itens = list(self.itens_ordem_compra.select_related('item_ordem_compra'))
-        if not itens and self.item_ordem_compra_id and self.quantidade_oc:
-            itens = [
-                ItemContaPagarOrdemCompra(
-                    conta=self,
-                    item_ordem_compra=self.item_ordem_compra,
-                    quantidade=self.quantidade_oc,
-                )
-            ]
-
-        item_ids = [item.item_ordem_compra_id for item in itens if item.item_ordem_compra_id]
-        self.notas_ordem_compra.exclude(item_id__in=item_ids).delete()
-        for item_conta in itens:
-            item_oc = item_conta.item_ordem_compra
-            if not item_oc:
-                continue
-            NotaFiscalOrdemCompraGeral.objects.update_or_create(
-                conta_pagar=self,
-                item=item_oc,
-                defaults={
-                    'ordem': self.ordem_compra,
-                    'numero': self.numero_nf,
-                    'data_emissao': self.data_emissao,
-                    'data_vencimento': self.data_vencimento,
-                    'quantidade': item_conta.quantidade,
-                    'valor_unitario': item_oc.valor_unitario,
-                    'valor_total': item_conta.valor_total,
-                    'status': NotaFiscalOrdemCompraGeral.STATUS_LANCADA_FINANCEIRO,
-                    'observacoes': self.observacoes,
-                },
-            )
+        sincronizar_conta_pagar_ordem_compra(self)
 
     def recalcular_valor_por_itens_oc(self):
-        total = sum((item.valor_total for item in self.itens_ordem_compra.select_related('item_ordem_compra')), Decimal('0'))
-        if total:
-            self.valor = total
-            if self.status == self.STATUS_PAGO and not self.valor_pago:
-                self.valor_pago = total
+        from .services import recalcular_valor_conta_pagar_por_itens_oc
+
+        recalcular_valor_conta_pagar_por_itens_oc(self)
 
 
 class ItemContaPagarOrdemCompra(models.Model):

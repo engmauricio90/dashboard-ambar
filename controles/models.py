@@ -4,6 +4,8 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
+from .services import calcular_total, calcular_total_multiplicacao
+
 
 class VeiculoMaquina(models.Model):
     TIPO_CHOICES = [
@@ -178,8 +180,7 @@ class OrdemCompraCombustivel(models.Model):
     def save(self, *args, **kwargs):
         if self.fornecedor_cadastro_id:
             self.fornecedor = self.fornecedor_cadastro.nome
-        if not self.valor_total_previsto and self.quantidade_litros and self.valor_litro_previsto:
-            self.valor_total_previsto = self.quantidade_litros * self.valor_litro_previsto
+        self.valor_total_previsto = calcular_total_multiplicacao(self.quantidade_litros, self.valor_litro_previsto)
         if not self.numero:
             year = (self.data_ordem or timezone.localdate()).year
             prefix = f'OC-COMB-{year}-'
@@ -259,8 +260,7 @@ class NotaFiscalCombustivel(models.Model):
         ]
 
     def save(self, *args, **kwargs):
-        if not self.valor_total and self.litros and self.valor_litro:
-            self.valor_total = self.litros * self.valor_litro
+        self.valor_total = calcular_total_multiplicacao(self.litros, self.valor_litro)
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -397,8 +397,7 @@ class ItemOrdemCompraGeral(models.Model):
         verbose_name_plural = 'Itens da ordem de compra'
 
     def save(self, *args, **kwargs):
-        if not self.valor_total and self.quantidade and self.valor_unitario:
-            self.valor_total = self.quantidade * self.valor_unitario
+        self.valor_total = calcular_total_multiplicacao(self.quantidade, self.valor_unitario)
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -478,8 +477,7 @@ class NotaFiscalOrdemCompraGeral(models.Model):
     def save(self, *args, **kwargs):
         if self.item_id and not self.valor_unitario:
             self.valor_unitario = self.item.valor_unitario
-        if not self.valor_total and self.quantidade and self.valor_unitario:
-            self.valor_total = self.quantidade * self.valor_unitario
+        self.valor_total = calcular_total_multiplicacao(self.quantidade, self.valor_unitario)
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -868,8 +866,7 @@ class NotaFiscalLocacaoMaquina(models.Model):
         for field_name in ['horas_faturadas', 'valor_maquina', 'valor_mobilizacao', 'valor_desmobilizacao']:
             if getattr(self, field_name) is None:
                 setattr(self, field_name, Decimal('0'))
-        if not self.valor_total:
-            self.valor_total = self.valor_maquina + self.valor_mobilizacao + self.valor_desmobilizacao
+        self.valor_total = calcular_total(self.valor_maquina, self.valor_mobilizacao, self.valor_desmobilizacao)
         super().save(*args, **kwargs)
 
     def __str__(self):

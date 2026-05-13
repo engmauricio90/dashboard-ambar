@@ -42,6 +42,12 @@ class Obra(models.Model):
         aggregated = self.__class__.objects.filter(pk=self.pk).aggregate(total=Sum(aggregate_path))['total']
         return aggregated or Decimal('0')
 
+    def _notas_fiscais_ativas(self):
+        notas = self._prefetched_items('notas_fiscais')
+        if notas is not None:
+            return [nota for nota in notas if nota.status != NotaFiscal.STATUS_CANCELADA]
+        return None
+
     @property
     def total_aditivos(self):
         aditivos = self._prefetched_items('aditivos_registrados')
@@ -83,18 +89,23 @@ class Obra(models.Model):
 
     @property
     def total_retencoes_nf(self):
-        notas = self._prefetched_items('notas_fiscais')
+        notas = self._notas_fiscais_ativas()
         if notas is not None:
             return _sum_decimal(nota.total_retencoes for nota in notas)
-        return self._aggregate_value('notas_fiscais__retencoes__valor')
+        return (
+            self.notas_fiscais.exclude(status=NotaFiscal.STATUS_CANCELADA)
+            .aggregate(total=Sum('retencoes__valor'))['total']
+            or Decimal('0')
+        )
 
     @property
     def total_retencoes_inss(self):
-        notas = self._prefetched_items('notas_fiscais')
+        notas = self._notas_fiscais_ativas()
         if notas is not None:
             return _sum_decimal(nota.total_retencoes_inss for nota in notas)
         return (
-            self.notas_fiscais.filter(retencoes__tipo=RetencaoNotaFiscal.TIPO_INSS)
+            self.notas_fiscais.exclude(status=NotaFiscal.STATUS_CANCELADA)
+            .filter(retencoes__tipo=RetencaoNotaFiscal.TIPO_INSS)
             .aggregate(total=Sum('retencoes__valor'))['total']
             or Decimal('0')
         )
@@ -117,17 +128,25 @@ class Obra(models.Model):
 
     @property
     def total_impostos(self):
-        notas = self._prefetched_items('notas_fiscais')
+        notas = self._notas_fiscais_ativas()
         if notas is not None:
             return _sum_decimal(nota.total_impostos for nota in notas)
-        return self._aggregate_value('notas_fiscais__impostos__valor')
+        return (
+            self.notas_fiscais.exclude(status=NotaFiscal.STATUS_CANCELADA)
+            .aggregate(total=Sum('impostos__valor'))['total']
+            or Decimal('0')
+        )
 
     @property
     def total_notas_fiscais(self):
-        notas = self._prefetched_items('notas_fiscais')
+        notas = self._notas_fiscais_ativas()
         if notas is not None:
             return _sum_decimal(nota.valor_bruto for nota in notas)
-        return self._aggregate_value('notas_fiscais__valor_bruto')
+        return (
+            self.notas_fiscais.exclude(status=NotaFiscal.STATUS_CANCELADA)
+            .aggregate(total=Sum('valor_bruto'))['total']
+            or Decimal('0')
+        )
 
     @property
     def total_recebido_liquido(self):
@@ -210,10 +229,13 @@ class AditivoContrato(models.Model):
 
 
 class NotaFiscal(models.Model):
+    STATUS_EMITIDA = 'emitida'
+    STATUS_CANCELADA = 'cancelada'
+    STATUS_RECEBIDA = 'recebida'
     STATUS_CHOICES = [
-        ('emitida', 'Emitida'),
-        ('cancelada', 'Cancelada'),
-        ('recebida', 'Recebida'),
+        (STATUS_EMITIDA, 'Emitida'),
+        (STATUS_CANCELADA, 'Cancelada'),
+        (STATUS_RECEBIDA, 'Recebida'),
     ]
 
     obra = models.ForeignKey(
