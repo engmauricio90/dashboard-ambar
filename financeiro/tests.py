@@ -7,7 +7,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
-from obras.models import DespesaObra, NotaFiscal, Obra
+from obras.models import DespesaObra, NotaFiscal, Obra, RetencaoTecnicaObra
 from controles.models import ItemOrdemCompraGeral, NotaFiscalOrdemCompraGeral, OrdemCompraGeral
 
 from .models import CentroCusto, ContaPagar, ContaReceber, ItemContaPagarOrdemCompra
@@ -60,6 +60,26 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertEqual(conta.despesa_obra, despesa)
         self.assertEqual(despesa.valor, Decimal('350.00'))
         self.assertEqual(self.obra.total_despesa_real, Decimal('350.00'))
+
+    def test_conta_pagar_sem_obra_remove_despesa_anterior(self):
+        conta = ContaPagar.objects.create(
+            fornecedor='Fornecedor A',
+            obra=self.obra,
+            centro_custo=self.centro,
+            categoria='material',
+            descricao='Despesa removida',
+            data_emissao=date(2026, 4, 2),
+            data_vencimento=date(2026, 4, 20),
+            valor=Decimal('350.00'),
+        )
+        despesa_id = conta.despesa_obra_id
+
+        conta.obra = None
+        conta.save()
+
+        conta.refresh_from_db()
+        self.assertIsNone(conta.despesa_obra)
+        self.assertFalse(DespesaObra.objects.filter(id=despesa_id).exists())
 
     def test_conta_pagar_com_oc_cria_nota_vinculada_na_oc(self):
         ordem = OrdemCompraGeral.objects.create(
@@ -329,6 +349,53 @@ class FinanceiroIntegracaoObraTests(TestCase):
 
         self.assertEqual(self.obra.total_notas_fiscais, Decimal('1000.00'))
         self.assertEqual(self.obra.total_retencoes_nf, Decimal('25.00'))
+
+    def test_conta_receber_sem_obra_desvincula_nota_e_retencao_tecnica(self):
+        conta = ContaReceber.objects.create(
+            cliente='Cliente X',
+            obra=self.obra,
+            centro_custo=self.centro,
+            numero_nf='NF-DESV',
+            descricao='NF desvinculada',
+            data_emissao=date(2026, 4, 1),
+            data_vencimento=date(2026, 4, 30),
+            valor_bruto=Decimal('1000.00'),
+            retencao_tecnica=Decimal('50.00'),
+        )
+        nota_id = conta.nota_fiscal_id
+        retencao_id = conta.retencao_tecnica_obra_id
+
+        conta.obra = None
+        conta.save()
+
+        conta.refresh_from_db()
+        nota = NotaFiscal.objects.get(id=nota_id)
+        self.assertEqual(nota.status, NotaFiscal.STATUS_CANCELADA)
+        self.assertIsNone(conta.nota_fiscal)
+        self.assertIsNone(conta.retencao_tecnica_obra)
+        self.assertFalse(RetencaoTecnicaObra.objects.filter(id=retencao_id).exists())
+
+    def test_conta_receber_cancelada_remove_retencao_tecnica(self):
+        conta = ContaReceber.objects.create(
+            cliente='Cliente X',
+            obra=self.obra,
+            centro_custo=self.centro,
+            numero_nf='NF-RET-CAN',
+            descricao='NF com retencao cancelada',
+            data_emissao=date(2026, 4, 1),
+            data_vencimento=date(2026, 4, 30),
+            valor_bruto=Decimal('1000.00'),
+            retencao_tecnica=Decimal('50.00'),
+        )
+        retencao_id = conta.retencao_tecnica_obra_id
+
+        conta.status = ContaReceber.STATUS_CANCELADO
+        conta.save()
+
+        conta.refresh_from_db()
+        self.assertEqual(conta.nota_fiscal.status, NotaFiscal.STATUS_CANCELADA)
+        self.assertIsNone(conta.retencao_tecnica_obra)
+        self.assertFalse(RetencaoTecnicaObra.objects.filter(id=retencao_id).exists())
 
     def test_acao_massa_cancela_e_remove_despesa_da_obra(self):
         conta = ContaPagar.objects.create(

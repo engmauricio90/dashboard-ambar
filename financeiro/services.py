@@ -11,6 +11,7 @@ def _valor(value):
 
 def sincronizar_conta_receber_obra(conta):
     if not conta.obra or not conta.numero_nf:
+        remover_vinculos_conta_receber_obra(conta)
         return
 
     status_nf = NotaFiscal.STATUS_CANCELADA if conta.status == conta.STATUS_CANCELADO else NotaFiscal.STATUS_EMITIDA
@@ -46,6 +47,24 @@ def sincronizar_conta_receber_obra(conta):
             setattr(conta, field, value)
 
 
+def remover_vinculos_conta_receber_obra(conta):
+    updates = {}
+    if conta.nota_fiscal_id:
+        nota = conta.nota_fiscal
+        nota.status = NotaFiscal.STATUS_CANCELADA
+        nota.save(update_fields=['status', 'updated_at'])
+        updates['nota_fiscal'] = None
+
+    if conta.retencao_tecnica_obra_id:
+        conta.retencao_tecnica_obra.delete()
+        updates['retencao_tecnica_obra'] = None
+
+    if updates:
+        conta.__class__.objects.filter(pk=conta.pk).update(**updates)
+        for field, value in updates.items():
+            setattr(conta, field, value)
+
+
 def sincronizar_retencao_nf(nota, tipo, descricao, valor):
     valor = _valor(valor)
     existente = nota.retencoes.filter(tipo=tipo, descricao=descricao).first()
@@ -62,6 +81,11 @@ def sincronizar_retencao_nf(nota, tipo, descricao, valor):
 
 
 def sincronizar_retencao_tecnica(conta):
+    if conta.status == conta.STATUS_CANCELADO:
+        if conta.retencao_tecnica_obra_id:
+            conta.retencao_tecnica_obra.delete()
+        return None
+
     valor = _valor(conta.retencao_tecnica)
     if valor <= 0:
         if conta.retencao_tecnica_obra_id:
@@ -96,6 +120,10 @@ def sincronizar_conta_pagar_obra(conta):
         return
 
     if not conta.obra:
+        if conta.despesa_obra_id:
+            conta.despesa_obra.delete()
+            conta.__class__.objects.filter(pk=conta.pk).update(despesa_obra=None)
+            conta.despesa_obra = None
         return
 
     valor_despesa = conta.valor_pago_efetivo
