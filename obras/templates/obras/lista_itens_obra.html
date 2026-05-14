@@ -1,0 +1,190 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }} - {{ obra.nome_obra }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        <p class="text-muted mb-0">{{ obra.nome_obra }} | {{ descricao }}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        {% if tipo == 'notas' %}
+            <a href="{% url 'nova_conta_receber' %}?obra={{ obra.id }}" class="btn btn-success">Nova Receita/NF</a>
+        {% elif tipo == 'despesas' %}
+            <a href="{% url 'nova_conta_pagar' %}?obra={{ obra.id }}" class="btn btn-danger">Nova Despesa</a>
+        {% elif tipo == 'faturamentos-diretos' %}
+            <a href="{% url 'novo_faturamento_direto' %}?obra={{ obra.id }}" class="btn btn-primary">Novo Faturamento</a>
+        {% elif tipo == 'aditivos' %}
+            <a href="{% url 'novo_aditivo' obra.id %}" class="btn btn-info">Novo Aditivo/Supressao</a>
+        {% elif tipo == 'retencoes-tecnicas' %}
+            <a href="{% url 'nova_retencao_tecnica' obra.id %}" class="btn btn-warning">Nova Retencao</a>
+        {% endif %}
+        <a href="{% url 'detalhe_obra' obra.id %}" class="btn btn-secondary">Voltar para a obra</a>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Registros</h5>
+            <strong>Total: R$ {{ total|floatformat:2 }}</strong>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle mb-0">
+                {% if tipo == 'notas' %}
+                <thead>
+                    <tr>
+                        <th>Numero</th>
+                        <th>Emissao</th>
+                        <th>Status</th>
+                        <th>Bruto</th>
+                        <th>Retencoes</th>
+                        <th>Impostos</th>
+                        <th>Liquido</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for nota in itens %}
+                    <tr>
+                        <td>{{ nota.numero }}</td>
+                        <td>{{ nota.data_emissao }}</td>
+                        <td>{{ nota.get_status_display }}</td>
+                        <td>R$ {{ nota.valor_bruto|floatformat:2 }}</td>
+                        <td>R$ {{ nota.total_retencoes|floatformat:2 }}</td>
+                        <td>R$ {{ nota.total_impostos|floatformat:2 }}</td>
+                        <td>R$ {{ nota.valor_liquido|floatformat:2 }}</td>
+                        <td class="text-end">
+                            <a href="{% url 'detalhe_nota_fiscal' obra.id nota.id %}" class="btn btn-sm btn-outline-dark">Abrir</a>
+                            <a href="{% url 'editar_nota_fiscal' obra.id nota.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                            <a href="{% url 'excluir_nota_fiscal' obra.id nota.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="8">Nenhuma nota fiscal cadastrada.</td></tr>
+                    {% endfor %}
+                </tbody>
+                {% elif tipo == 'despesas' %}
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Categoria</th>
+                        <th>Descricao</th>
+                        <th>Valor</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for despesa in itens %}
+                    <tr>
+                        <td>{{ despesa.data_referencia }}</td>
+                        <td>{{ despesa.get_categoria_display }}</td>
+                        <td>{{ despesa.descricao }}</td>
+                        <td>R$ {{ despesa.valor|floatformat:2 }}</td>
+                        <td class="text-end">
+                            <a href="{% url 'excluir_despesa' obra.id despesa.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="5">Nenhuma despesa cadastrada.</td></tr>
+                    {% endfor %}
+                </tbody>
+                {% elif tipo == 'faturamentos-diretos' %}
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>NF</th>
+                        <th>OC</th>
+                        <th>Empresa</th>
+                        <th>Descricao</th>
+                        <th>Vencimento</th>
+                        <th>Medicao desconto</th>
+                        <th>Valor</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for faturamento in itens %}
+                    <tr>
+                        <td>{{ faturamento.data_lancamento|default:'-' }}</td>
+                        <td>{{ faturamento.numero_nf|default:'-' }}</td>
+                        <td>{{ faturamento.numero_ordem_compra|default:'-' }}</td>
+                        <td>{{ faturamento.empresa_comprou }}</td>
+                        <td>{{ faturamento.descricao }}</td>
+                        <td>{{ faturamento.vencimento_boleto }}</td>
+                        <td>{{ faturamento.medicao_desconto|default:'-' }}</td>
+                        <td>R$ {{ faturamento.valor_nota|floatformat:2 }}</td>
+                        <td class="text-end">
+                            <a href="{% url 'editar_faturamento_direto' faturamento.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                            <a href="{% url 'excluir_faturamento_direto' faturamento.id %}?origem=obra" class="btn btn-sm btn-outline-danger">Excluir</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="9">Nenhum faturamento direto cadastrado.</td></tr>
+                    {% endfor %}
+                </tbody>
+                {% elif tipo == 'aditivos' %}
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Tipo</th>
+                        <th>Descricao</th>
+                        <th>Valor</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for aditivo in itens %}
+                    <tr>
+                        <td>{{ aditivo.data_referencia }}</td>
+                        <td>{{ aditivo.get_tipo_display }}</td>
+                        <td>{{ aditivo.descricao }}</td>
+                        <td>{% if aditivo.tipo == 'supressao' %}-{% endif %}R$ {{ aditivo.valor|floatformat:2 }}</td>
+                        <td class="text-end">
+                            <a href="{% url 'excluir_aditivo' obra.id aditivo.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="5">Nenhuma movimentacao contratual cadastrada.</td></tr>
+                    {% endfor %}
+                </tbody>
+                {% elif tipo == 'retencoes-tecnicas' %}
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Tipo</th>
+                        <th>Descricao</th>
+                        <th>Previsao devolucao</th>
+                        <th>Data devolucao</th>
+                        <th>Valor</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for retencao in itens %}
+                    <tr>
+                        <td>{{ retencao.data_referencia }}</td>
+                        <td>{{ retencao.get_tipo_display }}</td>
+                        <td>{{ retencao.descricao }}</td>
+                        <td>{{ retencao.data_prevista_devolucao|default:'-' }}</td>
+                        <td>{{ retencao.data_devolucao|default:'-' }}</td>
+                        <td>R$ {{ retencao.valor|floatformat:2 }}</td>
+                        <td class="text-end">
+                            {% if retencao.tipo == 'retencao' %}
+                            <a href="{% url 'devolver_retencao_tecnica' obra.id retencao.id %}" class="btn btn-sm btn-outline-success">Registrar devolucao</a>
+                            {% endif %}
+                            <a href="{% url 'excluir_retencao_tecnica' obra.id retencao.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="7">Nenhuma retencao tecnica cadastrada.</td></tr>
+                    {% endfor %}
+                </tbody>
+                {% endif %}
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

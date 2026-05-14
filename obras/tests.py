@@ -5,6 +5,8 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
+from controles.models import FaturamentoDireto
+
 from .models import AditivoContrato, DespesaObra, NotaFiscal, Obra, RetencaoTecnicaObra
 
 
@@ -28,6 +30,58 @@ class ObraFluxoFinanceiroTests(TestCase):
         self.assertContains(response, 'graficoEvolucaoObra')
         self.assertIn('grafico_evolucao', response.context)
         self.assertIn('grafico_composicao', response.context)
+        self.assertContains(response, reverse('lista_notas_obra', args=[self.obra.id]))
+        self.assertContains(response, reverse('lista_faturamentos_diretos_obra', args=[self.obra.id]))
+
+    def test_listagens_completas_da_obra_carregam(self):
+        NotaFiscal.objects.create(
+            obra=self.obra,
+            numero='NF-LISTA',
+            data_emissao=date(2026, 4, 20),
+            valor_bruto=Decimal('90.00'),
+            status='emitida',
+        )
+        DespesaObra.objects.create(
+            obra=self.obra,
+            data_referencia=date(2026, 4, 20),
+            categoria='material',
+            descricao='Despesa completa',
+            valor=Decimal('80.00'),
+        )
+        FaturamentoDireto.objects.create(
+            obra=self.obra,
+            data_lancamento=date(2026, 4, 21),
+            numero_ordem_compra='OC-LISTA',
+            empresa_comprou='Cliente',
+            valor_nota=Decimal('70.00'),
+            descricao='Compra direta completa',
+            vencimento_boleto='30/60',
+        )
+        AditivoContrato.objects.create(
+            obra=self.obra,
+            data_referencia=date(2026, 4, 22),
+            tipo=AditivoContrato.TIPO_ADITIVO,
+            descricao='Aditivo completo',
+            valor=Decimal('60.00'),
+        )
+        RetencaoTecnicaObra.objects.create(
+            obra=self.obra,
+            data_referencia=date(2026, 4, 23),
+            descricao='Retencao completa',
+            valor=Decimal('50.00'),
+        )
+
+        casos = [
+            ('lista_notas_obra', 'NF-LISTA'),
+            ('lista_despesas_obra', 'Despesa completa'),
+            ('lista_faturamentos_diretos_obra', 'Compra direta completa'),
+            ('lista_aditivos_obra', 'Aditivo completo'),
+            ('lista_retencoes_tecnicas_obra', 'Retencao completa'),
+        ]
+        for url_name, texto in casos:
+            response = self.client.get(reverse(url_name, args=[self.obra.id]))
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, texto)
 
     def test_nova_nota_fiscal_redireciona_para_financeiro(self):
         response = self.client.post(

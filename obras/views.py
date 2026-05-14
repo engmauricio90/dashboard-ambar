@@ -192,6 +192,65 @@ def detalhe_obra(request, obra_id):
     return render(request, 'obras/detalhe_obra.html', contexto)
 
 
+def _lista_itens_obra(request, obra_id, tipo):
+    obra = get_object_or_404(_obra_base_queryset(), id=obra_id)
+    configuracoes = {
+        'notas': {
+            'titulo': 'Notas fiscais',
+            'descricao': 'Faturamentos vinculados a contas a receber da obra.',
+            'itens': [nota for nota in obra.notas_fiscais.all() if nota.status != NotaFiscal.STATUS_CANCELADA],
+            'total': obra.total_notas_fiscais,
+        },
+        'despesas': {
+            'titulo': 'Despesas',
+            'descricao': 'Despesas vindas das contas a pagar vinculadas a esta obra.',
+            'itens': list(obra.despesas_registradas.all()),
+            'total': obra.total_despesa_real,
+        },
+        'faturamentos-diretos': {
+            'titulo': 'Faturamento direto',
+            'descricao': 'Compras diretas do cliente descontadas do saldo contratual.',
+            'itens': list(obra.faturamentos_diretos.all()),
+            'total': obra.total_faturamento_direto,
+        },
+        'aditivos': {
+            'titulo': 'Movimentacoes contratuais',
+            'descricao': 'Aditivos e supressoes do contrato da obra.',
+            'itens': list(obra.aditivos_registrados.all()),
+            'total': obra.total_movimentacoes_contratuais,
+        },
+        'retencoes-tecnicas': {
+            'titulo': 'Retencoes tecnicas',
+            'descricao': 'Retencoes e devolucoes tecnicas vinculadas a obra.',
+            'itens': list(obra.retencoes_tecnicas_registradas.all()),
+            'total': obra.total_retencoes_tecnicas,
+        },
+    }
+    contexto = configuracoes[tipo]
+    contexto.update({'obra': obra, 'tipo': tipo})
+    return render(request, 'obras/lista_itens_obra.html', contexto)
+
+
+def lista_notas_obra(request, obra_id):
+    return _lista_itens_obra(request, obra_id, 'notas')
+
+
+def lista_despesas_obra(request, obra_id):
+    return _lista_itens_obra(request, obra_id, 'despesas')
+
+
+def lista_faturamentos_diretos_obra(request, obra_id):
+    return _lista_itens_obra(request, obra_id, 'faturamentos-diretos')
+
+
+def lista_aditivos_obra(request, obra_id):
+    return _lista_itens_obra(request, obra_id, 'aditivos')
+
+
+def lista_retencoes_tecnicas_obra(request, obra_id):
+    return _lista_itens_obra(request, obra_id, 'retencoes-tecnicas')
+
+
 def relatorio_obra(request, obra_id):
     obra = get_object_or_404(_obra_base_queryset(), id=obra_id)
     filtro_form = RelatorioObraFiltroForm(request.GET or None)

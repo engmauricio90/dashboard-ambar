@@ -296,7 +296,10 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="mb-0">Ultimas notas fiscais</h5>
-                    <a href="{% url 'nova_conta_receber' %}?obra={{ obra.id }}" class="btn btn-sm btn-outline-success">Adicionar pelo financeiro</a>
+                    <div class="d-flex gap-2">
+                        <a href="{% url 'lista_notas_obra' obra.id %}" class="btn btn-sm btn-outline-dark">Ver todos</a>
+                        <a href="{% url 'nova_conta_receber' %}?obra={{ obra.id }}" class="btn btn-sm btn-outline-success">Adicionar pelo financeiro</a>
+                    </div>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-sm align-middle">
@@ -337,7 +340,10 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="mb-0">Ultimas despesas</h5>
-                    <a href="{% url 'nova_conta_pagar' %}?obra={{ obra.id }}" class="btn btn-sm btn-outline-danger">Adicionar pelo financeiro</a>
+                    <div class="d-flex gap-2">
+                        <a href="{% url 'lista_despesas_obra' obra.id %}" class="btn btn-sm btn-outline-dark">Ver todos</a>
+                        <a href="{% url 'nova_conta_pagar' %}?obra={{ obra.id }}" class="btn btn-sm btn-outline-danger">Adicionar pelo financeiro</a>
+                    </div>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-sm align-middle">
@@ -376,7 +382,10 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="mb-0">Faturamento direto</h5>
-                    <a href="{% url 'novo_faturamento_direto' %}?obra={{ obra.id }}" class="btn btn-sm btn-outline-primary">Adicionar</a>
+                    <div class="d-flex gap-2">
+                        <a href="{% url 'lista_faturamentos_diretos_obra' obra.id %}" class="btn btn-sm btn-outline-dark">Ver todos</a>
+                        <a href="{% url 'novo_faturamento_direto' %}?obra={{ obra.id }}" class="btn btn-sm btn-outline-primary">Adicionar</a>
+                    </div>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-sm align-middle">
@@ -423,7 +432,10 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="mb-0">Ultimas movimentacoes contratuais</h5>
-                    <a href="{% url 'novo_aditivo' obra.id %}" class="btn btn-sm btn-outline-info">Adicionar</a>
+                    <div class="d-flex gap-2">
+                        <a href="{% url 'lista_aditivos_obra' obra.id %}" class="btn btn-sm btn-outline-dark">Ver todos</a>
+                        <a href="{% url 'novo_aditivo' obra.id %}" class="btn btn-sm btn-outline-info">Adicionar</a>
+                    </div>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-sm align-middle">
@@ -464,7 +476,10 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="mb-0">Ultimas retencoes tecnicas</h5>
-                    <a href="{% url 'nova_retencao_tecnica' obra.id %}" class="btn btn-sm btn-outline-warning">Adicionar</a>
+                    <div class="d-flex gap-2">
+                        <a href="{% url 'lista_retencoes_tecnicas_obra' obra.id %}" class="btn btn-sm btn-outline-dark">Ver todos</a>
+                        <a href="{% url 'nova_retencao_tecnica' obra.id %}" class="btn btn-sm btn-outline-warning">Adicionar</a>
+                    </div>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-sm align-middle">
