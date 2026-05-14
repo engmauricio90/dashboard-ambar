@@ -139,6 +139,10 @@ class MedicoesTests(TestCase):
         self.assertEqual(segunda.subtotal_periodo, Decimal('510.00'))
         self.assertEqual(segunda.total_liquido, Decimal('490.00'))
 
+        pdf = self.client.get(reverse('medicao_construtora_pdf', args=[segunda.id]))
+        self.assertEqual(pdf.status_code, 200)
+        self.assertEqual(pdf['Content-Type'], 'application/pdf')
+
     def test_medicao_construtora_desconta_faturamento_direto_fora_da_base_de_impostos(self):
         orcamento, item = self._orcamento()
         medicao = MedicaoConstrutora.objects.create(

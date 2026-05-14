@@ -107,6 +107,240 @@ def _draw_pdf_table(draw, headers, rows, x, y, widths, row_h=54):
     return y
 
 
+def _draw_report_cell(
+    draw,
+    value,
+    x,
+    y,
+    w,
+    h,
+    font,
+    fill=(17, 24, 39),
+    bg=None,
+    border=(156, 163, 175),
+    align='left',
+    bold=False,
+    width=1,
+):
+    if bg:
+        draw.rectangle((x, y, x + w, y + h), fill=bg, outline=border, width=width)
+    else:
+        draw.rectangle((x, y, x + w, y + h), outline=border, width=width)
+    text = _clean_text(value)
+    avg_char_width = max(font.getlength('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz') / 52, 1)
+    max_chars = max(int((w - 8) / avg_char_width), 4)
+    lines = textwrap.wrap(text, width=max_chars) or ['']
+    line_height = font.getbbox('Ag')[3] - font.getbbox('Ag')[1] + 4
+    visible_lines = lines[: max(int((h - 6) / line_height), 1)]
+    text_h = line_height * len(visible_lines)
+    y_text = y + max((h - text_h) // 2, 3)
+    for line in visible_lines:
+        if align == 'right':
+            x_text = x + w - font.getlength(line) - 5
+        elif align == 'center':
+            x_text = x + (w - font.getlength(line)) / 2
+        else:
+            x_text = x + 5
+        draw.text((x_text, y_text), line, font=font, fill=fill)
+        y_text += line_height
+
+
+def _draw_report_row(draw, row, x, y, widths, height, font, bg=None, bold=False):
+    cursor = x
+    for index, (value, width) in enumerate(zip(row, widths)):
+        align = 'left'
+        if index in (0, 2):
+            align = 'center'
+        if index >= 3:
+            align = 'right'
+        _draw_report_cell(draw, value, cursor, y, width, height, font, bg=bg, align=align, width=1)
+        cursor += width
+    return y + height
+
+
+def _fmt_qty(value):
+    value = value or Decimal('0')
+    quantized = value.quantize(Decimal('0.0001'))
+    text = f'{quantized:,.4f}'.replace(',', 'X').replace('.', ',').replace('X', '.')
+    return text.rstrip('0').rstrip(',')
+
+
+def _percent_from_item(item):
+    contrato = item.item_orcamento.quantidade or Decimal('0')
+    if not contrato:
+        return Decimal('0')
+    percent = item.quantidade_acumulada_atual * Decimal('100') / contrato
+    return percent.quantize(Decimal('0.01'))
+
+
+def _pdf_medicao_construtora(medicao):
+    itens = list(medicao.itens.select_related('item_orcamento'))
+    page_w, page_h = 2339, 1654
+    margin = 60
+    table_w = page_w - (margin * 2)
+    widths = [165, 620, 75, 120, 135, 135, 95, 140, 165, 170]
+    row_h = 38
+    header_h = 44
+    rows_per_page = 23
+    chunks = [itens[i : i + rows_per_page] for i in range(0, len(itens), rows_per_page)] or [[]]
+    pages = []
+
+    title_font = _font(28, True)
+    label_font = _font(17, True)
+    small_font = _font(17)
+    table_font = _font(16)
+    table_bold = _font(16, True)
+    header_bg = (229, 231, 235)
+    section_bg = (243, 244, 246)
+    dark = (17, 24, 39)
+    muted = (75, 85, 99)
+    border = (156, 163, 175)
+
+    for page_index, chunk in enumerate(chunks):
+        image = Image.new('RGB', (page_w, page_h), 'white')
+        draw = ImageDraw.Draw(image)
+
+        y = 34
+        draw.text(((page_w - title_font.getlength('Boletim de Medicoes')) / 2, y), 'Boletim de Medicoes', font=title_font, fill=dark)
+        y += 62
+
+        left_x = margin
+        right_x = page_w - margin - 690
+        info_h = 34
+        left_info = [
+            ('Contrato', getattr(medicao.orcamento, 'nome', '-')),
+            ('Obra', medicao.orcamento.obra.nome_obra),
+            ('Unidade construtiva', medicao.orcamento.nome),
+            ('Numero da medicao', medicao.numero),
+            ('Periodo', f'{medicao.periodo_inicio:%d/%m/%Y} a {medicao.periodo_fim:%d/%m/%Y}'),
+        ]
+        right_info = [
+            ('Total do contrato', _money(medicao.orcamento.total_orcamento)),
+            ('Total da obra', _money(medicao.orcamento.obra.contrato_atualizado)),
+            ('Cliente', medicao.orcamento.obra.cliente or '-'),
+            ('Data da medicao', f'{medicao.data_medicao:%d/%m/%Y}'),
+            ('Base da NF', _money(medicao.base_impostos)),
+        ]
+        for index, (label, value) in enumerate(left_info):
+            row_y = y + index * info_h
+            _draw_report_cell(draw, label, left_x, row_y, 210, info_h, label_font, bg=header_bg, align='left')
+            _draw_report_cell(draw, value, left_x + 210, row_y, 720, info_h, small_font, align='left')
+        for index, (label, value) in enumerate(right_info):
+            row_y = y + index * info_h
+            _draw_report_cell(draw, label, right_x, row_y, 230, info_h, label_font, bg=header_bg, align='left')
+            _draw_report_cell(draw, value, right_x + 230, row_y, 460, info_h, small_font, align='left')
+
+        y += (len(left_info) * info_h) + 28
+        headers = [
+            'Referencia',
+            'Descricao',
+            'Un.',
+            'Contratada',
+            'Acum. anterior',
+            'Medida',
+            '%Exe.',
+            'Preco unit.',
+            'Valor anterior',
+            'Valor medicao',
+        ]
+        cursor = margin
+        for header, width in zip(headers, widths):
+            _draw_report_cell(draw, header, cursor, y, width, header_h, label_font, bg=header_bg, align='center', width=2)
+            cursor += width
+        y += header_h
+
+        for item in chunk:
+            base = item.item_orcamento
+            is_section = not base.unidade and not base.preco_unitario_total and not base.quantidade
+            font = table_bold if is_section else table_font
+            bg = section_bg if is_section else None
+            valor_anterior = item.quantidade_acumulada_anterior * base.preco_unitario_total
+            row = [
+                base.item,
+                base.descricao,
+                base.unidade or '',
+                _fmt_qty(base.quantidade),
+                _fmt_qty(item.quantidade_acumulada_anterior),
+                _fmt_qty(item.quantidade_periodo),
+                f'{_fmt_qty(_percent_from_item(item))}%',
+                _money(base.preco_unitario_total),
+                _money(valor_anterior),
+                _money(item.valor_periodo),
+            ]
+            y = _draw_report_row(draw, row, margin, y, widths, row_h, font, bg=bg)
+
+        if page_index == len(chunks) - 1:
+            y += 28
+            summary_left = margin
+            summary_mid = margin + 650
+            summary_right = page_w - margin - 660
+            block_h = 34
+
+            _draw_report_cell(draw, 'Total da medicao', summary_left, y, 560, block_h, label_font, bg=header_bg, align='center')
+            y_left = y + block_h
+            totals = [
+                ('Total dos itens', medicao.subtotal_periodo),
+                ('Desconto faturamento direto', -medicao.total_faturamento_direto),
+                ('Desconto adicional', -medicao.desconto_adicional),
+                ('Total bruto', medicao.total_bruto),
+            ]
+            for label, value in totals:
+                _draw_report_cell(draw, label, summary_left, y_left, 330, block_h, small_font, align='left')
+                amount = _money(abs(value))
+                if value < 0:
+                    amount = f'- {amount}'
+                _draw_report_cell(draw, amount, summary_left + 330, y_left, 230, block_h, small_font, align='right')
+                y_left += block_h
+
+            _draw_report_cell(draw, 'Retencoes e impostos', summary_mid, y, 560, block_h, label_font, bg=header_bg, align='center')
+            y_mid = y + block_h
+            taxes = [
+                ('Retencao tecnica', medicao.retencao_tecnica),
+                ('INSS', medicao.inss),
+                ('ISSQN', medicao.issqn),
+                ('Total retido', medicao.retencao_tecnica + medicao.inss + medicao.issqn),
+            ]
+            for label, value in taxes:
+                _draw_report_cell(draw, label, summary_mid, y_mid, 330, block_h, small_font, align='left')
+                _draw_report_cell(draw, _money(value), summary_mid + 330, y_mid, 230, block_h, small_font, align='right')
+                y_mid += block_h
+
+            _draw_report_cell(draw, 'Fechamento', summary_right, y, 660, block_h, label_font, bg=header_bg, align='center')
+            y_right = y + block_h
+            closing = [
+                ('Subtotal', medicao.subtotal_periodo),
+                ('Base da NF', medicao.base_impostos),
+                ('Descontos', medicao.total_descontos),
+                ('Total liquido', medicao.total_liquido),
+            ]
+            for label, value in closing:
+                is_total = label == 'Total liquido'
+                _draw_report_cell(draw, label, summary_right, y_right, 390, block_h, label_font if is_total else small_font, align='left')
+                _draw_report_cell(draw, _money(value), summary_right + 390, y_right, 270, block_h, label_font if is_total else small_font, align='right')
+                y_right += block_h
+
+            if medicao.faturamentos_diretos.exists():
+                notes_y = max(y_left, y_mid, y_right) + 24
+                _draw_report_cell(draw, 'Faturamentos diretos descontados', margin, notes_y, table_w, block_h, label_font, bg=header_bg, align='left')
+                notes_y += block_h
+                for vinculo in medicao.faturamentos_diretos.select_related('faturamento_direto')[:4]:
+                    fd = vinculo.faturamento_direto
+                    texto = f'{fd.numero_nf or fd.numero_ordem_compra or "-"} - {fd.empresa_comprou} - {fd.descricao}'
+                    _draw_report_cell(draw, texto, margin, notes_y, table_w - 220, block_h, small_font, align='left')
+                    _draw_report_cell(draw, _money(fd.valor_nota), margin + table_w - 220, notes_y, 220, block_h, small_font, align='right')
+                    notes_y += block_h
+
+        footer = f'Pagina {page_index + 1} de {len(chunks)}'
+        draw.text((margin, page_h - 44), date.today().strftime('%d/%m/%Y'), font=_font(15), fill=muted)
+        draw.text(((page_w - _font(15).getlength('AMBAR ENGENHARIA')) / 2, page_h - 44), 'AMBAR ENGENHARIA', font=_font(15, True), fill=muted)
+        draw.text((page_w - margin - _font(15).getlength(footer), page_h - 44), footer, font=_font(15), fill=muted)
+        pages.append(image)
+
+    buffer = BytesIO()
+    pages[0].save(buffer, 'PDF', save_all=True, append_images=pages[1:], resolution=150)
+    return buffer.getvalue()
+
+
 def _decimal(value):
     if value in (None, ''):
         return Decimal('0')
@@ -596,7 +830,7 @@ def _linhas_pdf_medicao(medicao, itens, titulo):
 def medicao_construtora_pdf(request, medicao_id):
     medicao = get_object_or_404(MedicaoConstrutora.objects.select_related('orcamento', 'orcamento__obra'), id=medicao_id)
     response = HttpResponse(
-        _linhas_pdf_medicao(medicao, medicao.itens.select_related('item_orcamento'), 'Boletim de medicao da construtora'),
+        _pdf_medicao_construtora(medicao),
         content_type='application/pdf',
     )
     response['Content-Disposition'] = f'inline; filename="medicao_construtora_{medicao.numero}.pdf"'
