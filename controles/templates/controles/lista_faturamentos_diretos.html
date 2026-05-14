@@ -19,7 +19,7 @@
         <form method="get" class="row g-2 align-items-end">
             <div class="col-md-10">
                 <label class="form-label">Busca</label>
-                <input type="text" name="busca" value="{{ busca }}" class="form-control" placeholder="Obra, NF, empresa, descricao ou medicao">
+                <input type="text" name="busca" value="{{ busca }}" class="form-control" placeholder="Obra, NF, OC, empresa, descricao ou medicao">
             </div>
             <div class="col-md-2">
                 <button type="submit" class="btn btn-outline-primary w-100">Filtrar</button>
@@ -39,7 +39,9 @@
                 <thead>
                     <tr>
                         <th>Obra</th>
+                        <th>Data</th>
                         <th>NF</th>
+                        <th>OC</th>
                         <th>Empresa</th>
                         <th>Descricao</th>
                         <th>Vencimento</th>
@@ -52,7 +54,9 @@
                     {% for faturamento in faturamentos %}
                     <tr>
                         <td>{{ faturamento.obra }}</td>
-                        <td>{{ faturamento.numero_nf }}</td>
+                        <td>{{ faturamento.data_lancamento|default:'-' }}</td>
+                        <td>{{ faturamento.numero_nf|default:'-' }}</td>
+                        <td>{{ faturamento.numero_ordem_compra|default:'-' }}</td>
                         <td>{{ faturamento.empresa_comprou }}</td>
                         <td>{{ faturamento.descricao }}</td>
                         <td>{{ faturamento.vencimento_boleto }}</td>
@@ -64,7 +68,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="8">Nenhum faturamento direto cadastrado.</td>
+                        <td colspan="10">Nenhum faturamento direto cadastrado.</td>
                     </tr>
                     {% endfor %}
                 </tbody>

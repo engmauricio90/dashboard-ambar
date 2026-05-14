@@ -369,6 +369,7 @@ def lista_faturamentos_diretos(request):
     if busca:
         faturamentos = faturamentos.filter(
             Q(numero_nf__icontains=busca)
+            | Q(numero_ordem_compra__icontains=busca)
             | Q(empresa_comprou__icontains=busca)
             | Q(descricao__icontains=busca)
             | Q(obra__nome_obra__icontains=busca)

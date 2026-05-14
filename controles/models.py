@@ -1111,11 +1111,13 @@ class FaturamentoDireto(models.Model):
         on_delete=models.PROTECT,
         related_name='faturamentos_diretos',
     )
-    numero_nf = models.CharField(max_length=80, verbose_name='Nr da NF')
+    data_lancamento = models.DateField(blank=True, null=True, verbose_name='Data')
+    numero_nf = models.CharField(max_length=80, blank=True, verbose_name='Nr da NF')
+    numero_ordem_compra = models.CharField(max_length=80, blank=True, verbose_name='Ordem de compra')
     empresa_comprou = models.CharField(max_length=180, verbose_name='Empresa que comprou')
     valor_nota = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name='Valor da nota fiscal')
     descricao = models.CharField(max_length=255, verbose_name='Descricao do que foi comprado')
-    vencimento_boleto = models.DateField(verbose_name='Vencimento do boleto')
+    vencimento_boleto = models.CharField(max_length=80, verbose_name='Vencimento do boleto')
     medicao_desconto = models.CharField(
         max_length=120,
         blank=True,
@@ -1126,9 +1128,10 @@ class FaturamentoDireto(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['-vencimento_boleto', '-id']
+        ordering = ['-data_lancamento', '-id']
         verbose_name = 'Faturamento direto'
         verbose_name_plural = 'Faturamentos diretos'
 
     def __str__(self):
-        return f'{self.obra} - NF {self.numero_nf} - {self.empresa_comprou}'
+        documento = self.numero_nf or self.numero_ordem_compra or 'sem documento'
+        return f'{self.obra} - {documento} - {self.empresa_comprou}'

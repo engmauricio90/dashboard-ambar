@@ -99,7 +99,9 @@ class FaturamentoDiretoForm(BootstrapModelForm):
         model = FaturamentoDireto
         fields = [
             'obra',
+            'data_lancamento',
             'numero_nf',
+            'numero_ordem_compra',
             'empresa_comprou',
             'valor_nota',
             'descricao',
@@ -108,8 +110,8 @@ class FaturamentoDiretoForm(BootstrapModelForm):
             'observacoes',
         ]
         widgets = {
+            'data_lancamento': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'valor_nota': forms.NumberInput(attrs={'step': '0.01'}),
-            'vencimento_boleto': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'observacoes': forms.Textarea(attrs={'rows': 3}),
         }
 

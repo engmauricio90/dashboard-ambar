@@ -61,11 +61,13 @@ class ControleAbastecimentoTests(TestCase):
             reverse('novo_faturamento_direto'),
             {
                 'obra': obra.id,
+                'data_lancamento': '2026-05-14',
                 'numero_nf': '123',
+                'numero_ordem_compra': 'OC-456',
                 'empresa_comprou': 'Cliente Comprador',
                 'valor_nota': '250.00',
                 'descricao': 'Tubos comprados direto',
-                'vencimento_boleto': '2026-05-20',
+                'vencimento_boleto': '30/60/90',
                 'medicao_desconto': 'Medicao 02',
                 'observacoes': '',
             },
@@ -74,6 +76,7 @@ class ControleAbastecimentoTests(TestCase):
         self.assertRedirects(response, reverse('lista_faturamentos_diretos'))
         faturamento = FaturamentoDireto.objects.get()
         self.assertEqual(faturamento.obra, obra)
+        self.assertEqual(faturamento.numero_ordem_compra, 'OC-456')
         self.assertEqual(obra.total_faturamento_direto, Decimal('250.00'))
         self.assertEqual(obra.saldo_contratual, Decimal('750.00'))
 

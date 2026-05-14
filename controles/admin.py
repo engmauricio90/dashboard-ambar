@@ -289,6 +289,22 @@ class FaturamentoConcretagemAdmin(admin.ModelAdmin):
 
 @admin.register(FaturamentoDireto)
 class FaturamentoDiretoAdmin(admin.ModelAdmin):
-    list_display = ('obra', 'numero_nf', 'empresa_comprou', 'valor_nota', 'vencimento_boleto', 'medicao_desconto')
-    search_fields = ('obra__nome_obra', 'numero_nf', 'empresa_comprou', 'descricao', 'medicao_desconto')
-    list_filter = ('vencimento_boleto', 'obra')
+    list_display = (
+        'obra',
+        'data_lancamento',
+        'numero_nf',
+        'numero_ordem_compra',
+        'empresa_comprou',
+        'valor_nota',
+        'vencimento_boleto',
+        'medicao_desconto',
+    )
+    search_fields = (
+        'obra__nome_obra',
+        'numero_nf',
+        'numero_ordem_compra',
+        'empresa_comprou',
+        'descricao',
+        'medicao_desconto',
+    )
+    list_filter = ('data_lancamento', 'obra')
