@@ -13,7 +13,7 @@
         <a class="btn btn-primary" href="{% url 'nova_medicao_construtora' orcamento.id %}">Nova Medicao Construtora</a>
         {% endif %}
         <a class="btn btn-outline-dark" href="{% url 'nova_medicao_empreiteiro_cumulativa' orcamento.id %}">Medicao Empreiteiro Cumulativa</a>
-        <a class="btn btn-secondary" href="{% url 'lista_orcamentos_medicao' %}">Voltar</a>
+        <a class="btn btn-secondary" href="{% url 'medicoes_obra' orcamento.obra.id %}">Voltar para obra</a>
     </div>
 </div>
 
@@ -26,7 +26,7 @@
 
 <div class="card shadow-sm mb-4">
     <div class="card-body">
-        <h5 class="mb-3">Itens do orcamento</h5>
+        <h5 class="mb-3">Itens da planilha</h5>
         <div class="table-responsive">
             <table class="table table-sm align-middle">
                 <thead><tr><th>Item</th><th>Descricao</th><th>Und</th><th>Qtd</th><th>Unitario</th><th>Total</th></tr></thead>

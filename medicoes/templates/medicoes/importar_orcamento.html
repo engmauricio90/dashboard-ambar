@@ -1,11 +1,11 @@
 {% extends 'base.html' %}
 
-{% block title %}Importar Orcamento{% endblock %}
+{% block title %}Importar Planilha{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
-        <h1 class="mb-1">Importar orcamento</h1>
+        <h1 class="mb-1">Importar planilha de medicao</h1>
         <p class="text-muted mb-0">Use CSV com as colunas: item, descricao, unidade, quantidade, preco unitario material, preco unitario mao de obra e preco unitario equipamentos.</p>
     </div>
     <a class="btn btn-secondary" href="{% url 'medicoes_home' %}">Voltar</a>

@@ -1,6 +1,8 @@
 from django import forms
+from django.db import models
 from django.forms import inlineformset_factory
 
+from controles.models import FaturamentoDireto
 from obras.forms import BootstrapForm, BootstrapModelForm
 
 from .models import (
@@ -17,7 +19,7 @@ class ImportarOrcamentoForm(BootstrapForm):
     nome = forms.CharField(max_length=180)
     tipo = forms.ChoiceField(choices=OrcamentoMedicao.TIPO_CHOICES)
     arquivo = forms.FileField(
-        help_text='CSV com item, descricao, unidade, quantidade, unitario material, unitario mao de obra e unitario equipamentos.'
+        help_text='CSV com cabecalho: item, descricao, unidade, quantidade, unitario material, unitario mao de obra e unitario equipamentos.'
     )
     observacoes = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows': 3}))
 
@@ -29,6 +31,46 @@ class ImportarOrcamentoForm(BootstrapForm):
 
 
 class MedicaoConstrutoraForm(BootstrapModelForm):
+    faturamentos_diretos = forms.ModelMultipleChoiceField(
+        queryset=FaturamentoDireto.objects.none(),
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        label='Faturamentos diretos descontados nesta medicao',
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        obra = self.instance.orcamento.obra if self.instance and self.instance.pk else None
+        if obra:
+            vinculados = self.instance.faturamentos_diretos.values_list('faturamento_direto_id', flat=True)
+            self.fields['faturamentos_diretos'].queryset = FaturamentoDireto.objects.filter(
+                obra=obra,
+            ).filter(
+                models.Q(vinculo_medicao__isnull=True) | models.Q(id__in=vinculados)
+            ).order_by('data_lancamento', 'id')
+            self.fields['faturamentos_diretos'].initial = list(vinculados)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        inicio = cleaned_data.get('periodo_inicio')
+        fim = cleaned_data.get('periodo_fim')
+        if inicio and fim and fim < inicio:
+            self.add_error('periodo_fim', 'A data final nao pode ser anterior ao inicio do periodo.')
+        for field in [
+            'retencao_tecnica',
+            'retencao_tecnica_percentual',
+            'issqn',
+            'issqn_percentual',
+            'inss',
+            'inss_percentual',
+            'desconto_adicional',
+            'desconto_adicional_percentual',
+        ]:
+            value = cleaned_data.get(field)
+            if value is not None and value < 0:
+                self.add_error(field, 'Informe um valor positivo.')
+        return cleaned_data
+
     class Meta:
         model = MedicaoConstrutora
         fields = [
@@ -44,9 +86,6 @@ class MedicaoConstrutoraForm(BootstrapModelForm):
             'inss_percentual',
             'desconto_adicional',
             'desconto_adicional_percentual',
-            'faturamento_direto',
-            'descricao_faturamento_direto',
-            'valor_faturamento_direto',
             'observacoes',
         ]
         widgets = {
@@ -61,7 +100,6 @@ class MedicaoConstrutoraForm(BootstrapModelForm):
             'inss_percentual': forms.NumberInput(attrs={'step': '0.0001'}),
             'desconto_adicional': forms.NumberInput(attrs={'step': '0.01'}),
             'desconto_adicional_percentual': forms.NumberInput(attrs={'step': '0.0001'}),
-            'valor_faturamento_direto': forms.NumberInput(attrs={'step': '0.01'}),
             'observacoes': forms.Textarea(attrs={'rows': 3}),
         }
         labels = {
@@ -73,7 +111,6 @@ class MedicaoConstrutoraForm(BootstrapModelForm):
             'inss_percentual': 'INSS (%)',
             'desconto_adicional': 'Desconto adicional (R$)',
             'desconto_adicional_percentual': 'Desconto adicional (%)',
-            'valor_faturamento_direto': 'Faturamento direto (R$)',
         }
 
 
@@ -90,8 +127,30 @@ class ItemMedicaoConstrutoraForm(BootstrapModelForm):
             'quantidade_periodo': forms.NumberInput(attrs={'step': '0.0001'}),
         }
 
+    def clean_quantidade_periodo(self):
+        quantidade = self.cleaned_data.get('quantidade_periodo') or 0
+        if quantidade < 0:
+            raise forms.ValidationError('Informe uma quantidade positiva.')
+        if self.instance and self.instance.pk:
+            saldo_disponivel = self.instance.item_orcamento.quantidade - self.instance.quantidade_acumulada_anterior
+            if quantidade > saldo_disponivel:
+                raise forms.ValidationError(f'Quantidade acima do saldo disponivel ({saldo_disponivel:.4f}).')
+        return quantidade
+
 
 class MedicaoEmpreiteiroForm(BootstrapModelForm):
+    def clean(self):
+        cleaned_data = super().clean()
+        inicio = cleaned_data.get('periodo_inicio')
+        fim = cleaned_data.get('periodo_fim')
+        if inicio and fim and fim < inicio:
+            self.add_error('periodo_fim', 'A data final nao pode ser anterior ao inicio do periodo.')
+        for field in ['retencao_tecnica', 'retencao_tecnica_percentual', 'desconto_adicional', 'desconto_adicional_percentual']:
+            value = cleaned_data.get(field)
+            if value is not None and value < 0:
+                self.add_error(field, 'Informe um valor positivo.')
+        return cleaned_data
+
     class Meta:
         model = MedicaoEmpreiteiro
         fields = [

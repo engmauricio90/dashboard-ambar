@@ -130,15 +130,51 @@ class MedicaoConstrutora(models.Model):
 
     @property
     def total_bruto(self):
-        return self.subtotal_periodo + self.valor_faturamento_direto
+        return self.subtotal_periodo
+
+    @property
+    def total_faturamento_direto(self):
+        vinculado = _sum_decimal(v.faturamento_direto.valor_nota for v in self.faturamentos_diretos.select_related('faturamento_direto'))
+        return vinculado or self.valor_faturamento_direto
+
+    @property
+    def base_impostos(self):
+        base = self.subtotal_periodo - self.desconto_adicional - self.total_faturamento_direto
+        return max(base, Decimal('0'))
 
     @property
     def total_descontos(self):
-        return self.retencao_tecnica + self.issqn + self.inss + self.desconto_adicional
+        return self.retencao_tecnica + self.issqn + self.inss + self.desconto_adicional + self.total_faturamento_direto
 
     @property
     def total_liquido(self):
         return self.total_bruto - self.total_descontos
+
+    @property
+    def label_medicao(self):
+        return f'Medicao {self.numero}'
+
+
+class FaturamentoDiretoMedicao(models.Model):
+    medicao = models.ForeignKey(
+        MedicaoConstrutora,
+        on_delete=models.CASCADE,
+        related_name='faturamentos_diretos',
+    )
+    faturamento_direto = models.OneToOneField(
+        'controles.FaturamentoDireto',
+        on_delete=models.PROTECT,
+        related_name='vinculo_medicao',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['faturamento_direto__data_lancamento', 'id']
+        verbose_name = 'Faturamento direto descontado na medicao'
+        verbose_name_plural = 'Faturamentos diretos descontados nas medicoes'
+
+    def __str__(self):
+        return f'{self.medicao} - {self.faturamento_direto}'
 
 
 class ItemMedicaoConstrutora(models.Model):
@@ -160,7 +196,7 @@ class ItemMedicaoConstrutora(models.Model):
             ItemMedicaoConstrutora.objects.filter(
                 item_orcamento=self.item_orcamento,
                 medicao__orcamento=self.medicao.orcamento,
-                medicao__data_medicao__lt=self.medicao.data_medicao,
+                medicao__numero__lt=self.medicao.numero,
             )
             .exclude(medicao=self.medicao)
             .aggregate(total=Sum('quantidade_periodo'))['total']
@@ -274,7 +310,7 @@ class ItemMedicaoEmpreiteiro(models.Model):
             ItemMedicaoEmpreiteiro.objects.filter(
                 item_orcamento=self.item_orcamento,
                 medicao__orcamento=self.medicao.orcamento,
-                medicao__data_medicao__lt=self.medicao.data_medicao,
+                medicao__numero__lt=self.medicao.numero,
             )
             .exclude(medicao=self.medicao)
             .aggregate(total=Sum('quantidade_periodo'))['total']

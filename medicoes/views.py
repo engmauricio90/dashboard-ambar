@@ -16,6 +16,7 @@ from openpyxl import Workbook
 from PIL import Image, ImageDraw, ImageFont
 
 from controles.views import _build_simple_pdf
+from obras.models import Obra
 
 from .forms import (
     ImportarOrcamentoForm,
@@ -27,6 +28,7 @@ from .forms import (
     MedicaoEmpreiteiroForm,
 )
 from .models import (
+    FaturamentoDiretoMedicao,
     ItemMedicaoConstrutora,
     ItemMedicaoEmpreiteiro,
     ItemOrcamentoMedicao,
@@ -153,21 +155,52 @@ def _percent_value(base, percent):
 
 
 def _aplicar_percentuais_construtora(medicao):
-    base = medicao.total_bruto
     campos = {
-        'retencao_tecnica': medicao.retencao_tecnica_percentual,
-        'issqn': medicao.issqn_percentual,
-        'inss': medicao.inss_percentual,
-        'desconto_adicional': medicao.desconto_adicional_percentual,
+        'retencao_tecnica': (medicao.subtotal_periodo, medicao.retencao_tecnica_percentual),
+        'desconto_adicional': (medicao.subtotal_periodo, medicao.desconto_adicional_percentual),
+        'issqn': (medicao.base_impostos, medicao.issqn_percentual),
+        'inss': (medicao.base_impostos, medicao.inss_percentual),
     }
     updates = []
-    for field, percent in campos.items():
+    for field, (base, percent) in campos.items():
         value = _percent_value(base, percent)
         if value is not None:
             setattr(medicao, field, value)
             updates.append(field)
     if updates:
         medicao.save(update_fields=updates + ['updated_at'])
+
+
+def _sync_faturamentos_diretos(medicao, faturamentos):
+    selecionados = set(faturamentos.values_list('id', flat=True)) if hasattr(faturamentos, 'values_list') else {f.id for f in faturamentos}
+    atuais = set(medicao.faturamentos_diretos.values_list('faturamento_direto_id', flat=True))
+    remover = atuais - selecionados
+    adicionar = selecionados - atuais
+    if remover:
+        removidos = FaturamentoDiretoMedicao.objects.filter(medicao=medicao, faturamento_direto_id__in=remover)
+        for vinculo in removidos.select_related('faturamento_direto'):
+            faturamento = vinculo.faturamento_direto
+            if faturamento.medicao_desconto == medicao.label_medicao:
+                faturamento.medicao_desconto = ''
+                faturamento.save(update_fields=['medicao_desconto', 'updated_at'])
+        removidos.delete()
+    for faturamento_id in adicionar:
+        vinculo, _ = FaturamentoDiretoMedicao.objects.get_or_create(
+            medicao=medicao,
+            faturamento_direto_id=faturamento_id,
+        )
+        faturamento = vinculo.faturamento_direto
+        faturamento.medicao_desconto = medicao.label_medicao
+        faturamento.save(update_fields=['medicao_desconto', 'updated_at'])
+    if selecionados:
+        for vinculo in FaturamentoDiretoMedicao.objects.filter(
+            medicao=medicao,
+            faturamento_direto_id__in=selecionados,
+        ).select_related('faturamento_direto'):
+            faturamento = vinculo.faturamento_direto
+            if faturamento.medicao_desconto != medicao.label_medicao:
+                faturamento.medicao_desconto = medicao.label_medicao
+                faturamento.save(update_fields=['medicao_desconto', 'updated_at'])
 
 
 def _aplicar_percentuais_empreiteiro(medicao):
@@ -211,11 +244,29 @@ def _read_csv(file):
 
 def medicoes_home(request):
     contexto = {
+        'obras': Obra.objects.filter(orcamentos_medicao__isnull=False).distinct().order_by('nome_obra')[:12],
         'orcamentos': OrcamentoMedicao.objects.select_related('obra')[:8],
         'medicoes_construtora': MedicaoConstrutora.objects.select_related('orcamento', 'orcamento__obra')[:8],
         'medicoes_empreiteiro': MedicaoEmpreiteiro.objects.select_related('obra', 'orcamento')[:8],
     }
     return render(request, 'medicoes/home.html', contexto)
+
+
+def medicoes_obra(request, obra_id):
+    obra = get_object_or_404(Obra, id=obra_id)
+    planilhas = obra.orcamentos_medicao.prefetch_related('itens', 'medicoes_construtora', 'medicoes_empreiteiro')
+    medicoes_construtora = MedicaoConstrutora.objects.filter(orcamento__obra=obra).select_related('orcamento')
+    medicoes_empreiteiro = MedicaoEmpreiteiro.objects.filter(obra=obra).select_related('orcamento')
+    return render(
+        request,
+        'medicoes/obra.html',
+        {
+            'obra': obra,
+            'planilhas': planilhas,
+            'medicoes_construtora': medicoes_construtora,
+            'medicoes_empreiteiro': medicoes_empreiteiro,
+        },
+    )
 
 
 def lista_orcamentos(request):
@@ -260,10 +311,13 @@ def importar_orcamento(request):
                     transaction.set_rollback(True)
                     form.add_error('arquivo', 'Nenhum item valido foi encontrado no CSV.')
                     return render(request, 'medicoes/importar_orcamento.html', {'form': form})
-            messages.success(request, f'Orcamento importado com {len(itens)} itens.')
+            messages.success(request, f'Planilha de medicao importada com {len(itens)} itens.')
             return redirect('detalhe_orcamento_medicao', orcamento_id=orcamento.id)
     else:
-        form = ImportarOrcamentoForm()
+        initial = {}
+        if request.GET.get('obra'):
+            initial['obra'] = request.GET['obra']
+        form = ImportarOrcamentoForm(initial=initial)
     return render(request, 'medicoes/importar_orcamento.html', {'form': form})
 
 
@@ -321,6 +375,7 @@ def editar_medicao_construtora(request, medicao_id):
         if form.is_valid() and formset.is_valid():
             form.save()
             formset.save()
+            _sync_faturamentos_diretos(medicao, form.cleaned_data['faturamentos_diretos'])
             _aplicar_percentuais_construtora(medicao)
             messages.success(request, 'Medicao da construtora atualizada com sucesso.')
             return redirect('editar_medicao_construtora', medicao_id=medicao.id)
@@ -367,14 +422,15 @@ def nova_medicao_empreiteiro_simples(request):
                 return redirect('editar_medicao_empreiteiro', medicao_id=medicao.id)
             medicao.delete()
     else:
-        form = MedicaoEmpreiteiroCabecalhoForm(
-            initial={
-                'numero': _next_numero(MedicaoEmpreiteiro, tipo=MedicaoEmpreiteiro.TIPO_SIMPLES),
-                'data_medicao': timezone.localdate(),
-                'periodo_inicio': timezone.localdate(),
-                'periodo_fim': timezone.localdate(),
-            }
-        )
+        initial = {
+            'numero': _next_numero(MedicaoEmpreiteiro, tipo=MedicaoEmpreiteiro.TIPO_SIMPLES),
+            'data_medicao': timezone.localdate(),
+            'periodo_inicio': timezone.localdate(),
+            'periodo_fim': timezone.localdate(),
+        }
+        if request.GET.get('obra'):
+            initial['obra'] = request.GET['obra']
+        form = MedicaoEmpreiteiroCabecalhoForm(initial=initial)
         formset = ItemMedicaoEmpreiteiroFormSet()
     return render(
         request,
@@ -501,7 +557,8 @@ def _linhas_pdf_medicao(medicao, itens, titulo):
             [
                 f'ISSQN: {_money(medicao.issqn)}',
                 f'INSS: {_money(medicao.inss)}',
-                f'Faturamento direto: {_money(medicao.valor_faturamento_direto)}',
+                f'Faturamento direto descontado: {_money(medicao.total_faturamento_direto)}',
+                f'Base de impostos: {_money(medicao.base_impostos)}',
             ]
         )
     lines.extend([f'Desconto adicional: {_money(medicao.desconto_adicional)}', f'Total liquido: {_money(medicao.total_liquido)}'])
@@ -679,12 +736,13 @@ def _xlsx_medicao(medicao, itens):
             ]
         )
     ws.append([])
-    ws.append(['Subtotal', float(medicao.subtotal_periodo)])
+    ws.append(['Valor bruto', float(medicao.total_bruto if isinstance(medicao, MedicaoConstrutora) else medicao.subtotal_periodo)])
     ws.append(['Retencao tecnica', float(medicao.retencao_tecnica)])
     if isinstance(medicao, MedicaoConstrutora):
         ws.append(['ISSQN', float(medicao.issqn)])
         ws.append(['INSS', float(medicao.inss)])
-        ws.append(['Faturamento direto', float(medicao.valor_faturamento_direto)])
+        ws.append(['Faturamento direto descontado', float(medicao.total_faturamento_direto)])
+        ws.append(['Base de impostos', float(medicao.base_impostos)])
     ws.append(['Desconto adicional', float(medicao.desconto_adicional)])
     ws.append(['Total liquido', float(medicao.total_liquido)])
     output = BytesIO()

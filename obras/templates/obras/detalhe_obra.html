@@ -91,6 +91,7 @@
         <a href="{% url 'nova_conta_receber' %}?obra={{ obra.id }}" class="btn btn-success">Nova Receita/NF</a>
         <a href="{% url 'nova_conta_pagar' %}?obra={{ obra.id }}" class="btn btn-outline-danger">Nova Despesa</a>
         <a href="{% url 'novo_faturamento_direto' %}?obra={{ obra.id }}" class="btn btn-outline-primary">Faturamento Direto</a>
+        <a href="{% url 'medicoes_obra' obra.id %}" class="btn btn-outline-primary">Medicoes</a>
         <a href="{% url 'nova_retencao_tecnica' obra.id %}" class="btn btn-outline-warning">Nova Retencao Tecnica</a>
         <a href="{% url 'novo_aditivo' obra.id %}" class="btn btn-outline-info">Novo Aditivo/Supressao</a>
         <a href="{% url 'historico_financeiro' obra.id %}" class="btn btn-outline-dark">Historico Financeiro</a>

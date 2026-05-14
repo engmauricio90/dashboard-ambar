@@ -7,8 +7,10 @@ from django.test import TestCase
 from django.urls import reverse
 
 from obras.models import Obra
+from controles.models import FaturamentoDireto
 
 from .models import (
+    FaturamentoDiretoMedicao,
     ItemMedicaoConstrutora,
     ItemMedicaoEmpreiteiro,
     ItemOrcamentoMedicao,
@@ -124,6 +126,66 @@ class MedicoesTests(TestCase):
         self.assertEqual(item_segunda.quantidade_acumulada_atual, Decimal('50'))
         self.assertEqual(segunda.subtotal_periodo, Decimal('510.00'))
         self.assertEqual(segunda.total_liquido, Decimal('490.00'))
+
+    def test_medicao_construtora_desconta_faturamento_direto_fora_da_base_de_impostos(self):
+        orcamento, item = self._orcamento()
+        medicao = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=1,
+            periodo_inicio=date(2026, 1, 1),
+            periodo_fim=date(2026, 1, 31),
+            data_medicao=date(2026, 1, 31),
+            issqn_percentual=Decimal('5.00'),
+            inss_percentual=Decimal('10.00'),
+        )
+        ItemMedicaoConstrutora.objects.create(medicao=medicao, item_orcamento=item, quantidade_periodo=Decimal('20'))
+        faturamento = FaturamentoDireto.objects.create(
+            obra=self.obra,
+            numero_nf='FD-1',
+            empresa_comprou='Cliente',
+            valor_nota=Decimal('100.00'),
+            descricao='Material comprado direto',
+            vencimento_boleto='30 dias',
+        )
+        FaturamentoDiretoMedicao.objects.create(medicao=medicao, faturamento_direto=faturamento)
+
+        self.assertEqual(medicao.total_bruto, Decimal('340.00'))
+        self.assertEqual(medicao.total_faturamento_direto, Decimal('100.00'))
+        self.assertEqual(medicao.base_impostos, Decimal('240.00'))
+
+        response = self.client.post(
+            reverse('editar_medicao_construtora', args=[medicao.id]),
+            {
+                'numero': '1',
+                'periodo_inicio': '2026-01-01',
+                'periodo_fim': '2026-01-31',
+                'data_medicao': '2026-01-31',
+                'retencao_tecnica': '0',
+                'retencao_tecnica_percentual': '0',
+                'issqn': '0',
+                'issqn_percentual': '5',
+                'inss': '0',
+                'inss_percentual': '10',
+                'desconto_adicional': '0',
+                'desconto_adicional_percentual': '0',
+                'observacoes': '',
+                'faturamentos_diretos': [str(faturamento.id)],
+                'itens-TOTAL_FORMS': '1',
+                'itens-INITIAL_FORMS': '1',
+                'itens-MIN_NUM_FORMS': '0',
+                'itens-MAX_NUM_FORMS': '1000',
+                'itens-0-id': str(medicao.itens.get().id),
+                'itens-0-quantidade_periodo': '20',
+            },
+        )
+
+        self.assertRedirects(response, reverse('editar_medicao_construtora', args=[medicao.id]))
+        medicao.refresh_from_db()
+        faturamento.refresh_from_db()
+        self.assertEqual(medicao.issqn, Decimal('12.00'))
+        self.assertEqual(medicao.inss, Decimal('24.00'))
+        self.assertEqual(medicao.total_liquido, Decimal('204.00'))
+        self.assertEqual(faturamento.medicao_desconto, 'Medicao 1')
 
     def test_exclui_medicao_construtora(self):
         orcamento, item = self._orcamento()

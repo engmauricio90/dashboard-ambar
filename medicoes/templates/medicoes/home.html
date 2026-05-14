@@ -6,27 +6,43 @@
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
         <h1 class="mb-1">Medicoes</h1>
-        <p class="text-muted mb-0">Boletins da construtora, empreiteiros, importacao CSV e exportacao em PDF/Excel.</p>
+        <p class="text-muted mb-0">Fluxo por obra: planilhas de medicao, medicoes da construtora e medicoes de empreiteiros.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a class="btn btn-primary" href="{% url 'importar_orcamento_medicao' %}">Importar Orcamento</a>
+        <a class="btn btn-primary" href="{% url 'importar_orcamento_medicao' %}">Importar planilha</a>
         <a class="btn btn-outline-dark" href="{% url 'nova_medicao_empreiteiro_simples' %}">Medicao Simples</a>
-        <a class="btn btn-outline-secondary" href="{% url 'lista_orcamentos_medicao' %}">Orcamentos</a>
+        <a class="btn btn-outline-secondary" href="{% url 'lista_orcamentos_medicao' %}">Planilhas</a>
     </div>
 </div>
 
 <div class="row g-4">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h5 class="mb-3">Obras com planilhas de medicao</h5>
+                <div class="row g-2">
+                    {% for obra in obras %}
+                    <div class="col-md-4">
+                        <a class="btn btn-outline-primary w-100 text-start" href="{% url 'medicoes_obra' obra.id %}">{{ obra.nome_obra }}</a>
+                    </div>
+                    {% empty %}
+                    <div class="col-12 text-muted">Nenhuma obra com planilha importada.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
     <div class="col-lg-4">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h5 class="mb-3">Orcamentos importados</h5>
+                <h5 class="mb-3">Planilhas importadas</h5>
                 <div class="list-group list-group-flush">
                     {% for orcamento in orcamentos %}
                     <a class="list-group-item list-group-item-action" href="{% url 'detalhe_orcamento_medicao' orcamento.id %}">
                         {{ orcamento.nome }}<br><small class="text-muted">{{ orcamento.obra }}</small>
                     </a>
                     {% empty %}
-                    <div class="text-muted">Nenhum orcamento importado.</div>
+                    <div class="text-muted">Nenhuma planilha importada.</div>
                     {% endfor %}
                 </div>
             </div>

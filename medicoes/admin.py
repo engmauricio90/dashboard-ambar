@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    FaturamentoDiretoMedicao,
     ItemMedicaoConstrutora,
     ItemMedicaoEmpreiteiro,
     ItemOrcamentoMedicao,
@@ -28,11 +29,16 @@ class ItemMedicaoConstrutoraInline(admin.TabularInline):
     extra = 0
 
 
+class FaturamentoDiretoMedicaoInline(admin.TabularInline):
+    model = FaturamentoDiretoMedicao
+    extra = 0
+
+
 @admin.register(MedicaoConstrutora)
 class MedicaoConstrutoraAdmin(admin.ModelAdmin):
     list_display = ['numero', 'orcamento', 'periodo_inicio', 'periodo_fim', 'total_liquido']
     list_filter = ['orcamento__obra']
-    inlines = [ItemMedicaoConstrutoraInline]
+    inlines = [ItemMedicaoConstrutoraInline, FaturamentoDiretoMedicaoInline]
 
 
 class ItemMedicaoEmpreiteiroInline(admin.TabularInline):
