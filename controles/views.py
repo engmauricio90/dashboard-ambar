@@ -22,6 +22,7 @@ from .forms import (
     EquipamentoLocadoCatalogoForm,
     FornecedorMaquinaLocacaoForm,
     FaturamentoConcretagemForm,
+    FaturamentoDiretoForm,
     LocacaoEquipamentoForm,
     LocadoraEquipamentoForm,
     MaquinaLocacaoCatalogoForm,
@@ -45,6 +46,7 @@ from .models import (
     EquipamentoLocadoCatalogo,
     FornecedorMaquinaLocacao,
     FaturamentoConcretagem,
+    FaturamentoDireto,
     LocacaoEquipamento,
     LocadoraEquipamento,
     MaquinaLocacaoCatalogo,
@@ -352,12 +354,71 @@ def home(request):
         ).count(),
         'orcamentos_aguardando': OrcamentoRadarObra.objects.filter(situacao='aguardando_resposta').count(),
         'contratos_concretagem': ContratoConcretagem.objects.filter(status='ativo').count(),
+        'faturamentos_diretos': FaturamentoDireto.objects.count(),
         'total_abastecido': sum(
             RegistroAbastecimento.objects.values_list('valor_total', flat=True),
             Decimal('0'),
         ),
     }
     return render(request, 'controles/home.html', totais)
+
+
+def lista_faturamentos_diretos(request):
+    faturamentos = FaturamentoDireto.objects.select_related('obra').all()
+    busca = request.GET.get('busca', '').strip()
+    if busca:
+        faturamentos = faturamentos.filter(
+            Q(numero_nf__icontains=busca)
+            | Q(empresa_comprou__icontains=busca)
+            | Q(descricao__icontains=busca)
+            | Q(obra__nome_obra__icontains=busca)
+            | Q(medicao_desconto__icontains=busca)
+        )
+    total = sum((faturamento.valor_nota for faturamento in faturamentos), Decimal('0'))
+    return render(
+        request,
+        'controles/lista_faturamentos_diretos.html',
+        {'faturamentos': faturamentos, 'busca': busca, 'total': total},
+    )
+
+
+def novo_faturamento_direto(request):
+    if request.method == 'POST':
+        form = FaturamentoDiretoForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Faturamento direto cadastrado com sucesso.')
+            return redirect('lista_faturamentos_diretos')
+    else:
+        initial = {}
+        obra_id = request.GET.get('obra')
+        if obra_id:
+            initial['obra'] = obra_id
+        form = FaturamentoDiretoForm(initial=initial)
+
+    return render(
+        request,
+        'controles/form_faturamento_direto.html',
+        {'form': form, 'titulo': 'Novo Faturamento Direto'},
+    )
+
+
+def editar_faturamento_direto(request, faturamento_id):
+    faturamento = get_object_or_404(FaturamentoDireto, id=faturamento_id)
+    if request.method == 'POST':
+        form = FaturamentoDiretoForm(request.POST, instance=faturamento)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Faturamento direto atualizado com sucesso.')
+            return redirect('lista_faturamentos_diretos')
+    else:
+        form = FaturamentoDiretoForm(instance=faturamento)
+
+    return render(
+        request,
+        'controles/form_faturamento_direto.html',
+        {'form': form, 'titulo': 'Editar Faturamento Direto', 'faturamento': faturamento},
+    )
 
 
 def lista_abastecimentos(request):

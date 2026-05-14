@@ -10,6 +10,7 @@ from .models import (
     EquipamentoLocadoCatalogo,
     FornecedorMaquinaLocacao,
     FaturamentoConcretagem,
+    FaturamentoDireto,
     MaquinaLocacaoCatalogo,
     NotaFiscalCombustivel,
     NotaFiscalLocacaoMaquina,
@@ -89,6 +90,26 @@ class RegistroAbastecimentoForm(BootstrapModelForm):
             'litros': forms.NumberInput(attrs={'step': '0.01'}),
             'valor_litro': forms.NumberInput(attrs={'step': '0.01'}),
             'valor_total': forms.NumberInput(attrs={'step': '0.01'}),
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+
+
+class FaturamentoDiretoForm(BootstrapModelForm):
+    class Meta:
+        model = FaturamentoDireto
+        fields = [
+            'obra',
+            'numero_nf',
+            'empresa_comprou',
+            'valor_nota',
+            'descricao',
+            'vencimento_boleto',
+            'medicao_desconto',
+            'observacoes',
+        ]
+        widgets = {
+            'valor_nota': forms.NumberInput(attrs={'step': '0.01'}),
+            'vencimento_boleto': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'observacoes': forms.Textarea(attrs={'rows': 3}),
         }
 

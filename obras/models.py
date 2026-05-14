@@ -123,6 +123,13 @@ class Obra(models.Model):
         return _sum_decimal(retencao.valor_saldo for retencao in retencoes)
 
     @property
+    def total_faturamento_direto(self):
+        faturamentos = self._prefetched_items('faturamentos_diretos')
+        if faturamentos is not None:
+            return _sum_decimal(faturamento.valor_nota for faturamento in faturamentos)
+        return self._aggregate_value('faturamentos_diretos__valor_nota')
+
+    @property
     def total_retencoes(self):
         return self.total_retencoes_nf + self.total_retencoes_tecnicas
 
@@ -158,7 +165,7 @@ class Obra(models.Model):
 
     @property
     def saldo_contratual(self):
-        return self.contrato_atualizado - self.total_notas_fiscais
+        return self.contrato_atualizado - self.total_notas_fiscais - self.total_faturamento_direto
 
     @property
     def projecao_resultado(self):

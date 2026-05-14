@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+
+{% block title %}Faturamento Direto{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Faturamento Direto</h1>
+        <p class="text-muted mb-0">Notas compradas diretamente pelo cliente e descontadas do contrato da obra.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'novo_faturamento_direto' %}" class="btn btn-success">Novo faturamento</a>
+        <a href="{% url 'controles_home' %}" class="btn btn-secondary">Voltar</a>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-10">
+                <label class="form-label">Busca</label>
+                <input type="text" name="busca" value="{{ busca }}" class="form-control" placeholder="Obra, NF, empresa, descricao ou medicao">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-outline-primary w-100">Filtrar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Lancamentos</h5>
+            <strong>Total: R$ {{ total|floatformat:2 }}</strong>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Obra</th>
+                        <th>NF</th>
+                        <th>Empresa</th>
+                        <th>Descricao</th>
+                        <th>Vencimento</th>
+                        <th>Medicao desconto</th>
+                        <th>Valor</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for faturamento in faturamentos %}
+                    <tr>
+                        <td>{{ faturamento.obra }}</td>
+                        <td>{{ faturamento.numero_nf }}</td>
+                        <td>{{ faturamento.empresa_comprou }}</td>
+                        <td>{{ faturamento.descricao }}</td>
+                        <td>{{ faturamento.vencimento_boleto }}</td>
+                        <td>{{ faturamento.medicao_desconto|default:'-' }}</td>
+                        <td>R$ {{ faturamento.valor_nota|floatformat:2 }}</td>
+                        <td class="text-end">
+                            <a href="{% url 'editar_faturamento_direto' faturamento.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8">Nenhum faturamento direto cadastrado.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

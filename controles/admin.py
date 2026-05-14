@@ -7,6 +7,7 @@ from .models import (
     EquipamentoLocadoCatalogo,
     FornecedorMaquinaLocacao,
     FaturamentoConcretagem,
+    FaturamentoDireto,
     HistoricoLocacaoMaquina,
     LocacaoEquipamento,
     LocadoraEquipamento,
@@ -284,3 +285,10 @@ class FaturamentoConcretagemAdmin(admin.ModelAdmin):
         'solicitante__nome',
     )
     list_filter = ('status', 'data_faturamento', 'contrato__fornecedor')
+
+
+@admin.register(FaturamentoDireto)
+class FaturamentoDiretoAdmin(admin.ModelAdmin):
+    list_display = ('obra', 'numero_nf', 'empresa_comprou', 'valor_nota', 'vencimento_boleto', 'medicao_desconto')
+    search_fields = ('obra__nome_obra', 'numero_nf', 'empresa_comprou', 'descricao', 'medicao_desconto')
+    list_filter = ('vencimento_boleto', 'obra')

@@ -14,6 +14,7 @@ def _obras_base_queryset():
     return Obra.objects.prefetch_related(
         'aditivos_registrados',
         'despesas_registradas',
+        'faturamentos_diretos',
         'retencoes_tecnicas_registradas',
         Prefetch('notas_fiscais', queryset=notas_queryset),
     )

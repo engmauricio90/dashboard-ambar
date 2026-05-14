@@ -20,6 +20,7 @@ from .models import (
     ContratoConcretagem,
     FornecedorMaquinaLocacao,
     FaturamentoConcretagem,
+    FaturamentoDireto,
     HistoricoLocacaoMaquina,
     HistoricoOrdemCombustivel,
     LocacaoEquipamento,
@@ -52,6 +53,33 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Controles Operacionais')
         self.assertContains(response, 'Controle de abastecimento')
+
+    def test_cria_faturamento_direto_e_reduz_saldo_da_obra(self):
+        obra = Obra.objects.create(nome_obra='Obra FD', valor_contrato=Decimal('1000.00'))
+
+        response = self.client.post(
+            reverse('novo_faturamento_direto'),
+            {
+                'obra': obra.id,
+                'numero_nf': '123',
+                'empresa_comprou': 'Cliente Comprador',
+                'valor_nota': '250.00',
+                'descricao': 'Tubos comprados direto',
+                'vencimento_boleto': '2026-05-20',
+                'medicao_desconto': 'Medicao 02',
+                'observacoes': '',
+            },
+        )
+
+        self.assertRedirects(response, reverse('lista_faturamentos_diretos'))
+        faturamento = FaturamentoDireto.objects.get()
+        self.assertEqual(faturamento.obra, obra)
+        self.assertEqual(obra.total_faturamento_direto, Decimal('250.00'))
+        self.assertEqual(obra.saldo_contratual, Decimal('750.00'))
+
+        response_obra = self.client.get(reverse('detalhe_obra', args=[obra.id]))
+        self.assertContains(response_obra, 'Tubos comprados direto')
+        self.assertContains(response_obra, 'Medicao 02')
 
     def test_cria_veiculo_maquina(self):
         response = self.client.post(

@@ -5,6 +5,13 @@ from . import views
 
 urlpatterns = [
     path('', views.home, name='controles_home'),
+    path('faturamentos-diretos/', views.lista_faturamentos_diretos, name='lista_faturamentos_diretos'),
+    path('faturamentos-diretos/novo/', views.novo_faturamento_direto, name='novo_faturamento_direto'),
+    path(
+        'faturamentos-diretos/<int:faturamento_id>/editar/',
+        views.editar_faturamento_direto,
+        name='editar_faturamento_direto',
+    ),
     path('abastecimentos/', views.lista_abastecimentos, name='lista_abastecimentos'),
     path('abastecimentos/novo/', views.novo_abastecimento, name='novo_abastecimento'),
     path('ordens-compra/', views.lista_ordens_compra_gerais, name='lista_ordens_compra_gerais'),

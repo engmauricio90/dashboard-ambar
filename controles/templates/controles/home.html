@@ -50,9 +50,9 @@
     <div class="col-md">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h6>Contratos concretagem</h6>
-                <h4>{{ contratos_concretagem }}</h4>
-                <small class="text-muted">Ativos</small>
+                <h6>Faturamento direto</h6>
+                <h4>{{ faturamentos_diretos }}</h4>
+                <small class="text-muted">Deducoes cadastradas</small>
             </div>
         </div>
     </div>
@@ -126,6 +126,19 @@
                 <div class="d-flex gap-2 flex-wrap">
                     <a href="{% url 'lista_radar_obras' %}" class="btn btn-primary">Ver radar</a>
                     <a href="{% url 'novo_radar_obra' %}" class="btn btn-outline-primary">Novo orcamento</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-2">Faturamento direto</h5>
+                <p class="text-muted">Controle notas compradas diretamente pelo cliente e descontadas do saldo contratual da obra.</p>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="{% url 'lista_faturamentos_diretos' %}" class="btn btn-primary">Ver faturamentos</a>
+                    <a href="{% url 'novo_faturamento_direto' %}" class="btn btn-outline-primary">Novo faturamento</a>
                 </div>
             </div>
         </div>

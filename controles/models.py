@@ -1103,3 +1103,32 @@ class FaturamentoConcretagem(models.Model):
 
     def __str__(self):
         return f'{self.contrato} - {self.data_faturamento}'
+
+
+class FaturamentoDireto(models.Model):
+    obra = models.ForeignKey(
+        'obras.Obra',
+        on_delete=models.PROTECT,
+        related_name='faturamentos_diretos',
+    )
+    numero_nf = models.CharField(max_length=80, verbose_name='Nr da NF')
+    empresa_comprou = models.CharField(max_length=180, verbose_name='Empresa que comprou')
+    valor_nota = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name='Valor da nota fiscal')
+    descricao = models.CharField(max_length=255, verbose_name='Descricao do que foi comprado')
+    vencimento_boleto = models.DateField(verbose_name='Vencimento do boleto')
+    medicao_desconto = models.CharField(
+        max_length=120,
+        blank=True,
+        verbose_name='Medicao em que foi descontada',
+    )
+    observacoes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-vencimento_boleto', '-id']
+        verbose_name = 'Faturamento direto'
+        verbose_name_plural = 'Faturamentos diretos'
+
+    def __str__(self):
+        return f'{self.obra} - NF {self.numero_nf} - {self.empresa_comprou}'
