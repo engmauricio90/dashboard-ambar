@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+
+{% block title %}Medicao da Construtora{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Medicao da construtora</h1>
+        <p class="text-muted mb-0">Planilhas por obra, medicoes acumulativas, impostos, descontos e faturamento direto.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-primary" href="{% url 'importar_orcamento_medicao' %}">Importar planilha</a>
+        <a class="btn btn-outline-secondary" href="{% url 'lista_orcamentos_medicao' %}">Todas as planilhas</a>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <h5 class="mb-0">Obras com medicao da construtora</h5>
+            <span class="text-muted small">{{ obras|length }} obra(s)</span>
+        </div>
+        <div class="row g-2">
+            {% for obra in obras %}
+            <div class="col-md-4">
+                <a class="btn btn-outline-primary w-100 text-start" href="{% url 'medicoes_obra' obra.id %}">
+                    {{ obra.nome_obra }}
+                </a>
+            </div>
+            {% empty %}
+            <div class="col-12 text-muted">Nenhuma obra com planilha de construtora importada.</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h5 class="mb-3">Planilhas operacionais</h5>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Obra</th>
+                        <th>Planilha</th>
+                        <th>Contrato</th>
+                        <th>Medido</th>
+                        <th>Saldo</th>
+                        <th>%</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for planilha in planilhas %}
+                    <tr>
+                        <td>{{ planilha.obra.nome_obra }}</td>
+                        <td>{{ planilha.nome }}</td>
+                        <td>R$ {{ planilha.total_orcamento|floatformat:2 }}</td>
+                        <td>R$ {{ planilha.total_medido_construtora|floatformat:2 }}</td>
+                        <td>R$ {{ planilha.saldo_medir_construtora|floatformat:2 }}</td>
+                        <td>{{ planilha.percentual_medido_construtora|floatformat:2 }}%</td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-primary" href="{% url 'nova_medicao_construtora' planilha.id %}">Nova medicao</a>
+                            <a class="btn btn-sm btn-outline-secondary" href="{% url 'detalhe_orcamento_medicao' planilha.id %}">Abrir</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="7">Nenhuma planilha importada.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <h5 class="mb-3">Ultimas medicoes</h5>
+        <div class="list-group list-group-flush">
+            {% for medicao in medicoes %}
+            <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_construtora' medicao.id %}">
+                Medicao {{ medicao.numero }} - {{ medicao.orcamento.obra.nome_obra }} - {{ medicao.orcamento.nome }}<br>
+                <small class="text-muted">
+                    Bruto R$ {{ medicao.total_bruto|floatformat:2 }} |
+                    Faturamento direto R$ {{ medicao.total_faturamento_direto|floatformat:2 }} |
+                    Liquido R$ {{ medicao.total_liquido|floatformat:2 }}
+                </small>
+            </a>
+            {% empty %}
+            <div class="text-muted">Nenhuma medicao da construtora cadastrada.</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -10,9 +10,10 @@
     </div>
     <div class="d-flex gap-2 flex-wrap">
         {% if orcamento.tipo == 'construtora' %}
-        <a class="btn btn-primary" href="{% url 'nova_medicao_construtora' orcamento.id %}">Nova Medicao Construtora</a>
+        <a class="btn btn-primary" href="{% url 'nova_medicao_construtora' orcamento.id %}">Nova medicao</a>
+        {% else %}
+        <a class="btn btn-primary" href="{% url 'nova_medicao_empreiteiro_cumulativa' orcamento.id %}">Nova medicao cumulativa</a>
         {% endif %}
-        <a class="btn btn-outline-dark" href="{% url 'nova_medicao_empreiteiro_cumulativa' orcamento.id %}">Medicao Empreiteiro Cumulativa</a>
         <a class="btn btn-secondary" href="{% url 'medicoes_obra' orcamento.obra.id %}">Voltar para obra</a>
     </div>
 </div>

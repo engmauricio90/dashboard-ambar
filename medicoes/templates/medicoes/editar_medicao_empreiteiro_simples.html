@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        <p class="text-muted mb-0">Recibo simples de medicao: empreiteiro, periodo, itens, descontos e PDF.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        {% if medicao %}
+        <a class="btn btn-outline-danger" href="{% url 'medicao_empreiteiro_pdf' medicao.id %}" target="_blank">PDF</a>
+        <a class="btn btn-outline-success" href="{% url 'medicao_empreiteiro_excel' medicao.id %}">Excel</a>
+        <a class="btn btn-outline-danger" href="{% url 'excluir_medicao_empreiteiro' medicao.id %}">Excluir</a>
+        {% endif %}
+        <a class="btn btn-secondary" href="{% url 'medicoes_empreiteiros_home' %}">Voltar</a>
+    </div>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="mb-3">Dados do recibo</h5>
+            <div class="row g-3">
+                {% for field in form %}
+                {% if field.name == 'obra' or field.name == 'empreiteiro' or field.name == 'cpf_cnpj' or field.name == 'pix' or field.name == 'numero' or field.name == 'periodo_inicio' or field.name == 'periodo_fim' or field.name == 'data_medicao' or field.name == 'observacoes' %}
+                <div class="{% if field.name == 'observacoes' %}col-12{% else %}col-md-3{% endif %}">
+                    <label class="form-label">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.errors %}<div class="text-danger small">{{ field.errors|join:', ' }}</div>{% endif %}
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <h5 class="mb-0">Itens medidos</h5>
+                <span class="text-muted small">Use apenas as linhas necessarias.</span>
+            </div>
+            {{ formset.management_form }}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th style="width: 90px;">Item</th>
+                            <th>Descricao</th>
+                            <th style="width: 95px;">Und</th>
+                            <th style="width: 140px;">Qtd</th>
+                            <th style="width: 150px;">Valor unit.</th>
+                            <th style="width: 150px;">Total</th>
+                            <th style="width: 80px;">Excluir</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item_form in formset %}
+                        <tr>
+                            <td>{{ item_form.item_orcamento.as_hidden }}{{ item_form.id }}{{ item_form.item }}</td>
+                            <td>{{ item_form.descricao }}</td>
+                            <td>{{ item_form.unidade }}</td>
+                            <td>{{ item_form.quantidade_periodo }}</td>
+                            <td>{{ item_form.valor_unitario }}</td>
+                            <td>R$ {{ item_form.instance.valor_periodo|floatformat:2 }}</td>
+                            <td>{% if item_form.DELETE %}{{ item_form.DELETE }}{% endif %}</td>
+                        </tr>
+                        {% if item_form.non_field_errors %}
+                        <tr><td colspan="7" class="text-danger small">{{ item_form.non_field_errors }}</td></tr>
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {% if medicao %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="mb-3">Fechamento</h5>
+            <div class="row g-3 mb-3">
+                <div class="col-md-4"><strong>Bruto:</strong> R$ {{ medicao.subtotal_periodo|floatformat:2 }}</div>
+                <div class="col-md-4"><strong>Descontos:</strong> R$ {{ medicao.total_descontos|floatformat:2 }}</div>
+                <div class="col-md-4"><strong>Liquido:</strong> R$ {{ medicao.total_liquido|floatformat:2 }}</div>
+            </div>
+            <div class="row g-3">
+                {% for field in form %}
+                {% if field.name == 'retencao_tecnica' or field.name == 'retencao_tecnica_percentual' or field.name == 'desconto_adicional' or field.name == 'desconto_adicional_percentual' %}
+                <div class="col-md-3">
+                    <label class="form-label">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.errors %}<div class="text-danger small">{{ field.errors|join:', ' }}</div>{% endif %}
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <button class="btn btn-primary" type="submit">Salvar medicao</button>
+</form>
+{% endblock %}

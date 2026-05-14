@@ -52,6 +52,25 @@ class OrcamentoMedicao(models.Model):
     def total_orcamento(self):
         return self.total_material + self.total_mao_obra + self.total_equipamentos
 
+    @property
+    def total_medido_construtora(self):
+        return _sum_decimal(medicao.subtotal_periodo for medicao in self.medicoes_construtora.all())
+
+    @property
+    def total_liquido_construtora(self):
+        return _sum_decimal(medicao.total_liquido for medicao in self.medicoes_construtora.all())
+
+    @property
+    def saldo_medir_construtora(self):
+        return self.total_orcamento - self.total_medido_construtora
+
+    @property
+    def percentual_medido_construtora(self):
+        total = self.total_orcamento
+        if not total:
+            return Decimal('0')
+        return (self.total_medido_construtora * Decimal('100') / total).quantize(Decimal('0.01'))
+
 
 class ItemOrcamentoMedicao(models.Model):
     orcamento = models.ForeignKey(OrcamentoMedicao, on_delete=models.CASCADE, related_name='itens')

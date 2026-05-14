@@ -243,13 +243,35 @@ def _read_csv(file):
 
 
 def medicoes_home(request):
+    return redirect('medicoes_construtora_home')
+
+
+def medicoes_construtora_home(request):
     contexto = {
-        'obras': Obra.objects.filter(orcamentos_medicao__isnull=False).distinct().order_by('nome_obra')[:12],
-        'orcamentos': OrcamentoMedicao.objects.select_related('obra')[:8],
-        'medicoes_construtora': MedicaoConstrutora.objects.select_related('orcamento', 'orcamento__obra')[:8],
-        'medicoes_empreiteiro': MedicaoEmpreiteiro.objects.select_related('obra', 'orcamento')[:8],
+        'obras': Obra.objects.filter(
+            orcamentos_medicao__tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
+        ).distinct().order_by('nome_obra'),
+        'planilhas': OrcamentoMedicao.objects.filter(
+            tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
+        ).select_related('obra').prefetch_related('medicoes_construtora', 'itens'),
+        'medicoes': MedicaoConstrutora.objects.select_related('orcamento', 'orcamento__obra')[:12],
     }
-    return render(request, 'medicoes/home.html', contexto)
+    return render(request, 'medicoes/construtora_home.html', contexto)
+
+
+def medicoes_empreiteiros_home(request):
+    contexto = {
+        'simples': MedicaoEmpreiteiro.objects.filter(
+            tipo=MedicaoEmpreiteiro.TIPO_SIMPLES,
+        ).select_related('obra')[:15],
+        'cumulativas': MedicaoEmpreiteiro.objects.filter(
+            tipo=MedicaoEmpreiteiro.TIPO_CUMULATIVA,
+        ).select_related('obra', 'orcamento')[:15],
+        'planilhas': OrcamentoMedicao.objects.filter(
+            tipo=OrcamentoMedicao.TIPO_EMPREITEIRO,
+        ).select_related('obra')[:15],
+    }
+    return render(request, 'medicoes/empreiteiros_home.html', contexto)
 
 
 def medicoes_obra(request, obra_id):
@@ -434,7 +456,7 @@ def nova_medicao_empreiteiro_simples(request):
         formset = ItemMedicaoEmpreiteiroFormSet()
     return render(
         request,
-        'medicoes/editar_medicao_empreiteiro.html',
+        'medicoes/editar_medicao_empreiteiro_simples.html',
         {'form': form, 'formset': formset, 'titulo': 'Nova medicao simples de empreiteiro'},
     )
 
@@ -491,9 +513,14 @@ def editar_medicao_empreiteiro(request, medicao_id):
     else:
         form = MedicaoEmpreiteiroForm(instance=medicao)
         formset = ItemMedicaoEmpreiteiroFormSet(instance=medicao, orcamento=medicao.orcamento)
+    template = (
+        'medicoes/editar_medicao_empreiteiro_simples.html'
+        if medicao.tipo == MedicaoEmpreiteiro.TIPO_SIMPLES
+        else 'medicoes/editar_medicao_empreiteiro.html'
+    )
     return render(
         request,
-        'medicoes/editar_medicao_empreiteiro.html',
+        template,
         {'medicao': medicao, 'form': form, 'formset': formset, 'titulo': 'Medicao de empreiteiro'},
     )
 
@@ -506,7 +533,7 @@ def excluir_medicao_empreiteiro(request, medicao_id):
         messages.success(request, 'Medicao de empreiteiro excluida com sucesso.')
         if orcamento_id:
             return redirect('detalhe_orcamento_medicao', orcamento_id=orcamento_id)
-        return redirect('medicoes_home')
+        return redirect('medicoes_empreiteiros_home')
     return render(
         request,
         'medicoes/confirmar_exclusao_medicao.html',

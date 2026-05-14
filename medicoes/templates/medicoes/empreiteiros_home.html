@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+
+{% block title %}Medicao de Empreiteiro{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Medicao de empreiteiro</h1>
+        <p class="text-muted mb-0">Medição simples em formato de recibo e medição cumulativa por planilha.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-primary" href="{% url 'nova_medicao_empreiteiro_simples' %}">Nova medicao simples</a>
+        <a class="btn btn-outline-secondary" href="{% url 'importar_orcamento_medicao' %}">Importar planilha</a>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-3">Medições simples</h5>
+                <div class="list-group list-group-flush">
+                    {% for medicao in simples %}
+                    <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_empreiteiro' medicao.id %}">
+                        {{ medicao.empreiteiro }} - Medicao {{ medicao.numero }}<br>
+                        <small class="text-muted">
+                            {{ medicao.obra|default:'Sem obra' }} |
+                            {{ medicao.periodo_inicio|date:'d/m/Y' }} a {{ medicao.periodo_fim|date:'d/m/Y' }} |
+                            Liquido R$ {{ medicao.total_liquido|floatformat:2 }}
+                        </small>
+                    </a>
+                    {% empty %}
+                    <div class="text-muted">Nenhuma medicao simples cadastrada.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-3">Medições cumulativas</h5>
+                <div class="list-group list-group-flush">
+                    {% for medicao in cumulativas %}
+                    <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_empreiteiro' medicao.id %}">
+                        {{ medicao.empreiteiro }} - Medicao {{ medicao.numero }}<br>
+                        <small class="text-muted">
+                            {{ medicao.obra|default:'Sem obra' }} |
+                            {{ medicao.orcamento.nome|default:'Sem planilha' }} |
+                            Liquido R$ {{ medicao.total_liquido|floatformat:2 }}
+                        </small>
+                    </a>
+                    {% empty %}
+                    <div class="text-muted">Nenhuma medicao cumulativa cadastrada.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <h5 class="mb-3">Planilhas de empreiteiros</h5>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Obra</th>
+                        <th>Planilha</th>
+                        <th>Total</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for planilha in planilhas %}
+                    <tr>
+                        <td>{{ planilha.obra.nome_obra }}</td>
+                        <td>{{ planilha.nome }}</td>
+                        <td>R$ {{ planilha.total_orcamento|floatformat:2 }}</td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-primary" href="{% url 'nova_medicao_empreiteiro_cumulativa' planilha.id %}">Nova cumulativa</a>
+                            <a class="btn btn-sm btn-outline-secondary" href="{% url 'detalhe_orcamento_medicao' planilha.id %}">Abrir</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4">Nenhuma planilha de empreiteiro importada.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

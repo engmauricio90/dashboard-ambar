@@ -94,6 +94,18 @@ class MedicoesTests(TestCase):
         response = self.client.get(reverse('nova_medicao_empreiteiro_simples'))
 
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Recibo simples de medicao')
+
+    def test_telas_separadas_de_medicao_carregam(self):
+        orcamento, item = self._orcamento()
+        response_construtora = self.client.get(reverse('medicoes_construtora_home'))
+        response_empreiteiros = self.client.get(reverse('medicoes_empreiteiros_home'))
+        response_obra = self.client.get(reverse('medicoes_obra', args=[self.obra.id]))
+
+        self.assertContains(response_construtora, 'Medicao da construtora')
+        self.assertContains(response_construtora, orcamento.nome)
+        self.assertContains(response_empreiteiros, 'Medicao de empreiteiro')
+        self.assertContains(response_obra, 'Painel operacional da obra')
 
     def test_medicao_construtora_calcula_acumulado_e_liquido(self):
         orcamento, item = self._orcamento()
@@ -255,5 +267,5 @@ class MedicoesTests(TestCase):
 
         response = self.client.post(reverse('excluir_medicao_empreiteiro', args=[medicao.id]))
 
-        self.assertRedirects(response, reverse('medicoes_home'))
+        self.assertRedirects(response, reverse('medicoes_empreiteiros_home'))
         self.assertFalse(MedicaoEmpreiteiro.objects.filter(id=medicao.id).exists())
