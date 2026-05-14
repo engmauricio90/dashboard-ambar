@@ -389,6 +389,7 @@
                                 <th>Vencimento</th>
                                 <th>Medicao desconto</th>
                                 <th>Valor</th>
+                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -401,10 +402,13 @@
                                 <td>{{ faturamento.vencimento_boleto }}</td>
                                 <td>{{ faturamento.medicao_desconto|default:'-' }}</td>
                                 <td>R$ {{ faturamento.valor_nota|floatformat:2 }}</td>
+                                <td class="text-end">
+                                    <a href="{% url 'excluir_faturamento_direto' faturamento.id %}?origem=obra" class="btn btn-sm btn-outline-danger">Excluir</a>
+                                </td>
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="7">Nenhum faturamento direto cadastrado.</td>
+                                <td colspan="8">Nenhum faturamento direto cadastrado.</td>
                             </tr>
                             {% endfor %}
                         </tbody>

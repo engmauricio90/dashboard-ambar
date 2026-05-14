@@ -84,6 +84,30 @@ class ControleAbastecimentoTests(TestCase):
         self.assertContains(response_obra, 'Tubos comprados direto')
         self.assertContains(response_obra, 'Medicao 02')
 
+    def test_exclui_faturamento_direto_e_recalcula_saldo_da_obra(self):
+        obra = Obra.objects.create(nome_obra='Obra FD Excluir', valor_contrato=Decimal('1000.00'))
+        faturamento = FaturamentoDireto.objects.create(
+            obra=obra,
+            data_lancamento=date(2026, 5, 14),
+            numero_ordem_compra='OC-789',
+            empresa_comprou='Cliente Comprador',
+            valor_nota=Decimal('250.00'),
+            descricao='Lancamento errado',
+            vencimento_boleto='30/60/90',
+            medicao_desconto='Medicao 02',
+        )
+        self.assertEqual(obra.saldo_contratual, Decimal('750.00'))
+
+        response_get = self.client.get(reverse('excluir_faturamento_direto', args=[faturamento.id]))
+        self.assertEqual(response_get.status_code, 200)
+        self.assertTrue(FaturamentoDireto.objects.filter(id=faturamento.id).exists())
+
+        response_post = self.client.post(reverse('excluir_faturamento_direto', args=[faturamento.id]))
+
+        self.assertRedirects(response_post, reverse('lista_faturamentos_diretos'))
+        self.assertFalse(FaturamentoDireto.objects.filter(id=faturamento.id).exists())
+        self.assertEqual(obra.saldo_contratual, Decimal('1000.00'))
+
     def test_cria_veiculo_maquina(self):
         response = self.client.post(
             reverse('novo_veiculo'),

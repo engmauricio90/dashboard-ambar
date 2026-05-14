@@ -422,6 +422,34 @@ def editar_faturamento_direto(request, faturamento_id):
     )
 
 
+def excluir_faturamento_direto(request, faturamento_id):
+    faturamento = get_object_or_404(FaturamentoDireto.objects.select_related('obra'), id=faturamento_id)
+
+    if request.method == 'POST':
+        documento = faturamento.numero_nf or faturamento.numero_ordem_compra or faturamento.descricao
+        obra_id = faturamento.obra_id
+        faturamento.delete()
+        messages.success(request, f'Faturamento direto "{documento}" excluido com sucesso.')
+        origem = request.GET.get('origem')
+        if origem == 'obra':
+            return redirect('detalhe_obra', obra_id=obra_id)
+        return redirect('lista_faturamentos_diretos')
+
+    origem = request.GET.get('origem')
+    cancelar_href = reverse('detalhe_obra', args=[faturamento.obra_id]) if origem == 'obra' else reverse('lista_faturamentos_diretos')
+    return render(
+        request,
+        'obras/confirmar_exclusao.html',
+        {
+            'titulo': 'Excluir faturamento direto',
+            'mensagem': f'Voce esta prestes a excluir o faturamento direto "{faturamento}".',
+            'detalhe': 'O saldo contratual da obra sera recalculado automaticamente.',
+            'confirmar_label': 'Excluir faturamento direto',
+            'cancelar_href': cancelar_href,
+        },
+    )
+
+
 def lista_abastecimentos(request):
     abastecimentos = RegistroAbastecimento.objects.select_related('veiculo').all()
     total_abastecido = sum((registro.valor_total for registro in abastecimentos), Decimal('0'))
