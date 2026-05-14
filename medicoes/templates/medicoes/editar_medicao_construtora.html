@@ -64,6 +64,7 @@
             <div class="row g-3 mt-3">
                 <div class="col-md-3"><strong>Valor bruto:</strong> R$ {{ medicao.total_bruto|floatformat:2 }}</div>
                 <div class="col-md-3"><strong>Base impostos:</strong> R$ {{ medicao.base_impostos|floatformat:2 }}</div>
+                <div class="col-md-3"><strong>Base INSS:</strong> R$ {{ medicao.total_mao_obra_periodo|floatformat:2 }}</div>
                 <div class="col-md-3"><strong>Faturamento direto:</strong> R$ {{ medicao.total_faturamento_direto|floatformat:2 }}</div>
                 <div class="col-md-3"><strong>Liquido:</strong> R$ {{ medicao.total_liquido|floatformat:2 }}</div>
             </div>
@@ -73,7 +74,7 @@
     <div class="card shadow-sm mb-4">
         <div class="card-body">
             <h5 class="mb-3">Retencoes, impostos e faturamento direto</h5>
-            <p class="text-muted small mb-3">ISSQN e INSS sao calculados sobre a base da NF, sem faturamento direto. Se preferir, deixe o percentual zerado e preencha o valor em reais.</p>
+            <p class="text-muted small mb-3">ISSQN e calculado sobre a base da NF sem faturamento direto. INSS e calculado sobre a mao de obra medida. Se preferir, deixe o percentual zerado e preencha o valor em reais.</p>
             <div class="row g-3">
                 {% for field in form %}
                 {% if field.name == 'retencao_tecnica' or field.name == 'retencao_tecnica_percentual' or field.name == 'issqn' or field.name == 'issqn_percentual' or field.name == 'inss' or field.name == 'inss_percentual' or field.name == 'desconto_adicional' or field.name == 'desconto_adicional_percentual' %}

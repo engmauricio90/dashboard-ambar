@@ -219,7 +219,7 @@ def _pdf_medicao_construtora(medicao):
             ('Total da obra', _money(medicao.orcamento.obra.contrato_atualizado)),
             ('Cliente', medicao.orcamento.obra.cliente or '-'),
             ('Data da medicao', f'{medicao.data_medicao:%d/%m/%Y}'),
-            ('Base da NF', _money(medicao.base_impostos)),
+            ('Base INSS', _money(medicao.total_mao_obra_periodo)),
         ]
         for index, (label, value) in enumerate(left_info):
             row_y = y + index * info_h
@@ -310,6 +310,7 @@ def _pdf_medicao_construtora(medicao):
             closing = [
                 ('Subtotal', medicao.subtotal_periodo),
                 ('Base da NF', medicao.base_impostos),
+                ('Base INSS', medicao.total_mao_obra_periodo),
                 ('Descontos', medicao.total_descontos),
                 ('Total liquido', medicao.total_liquido),
             ]
@@ -401,7 +402,7 @@ def _aplicar_percentuais_construtora(medicao):
         'retencao_tecnica': (medicao.subtotal_periodo, medicao.retencao_tecnica_percentual),
         'desconto_adicional': (medicao.subtotal_periodo, medicao.desconto_adicional_percentual),
         'issqn': (medicao.base_impostos, medicao.issqn_percentual),
-        'inss': (medicao.base_impostos, medicao.inss_percentual),
+        'inss': (medicao.total_mao_obra_periodo, medicao.inss_percentual),
     }
     updates = []
     for field, (base, percent) in campos.items():
@@ -828,6 +829,7 @@ def _linhas_pdf_medicao(medicao, itens, titulo):
                 f'INSS: {_money(medicao.inss_calculado)}',
                 f'Faturamento direto descontado: {_money(medicao.total_faturamento_direto)}',
                 f'Base de impostos: {_money(medicao.base_impostos)}',
+                f'Base INSS: {_money(medicao.total_mao_obra_periodo)}',
             ]
         )
     desconto = medicao.desconto_adicional_calculado if isinstance(medicao, MedicaoConstrutora) else medicao.desconto_adicional
@@ -1013,6 +1015,7 @@ def _xlsx_medicao(medicao, itens):
         ws.append(['INSS', float(medicao.inss_calculado)])
         ws.append(['Faturamento direto descontado', float(medicao.total_faturamento_direto)])
         ws.append(['Base de impostos', float(medicao.base_impostos)])
+        ws.append(['Base INSS', float(medicao.total_mao_obra_periodo)])
     ws.append(['Desconto adicional', float(medicao.desconto_adicional_calculado if isinstance(medicao, MedicaoConstrutora) else medicao.desconto_adicional)])
     ws.append(['Total liquido', float(medicao.total_liquido)])
     output = BytesIO()

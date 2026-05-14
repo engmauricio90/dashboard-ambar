@@ -154,6 +154,10 @@ class MedicaoConstrutora(models.Model):
         return _sum_decimal(item.valor_periodo for item in self.itens.all())
 
     @property
+    def total_mao_obra_periodo(self):
+        return _sum_decimal(item.valor_mao_obra_periodo for item in self.itens.all())
+
+    @property
     def total_bruto(self):
         return self.subtotal_periodo
 
@@ -177,7 +181,7 @@ class MedicaoConstrutora(models.Model):
 
     @property
     def inss_calculado(self):
-        return _percent_decimal(self.base_impostos, self.inss_percentual) or self.inss
+        return _percent_decimal(self.total_mao_obra_periodo, self.inss_percentual) or self.inss
 
     @property
     def desconto_adicional_calculado(self):
@@ -261,6 +265,10 @@ class ItemMedicaoConstrutora(models.Model):
     @property
     def valor_periodo(self):
         return self.quantidade_periodo * self.item_orcamento.preco_unitario_total
+
+    @property
+    def valor_mao_obra_periodo(self):
+        return self.quantidade_periodo * self.item_orcamento.preco_unitario_mao_obra
 
 
 class MedicaoEmpreiteiro(models.Model):

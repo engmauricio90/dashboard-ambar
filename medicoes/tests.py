@@ -192,6 +192,7 @@ class MedicoesTests(TestCase):
         self.assertEqual(medicao.total_bruto, Decimal('340.00'))
         self.assertEqual(medicao.total_faturamento_direto, Decimal('100.00'))
         self.assertEqual(medicao.base_impostos, Decimal('240.00'))
+        self.assertEqual(medicao.total_mao_obra_periodo, Decimal('100.00'))
 
         response = self.client.post(
             reverse('editar_medicao_construtora', args=[medicao.id]),
@@ -223,8 +224,8 @@ class MedicoesTests(TestCase):
         medicao.refresh_from_db()
         faturamento.refresh_from_db()
         self.assertEqual(medicao.issqn, Decimal('12.00'))
-        self.assertEqual(medicao.inss, Decimal('24.00'))
-        self.assertEqual(medicao.total_liquido, Decimal('204.00'))
+        self.assertEqual(medicao.inss, Decimal('10.00'))
+        self.assertEqual(medicao.total_liquido, Decimal('218.00'))
         self.assertEqual(faturamento.medicao_desconto, 'Medicao 1')
 
     def test_percentuais_sao_calculados_mesmo_sem_valor_salvo(self):
@@ -244,11 +245,12 @@ class MedicoesTests(TestCase):
 
         self.assertEqual(medicao.subtotal_periodo, Decimal('170.00'))
         self.assertEqual(medicao.base_impostos, Decimal('170.00'))
+        self.assertEqual(medicao.total_mao_obra_periodo, Decimal('50.00'))
         self.assertEqual(medicao.issqn_calculado, Decimal('5.10'))
-        self.assertEqual(medicao.inss_calculado, Decimal('1.70'))
+        self.assertEqual(medicao.inss_calculado, Decimal('0.50'))
         self.assertEqual(medicao.retencao_tecnica_calculada, Decimal('8.50'))
         self.assertEqual(medicao.desconto_adicional_calculado, Decimal('3.40'))
-        self.assertEqual(medicao.total_liquido, Decimal('151.30'))
+        self.assertEqual(medicao.total_liquido, Decimal('152.50'))
 
     def test_exclui_medicao_construtora(self):
         orcamento, item = self._orcamento()
