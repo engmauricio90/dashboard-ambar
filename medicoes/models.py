@@ -10,6 +10,12 @@ def _sum_decimal(values):
     return sum(values, Decimal('0'))
 
 
+def _percent_decimal(base, percent):
+    if not percent:
+        return None
+    return (base * percent / Decimal('100')).quantize(Decimal('0.01'))
+
+
 class OrcamentoMedicao(models.Model):
     TIPO_CONSTRUTORA = 'construtora'
     TIPO_EMPREITEIRO = 'empreiteiro'
@@ -158,12 +164,34 @@ class MedicaoConstrutora(models.Model):
 
     @property
     def base_impostos(self):
-        base = self.subtotal_periodo - self.desconto_adicional - self.total_faturamento_direto
+        base = self.subtotal_periodo - self.total_faturamento_direto
         return max(base, Decimal('0'))
 
     @property
+    def retencao_tecnica_calculada(self):
+        return _percent_decimal(self.subtotal_periodo, self.retencao_tecnica_percentual) or self.retencao_tecnica
+
+    @property
+    def issqn_calculado(self):
+        return _percent_decimal(self.base_impostos, self.issqn_percentual) or self.issqn
+
+    @property
+    def inss_calculado(self):
+        return _percent_decimal(self.base_impostos, self.inss_percentual) or self.inss
+
+    @property
+    def desconto_adicional_calculado(self):
+        return _percent_decimal(self.subtotal_periodo, self.desconto_adicional_percentual) or self.desconto_adicional
+
+    @property
     def total_descontos(self):
-        return self.retencao_tecnica + self.issqn + self.inss + self.desconto_adicional + self.total_faturamento_direto
+        return (
+            self.retencao_tecnica_calculada
+            + self.issqn_calculado
+            + self.inss_calculado
+            + self.desconto_adicional_calculado
+            + self.total_faturamento_direto
+        )
 
     @property
     def total_liquido(self):

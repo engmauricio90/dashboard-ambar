@@ -70,6 +70,30 @@ class MedicoesTests(TestCase):
         self.assertEqual(item.quantidade, Decimal('10.5'))
         self.assertEqual(item.preco_unitario_total, Decimal('125.00'))
 
+    def test_importa_planilha_com_preco_unitario_simples(self):
+        arquivo = SimpleUploadedFile(
+            'planilha.csv',
+            (
+                'referencia;descricao;un;quantidade;preco unitario\n'
+                '1.1;Servico medido;m2;10;45,50\n'
+            ).encode('utf-8-sig'),
+            content_type='text/csv',
+        )
+
+        response = self.client.post(
+            reverse('importar_orcamento_medicao'),
+            {
+                'obra': self.obra.id,
+                'nome': 'Planilha com unitario',
+                'tipo': OrcamentoMedicao.TIPO_CONSTRUTORA,
+                'arquivo': arquivo,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        item = OrcamentoMedicao.objects.get(nome='Planilha com unitario').itens.get()
+        self.assertEqual(item.preco_unitario_total, Decimal('45.50'))
+
     def test_importacao_sem_cabecalho_retorna_erro_no_formulario(self):
         arquivo = SimpleUploadedFile(
             'orcamento.csv',
@@ -202,6 +226,29 @@ class MedicoesTests(TestCase):
         self.assertEqual(medicao.inss, Decimal('24.00'))
         self.assertEqual(medicao.total_liquido, Decimal('204.00'))
         self.assertEqual(faturamento.medicao_desconto, 'Medicao 1')
+
+    def test_percentuais_sao_calculados_mesmo_sem_valor_salvo(self):
+        orcamento, item = self._orcamento()
+        medicao = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=1,
+            periodo_inicio=date(2026, 1, 1),
+            periodo_fim=date(2026, 1, 31),
+            data_medicao=date(2026, 1, 31),
+            issqn_percentual=Decimal('3.00'),
+            inss_percentual=Decimal('1.00'),
+            retencao_tecnica_percentual=Decimal('5.00'),
+            desconto_adicional_percentual=Decimal('2.00'),
+        )
+        ItemMedicaoConstrutora.objects.create(medicao=medicao, item_orcamento=item, quantidade_periodo=Decimal('10'))
+
+        self.assertEqual(medicao.subtotal_periodo, Decimal('170.00'))
+        self.assertEqual(medicao.base_impostos, Decimal('170.00'))
+        self.assertEqual(medicao.issqn_calculado, Decimal('5.10'))
+        self.assertEqual(medicao.inss_calculado, Decimal('1.70'))
+        self.assertEqual(medicao.retencao_tecnica_calculada, Decimal('8.50'))
+        self.assertEqual(medicao.desconto_adicional_calculado, Decimal('3.40'))
+        self.assertEqual(medicao.total_liquido, Decimal('151.30'))
 
     def test_exclui_medicao_construtora(self):
         orcamento, item = self._orcamento()

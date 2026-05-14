@@ -281,7 +281,7 @@ def _pdf_medicao_construtora(medicao):
             totals = [
                 ('Total dos itens', medicao.subtotal_periodo),
                 ('Desconto faturamento direto', -medicao.total_faturamento_direto),
-                ('Desconto adicional', -medicao.desconto_adicional),
+                ('Desconto adicional', -medicao.desconto_adicional_calculado),
                 ('Total bruto', medicao.total_bruto),
             ]
             for label, value in totals:
@@ -295,10 +295,10 @@ def _pdf_medicao_construtora(medicao):
             _draw_report_cell(draw, 'Retencoes e impostos', summary_mid, y, 560, block_h, label_font, bg=header_bg, align='center')
             y_mid = y + block_h
             taxes = [
-                ('Retencao tecnica', medicao.retencao_tecnica),
-                ('INSS', medicao.inss),
-                ('ISSQN', medicao.issqn),
-                ('Total retido', medicao.retencao_tecnica + medicao.inss + medicao.issqn),
+                ('Retencao tecnica', medicao.retencao_tecnica_calculada),
+                ('INSS', medicao.inss_calculado),
+                ('ISSQN', medicao.issqn_calculado),
+                ('Total retido', medicao.retencao_tecnica_calculada + medicao.inss_calculado + medicao.issqn_calculado),
             ]
             for label, value in taxes:
                 _draw_report_cell(draw, label, summary_mid, y_mid, 330, block_h, small_font, align='left')
@@ -363,7 +363,15 @@ HEADER_ALIASES = {
     'descricao': ['descricao', 'descricaodoservico', 'servico'],
     'unidade': ['unidade', 'un', 'und'],
     'quantidade': ['quantidade', 'qtd', 'quant'],
-    'preco_unitario_material': ['precounitariomaterial', 'unitariomaterial', 'material'],
+    'preco_unitario_material': [
+        'precounitariomaterial',
+        'unitariomaterial',
+        'material',
+        'precounitario',
+        'valorunitario',
+        'unitario',
+        'preco',
+    ],
     'preco_unitario_mao_obra': ['precounitariomaodeobra', 'unitariomaodeobra', 'maodeobra'],
     'preco_unitario_equipamentos': ['precounitarioequipamentos', 'unitarioequipamentos', 'equipamentos', 'equipamento'],
 }
@@ -810,19 +818,20 @@ def _linhas_pdf_medicao(medicao, itens, titulo):
         [
             '',
             f'Subtotal do periodo: {_money(medicao.subtotal_periodo)}',
-            f'Retencao tecnica: {_money(medicao.retencao_tecnica)}',
+            f'Retencao tecnica: {_money(medicao.retencao_tecnica_calculada if isinstance(medicao, MedicaoConstrutora) else medicao.retencao_tecnica)}',
         ]
     )
     if isinstance(medicao, MedicaoConstrutora):
         lines.extend(
             [
-                f'ISSQN: {_money(medicao.issqn)}',
-                f'INSS: {_money(medicao.inss)}',
+                f'ISSQN: {_money(medicao.issqn_calculado)}',
+                f'INSS: {_money(medicao.inss_calculado)}',
                 f'Faturamento direto descontado: {_money(medicao.total_faturamento_direto)}',
                 f'Base de impostos: {_money(medicao.base_impostos)}',
             ]
         )
-    lines.extend([f'Desconto adicional: {_money(medicao.desconto_adicional)}', f'Total liquido: {_money(medicao.total_liquido)}'])
+    desconto = medicao.desconto_adicional_calculado if isinstance(medicao, MedicaoConstrutora) else medicao.desconto_adicional
+    lines.extend([f'Desconto adicional: {_money(desconto)}', f'Total liquido: {_money(medicao.total_liquido)}'])
     pages = [lines[i : i + 30] for i in range(0, len(lines), 30)] or [[]]
     return _build_simple_pdf(pages)
 
@@ -998,13 +1007,13 @@ def _xlsx_medicao(medicao, itens):
         )
     ws.append([])
     ws.append(['Valor bruto', float(medicao.total_bruto if isinstance(medicao, MedicaoConstrutora) else medicao.subtotal_periodo)])
-    ws.append(['Retencao tecnica', float(medicao.retencao_tecnica)])
+    ws.append(['Retencao tecnica', float(medicao.retencao_tecnica_calculada if isinstance(medicao, MedicaoConstrutora) else medicao.retencao_tecnica)])
     if isinstance(medicao, MedicaoConstrutora):
-        ws.append(['ISSQN', float(medicao.issqn)])
-        ws.append(['INSS', float(medicao.inss)])
+        ws.append(['ISSQN', float(medicao.issqn_calculado)])
+        ws.append(['INSS', float(medicao.inss_calculado)])
         ws.append(['Faturamento direto descontado', float(medicao.total_faturamento_direto)])
         ws.append(['Base de impostos', float(medicao.base_impostos)])
-    ws.append(['Desconto adicional', float(medicao.desconto_adicional)])
+    ws.append(['Desconto adicional', float(medicao.desconto_adicional_calculado if isinstance(medicao, MedicaoConstrutora) else medicao.desconto_adicional)])
     ws.append(['Total liquido', float(medicao.total_liquido)])
     output = BytesIO()
     wb.save(output)
