@@ -9,6 +9,7 @@ from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from medicoes.models import MedicaoConstrutora, MedicaoEmpreiteiro
 
 from .forms import (
     AditivoContratoForm,
@@ -157,6 +158,12 @@ def detalhe_obra(request, obra_id):
         'faturamentos_diretos': obra.faturamentos_diretos.all()[:5],
         'aditivos': obra.aditivos_registrados.all()[:5],
         'retencoes_tecnicas': obra.retencoes_tecnicas_registradas.all()[:5],
+        'medicoes_construtora': MedicaoConstrutora.objects.filter(orcamento__obra=obra)
+        .select_related('orcamento')
+        .order_by('-data_medicao', '-numero', '-id')[:5],
+        'medicoes_empreiteiro': MedicaoEmpreiteiro.objects.filter(obra=obra)
+        .select_related('orcamento')
+        .order_by('-data_medicao', '-numero', '-id')[:5],
         'margem_real_float': margem_real_float,
         'margem_gauge_angle': margem_gauge_angle,
         'margem_status': margem_status,

@@ -382,6 +382,87 @@
         <div class="card shadow-sm">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">Medições da obra</h5>
+                    <div class="d-flex gap-2">
+                        <a href="{% url 'medicoes_obra' obra.id %}" class="btn btn-sm btn-outline-dark">Ver todas</a>
+                        <a href="{% url 'medicoes_construtora_home' %}" class="btn btn-sm btn-outline-primary">Medição construtora</a>
+                        <a href="{% url 'medicoes_empreiteiros_home' %}" class="btn btn-sm btn-outline-secondary">Medição empreiteiro</a>
+                    </div>
+                </div>
+                <div class="row g-3">
+                    <div class="col-lg-6">
+                        <h6 class="text-muted">Construtora</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Nº</th>
+                                        <th>Planilha</th>
+                                        <th>Período</th>
+                                        <th>Líquido</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for medicao in medicoes_construtora %}
+                                    <tr>
+                                        <td>{{ medicao.numero }}</td>
+                                        <td>{{ medicao.orcamento.nome }}</td>
+                                        <td>{{ medicao.periodo_inicio|date:'d/m/Y' }} a {{ medicao.periodo_fim|date:'d/m/Y' }}</td>
+                                        <td>R$ {{ medicao.total_liquido|floatformat:2 }}</td>
+                                        <td class="text-end">
+                                            <a href="{% url 'editar_medicao_construtora' medicao.id %}" class="btn btn-sm btn-outline-primary">Abrir</a>
+                                            <a href="{% url 'medicao_construtora_pdf' medicao.id %}" target="_blank" class="btn btn-sm btn-outline-danger">PDF</a>
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr><td colspan="5">Nenhuma medição da construtora cadastrada.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <h6 class="text-muted">Empreiteiros</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Nº</th>
+                                        <th>Empreiteiro</th>
+                                        <th>Tipo</th>
+                                        <th>Líquido</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for medicao in medicoes_empreiteiro %}
+                                    <tr>
+                                        <td>{{ medicao.numero }}</td>
+                                        <td>{{ medicao.empreiteiro }}</td>
+                                        <td>{{ medicao.get_tipo_display }}</td>
+                                        <td>R$ {{ medicao.total_liquido|floatformat:2 }}</td>
+                                        <td class="text-end">
+                                            <a href="{% url 'editar_medicao_empreiteiro' medicao.id %}" class="btn btn-sm btn-outline-primary">Abrir</a>
+                                            <a href="{% url 'medicao_empreiteiro_pdf' medicao.id %}" target="_blank" class="btn btn-sm btn-outline-danger">PDF</a>
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr><td colspan="5">Nenhuma medição de empreiteiro cadastrada.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="mb-0">Faturamento direto</h5>
                     <div class="d-flex gap-2">
                         <a href="{% url 'lista_faturamentos_diretos_obra' obra.id %}" class="btn btn-sm btn-outline-dark">Ver todos</a>

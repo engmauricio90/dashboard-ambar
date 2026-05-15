@@ -6,6 +6,14 @@ from django.test import TestCase
 from django.urls import reverse
 
 from controles.models import FaturamentoDireto
+from medicoes.models import (
+    ItemMedicaoConstrutora,
+    ItemMedicaoEmpreiteiro,
+    ItemOrcamentoMedicao,
+    MedicaoConstrutora,
+    MedicaoEmpreiteiro,
+    OrcamentoMedicao,
+)
 
 from .models import AditivoContrato, DespesaObra, NotaFiscal, Obra, RetencaoTecnicaObra
 
@@ -32,6 +40,56 @@ class ObraFluxoFinanceiroTests(TestCase):
         self.assertIn('grafico_composicao', response.context)
         self.assertContains(response, reverse('lista_notas_obra', args=[self.obra.id]))
         self.assertContains(response, reverse('lista_faturamentos_diretos_obra', args=[self.obra.id]))
+
+    def test_detalhe_obra_mostra_medicoes(self):
+        planilha = OrcamentoMedicao.objects.create(
+            obra=self.obra,
+            nome='Planilha contratual',
+            tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
+        )
+        item = ItemOrcamentoMedicao.objects.create(
+            orcamento=planilha,
+            item='1',
+            descricao='Servico',
+            unidade='m2',
+            quantidade=Decimal('10'),
+            preco_unitario_mao_obra=Decimal('20.00'),
+        )
+        medicao_construtora = MedicaoConstrutora.objects.create(
+            orcamento=planilha,
+            numero=1,
+            periodo_inicio=date(2026, 5, 1),
+            periodo_fim=date(2026, 5, 15),
+            data_medicao=date(2026, 5, 15),
+        )
+        ItemMedicaoConstrutora.objects.create(
+            medicao=medicao_construtora,
+            item_orcamento=item,
+            quantidade_periodo=Decimal('2'),
+        )
+        medicao_empreiteiro = MedicaoEmpreiteiro.objects.create(
+            tipo=MedicaoEmpreiteiro.TIPO_SIMPLES,
+            obra=self.obra,
+            empreiteiro='Empreiteiro Teste',
+            numero=1,
+            periodo_inicio=date(2026, 5, 1),
+            periodo_fim=date(2026, 5, 15),
+            data_medicao=date(2026, 5, 15),
+        )
+        ItemMedicaoEmpreiteiro.objects.create(
+            medicao=medicao_empreiteiro,
+            item='1',
+            descricao='Servico terceiro',
+            quantidade_periodo=Decimal('1'),
+            valor_unitario=Decimal('30.00'),
+        )
+
+        response = self.client.get(reverse('detalhe_obra', args=[self.obra.id]))
+
+        self.assertContains(response, 'Medições da obra')
+        self.assertContains(response, 'Planilha contratual')
+        self.assertContains(response, 'Empreiteiro Teste')
+        self.assertContains(response, reverse('medicoes_obra', args=[self.obra.id]))
 
     def test_listagens_completas_da_obra_carregam(self):
         NotaFiscal.objects.create(
