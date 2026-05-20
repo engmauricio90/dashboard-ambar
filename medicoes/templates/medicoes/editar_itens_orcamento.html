@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+
+{% block title %}Editar itens da planilha{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Editar itens da planilha</h1>
+        <p class="text-muted mb-0">{{ orcamento.nome }} - {{ orcamento.obra }}</p>
+    </div>
+    <a class="btn btn-secondary" href="{% url 'detalhe_orcamento_medicao' orcamento.id %}">Voltar</a>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    {% if formset.non_form_errors %}<div class="alert alert-danger">{{ formset.non_form_errors }}</div>{% endif %}
+    {{ formset.management_form }}
+    <div class="card shadow-sm mb-4">
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Descricao</th>
+                        <th>Und</th>
+                        <th>Qtd</th>
+                        <th>Unit. material</th>
+                        <th>Unit. mao obra</th>
+                        <th>Unit. equip.</th>
+                        <th>Excluir</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item_form in formset.forms %}
+                    <tr>
+                        {% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
+                        <td>{{ item_form.item }}</td>
+                        <td>{{ item_form.descricao }}</td>
+                        <td>{{ item_form.unidade }}</td>
+                        <td>{{ item_form.quantidade }}</td>
+                        <td>{{ item_form.preco_unitario_material }}</td>
+                        <td>{{ item_form.preco_unitario_mao_obra }}</td>
+                        <td>{{ item_form.preco_unitario_equipamentos }}</td>
+                        <td>{% if item_form.DELETE %}{{ item_form.DELETE }}{% endif %}</td>
+                    </tr>
+                    {% if item_form.errors %}
+                    <tr><td colspan="8" class="text-danger small">{{ item_form.errors }}</td></tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="alert alert-warning">
+        Alterar ou excluir itens de uma planilha que ja possui medicoes pode alterar os valores historicos vinculados a ela.
+    </div>
+
+    <div class="d-flex gap-2 mb-4">
+        <button type="submit" class="btn btn-success">Salvar itens</button>
+        <a class="btn btn-outline-secondary" href="{% url 'detalhe_orcamento_medicao' orcamento.id %}">Cancelar</a>
+    </div>
+</form>
+{% endblock %}

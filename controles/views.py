@@ -240,6 +240,14 @@ def _report_pdf_response(image, filename):
     return response
 
 
+def _report_pdf_response_pages(images, filename):
+    buffer = BytesIO()
+    images[0].save(buffer, 'PDF', save_all=True, append_images=images[1:], resolution=150)
+    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="{filename}.pdf"'
+    return response
+
+
 def _draw_report_heading(draw, title, number, date_text):
     x = 220
     w = 1213
@@ -630,49 +638,6 @@ def gerar_conta_pagar_nf_ordem_compra(request, nota_id):
 
 def ordem_compra_geral_pdf(request, ordem_id):
     ordem = get_object_or_404(OrdemCompraGeral.objects.prefetch_related('itens'), id=ordem_id)
-    image = _report_background()
-    draw = ImageDraw.Draw(image)
-    x, y, w = _draw_report_heading(draw, 'Ordem de compra', ordem.numero, _format_date(ordem.data_emissao))
-
-    y = _draw_section_title(draw, 'Empresa compradora', x, y, w)
-    y = _draw_key_value_grid(
-        draw,
-        [
-            ('Razao social', ordem.empresa_razao_social),
-            ('CNPJ', ordem.empresa_cnpj or '-'),
-            ('Endereco', ordem.empresa_endereco or '-'),
-            ('Comprador', ordem.comprador or '-'),
-        ],
-        x,
-        y,
-        w,
-        columns=2,
-    )
-
-    y = _draw_section_title(draw, 'Fornecedor', x, y, w)
-    y = _draw_key_value_grid(
-        draw,
-        [
-            ('Fornecedor', ordem.fornecedor),
-            ('CPF/CNPJ', ordem.fornecedor_cpf_cnpj or '-'),
-            ('Endereco', ordem.fornecedor_endereco or '-'),
-            ('Bairro', ordem.fornecedor_bairro or '-'),
-            ('Cidade/UF', f'{ordem.fornecedor_cidade or "-"} / {ordem.fornecedor_uf or "-"}'),
-            ('CEP', ordem.fornecedor_cep or '-'),
-            ('Fone', ordem.fornecedor_fone or '-'),
-            ('IE', ordem.fornecedor_ie or '-'),
-        ],
-        x,
-        y,
-        w,
-        columns=2,
-    )
-
-    aviso = 'Nas notas fiscais e faturas e obrigatorio aparecer o numero desta ordem de compra.'
-    draw.rounded_rectangle((x, y, x + w, y + 48), radius=6, fill=(255, 248, 230), outline=(228, 191, 92), width=1)
-    _draw_wrapped(draw, aviso, (x + 16, y + 14), _font(16, True), (73, 60, 32), w - 32, line_spacing=4)
-    y += 72
-
     rows = [
         [
             f'{item.item:02d}',
@@ -685,21 +650,107 @@ def ordem_compra_geral_pdf(request, ordem_id):
         ]
         for item in ordem.itens.all()
     ]
-    y = _draw_section_title(draw, 'Itens', x, y, w)
-    y = _draw_table(draw, ['Item', 'Descricao', 'Qtd', 'Un', 'Vlr.', 'Total', 'Entrega'], rows, x, y, [70, 420, 100, 70, 145, 160, 160])
+    headers = ['Item', 'Descricao', 'Qtd', 'Un', 'Vlr.', 'Total', 'Entrega']
+    widths = [70, 420, 100, 70, 145, 160, 160]
+    filename = f'OC {ordem.numero}'.replace('/', '-')
 
-    total_y = y
-    draw.rounded_rectangle((x + w - 360, total_y, x + w, total_y + 58), radius=6, fill=(4, 95, 101))
-    draw.text((x + w - 332, total_y + 16), f'TOTAL: {_format_money(ordem.total)}', font=_font(22, True), fill=(255, 255, 255))
-    y = total_y + 86
+    def draw_first_page_base():
+        image = _report_background()
+        draw = ImageDraw.Draw(image)
+        x, y, w = _draw_report_heading(draw, 'Ordem de compra', ordem.numero, _format_date(ordem.data_emissao))
 
-    y = _draw_notes_box(draw, 'Condicoes de pagamento', ordem.condicoes_pagamento or '-', x, y, w)
-    y = _draw_notes_box(draw, 'Observacoes', ordem.observacoes or '-', x, y, w)
-    draw.text((x, y + 20), _clean_pdf_text(f'Comprador: {ordem.comprador or "-"}'), font=_font(17), fill=(43, 48, 51))
-    draw.text((x, y + 66), '________________________________________', font=_font(17), fill=(43, 48, 51))
-    draw.text((x, y + 92), _clean_pdf_text(ordem.comprador or 'Assinatura'), font=_font(15), fill=(43, 48, 51))
+        y = _draw_section_title(draw, 'Empresa compradora', x, y, w)
+        y = _draw_key_value_grid(
+            draw,
+            [
+                ('Razao social', ordem.empresa_razao_social),
+                ('CNPJ', ordem.empresa_cnpj or '-'),
+                ('Endereco', ordem.empresa_endereco or '-'),
+                ('Comprador', ordem.comprador or '-'),
+            ],
+            x,
+            y,
+            w,
+            columns=2,
+        )
 
-    return _report_pdf_response(image, f'OC {ordem.numero}'.replace('/', '-'))
+        y = _draw_section_title(draw, 'Fornecedor', x, y, w)
+        y = _draw_key_value_grid(
+            draw,
+            [
+                ('Fornecedor', ordem.fornecedor),
+                ('CPF/CNPJ', ordem.fornecedor_cpf_cnpj or '-'),
+                ('Endereco', ordem.fornecedor_endereco or '-'),
+                ('Bairro', ordem.fornecedor_bairro or '-'),
+                ('Cidade/UF', f'{ordem.fornecedor_cidade or "-"} / {ordem.fornecedor_uf or "-"}'),
+                ('CEP', ordem.fornecedor_cep or '-'),
+                ('Fone', ordem.fornecedor_fone or '-'),
+                ('IE', ordem.fornecedor_ie or '-'),
+            ],
+            x,
+            y,
+            w,
+            columns=2,
+        )
+
+        aviso = 'Nas notas fiscais e faturas e obrigatorio aparecer o numero desta ordem de compra.'
+        draw.rounded_rectangle((x, y, x + w, y + 48), radius=6, fill=(255, 248, 230), outline=(228, 191, 92), width=1)
+        _draw_wrapped(draw, aviso, (x + 16, y + 14), _font(16, True), (73, 60, 32), w - 32, line_spacing=4)
+        return image, draw, x, y + 72, w
+
+    def draw_summary_page():
+        image = _report_background()
+        draw = ImageDraw.Draw(image)
+        x, y, w = _draw_report_heading(draw, 'Ordem de compra', ordem.numero, _format_date(ordem.data_emissao))
+        y = _draw_section_title(draw, 'Fechamento', x, y, w)
+        draw.rounded_rectangle((x + w - 390, y, x + w, y + 58), radius=6, fill=(4, 95, 101))
+        draw.text((x + w - 360, y + 16), f'TOTAL: {_format_money(ordem.total)}', font=_font(22, True), fill=(255, 255, 255))
+        y += 86
+        y = _draw_notes_box(draw, 'Condicoes de pagamento', ordem.condicoes_pagamento or '-', x, y, w)
+        y = _draw_notes_box(draw, 'Observacoes', ordem.observacoes or '-', x, y, w)
+        draw.text((x, y + 20), _clean_pdf_text(f'Comprador: {ordem.comprador or "-"}'), font=_font(17), fill=(43, 48, 51))
+        draw.text((x, y + 66), '________________________________________', font=_font(17), fill=(43, 48, 51))
+        draw.text((x, y + 92), _clean_pdf_text(ordem.comprador or 'Assinatura'), font=_font(15), fill=(43, 48, 51))
+        return image
+
+    if len(rows) <= 8:
+        image, draw, x, y, w = draw_first_page_base()
+        y = _draw_section_title(draw, 'Itens', x, y, w)
+        y = _draw_table(draw, headers, rows, x, y, widths)
+        draw.rounded_rectangle((x + w - 360, y, x + w, y + 58), radius=6, fill=(4, 95, 101))
+        draw.text((x + w - 332, y + 16), f'TOTAL: {_format_money(ordem.total)}', font=_font(22, True), fill=(255, 255, 255))
+        y += 86
+        y = _draw_notes_box(draw, 'Condicoes de pagamento', ordem.condicoes_pagamento or '-', x, y, w)
+        y = _draw_notes_box(draw, 'Observacoes', ordem.observacoes or '-', x, y, w)
+        draw.text((x, y + 20), _clean_pdf_text(f'Comprador: {ordem.comprador or "-"}'), font=_font(17), fill=(43, 48, 51))
+        draw.text((x, y + 66), '________________________________________', font=_font(17), fill=(43, 48, 51))
+        draw.text((x, y + 92), _clean_pdf_text(ordem.comprador or 'Assinatura'), font=_font(15), fill=(43, 48, 51))
+        return _report_pdf_response(image, filename)
+
+    pages = []
+    first_capacity = 18
+    next_capacity = 31
+    chunks = [rows[:first_capacity]]
+    remaining = rows[first_capacity:]
+    while remaining:
+        chunks.append(remaining[:next_capacity])
+        remaining = remaining[next_capacity:]
+
+    for index, chunk in enumerate(chunks):
+        if index == 0:
+            image, draw, x, y, w = draw_first_page_base()
+        else:
+            image = _report_background()
+            draw = ImageDraw.Draw(image)
+            x, y, w = _draw_report_heading(draw, 'Ordem de compra', ordem.numero, _format_date(ordem.data_emissao))
+        y = _draw_section_title(draw, 'Itens' if index == 0 else 'Itens - continuacao', x, y, w)
+        _draw_table(draw, headers, chunk, x, y, widths)
+        footer = f'Pagina {index + 1}'
+        draw.text((x + w - _font(14).getlength(footer), image.height - 130), footer, font=_font(14), fill=(92, 101, 105))
+        pages.append(image)
+
+    pages.append(draw_summary_page())
+    return _report_pdf_response_pages(pages, filename)
 
 
 def lista_ordens_combustivel(request):

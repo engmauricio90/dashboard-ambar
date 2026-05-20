@@ -70,9 +70,9 @@
                             <th>Excluir</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="itens-oc-body">
                         {% for item_form in formset.forms %}
-                        <tr>
+                        <tr class="item-oc-row">
                             {% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
                             <td>{{ item_form.item }}</td>
                             <td>{{ item_form.descricao }}</td>
@@ -90,7 +90,8 @@
                     </tbody>
                 </table>
             </div>
-            <div class="form-text">Preencha apenas as linhas necessarias. O total do item pode ficar em branco para calculo automatico.</div>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="adicionar-item-oc">Adicionar item</button>
+            <div class="form-text mt-2">Preencha apenas as linhas necessarias. O total do item pode ficar em branco para calculo automatico.</div>
         </div>
     </div>
 
@@ -114,6 +115,19 @@
     </div>
 </form>
 {{ fornecedores_json|json_script:"fornecedores-oc-data" }}
+<template id="item-oc-empty-row">
+    <tr class="item-oc-row">
+        {% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+        <td>{{ formset.empty_form.item }}</td>
+        <td>{{ formset.empty_form.descricao }}</td>
+        <td>{{ formset.empty_form.quantidade }}</td>
+        <td>{{ formset.empty_form.unidade }}</td>
+        <td>{{ formset.empty_form.valor_unitario }}</td>
+        <td>{{ formset.empty_form.valor_total }}</td>
+        <td>{{ formset.empty_form.data_entrega }}</td>
+        <td>{% if formset.empty_form.DELETE %}{{ formset.empty_form.DELETE }}{% endif %}</td>
+    </tr>
+</template>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -163,6 +177,20 @@
         if (fornecedorSelect.value) {
             preencherFornecedor();
         }
+    }
+
+    const adicionarItemOc = document.getElementById('adicionar-item-oc');
+    const itensOcBody = document.getElementById('itens-oc-body');
+    const itemOcTemplate = document.getElementById('item-oc-empty-row');
+    const totalItensOc = document.querySelector('input[name="{{ formset.prefix }}-TOTAL_FORMS"]');
+
+    if (adicionarItemOc && itensOcBody && itemOcTemplate && totalItensOc) {
+        adicionarItemOc.addEventListener('click', () => {
+            const index = Number(totalItensOc.value);
+            const html = itemOcTemplate.innerHTML.replace(/__prefix__/g, index);
+            itensOcBody.insertAdjacentHTML('beforeend', html);
+            totalItensOc.value = index + 1;
+        });
     }
 </script>
 {% endblock %}

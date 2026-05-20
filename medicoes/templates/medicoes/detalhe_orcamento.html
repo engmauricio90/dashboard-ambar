@@ -14,6 +14,8 @@
         {% else %}
         <a class="btn btn-primary" href="{% url 'nova_medicao_empreiteiro_cumulativa' orcamento.id %}">Nova medicao cumulativa</a>
         {% endif %}
+        <a class="btn btn-outline-primary" href="{% url 'editar_itens_orcamento_medicao' orcamento.id %}">Editar itens</a>
+        <a class="btn btn-outline-danger" href="{% url 'excluir_orcamento_medicao' orcamento.id %}">Excluir planilha</a>
         <a class="btn btn-secondary" href="{% url 'medicoes_obra' orcamento.obra.id %}">Voltar para obra</a>
     </div>
 </div>
@@ -38,7 +40,7 @@
                         <td>{{ item.descricao }}</td>
                         <td>{{ item.unidade }}</td>
                         <td>{{ item.quantidade|floatformat:4 }}</td>
-                        <td>R$ {{ item.preco_unitario_total|floatformat:2 }}</td>
+                        <td>R$ {{ item.preco_unitario_total|floatformat:4 }}</td>
                         <td>R$ {{ item.valor_total|floatformat:2 }}</td>
                     </tr>
                     {% empty %}

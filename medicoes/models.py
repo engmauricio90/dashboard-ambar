@@ -84,9 +84,9 @@ class ItemOrcamentoMedicao(models.Model):
     descricao = models.CharField(max_length=255)
     unidade = models.CharField(max_length=20, blank=True)
     quantidade = models.DecimalField(max_digits=14, decimal_places=4, default=0)
-    preco_unitario_material = models.DecimalField(max_digits=14, decimal_places=2, default=0)
-    preco_unitario_mao_obra = models.DecimalField(max_digits=14, decimal_places=2, default=0)
-    preco_unitario_equipamentos = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    preco_unitario_material = models.DecimalField(max_digits=14, decimal_places=4, default=0)
+    preco_unitario_mao_obra = models.DecimalField(max_digits=14, decimal_places=4, default=0)
+    preco_unitario_equipamentos = models.DecimalField(max_digits=14, decimal_places=4, default=0)
 
     class Meta:
         ordering = ['id']

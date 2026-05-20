@@ -8,6 +8,7 @@ from obras.forms import BootstrapForm, BootstrapModelForm
 from .models import (
     ItemMedicaoConstrutora,
     ItemMedicaoEmpreiteiro,
+    ItemOrcamentoMedicao,
     MedicaoConstrutora,
     MedicaoEmpreiteiro,
     OrcamentoMedicao,
@@ -28,6 +29,34 @@ class ImportarOrcamentoForm(BootstrapForm):
 
         super().__init__(*args, **kwargs)
         self.fields['obra'].queryset = Obra.objects.all()
+
+
+class ItemOrcamentoMedicaoForm(BootstrapModelForm):
+    class Meta:
+        model = ItemOrcamentoMedicao
+        fields = [
+            'item',
+            'descricao',
+            'unidade',
+            'quantidade',
+            'preco_unitario_material',
+            'preco_unitario_mao_obra',
+            'preco_unitario_equipamentos',
+        ]
+        widgets = {
+            'quantidade': forms.NumberInput(attrs={'step': '0.0001'}),
+            'preco_unitario_material': forms.NumberInput(attrs={'step': '0.0001'}),
+            'preco_unitario_mao_obra': forms.NumberInput(attrs={'step': '0.0001'}),
+            'preco_unitario_equipamentos': forms.NumberInput(attrs={'step': '0.0001'}),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data.get('DELETE'):
+            return cleaned_data
+        if cleaned_data.get('descricao') and not cleaned_data.get('item'):
+            self.add_error('item', 'Informe o item.')
+        return cleaned_data
 
 
 class MedicaoConstrutoraForm(BootstrapModelForm):
@@ -247,6 +276,15 @@ ItemMedicaoConstrutoraFormSet = inlineformset_factory(
     form=ItemMedicaoConstrutoraForm,
     extra=0,
     can_delete=False,
+)
+
+
+ItemOrcamentoMedicaoFormSet = inlineformset_factory(
+    OrcamentoMedicao,
+    ItemOrcamentoMedicao,
+    form=ItemOrcamentoMedicaoForm,
+    extra=5,
+    can_delete=True,
 )
 
 

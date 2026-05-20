@@ -49,7 +49,7 @@ class MedicoesTests(TestCase):
             'orcamento.csv',
             (
                 'item;descricao;unidade;quantidade;preco unitario material;preco unitario mao de obra;preco unitario equipamentos\n'
-                '1;Drenagem;m;10,5;100,00;20,00;5,00\n'
+                '1;Drenagem;m;10,5;100,1234;20,0001;5,0000\n'
             ).encode('utf-8-sig'),
             content_type='text/csv',
         )
@@ -68,7 +68,7 @@ class MedicoesTests(TestCase):
         orcamento = OrcamentoMedicao.objects.get(nome='Planilha da obra')
         item = orcamento.itens.get()
         self.assertEqual(item.quantidade, Decimal('10.5'))
-        self.assertEqual(item.preco_unitario_total, Decimal('125.00'))
+        self.assertEqual(item.preco_unitario_total, Decimal('125.1235'))
 
     def test_importa_planilha_com_preco_unitario_simples(self):
         arquivo = SimpleUploadedFile(
@@ -113,6 +113,51 @@ class MedicoesTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(OrcamentoMedicao.objects.filter(nome='Planilha invalida').exists())
+
+    def test_edita_itens_da_planilha_importada(self):
+        orcamento, item = self._orcamento()
+
+        response = self.client.post(
+            reverse('editar_itens_orcamento_medicao', args=[orcamento.id]),
+            {
+                'itens-TOTAL_FORMS': '2',
+                'itens-INITIAL_FORMS': '1',
+                'itens-MIN_NUM_FORMS': '0',
+                'itens-MAX_NUM_FORMS': '1000',
+                'itens-0-id': str(item.id),
+                'itens-0-item': '1.1',
+                'itens-0-descricao': 'Escavacao revisada',
+                'itens-0-unidade': 'm3',
+                'itens-0-quantidade': '120.1234',
+                'itens-0-preco_unitario_material': '10.1111',
+                'itens-0-preco_unitario_mao_obra': '5.2222',
+                'itens-0-preco_unitario_equipamentos': '2.3333',
+                'itens-1-id': '',
+                'itens-1-item': '1.2',
+                'itens-1-descricao': 'Transporte',
+                'itens-1-unidade': 'm3',
+                'itens-1-quantidade': '10.0000',
+                'itens-1-preco_unitario_material': '1.0000',
+                'itens-1-preco_unitario_mao_obra': '0.0000',
+                'itens-1-preco_unitario_equipamentos': '0.0000',
+            },
+        )
+
+        self.assertRedirects(response, reverse('detalhe_orcamento_medicao', args=[orcamento.id]))
+        item.refresh_from_db()
+        self.assertEqual(item.descricao, 'Escavacao revisada')
+        self.assertEqual(item.quantidade, Decimal('120.1234'))
+        self.assertEqual(item.preco_unitario_total, Decimal('17.6666'))
+        self.assertEqual(orcamento.itens.count(), 2)
+
+    def test_exclui_planilha_importada(self):
+        orcamento, item = self._orcamento()
+
+        response = self.client.post(reverse('excluir_orcamento_medicao', args=[orcamento.id]))
+
+        self.assertRedirects(response, reverse('medicoes_obra', args=[self.obra.id]))
+        self.assertFalse(OrcamentoMedicao.objects.filter(id=orcamento.id).exists())
+        self.assertFalse(ItemOrcamentoMedicao.objects.filter(id=item.id).exists())
 
     def test_abre_formulario_medicao_simples(self):
         response = self.client.get(reverse('nova_medicao_empreiteiro_simples'))

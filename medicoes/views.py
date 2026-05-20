@@ -22,6 +22,7 @@ from .forms import (
     ImportarOrcamentoForm,
     ItemMedicaoConstrutoraFormSet,
     ItemMedicaoEmpreiteiroFormSet,
+    ItemOrcamentoMedicaoFormSet,
     MedicaoConstrutoraCabecalhoForm,
     MedicaoConstrutoraForm,
     MedicaoEmpreiteiroCabecalhoForm,
@@ -599,6 +600,42 @@ def detalhe_orcamento(request, orcamento_id):
             'itens': itens,
             'medicoes_construtora': medicoes_construtora,
             'medicoes_empreiteiro': medicoes_empreiteiro,
+        },
+    )
+
+
+def editar_itens_orcamento(request, orcamento_id):
+    orcamento = get_object_or_404(OrcamentoMedicao.objects.select_related('obra'), id=orcamento_id)
+    if request.method == 'POST':
+        formset = ItemOrcamentoMedicaoFormSet(request.POST, instance=orcamento)
+        if formset.is_valid():
+            formset.save()
+            messages.success(request, 'Itens da planilha atualizados com sucesso.')
+            return redirect('detalhe_orcamento_medicao', orcamento_id=orcamento.id)
+    else:
+        formset = ItemOrcamentoMedicaoFormSet(instance=orcamento)
+    return render(
+        request,
+        'medicoes/editar_itens_orcamento.html',
+        {
+            'orcamento': orcamento,
+            'formset': formset,
+        },
+    )
+
+
+def excluir_orcamento(request, orcamento_id):
+    orcamento = get_object_or_404(OrcamentoMedicao.objects.select_related('obra'), id=orcamento_id)
+    obra_id = orcamento.obra_id
+    if request.method == 'POST':
+        orcamento.delete()
+        messages.success(request, 'Planilha importada excluida com sucesso.')
+        return redirect('medicoes_obra', obra_id=obra_id)
+    return render(
+        request,
+        'medicoes/confirmar_exclusao_orcamento.html',
+        {
+            'orcamento': orcamento,
         },
     )
 

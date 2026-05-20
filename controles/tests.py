@@ -234,6 +234,30 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(pdf_response['Content-Type'], 'application/pdf')
         self.assertTrue(pdf_response.content.startswith(b'%PDF'))
 
+    def test_pdf_ordem_compra_geral_com_muitos_itens_quebra_paginas(self):
+        ordem = OrdemCompraGeral.objects.create(
+            numero='099/2026',
+            fornecedor='Fornecedor com muitos itens',
+            empresa_razao_social='AMBAR ENGENHARIA',
+            data_emissao=date(2026, 4, 30),
+            comprador='Comprador',
+        )
+        for index in range(1, 26):
+            ItemOrdemCompraGeral.objects.create(
+                ordem=ordem,
+                item=index,
+                descricao=f'Item de compra {index}',
+                quantidade=Decimal('1.00'),
+                unidade='un',
+                valor_unitario=Decimal('10.00'),
+            )
+
+        pdf_response = self.client.get(reverse('ordem_compra_geral_pdf', args=[ordem.id]))
+
+        self.assertEqual(pdf_response.status_code, 200)
+        self.assertEqual(pdf_response['Content-Type'], 'application/pdf')
+        self.assertTrue(pdf_response.content.startswith(b'%PDF'))
+
     def test_botao_nf_ordem_compra_direciona_para_conta_pagar(self):
         obra = Obra.objects.create(nome_obra='Obra OC', cliente='Cliente')
         centro = CentroCusto.objects.create(nome='Obras')

@@ -22,7 +22,13 @@
                     <td>{{ orcamento.obra }}</td>
                     <td>{{ orcamento.get_tipo_display }}</td>
                     <td>R$ {{ orcamento.total_orcamento|floatformat:2 }}</td>
-                    <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{% url 'detalhe_orcamento_medicao' orcamento.id %}">Abrir</a></td>
+                    <td class="text-end">
+                        <div class="btn-group btn-group-sm">
+                            <a class="btn btn-outline-primary" href="{% url 'detalhe_orcamento_medicao' orcamento.id %}">Abrir</a>
+                            <a class="btn btn-outline-secondary" href="{% url 'editar_itens_orcamento_medicao' orcamento.id %}">Editar itens</a>
+                            <a class="btn btn-outline-danger" href="{% url 'excluir_orcamento_medicao' orcamento.id %}">Excluir</a>
+                        </div>
+                    </td>
                 </tr>
                 {% empty %}
                 <tr><td colspan="5">Nenhuma planilha importada.</td></tr>
