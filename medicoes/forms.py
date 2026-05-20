@@ -283,7 +283,7 @@ ItemOrcamentoMedicaoFormSet = inlineformset_factory(
     OrcamentoMedicao,
     ItemOrcamentoMedicao,
     form=ItemOrcamentoMedicaoForm,
-    extra=5,
+    extra=0,
     can_delete=True,
 )
 

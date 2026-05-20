@@ -30,9 +30,9 @@
                         <th>Excluir</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="itens-orcamento-body">
                     {% for item_form in formset.forms %}
-                    <tr>
+                    <tr class="item-orcamento-row">
                         {% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
                         <td>{{ item_form.item }}</td>
                         <td>{{ item_form.descricao }}</td>
@@ -50,6 +50,9 @@
                 </tbody>
             </table>
         </div>
+        <div class="card-body border-top">
+            <button type="button" class="btn btn-sm btn-outline-primary" id="adicionar-item-orcamento">Adicionar item</button>
+        </div>
     </div>
 
     <div class="alert alert-warning">
@@ -61,4 +64,36 @@
         <a class="btn btn-outline-secondary" href="{% url 'detalhe_orcamento_medicao' orcamento.id %}">Cancelar</a>
     </div>
 </form>
+
+<template id="item-orcamento-empty-row">
+    <tr class="item-orcamento-row">
+        {% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+        <td>{{ formset.empty_form.item }}</td>
+        <td>{{ formset.empty_form.descricao }}</td>
+        <td>{{ formset.empty_form.unidade }}</td>
+        <td>{{ formset.empty_form.quantidade }}</td>
+        <td>{{ formset.empty_form.preco_unitario_material }}</td>
+        <td>{{ formset.empty_form.preco_unitario_mao_obra }}</td>
+        <td>{{ formset.empty_form.preco_unitario_equipamentos }}</td>
+        <td>{% if formset.empty_form.DELETE %}{{ formset.empty_form.DELETE }}{% endif %}</td>
+    </tr>
+</template>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const adicionarItemOrcamento = document.getElementById('adicionar-item-orcamento');
+    const itensOrcamentoBody = document.getElementById('itens-orcamento-body');
+    const itemOrcamentoTemplate = document.getElementById('item-orcamento-empty-row');
+    const totalItensOrcamento = document.querySelector('input[name="{{ formset.prefix }}-TOTAL_FORMS"]');
+
+    if (adicionarItemOrcamento && itensOrcamentoBody && itemOrcamentoTemplate && totalItensOrcamento) {
+        adicionarItemOrcamento.addEventListener('click', () => {
+            const index = Number(totalItensOrcamento.value);
+            const html = itemOrcamentoTemplate.innerHTML.replace(/__prefix__/g, index);
+            itensOrcamentoBody.insertAdjacentHTML('beforeend', html);
+            totalItensOrcamento.value = index + 1;
+        });
+    }
+</script>
 {% endblock %}
