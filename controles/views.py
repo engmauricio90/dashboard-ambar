@@ -13,6 +13,7 @@ from django.urls import reverse
 from PIL import Image, ImageDraw, ImageFont
 
 from financeiro.models import ContaPagar, Fornecedor
+from obras.models import Obra
 
 from .forms import (
     ApontamentoMaquinaLocacaoForm,
@@ -489,27 +490,43 @@ def novo_abastecimento(request):
 
 
 def lista_ordens_compra_gerais(request):
-    ordens = OrdemCompraGeral.objects.prefetch_related('itens')
+    ordens = OrdemCompraGeral.objects.select_related('obra').prefetch_related('itens')
     status = request.GET.get('status', '').strip()
+    obra_id = request.GET.get('obra', '').strip()
     busca = request.GET.get('busca', '').strip()
 
     if status in {choice[0] for choice in OrdemCompraGeral.STATUS_CHOICES}:
         ordens = ordens.filter(status=status)
+    if obra_id.isdigit():
+        ordens = ordens.filter(obra_id=obra_id)
     if busca:
         ordens = ordens.filter(
             Q(numero__icontains=busca)
             | Q(fornecedor__icontains=busca)
             | Q(comprador__icontains=busca)
             | Q(fornecedor_cpf_cnpj__icontains=busca)
+            | Q(obra__nome_obra__icontains=busca)
         )
+    ordens = list(ordens)
+    total_filtrado = sum((ordem.total for ordem in ordens), Decimal('0'))
+    total_por_obra = {}
+    for ordem in ordens:
+        obra_nome = ordem.obra.nome_obra if ordem.obra_id else 'Sem obra'
+        if obra_nome not in total_por_obra:
+            total_por_obra[obra_nome] = {'obra': obra_nome, 'quantidade': 0, 'total': Decimal('0')}
+        total_por_obra[obra_nome]['quantidade'] += 1
+        total_por_obra[obra_nome]['total'] += ordem.total
 
     return render(
         request,
         'controles/lista_ordens_compra_gerais.html',
         {
             'ordens': ordens,
+            'obras': Obra.objects.order_by('nome_obra'),
             'status_choices': OrdemCompraGeral.STATUS_CHOICES,
-            'filtros': {'status': status, 'busca': busca},
+            'filtros': {'status': status, 'obra': obra_id, 'busca': busca},
+            'total_filtrado': total_filtrado,
+            'total_por_obra': sorted(total_por_obra.values(), key=lambda item: item['obra']),
         },
     )
 
@@ -713,7 +730,7 @@ def ordem_compra_geral_pdf(request, ordem_id):
         draw.text((x, y + 92), _clean_pdf_text(ordem.comprador or 'Assinatura'), font=_font(15), fill=(43, 48, 51))
         return image
 
-    if len(rows) <= 8:
+    if len(rows) <= 4:
         image, draw, x, y, w = draw_first_page_base()
         y = _draw_section_title(draw, 'Itens', x, y, w)
         y = _draw_table(draw, headers, rows, x, y, widths)
@@ -728,8 +745,8 @@ def ordem_compra_geral_pdf(request, ordem_id):
         return _report_pdf_response(image, filename)
 
     pages = []
-    first_capacity = 18
-    next_capacity = 31
+    first_capacity = 10
+    next_capacity = 28
     chunks = [rows[:first_capacity]]
     remaining = rows[first_capacity:]
     while remaining:

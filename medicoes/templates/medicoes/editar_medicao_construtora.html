@@ -100,8 +100,9 @@
             <div class="row g-2">
                 {% for checkbox in field %}
                 <div class="col-md-6">
-                    <label class="border rounded p-2 w-100">
-                        {{ checkbox.tag }} {{ checkbox.choice_label }}
+                    <label class="border rounded p-3 w-100 d-flex gap-2 align-items-start">
+                        <span class="pt-1">{{ checkbox.tag }}</span>
+                        <span>{{ checkbox.choice_label }}</span>
                     </label>
                 </div>
                 {% endfor %}
@@ -111,6 +112,39 @@
             {% endif %}
             {% if field.errors %}<div class="text-danger small mt-2">{{ field.errors|join:', ' }}</div>{% endif %}
             {% endwith %}
+        </div>
+    </div>
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="mb-3">Historico de faturamento direto ja descontado</h5>
+            {% if faturamentos_ja_descontados %}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>NF/OC</th>
+                            <th>Empresa</th>
+                            <th>Descricao</th>
+                            <th>Valor</th>
+                            <th>Medicao</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for faturamento in faturamentos_ja_descontados %}
+                        <tr>
+                            <td>{{ faturamento.numero_nf|default:faturamento.numero_ordem_compra|default:'-' }}</td>
+                            <td>{{ faturamento.empresa_comprou }}</td>
+                            <td>{{ faturamento.descricao }}</td>
+                            <td>R$ {{ faturamento.valor_nota|floatformat:2 }}</td>
+                            <td>{{ faturamento.medicao_desconto|default:faturamento.vinculo_medicao.medicao.label_medicao }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-muted">Nenhum faturamento direto foi descontado em medicoes anteriores desta obra.</div>
+            {% endif %}
         </div>
     </div>
     <button class="btn btn-primary" type="submit">Salvar medicao</button>

@@ -15,6 +15,7 @@ from django.utils import timezone
 from openpyxl import Workbook
 from PIL import Image, ImageDraw, ImageFont
 
+from controles.models import FaturamentoDireto
 from controles.views import _build_simple_pdf
 from obras.models import Obra
 
@@ -684,10 +685,21 @@ def editar_medicao_construtora(request, medicao_id):
     else:
         form = MedicaoConstrutoraForm(instance=medicao)
         formset = ItemMedicaoConstrutoraFormSet(instance=medicao)
+    faturamentos_ja_descontados = FaturamentoDireto.objects.filter(
+        obra=medicao.orcamento.obra,
+        vinculo_medicao__isnull=False,
+    ).exclude(
+        vinculo_medicao__medicao=medicao,
+    ).select_related('vinculo_medicao__medicao').order_by('data_lancamento', 'id')
     return render(
         request,
         'medicoes/editar_medicao_construtora.html',
-        {'medicao': medicao, 'form': form, 'formset': formset},
+        {
+            'medicao': medicao,
+            'form': form,
+            'formset': formset,
+            'faturamentos_ja_descontados': faturamentos_ja_descontados,
+        },
     )
 
 

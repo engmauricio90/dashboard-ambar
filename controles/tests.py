@@ -258,6 +258,32 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(pdf_response['Content-Type'], 'application/pdf')
         self.assertTrue(pdf_response.content.startswith(b'%PDF'))
 
+    def test_lista_ordens_compra_filtra_e_totaliza_por_obra(self):
+        obra_a = Obra.objects.create(nome_obra='Obra A')
+        obra_b = Obra.objects.create(nome_obra='Obra B')
+        ordem_a = OrdemCompraGeral.objects.create(numero='010/2026', fornecedor='Fornecedor A', obra=obra_a)
+        ordem_b = OrdemCompraGeral.objects.create(numero='011/2026', fornecedor='Fornecedor B', obra=obra_b)
+        ItemOrdemCompraGeral.objects.create(
+            ordem=ordem_a,
+            item=1,
+            descricao='Material A',
+            quantidade=Decimal('2.00'),
+            valor_unitario=Decimal('100.00'),
+        )
+        ItemOrdemCompraGeral.objects.create(
+            ordem=ordem_b,
+            item=1,
+            descricao='Material B',
+            quantidade=Decimal('3.00'),
+            valor_unitario=Decimal('100.00'),
+        )
+
+        response = self.client.get(reverse('lista_ordens_compra_gerais'), {'obra': obra_a.id})
+
+        self.assertContains(response, 'Obra A')
+        self.assertContains(response, 'R$ 200,00')
+        self.assertNotContains(response, 'Fornecedor B')
+
     def test_botao_nf_ordem_compra_direciona_para_conta_pagar(self):
         obra = Obra.objects.create(nome_obra='Obra OC', cliente='Cliente')
         centro = CentroCusto.objects.create(nome='Obras')

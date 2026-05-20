@@ -94,6 +94,50 @@ class MedicoesTests(TestCase):
         item = OrcamentoMedicao.objects.get(nome='Planilha com unitario').itens.get()
         self.assertEqual(item.preco_unitario_total, Decimal('45.50'))
 
+    def test_tela_medicao_mostra_detalhes_e_historico_do_faturamento_direto(self):
+        orcamento, item = self._orcamento()
+        medicao_atual = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=2,
+            periodo_inicio=date(2026, 2, 1),
+            periodo_fim=date(2026, 2, 28),
+            data_medicao=date(2026, 2, 28),
+        )
+        medicao_anterior = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=1,
+            periodo_inicio=date(2026, 1, 1),
+            periodo_fim=date(2026, 1, 31),
+            data_medicao=date(2026, 1, 31),
+        )
+        disponivel = FaturamentoDireto.objects.create(
+            obra=self.obra,
+            numero_nf='1414',
+            empresa_comprou='Fornecedor livre',
+            valor_nota=Decimal('1000.00'),
+            descricao='Tubos de concreto',
+            vencimento_boleto='27/04/2026',
+        )
+        usado = FaturamentoDireto.objects.create(
+            obra=self.obra,
+            numero_nf='1413',
+            empresa_comprou='Fornecedor usado',
+            valor_nota=Decimal('500.00'),
+            descricao='Barras de aco',
+            vencimento_boleto='24/04/2026',
+            medicao_desconto='Medicao 1',
+        )
+        FaturamentoDiretoMedicao.objects.create(medicao=medicao_anterior, faturamento_direto=usado)
+
+        response = self.client.get(reverse('editar_medicao_construtora', args=[medicao_atual.id]))
+
+        self.assertContains(response, '1414 | Fornecedor livre')
+        self.assertContains(response, 'R$ 1.000,00')
+        self.assertContains(response, 'ainda nao descontado')
+        self.assertContains(response, 'Historico de faturamento direto ja descontado')
+        self.assertContains(response, 'Fornecedor usado')
+        self.assertNotContains(response, '1413 | Fornecedor usado')
+
     def test_importacao_sem_cabecalho_retorna_erro_no_formulario(self):
         arquivo = SimpleUploadedFile(
             'orcamento.csv',

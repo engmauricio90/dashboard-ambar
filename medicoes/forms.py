@@ -15,6 +15,21 @@ from .models import (
 )
 
 
+def _money_label(value):
+    return f'R$ {(value or 0):,.2f}'.replace(',', 'X').replace('.', ',').replace('X', '.')
+
+
+class FaturamentoDiretoMedicaoField(forms.ModelMultipleChoiceField):
+    def label_from_instance(self, obj):
+        documento = obj.numero_nf or obj.numero_ordem_compra or 'sem documento'
+        vencimento = obj.vencimento_boleto or '-'
+        medicao = obj.medicao_desconto or 'ainda nao descontado'
+        return (
+            f'{documento} | {obj.empresa_comprou} | {_money_label(obj.valor_nota)} | '
+            f'Venc.: {vencimento} | {medicao} | {obj.descricao}'
+        )
+
+
 class ImportarOrcamentoForm(BootstrapForm):
     obra = forms.ModelChoiceField(queryset=None)
     nome = forms.CharField(max_length=180)
@@ -60,7 +75,7 @@ class ItemOrcamentoMedicaoForm(BootstrapModelForm):
 
 
 class MedicaoConstrutoraForm(BootstrapModelForm):
-    faturamentos_diretos = forms.ModelMultipleChoiceField(
+    faturamentos_diretos = FaturamentoDiretoMedicaoField(
         queryset=FaturamentoDireto.objects.none(),
         required=False,
         widget=forms.CheckboxSelectMultiple,
@@ -78,6 +93,7 @@ class MedicaoConstrutoraForm(BootstrapModelForm):
                 models.Q(vinculo_medicao__isnull=True) | models.Q(id__in=vinculados)
             ).order_by('data_lancamento', 'id')
             self.fields['faturamentos_diretos'].initial = list(vinculados)
+            self.fields['faturamentos_diretos'].widget.attrs['class'] = 'form-check-input'
 
     def clean(self):
         cleaned_data = super().clean()

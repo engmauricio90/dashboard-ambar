@@ -17,7 +17,7 @@
 <div class="card shadow-sm mb-4">
     <div class="card-body">
         <form method="get" class="row g-3">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label class="form-label">Status</label>
                 <select name="status" class="form-select">
                     <option value="">Todos</option>
@@ -26,7 +26,16 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-md-6">
+            <div class="col-md-4">
+                <label class="form-label">Obra</label>
+                <select name="obra" class="form-select">
+                    <option value="">Todas</option>
+                    {% for obra in obras %}
+                    <option value="{{ obra.id }}" {% if filtros.obra == obra.id|stringformat:'s' %}selected{% endif %}>{{ obra.nome_obra }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
                 <label class="form-label">Busca</label>
                 <input type="search" name="busca" value="{{ filtros.busca }}" class="form-control" placeholder="OC, fornecedor, comprador ou CNPJ">
             </div>
@@ -38,6 +47,40 @@
     </div>
 </div>
 
+<div class="row g-3 mb-4">
+    <div class="col-lg-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6 class="text-muted mb-1">Total filtrado em OC</h6>
+                <h3 class="mb-0">R$ {{ total_filtrado|floatformat:2 }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-8">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6 class="text-muted mb-3">Total por obra</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0 align-middle">
+                        <thead><tr><th>Obra</th><th>OCs</th><th class="text-end">Total</th></tr></thead>
+                        <tbody>
+                            {% for resumo in total_por_obra %}
+                            <tr>
+                                <td>{{ resumo.obra }}</td>
+                                <td>{{ resumo.quantidade }}</td>
+                                <td class="text-end">R$ {{ resumo.total|floatformat:2 }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="3">Nenhuma OC no filtro atual.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="card shadow-sm">
     <div class="card-body">
         <div class="table-responsive">
@@ -46,6 +89,7 @@
                     <tr>
                         <th>OC</th>
                         <th>Emissao</th>
+                        <th>Obra</th>
                         <th>Fornecedor</th>
                         <th>Comprador</th>
                         <th>Status</th>
@@ -58,6 +102,7 @@
                     <tr>
                         <td>{{ ordem.numero }}</td>
                         <td>{{ ordem.data_emissao }}</td>
+                        <td>{{ ordem.obra|default:'-' }}</td>
                         <td>{{ ordem.fornecedor }}</td>
                         <td>{{ ordem.comprador|default:'-' }}</td>
                         <td>{{ ordem.get_status_display }}</td>
@@ -67,7 +112,7 @@
                         </td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="7">Nenhuma ordem de compra cadastrada.</td></tr>
+                    <tr><td colspan="8">Nenhuma ordem de compra cadastrada.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
