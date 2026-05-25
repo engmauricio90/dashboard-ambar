@@ -31,6 +31,14 @@
         text-align: center;
         font-size: 0.82rem;
     }
+    .linha-geral td {
+        background: #f1f3f5;
+        font-weight: 700;
+    }
+    .ordem-col {
+        min-width: 96px;
+        text-align: center;
+    }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
@@ -68,12 +76,17 @@
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                 <h5 class="mb-0">Grade do cronograma</h5>
-                <button type="button" class="btn btn-sm btn-outline-primary" id="adicionar-linha-cronograma">Adicionar linha</button>
+                <div class="d-flex gap-2 flex-wrap">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="ordenar-linhas-cronograma">Ordenar por data</button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="adicionar-linha-cronograma">Adicionar linha</button>
+                </div>
             </div>
             <div class="table-responsive">
                 <table class="table table-sm cronograma-table align-middle mb-0">
                     <thead>
                         <tr>
+                            <th rowspan="2" class="ordem-col">Ordem</th>
+                            <th rowspan="2">Tipo</th>
                             <th class="servico-col" rowspan="2">Servico</th>
                             {% for grupo in grupos_periodos %}
                             <th class="text-center" colspan="{{ grupo.colspan }}">{{ grupo.label }}</th>
@@ -88,7 +101,17 @@
                     </thead>
                     <tbody id="linhas-cronograma-body">
                         {% for linha in linhas %}
-                        <tr>
+                        <tr class="linha-cronograma {% if linha.tipo == 'geral' %}linha-geral{% endif %}">
+                            <td class="ordem-col">
+                                <button type="button" class="btn btn-sm btn-outline-secondary mover-linha-acima">&uarr;</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary mover-linha-abaixo">&darr;</button>
+                            </td>
+                            <td>
+                                <select name="linhas-{{ forloop.counter0 }}-tipo" class="form-select form-select-sm tipo-linha-cronograma">
+                                    <option value="servico" {% if linha.tipo == 'servico' %}selected{% endif %}>Servico</option>
+                                    <option value="geral" {% if linha.tipo == 'geral' %}selected{% endif %}>Item geral</option>
+                                </select>
+                            </td>
                             <td class="servico-col">
                                 <input type="hidden" name="linhas-{{ forloop.counter0 }}-id" value="{{ linha.id }}">
                                 <input type="text" name="linhas-{{ forloop.counter0 }}-servico" value="{{ linha.servico }}" class="form-control form-control-sm">
@@ -101,7 +124,7 @@
                             <td class="text-center"><input type="checkbox" class="form-check-input" name="linhas-{{ forloop.counter0 }}-DELETE"></td>
                         </tr>
                         {% empty %}
-                        <tr id="cronograma-empty-row"><td colspan="{{ periodos|length|add:2 }}" class="text-muted">Adicione a primeira linha de servico.</td></tr>
+                        <tr id="cronograma-empty-row"><td colspan="{{ periodos|length|add:4 }}" class="text-muted">Adicione a primeira linha de servico.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -116,7 +139,17 @@
 </form>
 
 <template id="linha-cronograma-template">
-    <tr>
+    <tr class="linha-cronograma">
+        <td class="ordem-col">
+            <button type="button" class="btn btn-sm btn-outline-secondary mover-linha-acima">&uarr;</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary mover-linha-abaixo">&darr;</button>
+        </td>
+        <td>
+            <select name="linhas-__prefix__-tipo" class="form-select form-select-sm tipo-linha-cronograma">
+                <option value="servico">Servico</option>
+                <option value="geral">Item geral</option>
+            </select>
+        </td>
         <td class="servico-col">
             <input type="hidden" name="linhas-__prefix__-id" value="">
             <input type="text" name="linhas-__prefix__-servico" class="form-control form-control-sm">
@@ -137,6 +170,33 @@
     const linhasCronogramaBody = document.getElementById('linhas-cronograma-body');
     const linhaCronogramaTemplate = document.getElementById('linha-cronograma-template');
     const totalLinhasCronograma = document.getElementById('id_linhas-TOTAL_FORMS');
+    const ordenarLinhasCronograma = document.getElementById('ordenar-linhas-cronograma');
+
+    function linhasCronograma() {
+        return Array.from(linhasCronogramaBody.querySelectorAll('tr.linha-cronograma'));
+    }
+
+    function atualizarTipoLinha(row) {
+        const tipo = row.querySelector('.tipo-linha-cronograma');
+        row.classList.toggle('linha-geral', tipo && tipo.value === 'geral');
+    }
+
+    function reindexarLinhasCronograma() {
+        linhasCronograma().forEach((row, index) => {
+            row.querySelectorAll('[name]').forEach((field) => {
+                field.name = field.name.replace(/linhas-\d+-/g, `linhas-${index}-`);
+            });
+        });
+        totalLinhasCronograma.value = linhasCronograma().length;
+    }
+
+    function primeiraMarcacao(row) {
+        const checked = Array.from(row.querySelectorAll('.cronograma-check:checked')).map((field) => Number(field.value));
+        if (!checked.length) {
+            return Number.MAX_SAFE_INTEGER;
+        }
+        return Math.min(...checked);
+    }
 
     if (addLinhaCronograma && linhasCronogramaBody && linhaCronogramaTemplate && totalLinhasCronograma) {
         addLinhaCronograma.addEventListener('click', () => {
@@ -150,5 +210,42 @@
             totalLinhasCronograma.value = index + 1;
         });
     }
+
+    linhasCronogramaBody.addEventListener('click', (event) => {
+        const row = event.target.closest('tr.linha-cronograma');
+        if (!row) {
+            return;
+        }
+        if (event.target.classList.contains('mover-linha-acima')) {
+            const previous = row.previousElementSibling;
+            if (previous && previous.classList.contains('linha-cronograma')) {
+                linhasCronogramaBody.insertBefore(row, previous);
+                reindexarLinhasCronograma();
+            }
+        }
+        if (event.target.classList.contains('mover-linha-abaixo')) {
+            const next = row.nextElementSibling;
+            if (next && next.classList.contains('linha-cronograma')) {
+                linhasCronogramaBody.insertBefore(next, row);
+                reindexarLinhasCronograma();
+            }
+        }
+    });
+
+    linhasCronogramaBody.addEventListener('change', (event) => {
+        if (event.target.classList.contains('tipo-linha-cronograma')) {
+            atualizarTipoLinha(event.target.closest('tr.linha-cronograma'));
+        }
+    });
+
+    if (ordenarLinhasCronograma) {
+        ordenarLinhasCronograma.addEventListener('click', () => {
+            const linhasOrdenadas = linhasCronograma().sort((a, b) => primeiraMarcacao(a) - primeiraMarcacao(b));
+            linhasOrdenadas.forEach((row) => linhasCronogramaBody.appendChild(row));
+            reindexarLinhasCronograma();
+        });
+    }
+
+    document.querySelector('form').addEventListener('submit', reindexarLinhasCronograma);
 </script>
 {% endblock %}

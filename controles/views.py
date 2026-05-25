@@ -472,6 +472,7 @@ def editar_cronograma_obra(request, cronograma_id):
                 total_linhas = int(request.POST.get('linhas-TOTAL_FORMS') or 0)
                 for index in range(total_linhas):
                     linha_id = request.POST.get(f'linhas-{index}-id')
+                    tipo = request.POST.get(f'linhas-{index}-tipo') or LinhaCronogramaObra.TIPO_SERVICO
                     servico = (request.POST.get(f'linhas-{index}-servico') or '').strip()
                     excluir = request.POST.get(f'linhas-{index}-DELETE')
                     periodos = request.POST.getlist(f'linhas-{index}-periodos')
@@ -484,6 +485,7 @@ def editar_cronograma_obra(request, cronograma_id):
                     if not linha:
                         linha = LinhaCronogramaObra(cronograma=cronograma)
                     linha.ordem = index + 1
+                    linha.tipo = tipo if tipo in {LinhaCronogramaObra.TIPO_SERVICO, LinhaCronogramaObra.TIPO_GERAL} else LinhaCronogramaObra.TIPO_SERVICO
                     linha.servico = servico
                     linha.periodos = periodos
                     linha.save()
@@ -530,9 +532,9 @@ def cronograma_obra_pdf(request, cronograma_id):
     def draw_logo(image):
         logo_source = Path(settings.BASE_DIR) / 'static' / 'propostas' / 'reference' / 'page_frame.png'
         if logo_source.exists():
-            logo = Image.open(logo_source).convert('RGB').crop((520, 95, 1135, 305))
-            logo.thumbnail((360, 118))
-            image.paste(logo, ((page_w - logo.width) // 2, 18))
+            logo = Image.open(logo_source).convert('RGB').crop((515, 90, 1145, 255))
+            logo.thumbnail((320, 82))
+            image.paste(logo, ((page_w - logo.width) // 2, 10))
             return
         draw = ImageDraw.Draw(image)
         fallback_font = _font(42, True)
@@ -648,15 +650,18 @@ def cronograma_obra_pdf(request, cronograma_id):
 
             row_y = y + table_header_h
             for linha in row_chunk:
-                draw.rectangle((x, row_y, x + service_w, row_y + row_h), outline=border, width=1)
-                _draw_wrapped(draw, linha.servico, (x + 8, row_y + 8), cell_font, border, service_w - 16, line_spacing=2)
+                is_geral = linha.tipo == LinhaCronogramaObra.TIPO_GERAL
+                row_fill = fill_header if is_geral else 'white'
+                font = header_font if is_geral else cell_font
+                draw.rectangle((x, row_y, x + service_w, row_y + row_h), fill=row_fill, outline=border, width=1)
+                _draw_wrapped(draw, linha.servico, (x + 8, row_y + 8), font, border, service_w - 16, line_spacing=2)
                 cursor = x + service_w
                 periodos_marcados = set(str(periodo) for periodo in linha.periodos)
                 for periodo, width in zip(col_chunk, period_widths):
                     active = periodo['key'] in periodos_marcados
                     draw.rectangle(
                         (cursor, row_y, cursor + width, row_y + row_h),
-                        fill=fill_active if active else 'white',
+                        fill=fill_header if is_geral else (fill_active if active else 'white'),
                         outline=border,
                         width=1,
                     )

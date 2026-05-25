@@ -1172,8 +1172,16 @@ class CronogramaObra(models.Model):
 
 
 class LinhaCronogramaObra(models.Model):
+    TIPO_SERVICO = 'servico'
+    TIPO_GERAL = 'geral'
+    TIPO_CHOICES = [
+        (TIPO_SERVICO, 'Servico'),
+        (TIPO_GERAL, 'Item geral'),
+    ]
+
     cronograma = models.ForeignKey(CronogramaObra, on_delete=models.CASCADE, related_name='linhas')
     ordem = models.PositiveIntegerField(default=1)
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default=TIPO_SERVICO)
     servico = models.CharField(max_length=255)
     periodos = models.JSONField(default=list, blank=True)
 

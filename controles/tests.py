@@ -85,9 +85,11 @@ class ControleAbastecimentoTests(TestCase):
                 'observacoes': '',
                 'linhas-TOTAL_FORMS': '2',
                 'linhas-0-id': '',
+                'linhas-0-tipo': LinhaCronogramaObra.TIPO_GERAL,
                 'linhas-0-servico': 'Execucao de formas',
                 'linhas-0-periodos': ['0', '1'],
                 'linhas-1-id': '',
+                'linhas-1-tipo': LinhaCronogramaObra.TIPO_SERVICO,
                 'linhas-1-servico': 'Concretagem',
                 'linhas-1-periodos': ['2'],
             },
@@ -96,6 +98,7 @@ class ControleAbastecimentoTests(TestCase):
         self.assertRedirects(response, reverse('editar_cronograma_obra', args=[cronograma.id]))
         self.assertEqual(LinhaCronogramaObra.objects.count(), 2)
         self.assertEqual(LinhaCronogramaObra.objects.get(servico='Execucao de formas').periodos, ['0', '1'])
+        self.assertEqual(LinhaCronogramaObra.objects.get(servico='Execucao de formas').tipo, LinhaCronogramaObra.TIPO_GERAL)
 
         lista = self.client.get(reverse('lista_cronogramas_obras'))
         self.assertContains(lista, 'Cronograma trecho 1')
