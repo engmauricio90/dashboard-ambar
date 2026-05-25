@@ -565,11 +565,24 @@ def cronograma_obra_pdf(request, cronograma_id):
             grupos[-1]['colspan'] += 1
         return grupos
 
+    def draw_centered_wrapped(draw, value, x, y, w, h, font):
+        text = _clean_pdf_text(value)
+        avg_char_width = max(font.getlength('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz') / 52, 1)
+        max_chars = max(int((w - 8) / avg_char_width), 4)
+        lines = textwrap.wrap(text, width=max_chars) or ['']
+        line_height = font.getbbox('Ag')[3] - font.getbbox('Ag')[1] + 2
+        visible_lines = lines[: max(int((h - 6) / line_height), 1)]
+        text_h = line_height * len(visible_lines)
+        y_text = y + max((h - text_h) // 2, 3)
+        for line in visible_lines:
+            draw.text((x + (w - font.getlength(line)) / 2, y_text), line, font=font, fill=border)
+            y_text += line_height
+
     total_periodos = max(len(periodos), 1)
     service_w = 480 if total_periodos <= 12 else 430
     min_period_w = 45 if cronograma.formato == CronogramaObra.FORMATO_DIA else 62
     ideal_period_w = 88 if cronograma.formato == CronogramaObra.FORMATO_SEMANA else 72
-    period_w = min(ideal_period_w, max(min_period_w, int((available_w - service_w) / min(total_periodos, 1 if total_periodos == 0 else total_periodos))))
+    period_w = min(ideal_period_w, max(min_period_w, int((available_w - service_w) / total_periodos)))
     max_periodos_por_bloco = max(int((available_w - service_w) / period_w), 1)
     col_chunks = chunks(periodos, max_periodos_por_bloco)
 
@@ -603,26 +616,35 @@ def cronograma_obra_pdf(request, cronograma_id):
         image = Image.new('RGB', (page_w, page_h), 'white')
         draw_header(image, page_index + 1, len(pages_blocks) or 1)
         draw = ImageDraw.Draw(image)
-        total_blocks_h = sum(block[2] for block in page_blocks) + (block_gap * max(len(page_blocks) - 1, 0))
-        y = header_h + max(int((available_h - total_blocks_h) / 2), 0) if len(page_blocks) == 1 else header_h
+        y = header_h
 
         for row_chunk, col_chunk, block_h in page_blocks:
-            block_w = service_w + (len(col_chunk) * period_w)
-            x = margin + max(int((available_w - block_w) / 2), 0)
+            x = margin
+            dynamic_period_w = int((available_w - service_w) / max(len(col_chunk), 1))
+            remainder = available_w - service_w - (dynamic_period_w * max(len(col_chunk), 1))
+            period_widths = [
+                dynamic_period_w + (1 if index < remainder else 0)
+                for index in range(max(len(col_chunk), 1))
+            ]
             draw.rectangle((x, y, x + service_w, y + table_header_h), fill=fill_header, outline=border, width=2)
             draw.text((x + (service_w - header_font.getlength('SERVICO')) / 2, y + 28), 'SERVICO', font=header_font, fill=border)
             cursor = x + service_w
             for grupo in split_grupos(col_chunk):
-                width = grupo['colspan'] * period_w
+                width = sum(period_widths[: grupo['colspan']])
                 draw.rectangle((cursor, y, cursor + width, y + 34), fill=fill_header, outline=border, width=2)
                 draw.text((cursor + (width - header_font.getlength(grupo['label'])) / 2, y + 8), grupo['label'], font=header_font, fill=border)
                 cursor += width
+                period_widths = period_widths[grupo['colspan'] :]
+            period_widths = [
+                dynamic_period_w + (1 if index < remainder else 0)
+                for index in range(max(len(col_chunk), 1))
+            ]
             cursor = x + service_w
-            for periodo in col_chunk:
-                draw.rectangle((cursor, y + 34, cursor + period_w, y + table_header_h), outline=border, width=1)
+            for periodo, width in zip(col_chunk, period_widths):
+                draw.rectangle((cursor, y + 34, cursor + width, y + table_header_h), outline=border, width=1)
                 label_font = small_font if cronograma.formato == CronogramaObra.FORMATO_SEMANA else cell_font
-                _draw_wrapped(draw, periodo['label'], (cursor + 4, y + 41), label_font, border, period_w - 8, line_spacing=1)
-                cursor += period_w
+                draw_centered_wrapped(draw, periodo['label'], cursor, y + 34, width, table_header_h - 34, label_font)
+                cursor += width
 
             row_y = y + table_header_h
             for linha in row_chunk:
@@ -630,15 +652,15 @@ def cronograma_obra_pdf(request, cronograma_id):
                 _draw_wrapped(draw, linha.servico, (x + 8, row_y + 8), cell_font, border, service_w - 16, line_spacing=2)
                 cursor = x + service_w
                 periodos_marcados = set(str(periodo) for periodo in linha.periodos)
-                for periodo in col_chunk:
+                for periodo, width in zip(col_chunk, period_widths):
                     active = periodo['key'] in periodos_marcados
                     draw.rectangle(
-                        (cursor, row_y, cursor + period_w, row_y + row_h),
+                        (cursor, row_y, cursor + width, row_y + row_h),
                         fill=fill_active if active else 'white',
                         outline=border,
                         width=1,
                     )
-                    cursor += period_w
+                    cursor += width
                 row_y += row_h
             y = row_y + block_gap
         pages.append(image)
