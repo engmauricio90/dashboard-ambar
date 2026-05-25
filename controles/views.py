@@ -597,6 +597,17 @@ def cronograma_obra_pdf(request, cronograma_id):
             draw.text((x + 8, y_text), line, font=font, fill=border)
             y_text += line_height
 
+    def draw_activity_check(draw, x, y, w, h):
+        size = max(min(int(min(w, h) * 0.48), 22), 10)
+        start_x = x + (w - size) / 2
+        start_y = y + (h - size) / 2
+        points = [
+            (start_x + size * 0.12, start_y + size * 0.55),
+            (start_x + size * 0.42, start_y + size * 0.82),
+            (start_x + size * 0.90, start_y + size * 0.18),
+        ]
+        draw.line(points, fill=(55, 73, 73), width=max(int(size * 0.16), 2), joint='curve')
+
     total_periodos = max(len(periodos), 1)
     service_w = 480 if total_periodos <= 12 else 430
     min_period_w = 45 if cronograma.formato == CronogramaObra.FORMATO_DIA else 62
@@ -678,10 +689,12 @@ def cronograma_obra_pdf(request, cronograma_id):
                     active = periodo['key'] in periodos_marcados
                     draw.rectangle(
                         (cursor, row_y, cursor + width, row_y + row_h),
-                        fill=fill_header if is_geral else (fill_active if active else 'white'),
+                        fill=fill_header if is_geral else 'white',
                         outline=border,
                         width=1,
                     )
+                    if active and not is_geral:
+                        draw_activity_check(draw, cursor, row_y, width, row_h)
                     cursor += width
                 row_y += row_h
             table_right = x + service_w + sum(period_widths)
