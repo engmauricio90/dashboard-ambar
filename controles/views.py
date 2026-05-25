@@ -524,6 +524,7 @@ def cronograma_obra_pdf(request, cronograma_id):
     header_font = _font(17, True)
     cell_font = _font(16)
     small_font = _font(12)
+    small_bold_font = _font(12, True)
     footer_font = _font(12)
 
     def chunks(values, size):
@@ -532,9 +533,9 @@ def cronograma_obra_pdf(request, cronograma_id):
     def draw_logo(image):
         logo_source = Path(settings.BASE_DIR) / 'static' / 'propostas' / 'reference' / 'page_frame.png'
         if logo_source.exists():
-            logo = Image.open(logo_source).convert('RGB').crop((515, 90, 1145, 255))
-            logo.thumbnail((320, 82))
-            image.paste(logo, ((page_w - logo.width) // 2, 10))
+            logo = Image.open(logo_source).convert('RGB').crop((500, 85, 1160, 250))
+            logo.thumbnail((430, 105))
+            image.paste(logo, ((page_w - logo.width) // 2, 8))
             return
         draw = ImageDraw.Draw(image)
         fallback_font = _font(42, True)
@@ -580,6 +581,22 @@ def cronograma_obra_pdf(request, cronograma_id):
             draw.text((x + (w - font.getlength(line)) / 2, y_text), line, font=font, fill=border)
             y_text += line_height
 
+    def draw_wrapped_in_cell(draw, value, x, y, w, h, font, bold=False):
+        text = _clean_pdf_text(value)
+        avg_char_width = max(font.getlength('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz') / 52, 1)
+        max_chars = max(int((w - 16) / avg_char_width), 8)
+        lines = textwrap.wrap(text, width=max_chars) or ['']
+        line_height = font.getbbox('Ag')[3] - font.getbbox('Ag')[1] + 3
+        max_lines = max(int((h - 8) / line_height), 1)
+        visible_lines = lines[:max_lines]
+        if len(lines) > max_lines and visible_lines:
+            visible_lines[-1] = f'{visible_lines[-1][: max(len(visible_lines[-1]) - 3, 1)]}...'
+        text_h = line_height * len(visible_lines)
+        y_text = y + max((h - text_h) // 2, 4)
+        for line in visible_lines:
+            draw.text((x + 8, y_text), line, font=font, fill=border)
+            y_text += line_height
+
     total_periodos = max(len(periodos), 1)
     service_w = 480 if total_periodos <= 12 else 430
     min_period_w = 45 if cronograma.formato == CronogramaObra.FORMATO_DIA else 62
@@ -588,7 +605,7 @@ def cronograma_obra_pdf(request, cronograma_id):
     max_periodos_por_bloco = max(int((available_w - service_w) / period_w), 1)
     col_chunks = chunks(periodos, max_periodos_por_bloco)
 
-    row_h = 36
+    row_h = 50
     table_header_h = 72
     block_gap = 28
     max_rows_first_try = max(int((available_h - table_header_h) / row_h), 1)
@@ -644,7 +661,7 @@ def cronograma_obra_pdf(request, cronograma_id):
             cursor = x + service_w
             for periodo, width in zip(col_chunk, period_widths):
                 draw.rectangle((cursor, y + 34, cursor + width, y + table_header_h), outline=border, width=1)
-                label_font = small_font if cronograma.formato == CronogramaObra.FORMATO_SEMANA else cell_font
+                label_font = small_bold_font if cronograma.formato == CronogramaObra.FORMATO_SEMANA else header_font
                 draw_centered_wrapped(draw, periodo['label'], cursor, y + 34, width, table_header_h - 34, label_font)
                 cursor += width
 
@@ -654,7 +671,7 @@ def cronograma_obra_pdf(request, cronograma_id):
                 row_fill = fill_header if is_geral else 'white'
                 font = header_font if is_geral else cell_font
                 draw.rectangle((x, row_y, x + service_w, row_y + row_h), fill=row_fill, outline=border, width=1)
-                _draw_wrapped(draw, linha.servico, (x + 8, row_y + 8), font, border, service_w - 16, line_spacing=2)
+                draw_wrapped_in_cell(draw, linha.servico, x, row_y, service_w, row_h, font)
                 cursor = x + service_w
                 periodos_marcados = set(str(periodo) for periodo in linha.periodos)
                 for periodo, width in zip(col_chunk, period_widths):
@@ -667,6 +684,11 @@ def cronograma_obra_pdf(request, cronograma_id):
                     )
                     cursor += width
                 row_y += row_h
+            table_right = x + service_w + sum(period_widths)
+            draw.rectangle((x, y, table_right, row_y), outline=border, width=4)
+            draw.line((x + service_w, y, x + service_w, row_y), fill=border, width=4)
+            draw.line((x + service_w, y + 34, table_right, y + 34), fill=border, width=3)
+            draw.line((x, y + table_header_h, table_right, y + table_header_h), fill=border, width=3)
             y = row_y + block_gap
         pages.append(image)
 
