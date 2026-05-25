@@ -509,64 +509,142 @@ def cronograma_obra_pdf(request, cronograma_id):
     cronograma = get_object_or_404(CronogramaObra.objects.select_related('obra').prefetch_related('linhas'), id=cronograma_id)
     periodos = _periodos_cronograma(cronograma)
     linhas = list(cronograma.linhas.all())
-    page_w = max(1654, 520 + (len(periodos) * 72))
-    page_h = max(1169, 230 + (max(len(linhas), 1) * 38))
-    image = Image.new('RGB', (page_w, page_h), 'white')
-    draw = ImageDraw.Draw(image)
+    page_w, page_h = 1754, 1240
+    margin = 62
+    header_h = 176
+    footer_h = 34
+    available_w = page_w - (margin * 2)
+    available_h = page_h - header_h - footer_h - margin
     border = (0, 0, 0)
-    fill_active = (160, 160, 160)
-    fill_header = (245, 245, 245)
-    title_font = _font(42, True)
-    subtitle_font = _font(22, True)
+    fill_active = (166, 166, 166)
+    fill_header = (247, 247, 247)
+    title_font = _font(23, True)
     header_font = _font(17, True)
-    cell_font = _font(17)
-    small_font = _font(13)
+    cell_font = _font(16)
+    small_font = _font(12)
+    footer_font = _font(12)
 
-    draw.text(((page_w - title_font.getlength('AMBAR')) / 2, 18), 'AMBAR', font=title_font, fill=border)
-    draw.text(((page_w - subtitle_font.getlength('Engenharia')) / 2, 76), 'Engenharia', font=subtitle_font, fill=border)
-    title = f'Cronograma de atividades - {cronograma.nome}'
-    if cronograma.obra:
-        title = f'{title} - {cronograma.obra.nome_obra}'
-    draw.rectangle((0, 120, page_w - 1, 152), outline=border, width=2)
-    draw.text(((page_w - subtitle_font.getlength(_clean_pdf_text(title))) / 2, 126), _clean_pdf_text(title), font=subtitle_font, fill=border)
+    def chunks(values, size):
+        return [values[index : index + size] for index in range(0, len(values), size)] or [[]]
 
-    service_w = 520
-    period_w = 72
-    y = 152
-    draw.rectangle((0, y, service_w, y + 72), fill=fill_header, outline=border, width=2)
-    draw.text(((service_w - header_font.getlength('SERVICO')) / 2, y + 28), 'SERVICO', font=header_font, fill=border)
-    cursor = service_w
-    for grupo in _grupos_periodos(periodos):
-        width = grupo['colspan'] * period_w
-        draw.rectangle((cursor, y, cursor + width, y + 34), fill=fill_header, outline=border, width=2)
-        draw.text((cursor + (width - header_font.getlength(grupo['label'])) / 2, y + 8), grupo['label'], font=header_font, fill=border)
-        cursor += width
-    cursor = service_w
-    for periodo in periodos:
-        draw.rectangle((cursor, y + 34, cursor + period_w, y + 72), outline=border, width=1)
-        label_font = small_font if cronograma.formato == CronogramaObra.FORMATO_SEMANA else cell_font
-        _draw_wrapped(draw, periodo['label'], (cursor + 4, y + 39), label_font, border, period_w - 8, line_spacing=1)
-        cursor += period_w
+    def draw_logo(image):
+        logo_source = Path(settings.BASE_DIR) / 'static' / 'propostas' / 'reference' / 'page_frame.png'
+        if logo_source.exists():
+            logo = Image.open(logo_source).convert('RGB').crop((520, 95, 1135, 305))
+            logo.thumbnail((360, 118))
+            image.paste(logo, ((page_w - logo.width) // 2, 18))
+            return
+        draw = ImageDraw.Draw(image)
+        fallback_font = _font(42, True)
+        draw.text(((page_w - fallback_font.getlength('AMBAR')) / 2, 28), 'AMBAR', font=fallback_font, fill=border)
 
-    y += 72
-    for linha in linhas:
-        draw.rectangle((0, y, service_w, y + 38), outline=border, width=1)
-        _draw_wrapped(draw, linha.servico, (6, y + 8), cell_font, border, service_w - 12, line_spacing=2)
-        cursor = service_w
-        periodos_marcados = set(str(periodo) for periodo in linha.periodos)
-        for periodo in periodos:
-            active = periodo['key'] in periodos_marcados
-            draw.rectangle(
-                (cursor, y, cursor + period_w, y + 38),
-                fill=fill_active if active else 'white',
-                outline=border,
-                width=1,
-            )
-            cursor += period_w
-        y += 38
+    def draw_header(image, page_number, total_pages):
+        draw = ImageDraw.Draw(image)
+        draw_logo(image)
+        title = f'Cronograma de atividades - {cronograma.nome}'
+        if cronograma.obra:
+            title = f'{title} - {cronograma.obra.nome_obra}'
+        clean_title = _clean_pdf_text(title)
+        fitted_title_font = title_font
+        for size in range(23, 13, -1):
+            candidate = _font(size, True)
+            if candidate.getlength(clean_title) <= available_w - 24:
+                fitted_title_font = candidate
+                break
+        title_y = 124
+        draw.rectangle((margin, title_y, page_w - margin, title_y + 34), outline=border, width=2)
+        draw.text(((page_w - fitted_title_font.getlength(clean_title)) / 2, title_y + 7), clean_title, font=fitted_title_font, fill=border)
+        footer = f'Pagina {page_number} de {total_pages}'
+        draw.text((page_w - margin - footer_font.getlength(footer), page_h - 34), footer, font=footer_font, fill=(80, 80, 80))
+
+    def split_grupos(period_chunk):
+        grupos = []
+        for periodo in period_chunk:
+            if not grupos or grupos[-1]['label'] != periodo['grupo']:
+                grupos.append({'label': periodo['grupo'], 'colspan': 0})
+            grupos[-1]['colspan'] += 1
+        return grupos
+
+    total_periodos = max(len(periodos), 1)
+    service_w = 480 if total_periodos <= 12 else 430
+    min_period_w = 45 if cronograma.formato == CronogramaObra.FORMATO_DIA else 62
+    ideal_period_w = 88 if cronograma.formato == CronogramaObra.FORMATO_SEMANA else 72
+    period_w = min(ideal_period_w, max(min_period_w, int((available_w - service_w) / min(total_periodos, 1 if total_periodos == 0 else total_periodos))))
+    max_periodos_por_bloco = max(int((available_w - service_w) / period_w), 1)
+    col_chunks = chunks(periodos, max_periodos_por_bloco)
+
+    row_h = 36
+    table_header_h = 72
+    block_gap = 28
+    max_rows_first_try = max(int((available_h - table_header_h) / row_h), 1)
+    row_chunks = chunks(linhas, max_rows_first_try)
+
+    blocks = []
+    for row_chunk in row_chunks:
+        for col_chunk in col_chunks:
+            blocks.append((row_chunk, col_chunk))
+
+    pages_blocks = []
+    current_page = []
+    used_h = 0
+    for row_chunk, col_chunk in blocks:
+        block_h = table_header_h + (max(len(row_chunk), 1) * row_h)
+        if current_page and used_h + block_gap + block_h > available_h:
+            pages_blocks.append(current_page)
+            current_page = []
+            used_h = 0
+        current_page.append((row_chunk, col_chunk, block_h))
+        used_h += block_h + (block_gap if used_h else 0)
+    if current_page:
+        pages_blocks.append(current_page)
+
+    pages = []
+    for page_index, page_blocks in enumerate(pages_blocks or [[(linhas, periodos, table_header_h + (max(len(linhas), 1) * row_h))]]):
+        image = Image.new('RGB', (page_w, page_h), 'white')
+        draw_header(image, page_index + 1, len(pages_blocks) or 1)
+        draw = ImageDraw.Draw(image)
+        total_blocks_h = sum(block[2] for block in page_blocks) + (block_gap * max(len(page_blocks) - 1, 0))
+        y = header_h + max(int((available_h - total_blocks_h) / 2), 0) if len(page_blocks) == 1 else header_h
+
+        for row_chunk, col_chunk, block_h in page_blocks:
+            block_w = service_w + (len(col_chunk) * period_w)
+            x = margin + max(int((available_w - block_w) / 2), 0)
+            draw.rectangle((x, y, x + service_w, y + table_header_h), fill=fill_header, outline=border, width=2)
+            draw.text((x + (service_w - header_font.getlength('SERVICO')) / 2, y + 28), 'SERVICO', font=header_font, fill=border)
+            cursor = x + service_w
+            for grupo in split_grupos(col_chunk):
+                width = grupo['colspan'] * period_w
+                draw.rectangle((cursor, y, cursor + width, y + 34), fill=fill_header, outline=border, width=2)
+                draw.text((cursor + (width - header_font.getlength(grupo['label'])) / 2, y + 8), grupo['label'], font=header_font, fill=border)
+                cursor += width
+            cursor = x + service_w
+            for periodo in col_chunk:
+                draw.rectangle((cursor, y + 34, cursor + period_w, y + table_header_h), outline=border, width=1)
+                label_font = small_font if cronograma.formato == CronogramaObra.FORMATO_SEMANA else cell_font
+                _draw_wrapped(draw, periodo['label'], (cursor + 4, y + 41), label_font, border, period_w - 8, line_spacing=1)
+                cursor += period_w
+
+            row_y = y + table_header_h
+            for linha in row_chunk:
+                draw.rectangle((x, row_y, x + service_w, row_y + row_h), outline=border, width=1)
+                _draw_wrapped(draw, linha.servico, (x + 8, row_y + 8), cell_font, border, service_w - 16, line_spacing=2)
+                cursor = x + service_w
+                periodos_marcados = set(str(periodo) for periodo in linha.periodos)
+                for periodo in col_chunk:
+                    active = periodo['key'] in periodos_marcados
+                    draw.rectangle(
+                        (cursor, row_y, cursor + period_w, row_y + row_h),
+                        fill=fill_active if active else 'white',
+                        outline=border,
+                        width=1,
+                    )
+                    cursor += period_w
+                row_y += row_h
+            y = row_y + block_gap
+        pages.append(image)
 
     buffer = BytesIO()
-    image.save(buffer, 'PDF', resolution=150)
+    pages[0].save(buffer, 'PDF', save_all=True, append_images=pages[1:], resolution=150)
     response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
     response['Content-Disposition'] = f'inline; filename="cronograma-{cronograma.id}.pdf"'
     return response
