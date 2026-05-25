@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        <p class="text-muted mb-0">Defina obra, periodo e formato do calendario.</p>
+    </div>
+    <a href="{% url 'lista_cronogramas_obras' %}" class="btn btn-secondary">Voltar</a>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4"><label class="form-label">Nome</label>{{ form.nome }}</div>
+                <div class="col-md-4"><label class="form-label">Obra</label>{{ form.obra }}</div>
+                <div class="col-md-4"><label class="form-label">Formato</label>{{ form.formato }}</div>
+                <div class="col-md-3"><label class="form-label">Data inicial</label>{{ form.data_inicio }}</div>
+                <div class="col-md-3"><label class="form-label">Data final</label>{{ form.data_fim }}</div>
+                <div class="col-12"><label class="form-label">Observacoes</label>{{ form.observacoes }}</div>
+            </div>
+            {% for field in form %}
+            {% if field.errors %}<div class="text-danger small mt-2">{{ field.label }}: {{ field.errors|join:', ' }}</div>{% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-success">Criar cronograma</button>
+        <a href="{% url 'lista_cronogramas_obras' %}" class="btn btn-outline-secondary">Cancelar</a>
+    </div>
+</form>
+{% endblock %}

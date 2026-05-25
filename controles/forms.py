@@ -7,6 +7,7 @@ from .models import (
     ApontamentoMaquinaLocacao,
     BombonaCombustivel,
     ContratoConcretagem,
+    CronogramaObra,
     EquipamentoLocadoCatalogo,
     FornecedorMaquinaLocacao,
     FaturamentoConcretagem,
@@ -61,6 +62,25 @@ class BootstrapModelForm(forms.ModelForm):
                 if self.initial.get(name) in (0, 0.0, '0'):
                     self.initial[name] = ''
                 field.widget.attrs.setdefault('placeholder', '0,00')
+
+
+class CronogramaObraForm(BootstrapModelForm):
+    class Meta:
+        model = CronogramaObra
+        fields = ['nome', 'obra', 'data_inicio', 'data_fim', 'formato', 'observacoes']
+        widgets = {
+            'data_inicio': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'data_fim': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        inicio = cleaned_data.get('data_inicio')
+        fim = cleaned_data.get('data_fim')
+        if inicio and fim and fim < inicio:
+            self.add_error('data_fim', 'A data final nao pode ser anterior ao inicio.')
+        return cleaned_data
 
 
 class VeiculoMaquinaForm(BootstrapModelForm):

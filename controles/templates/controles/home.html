@@ -56,6 +56,15 @@
             </div>
         </div>
     </div>
+    <div class="col-md">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Cronogramas</h6>
+                <h4>{{ cronogramas_obras }}</h4>
+                <small class="text-muted">Cronogramas operacionais</small>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="row g-4">
@@ -139,6 +148,19 @@
                 <div class="d-flex gap-2 flex-wrap">
                     <a href="{% url 'lista_faturamentos_diretos' %}" class="btn btn-primary">Ver faturamentos</a>
                     <a href="{% url 'novo_faturamento_direto' %}" class="btn btn-outline-primary">Novo faturamento</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-2">Cronograma de obra</h5>
+                <p class="text-muted">Monte cronogramas por dia, semana ou mes, com grade operacional e PDF para impressao.</p>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="{% url 'lista_cronogramas_obras' %}" class="btn btn-primary">Ver cronogramas</a>
+                    <a href="{% url 'novo_cronograma_obra' %}" class="btn btn-outline-primary">Novo cronograma</a>
                 </div>
             </div>
         </div>

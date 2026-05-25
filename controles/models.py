@@ -1135,3 +1135,52 @@ class FaturamentoDireto(models.Model):
     def __str__(self):
         documento = self.numero_nf or self.numero_ordem_compra or 'sem documento'
         return f'{self.obra} - {documento} - {self.empresa_comprou}'
+
+
+class CronogramaObra(models.Model):
+    FORMATO_DIA = 'dia'
+    FORMATO_SEMANA = 'semana'
+    FORMATO_MES = 'mes'
+    FORMATO_CHOICES = [
+        (FORMATO_DIA, 'Por dia'),
+        (FORMATO_SEMANA, 'Por semana'),
+        (FORMATO_MES, 'Por mes'),
+    ]
+
+    nome = models.CharField(max_length=180)
+    obra = models.ForeignKey(
+        'obras.Obra',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='cronogramas_operacionais',
+    )
+    data_inicio = models.DateField()
+    data_fim = models.DateField()
+    formato = models.CharField(max_length=20, choices=FORMATO_CHOICES, default=FORMATO_SEMANA)
+    observacoes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-data_inicio', '-id']
+        verbose_name = 'Cronograma de obra'
+        verbose_name_plural = 'Cronogramas de obras'
+
+    def __str__(self):
+        return self.nome
+
+
+class LinhaCronogramaObra(models.Model):
+    cronograma = models.ForeignKey(CronogramaObra, on_delete=models.CASCADE, related_name='linhas')
+    ordem = models.PositiveIntegerField(default=1)
+    servico = models.CharField(max_length=255)
+    periodos = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        ordering = ['ordem', 'id']
+        verbose_name = 'Linha do cronograma de obra'
+        verbose_name_plural = 'Linhas dos cronogramas de obras'
+
+    def __str__(self):
+        return self.servico

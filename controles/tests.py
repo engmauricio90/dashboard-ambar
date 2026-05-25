@@ -18,6 +18,7 @@ from .models import (
     BombonaCombustivel,
     EquipamentoLocadoCatalogo,
     ContratoConcretagem,
+    CronogramaObra,
     FornecedorMaquinaLocacao,
     FaturamentoConcretagem,
     FaturamentoDireto,
@@ -34,6 +35,7 @@ from .models import (
     OrdemCompraGeral,
     OrdemServicoLocacaoMaquina,
     ItemOrdemCompraGeral,
+    LinhaCronogramaObra,
     RegistroAbastecimento,
     SolicitanteConcretagem,
     VeiculoMaquina,
@@ -53,6 +55,55 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Controles Operacionais')
         self.assertContains(response, 'Controle de abastecimento')
+
+    def test_cria_edita_e_gera_pdf_cronograma_obra(self):
+        obra = Obra.objects.create(nome_obra='Obra Cronograma')
+
+        response = self.client.post(
+            reverse('novo_cronograma_obra'),
+            {
+                'nome': 'Cronograma trecho 1',
+                'obra': obra.id,
+                'data_inicio': '2026-05-01',
+                'data_fim': '2026-05-31',
+                'formato': CronogramaObra.FORMATO_SEMANA,
+                'observacoes': '',
+            },
+        )
+
+        cronograma = CronogramaObra.objects.get()
+        self.assertRedirects(response, reverse('editar_cronograma_obra', args=[cronograma.id]))
+
+        response = self.client.post(
+            reverse('editar_cronograma_obra', args=[cronograma.id]),
+            {
+                'nome': 'Cronograma trecho 1',
+                'obra': obra.id,
+                'data_inicio': '2026-05-01',
+                'data_fim': '2026-05-31',
+                'formato': CronogramaObra.FORMATO_SEMANA,
+                'observacoes': '',
+                'linhas-TOTAL_FORMS': '2',
+                'linhas-0-id': '',
+                'linhas-0-servico': 'Execucao de formas',
+                'linhas-0-periodos': ['0', '1'],
+                'linhas-1-id': '',
+                'linhas-1-servico': 'Concretagem',
+                'linhas-1-periodos': ['2'],
+            },
+        )
+
+        self.assertRedirects(response, reverse('editar_cronograma_obra', args=[cronograma.id]))
+        self.assertEqual(LinhaCronogramaObra.objects.count(), 2)
+        self.assertEqual(LinhaCronogramaObra.objects.get(servico='Execucao de formas').periodos, ['0', '1'])
+
+        lista = self.client.get(reverse('lista_cronogramas_obras'))
+        self.assertContains(lista, 'Cronograma trecho 1')
+
+        pdf = self.client.get(reverse('cronograma_obra_pdf', args=[cronograma.id]))
+        self.assertEqual(pdf.status_code, 200)
+        self.assertEqual(pdf['Content-Type'], 'application/pdf')
+        self.assertTrue(pdf.content.startswith(b'%PDF'))
 
     def test_cria_faturamento_direto_e_reduz_saldo_da_obra(self):
         obra = Obra.objects.create(nome_obra='Obra FD', valor_contrato=Decimal('1000.00'))

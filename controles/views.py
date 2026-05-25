@@ -1,4 +1,6 @@
 from decimal import Decimal
+from datetime import timedelta
+import calendar
 from io import BytesIO
 from pathlib import Path
 import textwrap
@@ -6,6 +8,7 @@ import unicodedata
 
 from django.conf import settings
 from django.contrib import messages
+from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -20,6 +23,7 @@ from .forms import (
     BaixarLocacaoEquipamentoForm,
     BombonaCombustivelForm,
     ContratoConcretagemForm,
+    CronogramaObraForm,
     EquipamentoLocadoCatalogoForm,
     FornecedorMaquinaLocacaoForm,
     FaturamentoConcretagemForm,
@@ -44,10 +48,12 @@ from .models import (
     ApontamentoMaquinaLocacao,
     BombonaCombustivel,
     ContratoConcretagem,
+    CronogramaObra,
     EquipamentoLocadoCatalogo,
     FornecedorMaquinaLocacao,
     FaturamentoConcretagem,
     FaturamentoDireto,
+    LinhaCronogramaObra,
     LocacaoEquipamento,
     LocadoraEquipamento,
     MaquinaLocacaoCatalogo,
@@ -341,6 +347,57 @@ def _fornecedores_json():
     ]
 
 
+def _add_month(value):
+    year = value.year + (value.month // 12)
+    month = (value.month % 12) + 1
+    day = min(value.day, calendar.monthrange(year, month)[1])
+    return value.replace(year=year, month=month, day=day)
+
+
+def _periodos_cronograma(cronograma):
+    periodos = []
+    atual = cronograma.data_inicio
+    index = 0
+    while atual <= cronograma.data_fim:
+        if cronograma.formato == CronogramaObra.FORMATO_DIA:
+            fim = atual
+            label = atual.strftime('%d')
+            grupo = atual.strftime('%m/%y')
+            proximo = atual + timedelta(days=1)
+        elif cronograma.formato == CronogramaObra.FORMATO_MES:
+            fim_mes = atual.replace(day=calendar.monthrange(atual.year, atual.month)[1])
+            fim = min(fim_mes, cronograma.data_fim)
+            label = atual.strftime('%m/%y')
+            grupo = atual.strftime('%Y')
+            proximo = _add_month(atual.replace(day=1))
+        else:
+            fim = min(atual + timedelta(days=6), cronograma.data_fim)
+            label = f'{atual:%d/%m} a {fim:%d/%m}'
+            grupo = atual.strftime('%Y')
+            proximo = fim + timedelta(days=1)
+        periodos.append(
+            {
+                'key': str(index),
+                'inicio': atual,
+                'fim': fim,
+                'label': label,
+                'grupo': grupo,
+            }
+        )
+        atual = proximo
+        index += 1
+    return periodos
+
+
+def _grupos_periodos(periodos):
+    grupos = []
+    for periodo in periodos:
+        if not grupos or grupos[-1]['label'] != periodo['grupo']:
+            grupos.append({'label': periodo['grupo'], 'colspan': 0})
+        grupos[-1]['colspan'] += 1
+    return grupos
+
+
 def home(request):
     totais = {
         'veiculos': VeiculoMaquina.objects.count(),
@@ -364,12 +421,155 @@ def home(request):
         'orcamentos_aguardando': OrcamentoRadarObra.objects.filter(situacao='aguardando_resposta').count(),
         'contratos_concretagem': ContratoConcretagem.objects.filter(status='ativo').count(),
         'faturamentos_diretos': FaturamentoDireto.objects.count(),
+        'cronogramas_obras': CronogramaObra.objects.count(),
         'total_abastecido': sum(
             RegistroAbastecimento.objects.values_list('valor_total', flat=True),
             Decimal('0'),
         ),
     }
     return render(request, 'controles/home.html', totais)
+
+
+def lista_cronogramas_obras(request):
+    cronogramas = CronogramaObra.objects.select_related('obra').prefetch_related('linhas')
+    busca = request.GET.get('busca', '').strip()
+    if busca:
+        cronogramas = cronogramas.filter(
+            Q(nome__icontains=busca)
+            | Q(obra__nome_obra__icontains=busca)
+            | Q(observacoes__icontains=busca)
+        )
+    return render(
+        request,
+        'controles/lista_cronogramas_obras.html',
+        {'cronogramas': cronogramas, 'busca': busca},
+    )
+
+
+def novo_cronograma_obra(request):
+    if request.method == 'POST':
+        form = CronogramaObraForm(request.POST)
+        if form.is_valid():
+            cronograma = form.save()
+            messages.success(request, 'Cronograma criado. Agora adicione os servicos na grade.')
+            return redirect('editar_cronograma_obra', cronograma_id=cronograma.id)
+    else:
+        form = CronogramaObraForm()
+    return render(
+        request,
+        'controles/form_cronograma_obra.html',
+        {'form': form, 'titulo': 'Novo cronograma de obra'},
+    )
+
+
+def editar_cronograma_obra(request, cronograma_id):
+    cronograma = get_object_or_404(CronogramaObra.objects.select_related('obra'), id=cronograma_id)
+    if request.method == 'POST':
+        form = CronogramaObraForm(request.POST, instance=cronograma)
+        if form.is_valid():
+            with transaction.atomic():
+                cronograma = form.save()
+                total_linhas = int(request.POST.get('linhas-TOTAL_FORMS') or 0)
+                for index in range(total_linhas):
+                    linha_id = request.POST.get(f'linhas-{index}-id')
+                    servico = (request.POST.get(f'linhas-{index}-servico') or '').strip()
+                    excluir = request.POST.get(f'linhas-{index}-DELETE')
+                    periodos = request.POST.getlist(f'linhas-{index}-periodos')
+                    linha = LinhaCronogramaObra.objects.filter(cronograma=cronograma, id=linha_id).first() if linha_id else None
+                    if excluir and linha:
+                        linha.delete()
+                        continue
+                    if not servico:
+                        continue
+                    if not linha:
+                        linha = LinhaCronogramaObra(cronograma=cronograma)
+                    linha.ordem = index + 1
+                    linha.servico = servico
+                    linha.periodos = periodos
+                    linha.save()
+            messages.success(request, 'Cronograma salvo com sucesso.')
+            return redirect('editar_cronograma_obra', cronograma_id=cronograma.id)
+    else:
+        form = CronogramaObraForm(instance=cronograma)
+    periodos = _periodos_cronograma(cronograma)
+    return render(
+        request,
+        'controles/editar_cronograma_obra.html',
+        {
+            'cronograma': cronograma,
+            'form': form,
+            'linhas': cronograma.linhas.all(),
+            'periodos': periodos,
+            'grupos_periodos': _grupos_periodos(periodos),
+        },
+    )
+
+
+def cronograma_obra_pdf(request, cronograma_id):
+    cronograma = get_object_or_404(CronogramaObra.objects.select_related('obra').prefetch_related('linhas'), id=cronograma_id)
+    periodos = _periodos_cronograma(cronograma)
+    linhas = list(cronograma.linhas.all())
+    page_w = max(1654, 520 + (len(periodos) * 72))
+    page_h = max(1169, 230 + (max(len(linhas), 1) * 38))
+    image = Image.new('RGB', (page_w, page_h), 'white')
+    draw = ImageDraw.Draw(image)
+    border = (0, 0, 0)
+    fill_active = (160, 160, 160)
+    fill_header = (245, 245, 245)
+    title_font = _font(42, True)
+    subtitle_font = _font(22, True)
+    header_font = _font(17, True)
+    cell_font = _font(17)
+    small_font = _font(13)
+
+    draw.text(((page_w - title_font.getlength('AMBAR')) / 2, 18), 'AMBAR', font=title_font, fill=border)
+    draw.text(((page_w - subtitle_font.getlength('Engenharia')) / 2, 76), 'Engenharia', font=subtitle_font, fill=border)
+    title = f'Cronograma de atividades - {cronograma.nome}'
+    if cronograma.obra:
+        title = f'{title} - {cronograma.obra.nome_obra}'
+    draw.rectangle((0, 120, page_w - 1, 152), outline=border, width=2)
+    draw.text(((page_w - subtitle_font.getlength(_clean_pdf_text(title))) / 2, 126), _clean_pdf_text(title), font=subtitle_font, fill=border)
+
+    service_w = 520
+    period_w = 72
+    y = 152
+    draw.rectangle((0, y, service_w, y + 72), fill=fill_header, outline=border, width=2)
+    draw.text(((service_w - header_font.getlength('SERVICO')) / 2, y + 28), 'SERVICO', font=header_font, fill=border)
+    cursor = service_w
+    for grupo in _grupos_periodos(periodos):
+        width = grupo['colspan'] * period_w
+        draw.rectangle((cursor, y, cursor + width, y + 34), fill=fill_header, outline=border, width=2)
+        draw.text((cursor + (width - header_font.getlength(grupo['label'])) / 2, y + 8), grupo['label'], font=header_font, fill=border)
+        cursor += width
+    cursor = service_w
+    for periodo in periodos:
+        draw.rectangle((cursor, y + 34, cursor + period_w, y + 72), outline=border, width=1)
+        label_font = small_font if cronograma.formato == CronogramaObra.FORMATO_SEMANA else cell_font
+        _draw_wrapped(draw, periodo['label'], (cursor + 4, y + 39), label_font, border, period_w - 8, line_spacing=1)
+        cursor += period_w
+
+    y += 72
+    for linha in linhas:
+        draw.rectangle((0, y, service_w, y + 38), outline=border, width=1)
+        _draw_wrapped(draw, linha.servico, (6, y + 8), cell_font, border, service_w - 12, line_spacing=2)
+        cursor = service_w
+        periodos_marcados = set(str(periodo) for periodo in linha.periodos)
+        for periodo in periodos:
+            active = periodo['key'] in periodos_marcados
+            draw.rectangle(
+                (cursor, y, cursor + period_w, y + 38),
+                fill=fill_active if active else 'white',
+                outline=border,
+                width=1,
+            )
+            cursor += period_w
+        y += 38
+
+    buffer = BytesIO()
+    image.save(buffer, 'PDF', resolution=150)
+    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="cronograma-{cronograma.id}.pdf"'
+    return response
 
 
 def lista_faturamentos_diretos(request):

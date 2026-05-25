@@ -1,0 +1,154 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ cronograma.nome }}{% endblock %}
+
+{% block content %}
+<style>
+    .cronograma-table th,
+    .cronograma-table td {
+        border: 1px solid #222;
+        padding: 0.35rem;
+        vertical-align: middle;
+    }
+    .cronograma-table .servico-col {
+        min-width: 320px;
+        position: sticky;
+        left: 0;
+        background: #fff;
+        z-index: 2;
+    }
+    .cronograma-table thead .servico-col {
+        background: #f8f9fa;
+        z-index: 3;
+    }
+    .cronograma-check {
+        width: 24px;
+        height: 24px;
+        cursor: pointer;
+    }
+    .periodo-col {
+        min-width: 54px;
+        text-align: center;
+        font-size: 0.82rem;
+    }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">{{ cronograma.nome }}</h1>
+        <p class="text-muted mb-0">{{ cronograma.obra|default:'Sem obra vinculada' }} - {{ cronograma.data_inicio|date:'d/m/Y' }} a {{ cronograma.data_fim|date:'d/m/Y' }}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'cronograma_obra_pdf' cronograma.id %}" target="_blank" class="btn btn-outline-danger">PDF</a>
+        <a href="{% url 'lista_cronogramas_obras' %}" class="btn btn-secondary">Voltar</a>
+    </div>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="mb-3">Dados do cronograma</h5>
+            <div class="row g-3">
+                <div class="col-md-4"><label class="form-label">Nome</label>{{ form.nome }}</div>
+                <div class="col-md-4"><label class="form-label">Obra</label>{{ form.obra }}</div>
+                <div class="col-md-4"><label class="form-label">Formato</label>{{ form.formato }}</div>
+                <div class="col-md-3"><label class="form-label">Data inicial</label>{{ form.data_inicio }}</div>
+                <div class="col-md-3"><label class="form-label">Data final</label>{{ form.data_fim }}</div>
+                <div class="col-12"><label class="form-label">Observacoes</label>{{ form.observacoes }}</div>
+            </div>
+            {% for field in form %}
+            {% if field.errors %}<div class="text-danger small mt-2">{{ field.label }}: {{ field.errors|join:', ' }}</div>{% endif %}
+            {% endfor %}
+        </div>
+    </div>
+
+    <input type="hidden" name="linhas-TOTAL_FORMS" id="id_linhas-TOTAL_FORMS" value="{{ linhas|length }}">
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <h5 class="mb-0">Grade do cronograma</h5>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="adicionar-linha-cronograma">Adicionar linha</button>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm cronograma-table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th class="servico-col" rowspan="2">Servico</th>
+                            {% for grupo in grupos_periodos %}
+                            <th class="text-center" colspan="{{ grupo.colspan }}">{{ grupo.label }}</th>
+                            {% endfor %}
+                            <th rowspan="2">Excluir</th>
+                        </tr>
+                        <tr>
+                            {% for periodo in periodos %}
+                            <th class="periodo-col">{{ periodo.label }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody id="linhas-cronograma-body">
+                        {% for linha in linhas %}
+                        <tr>
+                            <td class="servico-col">
+                                <input type="hidden" name="linhas-{{ forloop.counter0 }}-id" value="{{ linha.id }}">
+                                <input type="text" name="linhas-{{ forloop.counter0 }}-servico" value="{{ linha.servico }}" class="form-control form-control-sm">
+                            </td>
+                            {% for periodo in periodos %}
+                            <td class="text-center">
+                                <input type="checkbox" class="form-check-input cronograma-check" name="linhas-{{ forloop.parentloop.counter0 }}-periodos" value="{{ periodo.key }}" {% if periodo.key in linha.periodos %}checked{% endif %}>
+                            </td>
+                            {% endfor %}
+                            <td class="text-center"><input type="checkbox" class="form-check-input" name="linhas-{{ forloop.counter0 }}-DELETE"></td>
+                        </tr>
+                        {% empty %}
+                        <tr id="cronograma-empty-row"><td colspan="{{ periodos|length|add:2 }}" class="text-muted">Adicione a primeira linha de servico.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2 mb-4">
+        <button type="submit" class="btn btn-success">Salvar cronograma</button>
+        <a href="{% url 'lista_cronogramas_obras' %}" class="btn btn-outline-secondary">Cancelar</a>
+    </div>
+</form>
+
+<template id="linha-cronograma-template">
+    <tr>
+        <td class="servico-col">
+            <input type="hidden" name="linhas-__prefix__-id" value="">
+            <input type="text" name="linhas-__prefix__-servico" class="form-control form-control-sm">
+        </td>
+        {% for periodo in periodos %}
+        <td class="text-center">
+            <input type="checkbox" class="form-check-input cronograma-check" name="linhas-__prefix__-periodos" value="{{ periodo.key }}">
+        </td>
+        {% endfor %}
+        <td class="text-center"><input type="checkbox" class="form-check-input" name="linhas-__prefix__-DELETE"></td>
+    </tr>
+</template>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const addLinhaCronograma = document.getElementById('adicionar-linha-cronograma');
+    const linhasCronogramaBody = document.getElementById('linhas-cronograma-body');
+    const linhaCronogramaTemplate = document.getElementById('linha-cronograma-template');
+    const totalLinhasCronograma = document.getElementById('id_linhas-TOTAL_FORMS');
+
+    if (addLinhaCronograma && linhasCronogramaBody && linhaCronogramaTemplate && totalLinhasCronograma) {
+        addLinhaCronograma.addEventListener('click', () => {
+            const emptyRow = document.getElementById('cronograma-empty-row');
+            if (emptyRow) {
+                emptyRow.remove();
+            }
+            const index = Number(totalLinhasCronograma.value);
+            const html = linhaCronogramaTemplate.innerHTML.replace(/__prefix__/g, index);
+            linhasCronogramaBody.insertAdjacentHTML('beforeend', html);
+            totalLinhasCronograma.value = index + 1;
+        });
+    }
+</script>
+{% endblock %}

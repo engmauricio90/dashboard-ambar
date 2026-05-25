@@ -4,6 +4,7 @@ from .models import (
     ApontamentoMaquinaLocacao,
     BombonaCombustivel,
     ContratoConcretagem,
+    CronogramaObra,
     EquipamentoLocadoCatalogo,
     FornecedorMaquinaLocacao,
     FaturamentoConcretagem,
@@ -20,6 +21,7 @@ from .models import (
     OrdemCompraCombustivel,
     OrdemCompraGeral,
     ItemOrdemCompraGeral,
+    LinhaCronogramaObra,
     OrdemServicoLocacaoMaquina,
     RegistroAbastecimento,
     SolicitanteConcretagem,
@@ -122,6 +124,19 @@ class NotaFiscalOrdemCompraGeralAdmin(admin.ModelAdmin):
     list_display = ('numero', 'ordem', 'item', 'data_emissao', 'quantidade', 'valor_total', 'status')
     search_fields = ('numero', 'ordem__numero', 'ordem__fornecedor', 'item__descricao')
     list_filter = ('status', 'data_emissao')
+
+
+class LinhaCronogramaObraInline(admin.TabularInline):
+    model = LinhaCronogramaObra
+    extra = 0
+
+
+@admin.register(CronogramaObra)
+class CronogramaObraAdmin(admin.ModelAdmin):
+    list_display = ('nome', 'obra', 'data_inicio', 'data_fim', 'formato')
+    search_fields = ('nome', 'obra__nome_obra', 'observacoes')
+    list_filter = ('formato', 'data_inicio', 'obra')
+    inlines = [LinhaCronogramaObraInline]
 
 
 @admin.register(EquipamentoLocadoCatalogo)

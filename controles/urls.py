@@ -5,6 +5,10 @@ from . import views
 
 urlpatterns = [
     path('', views.home, name='controles_home'),
+    path('cronogramas/', views.lista_cronogramas_obras, name='lista_cronogramas_obras'),
+    path('cronogramas/novo/', views.novo_cronograma_obra, name='novo_cronograma_obra'),
+    path('cronogramas/<int:cronograma_id>/editar/', views.editar_cronograma_obra, name='editar_cronograma_obra'),
+    path('cronogramas/<int:cronograma_id>/pdf/', views.cronograma_obra_pdf, name='cronograma_obra_pdf'),
     path('faturamentos-diretos/', views.lista_faturamentos_diretos, name='lista_faturamentos_diretos'),
     path('faturamentos-diretos/novo/', views.novo_faturamento_direto, name='novo_faturamento_direto'),
     path(
