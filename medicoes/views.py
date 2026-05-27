@@ -28,6 +28,7 @@ from .forms import (
     MedicaoConstrutoraForm,
     MedicaoEmpreiteiroCabecalhoForm,
     MedicaoEmpreiteiroForm,
+    OrcamentoMedicaoManualForm,
 )
 from .models import (
     FaturamentoDiretoMedicao,
@@ -586,6 +587,31 @@ def importar_orcamento(request):
             initial['obra'] = request.GET['obra']
         form = ImportarOrcamentoForm(initial=initial)
     return render(request, 'medicoes/importar_orcamento.html', {'form': form})
+
+
+def novo_orcamento_manual(request):
+    tipo = request.GET.get('tipo')
+    if tipo not in {OrcamentoMedicao.TIPO_CONSTRUTORA, OrcamentoMedicao.TIPO_EMPREITEIRO}:
+        tipo = OrcamentoMedicao.TIPO_CONSTRUTORA
+    initial = {'tipo': tipo}
+    if request.GET.get('obra'):
+        initial['obra'] = request.GET['obra']
+    if request.method == 'POST':
+        form = OrcamentoMedicaoManualForm(request.POST)
+        if form.is_valid():
+            orcamento = form.save()
+            messages.success(request, 'Planilha manual criada. Agora adicione os itens para usar nas medicoes.')
+            return redirect('editar_itens_orcamento_medicao', orcamento_id=orcamento.id)
+    else:
+        form = OrcamentoMedicaoManualForm(initial=initial)
+    return render(
+        request,
+        'medicoes/form_orcamento_manual.html',
+        {
+            'form': form,
+            'titulo': 'Nova planilha manual de medicao',
+        },
+    )
 
 
 def detalhe_orcamento(request, orcamento_id):

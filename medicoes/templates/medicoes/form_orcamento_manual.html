@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        <p class="text-muted mb-0">Crie a base de itens manualmente, sem importar CSV.</p>
+    </div>
+    <a class="btn btn-secondary" href="{% url 'lista_orcamentos_medicao' %}">Voltar</a>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4"><label class="form-label">Obra</label>{{ form.obra }}</div>
+                <div class="col-md-4"><label class="form-label">Nome da planilha</label>{{ form.nome }}</div>
+                <div class="col-md-4"><label class="form-label">Tipo</label>{{ form.tipo }}</div>
+                <div class="col-12"><label class="form-label">Observacoes</label>{{ form.observacoes }}</div>
+            </div>
+            {% for field in form %}
+            {% if field.errors %}<div class="text-danger small mt-2">{{ field.label }}: {{ field.errors|join:', ' }}</div>{% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-success">Criar e adicionar itens</button>
+        <a class="btn btn-outline-secondary" href="{% url 'lista_orcamentos_medicao' %}">Cancelar</a>
+    </div>
+</form>
+{% endblock %}

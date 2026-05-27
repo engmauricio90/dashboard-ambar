@@ -8,7 +8,10 @@
         <h1 class="mb-1">Planilhas de medicao</h1>
         <p class="text-muted mb-0">Bases importadas por obra para gerar medicoes acumulativas.</p>
     </div>
-    <a class="btn btn-primary" href="{% url 'importar_orcamento_medicao' %}">Importar CSV</a>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-primary" href="{% url 'novo_orcamento_manual_medicao' %}">Criar manual</a>
+        <a class="btn btn-outline-primary" href="{% url 'importar_orcamento_medicao' %}">Importar CSV</a>
+    </div>
 </div>
 
 <div class="card shadow-sm">

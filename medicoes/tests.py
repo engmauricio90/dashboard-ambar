@@ -194,6 +194,105 @@ class MedicoesTests(TestCase):
         self.assertEqual(item.preco_unitario_total, Decimal('17.6666'))
         self.assertEqual(orcamento.itens.count(), 2)
 
+    def test_cria_planilha_manual_e_medicao_construtora(self):
+        response = self.client.post(
+            reverse('novo_orcamento_manual_medicao'),
+            {
+                'obra': self.obra.id,
+                'nome': 'Planilha manual construtora',
+                'tipo': OrcamentoMedicao.TIPO_CONSTRUTORA,
+                'observacoes': '',
+            },
+        )
+
+        orcamento = OrcamentoMedicao.objects.get(nome='Planilha manual construtora')
+        self.assertRedirects(response, reverse('editar_itens_orcamento_medicao', args=[orcamento.id]))
+
+        self.client.post(
+            reverse('editar_itens_orcamento_medicao', args=[orcamento.id]),
+            {
+                'itens-TOTAL_FORMS': '1',
+                'itens-INITIAL_FORMS': '0',
+                'itens-MIN_NUM_FORMS': '0',
+                'itens-MAX_NUM_FORMS': '1000',
+                'itens-0-id': '',
+                'itens-0-item': '1',
+                'itens-0-descricao': 'Servico manual',
+                'itens-0-unidade': 'm2',
+                'itens-0-quantidade': '10.0000',
+                'itens-0-preco_unitario_material': '2.0000',
+                'itens-0-preco_unitario_mao_obra': '3.0000',
+                'itens-0-preco_unitario_equipamentos': '0.0000',
+            },
+        )
+
+        response = self.client.post(
+            reverse('nova_medicao_construtora', args=[orcamento.id]),
+            {
+                'numero': '1',
+                'periodo_inicio': '2026-01-01',
+                'periodo_fim': '2026-01-31',
+                'data_medicao': '2026-01-31',
+                'observacoes': '',
+            },
+        )
+
+        medicao = MedicaoConstrutora.objects.get(orcamento=orcamento)
+        self.assertRedirects(response, reverse('editar_medicao_construtora', args=[medicao.id]))
+        self.assertEqual(medicao.itens.count(), 1)
+
+    def test_cria_planilha_manual_e_medicao_cumulativa_empreiteiro(self):
+        response = self.client.post(
+            reverse('novo_orcamento_manual_medicao'),
+            {
+                'obra': self.obra.id,
+                'nome': 'Planilha manual empreiteiro',
+                'tipo': OrcamentoMedicao.TIPO_EMPREITEIRO,
+                'observacoes': '',
+            },
+        )
+
+        orcamento = OrcamentoMedicao.objects.get(nome='Planilha manual empreiteiro')
+        self.assertRedirects(response, reverse('editar_itens_orcamento_medicao', args=[orcamento.id]))
+
+        self.client.post(
+            reverse('editar_itens_orcamento_medicao', args=[orcamento.id]),
+            {
+                'itens-TOTAL_FORMS': '1',
+                'itens-INITIAL_FORMS': '0',
+                'itens-MIN_NUM_FORMS': '0',
+                'itens-MAX_NUM_FORMS': '1000',
+                'itens-0-id': '',
+                'itens-0-item': '1',
+                'itens-0-descricao': 'Servico empreiteiro manual',
+                'itens-0-unidade': 'm',
+                'itens-0-quantidade': '20.0000',
+                'itens-0-preco_unitario_material': '0.0000',
+                'itens-0-preco_unitario_mao_obra': '15.0000',
+                'itens-0-preco_unitario_equipamentos': '0.0000',
+            },
+        )
+
+        response = self.client.post(
+            reverse('nova_medicao_empreiteiro_cumulativa', args=[orcamento.id]),
+            {
+                'obra': self.obra.id,
+                'empreiteiro': 'Empreiteiro manual',
+                'cpf_cnpj': '',
+                'pix': '',
+                'numero': '1',
+                'periodo_inicio': '2026-02-01',
+                'periodo_fim': '2026-02-28',
+                'data_medicao': '2026-02-28',
+                'observacoes': '',
+            },
+        )
+
+        medicao = MedicaoEmpreiteiro.objects.get(orcamento=orcamento)
+        self.assertRedirects(response, reverse('editar_medicao_empreiteiro', args=[medicao.id]))
+        self.assertEqual(medicao.tipo, MedicaoEmpreiteiro.TIPO_CUMULATIVA)
+        self.assertEqual(medicao.itens.count(), 1)
+
     def test_exclui_planilha_importada(self):
         orcamento, item = self._orcamento()
 

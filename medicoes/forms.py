@@ -46,6 +46,15 @@ class ImportarOrcamentoForm(BootstrapForm):
         self.fields['obra'].queryset = Obra.objects.all()
 
 
+class OrcamentoMedicaoManualForm(BootstrapModelForm):
+    class Meta:
+        model = OrcamentoMedicao
+        fields = ['obra', 'nome', 'tipo', 'observacoes']
+        widgets = {
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+
+
 class ItemOrcamentoMedicaoForm(BootstrapModelForm):
     class Meta:
         model = ItemOrcamentoMedicao

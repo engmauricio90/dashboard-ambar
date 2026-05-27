@@ -9,6 +9,7 @@
         <p class="text-muted mb-0">Planilhas por obra, medicoes acumulativas, impostos, descontos e faturamento direto.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-primary" href="{% url 'novo_orcamento_manual_medicao' %}?tipo=construtora">Criar planilha manual</a>
         <a class="btn btn-primary" href="{% url 'importar_orcamento_medicao' %}">Importar planilha</a>
         <a class="btn btn-outline-secondary" href="{% url 'lista_orcamentos_medicao' %}">Todas as planilhas</a>
     </div>
