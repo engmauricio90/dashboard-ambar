@@ -132,12 +132,12 @@ class MedicoesTests(TestCase):
 
         response = self.client.get(reverse('editar_medicao_construtora', args=[medicao_atual.id]))
 
-        self.assertContains(response, '1414 | Fornecedor livre')
+        self.assertContains(response, '1414')
+        self.assertContains(response, 'Fornecedor livre')
         self.assertContains(response, 'R$ 1.000,00')
-        self.assertContains(response, 'ainda nao descontado')
+        self.assertContains(response, '100,00%')
         self.assertContains(response, 'Historico de faturamento direto ja descontado')
         self.assertContains(response, 'Fornecedor usado')
-        self.assertNotContains(response, '1413 | Fornecedor usado')
 
     def test_importacao_sem_cabecalho_retorna_erro_no_formulario(self):
         arquivo = SimpleUploadedFile(
@@ -399,7 +399,7 @@ class MedicoesTests(TestCase):
                 'desconto_adicional': '0',
                 'desconto_adicional_percentual': '0',
                 'observacoes': '',
-                'faturamentos_diretos': [str(faturamento.id)],
+                f'faturamento_direto_{faturamento.id}_percentual': '50',
                 'itens-TOTAL_FORMS': '1',
                 'itens-INITIAL_FORMS': '1',
                 'itens-MIN_NUM_FORMS': '0',
@@ -412,10 +412,11 @@ class MedicoesTests(TestCase):
         self.assertRedirects(response, reverse('editar_medicao_construtora', args=[medicao.id]))
         medicao.refresh_from_db()
         faturamento.refresh_from_db()
-        self.assertEqual(medicao.issqn, Decimal('12.00'))
+        self.assertEqual(medicao.total_faturamento_direto, Decimal('50.00'))
+        self.assertEqual(medicao.issqn, Decimal('14.50'))
         self.assertEqual(medicao.inss, Decimal('10.00'))
-        self.assertEqual(medicao.total_liquido, Decimal('218.00'))
-        self.assertEqual(faturamento.medicao_desconto, 'Medicao 1')
+        self.assertEqual(medicao.total_liquido, Decimal('265.50'))
+        self.assertEqual(faturamento.medicao_desconto, 'Medicao 1 (50.00%)')
 
     def test_percentuais_sao_calculados_mesmo_sem_valor_salvo(self):
         orcamento, item = self._orcamento()

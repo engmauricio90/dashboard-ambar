@@ -182,7 +182,7 @@ class MedicaoConstrutora(models.Model):
 
     @property
     def total_faturamento_direto(self):
-        vinculado = _sum_decimal(v.faturamento_direto.valor_nota for v in self.faturamentos_diretos.select_related('faturamento_direto'))
+        vinculado = _sum_decimal(v.valor_descontado for v in self.faturamentos_diretos.select_related('faturamento_direto'))
         return vinculado or self.valor_faturamento_direto
 
     @property
@@ -231,17 +231,29 @@ class FaturamentoDiretoMedicao(models.Model):
         on_delete=models.CASCADE,
         related_name='faturamentos_diretos',
     )
-    faturamento_direto = models.OneToOneField(
+    faturamento_direto = models.ForeignKey(
         'controles.FaturamentoDireto',
         on_delete=models.PROTECT,
-        related_name='vinculo_medicao',
+        related_name='vinculos_medicao',
     )
+    percentual_descontado = models.DecimalField(max_digits=7, decimal_places=4, default=100)
+    valor_descontado = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['faturamento_direto__data_lancamento', 'id']
         verbose_name = 'Faturamento direto descontado na medicao'
         verbose_name_plural = 'Faturamentos diretos descontados nas medicoes'
+        constraints = [
+            models.UniqueConstraint(fields=['medicao', 'faturamento_direto'], name='unique_faturamento_direto_por_medicao')
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.faturamento_direto_id:
+            self.valor_descontado = (
+                self.faturamento_direto.valor_nota * self.percentual_descontado / Decimal('100')
+            ).quantize(Decimal('0.01'))
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f'{self.medicao} - {self.faturamento_direto}'

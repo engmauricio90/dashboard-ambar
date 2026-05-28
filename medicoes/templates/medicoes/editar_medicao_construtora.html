@@ -94,24 +94,53 @@
     <div class="card shadow-sm mb-4">
         <div class="card-body">
             <h5 class="mb-3">Faturamento direto descontado</h5>
-            <p class="text-muted small mb-3">Selecione os faturamentos diretos que entram como desconto desta medicao. Eles nao entram na base de calculo de ISSQN e INSS.</p>
-            {% with field=form.faturamentos_diretos %}
-            {% if field.field.queryset %}
-            <div class="row g-2">
-                {% for checkbox in field %}
-                <div class="col-md-6">
-                    <label class="border rounded p-3 w-100 d-flex gap-2 align-items-start">
-                        <span class="pt-1">{{ checkbox.tag }}</span>
-                        <span>{{ checkbox.choice_label }}</span>
-                    </label>
-                </div>
-                {% endfor %}
+            <p class="text-muted small mb-3">Informe o percentual do faturamento direto que sera descontado nesta medicao. Eles nao entram na base de calculo de ISSQN e INSS.</p>
+            {% if faturamentos_diretos_linhas %}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>NF/OC</th>
+                            <th>Empresa</th>
+                            <th>Descricao</th>
+                            <th>Valor NF</th>
+                            <th>Ja descontado</th>
+                            <th>Disponivel</th>
+                            <th style="width: 150px;">% nesta medicao</th>
+                            <th>Valor nesta medicao</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for linha in faturamentos_diretos_linhas %}
+                        <tr>
+                            <td>{{ linha.faturamento.numero_nf|default:linha.faturamento.numero_ordem_compra|default:'-' }}</td>
+                            <td>{{ linha.faturamento.empresa_comprou }}</td>
+                            <td>{{ linha.faturamento.descricao }}</td>
+                            <td>R$ {{ linha.faturamento.valor_nota|floatformat:2 }}</td>
+                            <td>{{ linha.percentual_outros|floatformat:2 }}%</td>
+                            <td>{{ linha.saldo_percentual|floatformat:2 }}%</td>
+                            <td>
+                                <input
+                                    type="number"
+                                    step="0.0001"
+                                    min="0"
+                                    max="{{ linha.saldo_percentual|floatformat:4 }}"
+                                    name="faturamento_direto_{{ linha.faturamento.id }}_percentual"
+                                    value="{{ linha.percentual_atual|floatformat:4 }}"
+                                    class="form-control form-control-sm faturamento-direto-percentual"
+                                    data-valor="{{ linha.faturamento.valor_nota|stringformat:'f' }}"
+                                    data-target="valor-fd-{{ linha.faturamento.id }}"
+                                >
+                            </td>
+                            <td id="valor-fd-{{ linha.faturamento.id }}">R$ {{ linha.valor_atual|floatformat:2 }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
             {% else %}
             <div class="text-muted">Nenhum faturamento direto disponivel para desconto nesta obra.</div>
             {% endif %}
-            {% if field.errors %}<div class="text-danger small mt-2">{{ field.errors|join:', ' }}</div>{% endif %}
-            {% endwith %}
         </div>
     </div>
     <div class="card shadow-sm mb-4">
@@ -126,7 +155,7 @@
                             <th>Empresa</th>
                             <th>Descricao</th>
                             <th>Valor</th>
-                            <th>Medicao</th>
+                            <th>Descontos</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -136,7 +165,7 @@
                             <td>{{ faturamento.empresa_comprou }}</td>
                             <td>{{ faturamento.descricao }}</td>
                             <td>R$ {{ faturamento.valor_nota|floatformat:2 }}</td>
-                            <td>{{ faturamento.medicao_desconto|default:faturamento.vinculo_medicao.medicao.label_medicao }}</td>
+                            <td>{{ faturamento.medicao_desconto|default:'-' }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -149,4 +178,25 @@
     </div>
     <button class="btn btn-primary" type="submit">Salvar medicao</button>
 </form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function moedaBR(valor) {
+        return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    document.querySelectorAll('.faturamento-direto-percentual').forEach((field) => {
+        function atualizarValor() {
+            const valor = Number(String(field.dataset.valor || '0').replace(',', '.'));
+            const percentual = Number(String(field.value || '0').replace(',', '.'));
+            const target = document.getElementById(field.dataset.target);
+            if (target) {
+                target.textContent = moedaBR(valor * percentual / 100);
+            }
+        }
+        field.addEventListener('input', atualizarValor);
+        atualizarValor();
+    });
+</script>
 {% endblock %}

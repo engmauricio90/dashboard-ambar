@@ -332,9 +332,9 @@ def _pdf_medicao_construtora(medicao):
                 notes_y += block_h
                 for vinculo in medicao.faturamentos_diretos.select_related('faturamento_direto')[:4]:
                     fd = vinculo.faturamento_direto
-                    texto = f'{fd.numero_nf or fd.numero_ordem_compra or "-"} - {fd.empresa_comprou} - {fd.descricao}'
+                    texto = f'{fd.numero_nf or fd.numero_ordem_compra or "-"} - {fd.empresa_comprou} - {fd.descricao} ({vinculo.percentual_descontado:.2f}%)'
                     _draw_report_cell(draw, texto, margin, notes_y, table_w - 220, block_h, small_font, align='left')
-                    _draw_report_cell(draw, _money(fd.valor_nota), margin + table_w - 220, notes_y, 220, block_h, small_font, align='right')
+                    _draw_report_cell(draw, _money(vinculo.valor_descontado), margin + table_w - 220, notes_y, 220, block_h, small_font, align='right')
                     notes_y += block_h
 
         footer = f'Pagina {page_index + 1} de {len(chunks)}'
@@ -420,36 +420,77 @@ def _aplicar_percentuais_construtora(medicao):
         medicao.save(update_fields=updates + ['updated_at'])
 
 
-def _sync_faturamentos_diretos(medicao, faturamentos):
-    selecionados = set(faturamentos.values_list('id', flat=True)) if hasattr(faturamentos, 'values_list') else {f.id for f in faturamentos}
-    atuais = set(medicao.faturamentos_diretos.values_list('faturamento_direto_id', flat=True))
-    remover = atuais - selecionados
-    adicionar = selecionados - atuais
-    if remover:
-        removidos = FaturamentoDiretoMedicao.objects.filter(medicao=medicao, faturamento_direto_id__in=remover)
-        for vinculo in removidos.select_related('faturamento_direto'):
-            faturamento = vinculo.faturamento_direto
-            if faturamento.medicao_desconto == medicao.label_medicao:
-                faturamento.medicao_desconto = ''
-                faturamento.save(update_fields=['medicao_desconto', 'updated_at'])
-        removidos.delete()
-    for faturamento_id in adicionar:
-        vinculo, _ = FaturamentoDiretoMedicao.objects.get_or_create(
-            medicao=medicao,
-            faturamento_direto_id=faturamento_id,
+def _atualizar_resumo_faturamento_direto(faturamento):
+    vinculos = faturamento.vinculos_medicao.select_related('medicao').order_by('medicao__numero', 'id')
+    partes = [f'{vinculo.medicao.label_medicao} ({vinculo.percentual_descontado:.2f}%)' for vinculo in vinculos]
+    faturamento.medicao_desconto = ' / '.join(partes)[:120]
+    faturamento.save(update_fields=['medicao_desconto', 'updated_at'])
+
+
+def _sync_faturamentos_diretos(medicao, post_data):
+    atuais = {
+        vinculo.faturamento_direto_id: vinculo
+        for vinculo in medicao.faturamentos_diretos.select_related('faturamento_direto')
+    }
+    usados = set()
+    for faturamento in FaturamentoDireto.objects.filter(obra=medicao.orcamento.obra):
+        raw_percent = (post_data.get(f'faturamento_direto_{faturamento.id}_percentual') or '').strip()
+        try:
+            percentual = Decimal(raw_percent.replace(',', '.')) if raw_percent else Decimal('0')
+        except InvalidOperation:
+            percentual = Decimal('0')
+        percentual = max(Decimal('0'), min(percentual, Decimal('100')))
+        ja_descontado = sum(
+            (
+                vinculo.percentual_descontado
+                for vinculo in faturamento.vinculos_medicao.exclude(medicao=medicao)
+            ),
+            Decimal('0'),
         )
-        faturamento = vinculo.faturamento_direto
-        faturamento.medicao_desconto = medicao.label_medicao
-        faturamento.save(update_fields=['medicao_desconto', 'updated_at'])
-    if selecionados:
-        for vinculo in FaturamentoDiretoMedicao.objects.filter(
-            medicao=medicao,
-            faturamento_direto_id__in=selecionados,
-        ).select_related('faturamento_direto'):
+        saldo_percentual = max(Decimal('100') - ja_descontado, Decimal('0'))
+        percentual = min(percentual, saldo_percentual)
+        vinculo = atuais.get(faturamento.id)
+        if percentual > 0:
+            if not vinculo:
+                vinculo = FaturamentoDiretoMedicao(medicao=medicao, faturamento_direto=faturamento)
+            vinculo.percentual_descontado = percentual
+            vinculo.save()
+            usados.add(faturamento.id)
+        elif vinculo:
+            vinculo.delete()
+        _atualizar_resumo_faturamento_direto(faturamento)
+    for faturamento_id, vinculo in atuais.items():
+        if faturamento_id not in usados and not FaturamentoDireto.objects.filter(id=faturamento_id).exists():
             faturamento = vinculo.faturamento_direto
-            if faturamento.medicao_desconto != medicao.label_medicao:
-                faturamento.medicao_desconto = medicao.label_medicao
-                faturamento.save(update_fields=['medicao_desconto', 'updated_at'])
+            vinculo.delete()
+            _atualizar_resumo_faturamento_direto(faturamento)
+
+
+def _faturamentos_diretos_context(medicao):
+    linhas = []
+    for faturamento in FaturamentoDireto.objects.filter(obra=medicao.orcamento.obra).order_by('data_lancamento', 'id'):
+        vinculo_atual = medicao.faturamentos_diretos.filter(faturamento_direto=faturamento).first()
+        percentual_atual = vinculo_atual.percentual_descontado if vinculo_atual else Decimal('0')
+        percentual_outros = sum(
+            (
+                vinculo.percentual_descontado
+                for vinculo in faturamento.vinculos_medicao.exclude(medicao=medicao)
+            ),
+            Decimal('0'),
+        )
+        saldo_percentual = max(Decimal('100') - percentual_outros, Decimal('0'))
+        if saldo_percentual <= 0 and not vinculo_atual:
+            continue
+        linhas.append(
+            {
+                'faturamento': faturamento,
+                'percentual_atual': percentual_atual,
+                'percentual_outros': percentual_outros,
+                'saldo_percentual': saldo_percentual,
+                'valor_atual': vinculo_atual.valor_descontado if vinculo_atual else Decimal('0'),
+            }
+        )
+    return linhas
 
 
 def _aplicar_percentuais_empreiteiro(medicao):
@@ -796,7 +837,7 @@ def editar_medicao_construtora(request, medicao_id):
         if form.is_valid() and formset.is_valid():
             form.save()
             formset.save()
-            _sync_faturamentos_diretos(medicao, form.cleaned_data['faturamentos_diretos'])
+            _sync_faturamentos_diretos(medicao, request.POST)
             _aplicar_percentuais_construtora(medicao)
             messages.success(request, 'Medicao da construtora atualizada com sucesso.')
             return redirect('editar_medicao_construtora', medicao_id=medicao.id)
@@ -805,10 +846,10 @@ def editar_medicao_construtora(request, medicao_id):
         formset = ItemMedicaoConstrutoraFormSet(instance=medicao)
     faturamentos_ja_descontados = FaturamentoDireto.objects.filter(
         obra=medicao.orcamento.obra,
-        vinculo_medicao__isnull=False,
+        vinculos_medicao__isnull=False,
     ).exclude(
-        vinculo_medicao__medicao=medicao,
-    ).select_related('vinculo_medicao__medicao').order_by('data_lancamento', 'id')
+        vinculos_medicao__medicao=medicao,
+    ).distinct().order_by('data_lancamento', 'id')
     return render(
         request,
         'medicoes/editar_medicao_construtora.html',
@@ -816,6 +857,7 @@ def editar_medicao_construtora(request, medicao_id):
             'medicao': medicao,
             'form': form,
             'formset': formset,
+            'faturamentos_diretos_linhas': _faturamentos_diretos_context(medicao),
             'faturamentos_ja_descontados': faturamentos_ja_descontados,
         },
     )

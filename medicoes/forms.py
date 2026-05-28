@@ -1,8 +1,6 @@
 from django import forms
-from django.db import models
 from django.forms import inlineformset_factory
 
-from controles.models import FaturamentoDireto
 from obras.forms import BootstrapForm, BootstrapModelForm
 
 from .models import (
@@ -14,21 +12,6 @@ from .models import (
     MedicaoEmpreiteiro,
     OrcamentoMedicao,
 )
-
-
-def _money_label(value):
-    return f'R$ {(value or 0):,.2f}'.replace(',', 'X').replace('.', ',').replace('X', '.')
-
-
-class FaturamentoDiretoMedicaoField(forms.ModelMultipleChoiceField):
-    def label_from_instance(self, obj):
-        documento = obj.numero_nf or obj.numero_ordem_compra or 'sem documento'
-        vencimento = obj.vencimento_boleto or '-'
-        medicao = obj.medicao_desconto or 'ainda nao descontado'
-        return (
-            f'{documento} | {obj.empresa_comprou} | {_money_label(obj.valor_nota)} | '
-            f'Venc.: {vencimento} | {medicao} | {obj.descricao}'
-        )
 
 
 class ImportarOrcamentoForm(BootstrapForm):
@@ -94,26 +77,6 @@ class ItemOrcamentoMedicaoForm(BootstrapModelForm):
 
 
 class MedicaoConstrutoraForm(BootstrapModelForm):
-    faturamentos_diretos = FaturamentoDiretoMedicaoField(
-        queryset=FaturamentoDireto.objects.none(),
-        required=False,
-        widget=forms.CheckboxSelectMultiple,
-        label='Faturamentos diretos descontados nesta medicao',
-    )
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        obra = self.instance.orcamento.obra if self.instance and self.instance.pk else None
-        if obra:
-            vinculados = self.instance.faturamentos_diretos.values_list('faturamento_direto_id', flat=True)
-            self.fields['faturamentos_diretos'].queryset = FaturamentoDireto.objects.filter(
-                obra=obra,
-            ).filter(
-                models.Q(vinculo_medicao__isnull=True) | models.Q(id__in=vinculados)
-            ).order_by('data_lancamento', 'id')
-            self.fields['faturamentos_diretos'].initial = list(vinculados)
-            self.fields['faturamentos_diretos'].widget.attrs['class'] = 'form-check-input'
-
     def clean(self):
         cleaned_data = super().clean()
         inicio = cleaned_data.get('periodo_inicio')
