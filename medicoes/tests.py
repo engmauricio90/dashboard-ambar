@@ -308,6 +308,8 @@ class MedicoesTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Recibo simples de medicao')
+        self.assertContains(response, 'Adicionar item')
+        self.assertContains(response, 'name="itens-TOTAL_FORMS" value="0"')
 
     def test_telas_separadas_de_medicao_carregam(self):
         orcamento, item = self._orcamento()

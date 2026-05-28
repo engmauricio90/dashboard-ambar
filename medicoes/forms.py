@@ -318,6 +318,6 @@ ItemMedicaoEmpreiteiroFormSet = inlineformset_factory(
     ItemMedicaoEmpreiteiro,
     form=ItemMedicaoEmpreiteiroForm,
     formset=BaseItemMedicaoEmpreiteiroFormSet,
-    extra=8,
+    extra=0,
     can_delete=True,
 )

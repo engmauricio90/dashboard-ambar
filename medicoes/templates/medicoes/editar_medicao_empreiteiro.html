@@ -38,14 +38,17 @@
 
     <div class="card shadow-sm mb-4">
         <div class="card-body">
-            <h5 class="mb-3">Itens</h5>
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <h5 class="mb-0">Itens</h5>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="adicionar-item-medicao">Adicionar item</button>
+            </div>
             {{ formset.management_form }}
             <div class="table-responsive">
                 <table class="table table-sm align-middle">
                     <thead>
                         <tr><th>Base</th><th>Item</th><th>Descricao</th><th>Und</th><th>Qtd periodo</th><th>Valor unit.</th><th>Valor</th><th>Excluir</th></tr>
                     </thead>
-                    <tbody>
+                    <tbody id="itens-medicao-body">
                         {% for item_form in formset %}
                         <tr>
                             <td style="min-width: 150px;">{{ item_form.item_orcamento }}{{ item_form.id }}</td>
@@ -60,6 +63,18 @@
                         {% if item_form.non_field_errors %}<tr><td colspan="8" class="text-danger small">{{ item_form.non_field_errors }}</td></tr>{% endif %}
                         {% endfor %}
                     </tbody>
+                    <template id="item-medicao-empty-form">
+                        <tr>
+                            <td style="min-width: 150px;">{{ formset.empty_form.item_orcamento }}{{ formset.empty_form.id }}</td>
+                            <td style="min-width: 90px;">{{ formset.empty_form.item }}</td>
+                            <td style="min-width: 260px;">{{ formset.empty_form.descricao }}</td>
+                            <td style="min-width: 80px;">{{ formset.empty_form.unidade }}</td>
+                            <td style="min-width: 130px;">{{ formset.empty_form.quantidade_periodo }}</td>
+                            <td style="min-width: 130px;">{{ formset.empty_form.valor_unitario }}</td>
+                            <td class="text-muted">Calculado ao salvar</td>
+                            <td>{% if formset.empty_form.DELETE %}{{ formset.empty_form.DELETE }}{% endif %}</td>
+                        </tr>
+                    </template>
                 </table>
             </div>
             {% if medicao %}
@@ -97,6 +112,21 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script>
+    const totalItensMedicao = document.querySelector('input[name="{{ formset.prefix }}-TOTAL_FORMS"]');
+    const itensMedicaoBody = document.getElementById('itens-medicao-body');
+    const itemMedicaoTemplate = document.getElementById('item-medicao-empty-form');
+    const adicionarItemMedicao = document.getElementById('adicionar-item-medicao');
+
+    if (totalItensMedicao && itensMedicaoBody && itemMedicaoTemplate && adicionarItemMedicao) {
+        adicionarItemMedicao.addEventListener('click', () => {
+            const index = Number(totalItensMedicao.value);
+            const rowHtml = itemMedicaoTemplate.innerHTML.replaceAll('__prefix__', index);
+            itensMedicaoBody.insertAdjacentHTML('beforeend', rowHtml);
+            totalItensMedicao.value = index + 1;
+        });
+    }
+</script>
 {% if empreiteiros_json %}
 <script>
     const empreiteirosMedicao = JSON.parse(document.getElementById('empreiteiros-medicao-data').textContent);

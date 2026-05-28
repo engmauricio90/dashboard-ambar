@@ -41,7 +41,7 @@
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                 <h5 class="mb-0">Itens medidos</h5>
-                <span class="text-muted small">Use apenas as linhas necessarias.</span>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="adicionar-item-medicao">Adicionar item</button>
             </div>
             {{ formset.management_form }}
             <div class="table-responsive">
@@ -57,7 +57,7 @@
                             <th style="width: 80px;">Excluir</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="itens-medicao-body">
                         {% for item_form in formset %}
                         <tr>
                             <td>{{ item_form.item_orcamento.as_hidden }}{{ item_form.id }}{{ item_form.item }}</td>
@@ -73,6 +73,18 @@
                         {% endif %}
                         {% endfor %}
                     </tbody>
+                    <template id="item-medicao-empty-form">
+                        <tr>
+                            {% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+                            <td>{{ formset.empty_form.item_orcamento.as_hidden }}{{ formset.empty_form.item }}</td>
+                            <td>{{ formset.empty_form.descricao }}</td>
+                            <td>{{ formset.empty_form.unidade }}</td>
+                            <td>{{ formset.empty_form.quantidade_periodo }}</td>
+                            <td>{{ formset.empty_form.valor_unitario }}</td>
+                            <td class="text-muted">Calculado ao salvar</td>
+                            <td>{% if formset.empty_form.DELETE %}{{ formset.empty_form.DELETE }}{% endif %}</td>
+                        </tr>
+                    </template>
                 </table>
             </div>
         </div>
@@ -108,6 +120,21 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script>
+    const totalItensMedicao = document.querySelector('input[name="{{ formset.prefix }}-TOTAL_FORMS"]');
+    const itensMedicaoBody = document.getElementById('itens-medicao-body');
+    const itemMedicaoTemplate = document.getElementById('item-medicao-empty-form');
+    const adicionarItemMedicao = document.getElementById('adicionar-item-medicao');
+
+    if (totalItensMedicao && itensMedicaoBody && itemMedicaoTemplate && adicionarItemMedicao) {
+        adicionarItemMedicao.addEventListener('click', () => {
+            const index = Number(totalItensMedicao.value);
+            const rowHtml = itemMedicaoTemplate.innerHTML.replaceAll('__prefix__', index);
+            itensMedicaoBody.insertAdjacentHTML('beforeend', rowHtml);
+            totalItensMedicao.value = index + 1;
+        });
+    }
+</script>
 {% if empreiteiros_json %}
 <script>
     const empreiteirosMedicao = JSON.parse(document.getElementById('empreiteiros-medicao-data').textContent);

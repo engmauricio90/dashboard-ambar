@@ -184,6 +184,13 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertEqual(ContaPagar.objects.get().descricao, 'Despesa sem OC')
         self.assertFalse(NotaFiscalOrdemCompraGeral.objects.exists())
 
+    def test_form_conta_pagar_adiciona_itens_oc_por_botao(self):
+        response = self.client.get(reverse('nova_conta_pagar'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Adicionar item')
+        self.assertContains(response, 'name="itens_oc-TOTAL_FORMS" value="0"')
+
     def test_lista_contas_pagar_mostra_apenas_abertas(self):
         ContaPagar.objects.create(
             fornecedor='Fornecedor Aberto',

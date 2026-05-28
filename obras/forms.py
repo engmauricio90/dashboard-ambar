@@ -205,7 +205,7 @@ RetencaoNotaFiscalFormSet = inlineformset_factory(
     NotaFiscal,
     RetencaoNotaFiscal,
     form=RetencaoNotaFiscalInlineForm,
-    extra=2,
+    extra=0,
     can_delete=True,
 )
 
@@ -214,6 +214,6 @@ ImpostoNotaFiscalFormSet = inlineformset_factory(
     NotaFiscal,
     ImpostoNotaFiscal,
     form=ImpostoNotaFiscalInlineForm,
-    extra=2,
+    extra=0,
     can_delete=True,
 )

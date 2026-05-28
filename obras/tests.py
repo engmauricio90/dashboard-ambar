@@ -177,6 +177,22 @@ class ObraFluxoFinanceiroTests(TestCase):
         self.assertEqual(response['Location'], f'{reverse("nova_conta_receber")}?obra={self.obra.id}')
         self.assertFalse(NotaFiscal.objects.filter(obra=self.obra, numero='NF-001').exists())
 
+    def test_editar_nota_fiscal_adiciona_retencoes_e_impostos_por_botao(self):
+        nota = NotaFiscal.objects.create(
+            obra=self.obra,
+            numero='NF-EDIT',
+            data_emissao=date(2026, 4, 20),
+            valor_bruto=Decimal('250.00'),
+        )
+
+        response = self.client.get(reverse('editar_nota_fiscal', args=[self.obra.id, nota.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Adicionar retencao')
+        self.assertContains(response, 'Adicionar imposto')
+        self.assertContains(response, 'name="retencoes-TOTAL_FORMS" value="0"')
+        self.assertContains(response, 'name="impostos-TOTAL_FORMS" value="0"')
+
     def test_nova_despesa_redireciona_para_financeiro(self):
         response = self.client.post(
             reverse('nova_despesa', args=[self.obra.id]),

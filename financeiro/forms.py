@@ -202,7 +202,7 @@ ItemContaPagarOrdemCompraFormSet = inlineformset_factory(
     ItemContaPagarOrdemCompra,
     form=ItemContaPagarOrdemCompraForm,
     formset=BaseItemContaPagarOrdemCompraFormSet,
-    extra=5,
+    extra=0,
     can_delete=True,
 )
 

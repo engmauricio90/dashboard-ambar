@@ -53,13 +53,14 @@
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h5 class="mb-0">Retencoes da NF</h5>
-                        <span class="text-muted small">Preencha apenas as linhas necessarias</span>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="adicionar-retencao-nf">Adicionar retencao</button>
                     </div>
                     {{ retencoes_formset.management_form }}
                     {% if retencoes_formset.non_form_errors %}
                     <div class="alert alert-danger">{{ retencoes_formset.non_form_errors }}</div>
                     {% endif %}
 
+                    <div id="retencoes-nf-body">
                     {% for retencao_form in retencoes_formset %}
                     <div class="border rounded p-3 mb-3 bg-light-subtle">
                         {% for hidden in retencao_form.hidden_fields %}{{ hidden }}{% endfor %}
@@ -90,6 +91,34 @@
                         </div>
                     </div>
                     {% endfor %}
+                    </div>
+                    <template id="retencao-nf-empty-form">
+                        <div class="border rounded p-3 mb-3 bg-light-subtle">
+                            {% for hidden in retencoes_formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Tipo</label>
+                                    {{ retencoes_formset.empty_form.tipo }}
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Descricao</label>
+                                    {{ retencoes_formset.empty_form.descricao }}
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Valor</label>
+                                    {{ retencoes_formset.empty_form.valor }}
+                                </div>
+                                <div class="col-md-1 d-flex align-items-end">
+                                    {% if retencoes_formset.empty_form.DELETE %}
+                                    <div class="form-check mb-2">
+                                        {{ retencoes_formset.empty_form.DELETE }}
+                                        <label class="form-check-label" for="{{ retencoes_formset.empty_form.DELETE.id_for_label }}">Excluir</label>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </template>
                 </div>
             </div>
         </div>
@@ -99,13 +128,14 @@
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h5 class="mb-0">Impostos da NF</h5>
-                        <span class="text-muted small">Preencha apenas as linhas necessarias</span>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="adicionar-imposto-nf">Adicionar imposto</button>
                     </div>
                     {{ impostos_formset.management_form }}
                     {% if impostos_formset.non_form_errors %}
                     <div class="alert alert-danger">{{ impostos_formset.non_form_errors }}</div>
                     {% endif %}
 
+                    <div id="impostos-nf-body">
                     {% for imposto_form in impostos_formset %}
                     <div class="border rounded p-3 mb-3 bg-light-subtle">
                         {% for hidden in imposto_form.hidden_fields %}{{ hidden }}{% endfor %}
@@ -136,6 +166,34 @@
                         </div>
                     </div>
                     {% endfor %}
+                    </div>
+                    <template id="imposto-nf-empty-form">
+                        <div class="border rounded p-3 mb-3 bg-light-subtle">
+                            {% for hidden in impostos_formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Tipo</label>
+                                    {{ impostos_formset.empty_form.tipo }}
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Descricao</label>
+                                    {{ impostos_formset.empty_form.descricao }}
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Valor</label>
+                                    {{ impostos_formset.empty_form.valor }}
+                                </div>
+                                <div class="col-md-1 d-flex align-items-end">
+                                    {% if impostos_formset.empty_form.DELETE %}
+                                    <div class="form-check mb-2">
+                                        {{ impostos_formset.empty_form.DELETE }}
+                                        <label class="form-check-label" for="{{ impostos_formset.empty_form.DELETE.id_for_label }}">Excluir</label>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </template>
                 </div>
             </div>
         </div>
@@ -145,4 +203,39 @@
         <button type="submit" class="btn btn-success">Salvar nota fiscal</button>
     </div>
 </form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function configurarAdicionarLinha({ totalSelector, bodyId, templateId, buttonId }) {
+        const totalForms = document.querySelector(totalSelector);
+        const body = document.getElementById(bodyId);
+        const template = document.getElementById(templateId);
+        const button = document.getElementById(buttonId);
+
+        if (!totalForms || !body || !template || !button) {
+            return;
+        }
+
+        button.addEventListener('click', () => {
+            const index = Number(totalForms.value);
+            const html = template.innerHTML.replaceAll('__prefix__', index);
+            body.insertAdjacentHTML('beforeend', html);
+            totalForms.value = index + 1;
+        });
+    }
+
+    configurarAdicionarLinha({
+        totalSelector: 'input[name="{{ retencoes_formset.prefix }}-TOTAL_FORMS"]',
+        bodyId: 'retencoes-nf-body',
+        templateId: 'retencao-nf-empty-form',
+        buttonId: 'adicionar-retencao-nf',
+    });
+    configurarAdicionarLinha({
+        totalSelector: 'input[name="{{ impostos_formset.prefix }}-TOTAL_FORMS"]',
+        bodyId: 'impostos-nf-body',
+        templateId: 'imposto-nf-empty-form',
+        buttonId: 'adicionar-imposto-nf',
+    });
+</script>
 {% endblock %}
