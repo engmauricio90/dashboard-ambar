@@ -43,7 +43,7 @@
                         <td>R$ {{ conta.valor_liquido|floatformat:2 }}</td>
                         <td>{{ conta.get_status_display }}</td>
                         <td class="text-end">
-                            {% if not conta.esta_baixada %}
+                            {% if conta.status == conta.STATUS_ABERTO %}
                             <form method="post" action="{% url 'baixar_conta_receber' conta.id %}" class="d-inline">
                                 {% csrf_token %}
                                 <button type="submit" class="btn btn-sm btn-outline-success">Receber</button>

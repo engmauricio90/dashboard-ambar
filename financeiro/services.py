@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from obras.models import DespesaObra, NotaFiscal, RetencaoNotaFiscal, RetencaoTecnicaObra
@@ -215,6 +216,8 @@ def baixar_conta_pagar(conta, data_pagamento=None, valor_pago=None):
 
 @transaction.atomic
 def baixar_conta_receber(conta, data_recebimento=None):
+    if conta.status != conta.STATUS_ABERTO:
+        raise ValidationError('Somente contas a receber em aberto podem ser recebidas.')
     conta.status = conta.STATUS_RECEBIDO
     conta.data_recebimento = data_recebimento or conta.data_recebimento
     conta.save()

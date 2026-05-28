@@ -6,6 +6,7 @@ from pathlib import Path
 
 from django.conf import settings
 from django.contrib import messages
+from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import DatabaseError
 from django.db.models import Q
@@ -503,7 +504,11 @@ def editar_conta_receber(request, conta_id):
 @require_POST
 def baixar_conta_receber(request, conta_id):
     conta = get_object_or_404(ContaReceber, id=conta_id)
-    baixar_conta_receber_service(conta, data_recebimento=timezone.localdate())
+    try:
+        baixar_conta_receber_service(conta, data_recebimento=timezone.localdate())
+    except ValidationError as exc:
+        messages.error(request, exc.messages[0] if exc.messages else 'Nao foi possivel receber esta conta.')
+        return redirect('lista_contas_receber')
     messages.success(request, 'Recebimento registrado com sucesso.')
     return redirect('lista_contas_receber')
 

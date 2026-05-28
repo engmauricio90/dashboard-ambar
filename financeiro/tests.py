@@ -357,6 +357,44 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertEqual(self.obra.total_notas_fiscais, Decimal('1000.00'))
         self.assertEqual(self.obra.total_retencoes_nf, Decimal('25.00'))
 
+    def test_conta_receber_cancelada_nao_mostra_botao_receber(self):
+        ContaReceber.objects.create(
+            cliente='Cliente X',
+            obra=self.obra,
+            centro_custo=self.centro,
+            numero_nf='NF-CAN-BOTAO',
+            descricao='NF cancelada',
+            data_emissao=date(2026, 4, 2),
+            data_vencimento=date(2026, 4, 30),
+            valor_bruto=Decimal('500.00'),
+            status=ContaReceber.STATUS_CANCELADO,
+        )
+
+        response = self.client.get(reverse('lista_contas_receber'))
+
+        self.assertContains(response, 'Cancelado')
+        self.assertNotContains(response, 'btn-outline-success">Receber</button>')
+
+    def test_conta_receber_cancelada_nao_pode_ser_baixada_por_post(self):
+        conta = ContaReceber.objects.create(
+            cliente='Cliente X',
+            obra=self.obra,
+            centro_custo=self.centro,
+            numero_nf='NF-CAN-POST',
+            descricao='NF cancelada',
+            data_emissao=date(2026, 4, 2),
+            data_vencimento=date(2026, 4, 30),
+            valor_bruto=Decimal('500.00'),
+            status=ContaReceber.STATUS_CANCELADO,
+        )
+
+        response = self.client.post(reverse('baixar_conta_receber', args=[conta.id]))
+
+        self.assertRedirects(response, reverse('lista_contas_receber'))
+        conta.refresh_from_db()
+        self.assertEqual(conta.status, ContaReceber.STATUS_CANCELADO)
+        self.assertIsNone(conta.data_recebimento)
+
     def test_conta_receber_sem_obra_desvincula_nota_e_retencao_tecnica(self):
         conta = ContaReceber.objects.create(
             cliente='Cliente X',
