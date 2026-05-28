@@ -187,6 +187,8 @@ def _pdf_medicao_construtora(medicao):
     widths = [165, 620, 75, 120, 135, 135, 95, 140, 165, 170]
     row_h = 38
     header_h = 44
+    footer_y = page_h - 44
+    content_bottom = page_h - 98
     rows_per_page = 23
     chunks = [itens[i : i + rows_per_page] for i in range(0, len(itens), rows_per_page)] or [[]]
     pages = []
@@ -201,6 +203,39 @@ def _pdf_medicao_construtora(medicao):
     dark = (17, 24, 39)
     muted = (75, 85, 99)
     border = (156, 163, 175)
+
+    def new_page():
+        page = Image.new('RGB', (page_w, page_h), 'white')
+        page_draw = ImageDraw.Draw(page)
+        y_start = 34
+        page_draw.text(
+            ((page_w - title_font.getlength('Boletim de Medicoes')) / 2, y_start),
+            'Boletim de Medicoes',
+            font=title_font,
+            fill=dark,
+        )
+        return page, page_draw, y_start + 82
+
+    def ensure_space(image, draw, y, needed):
+        if y + needed <= content_bottom:
+            return image, draw, y, False
+        pages.append(image)
+        new_image, new_draw, new_y = new_page()
+        return new_image, new_draw, new_y, True
+
+    def draw_faturamento_header(draw, y):
+        _draw_report_cell(
+            draw,
+            'Faturamentos diretos descontados',
+            margin,
+            y,
+            table_w,
+            block_h,
+            label_font,
+            bg=header_bg,
+            align='left',
+        )
+        return y + block_h
 
     for page_index, chunk in enumerate(chunks):
         image = Image.new('RGB', (page_w, page_h), 'white')
@@ -328,20 +363,27 @@ def _pdf_medicao_construtora(medicao):
 
             if medicao.faturamentos_diretos.exists():
                 notes_y = max(y_left, y_mid, y_right) + 24
-                _draw_report_cell(draw, 'Faturamentos diretos descontados', margin, notes_y, table_w, block_h, label_font, bg=header_bg, align='left')
-                notes_y += block_h
-                for vinculo in medicao.faturamentos_diretos.select_related('faturamento_direto')[:4]:
+                image, draw, notes_y, _new_page = ensure_space(image, draw, notes_y, block_h * 2)
+                notes_y = draw_faturamento_header(draw, notes_y)
+                for vinculo in medicao.faturamentos_diretos.select_related('faturamento_direto'):
+                    image, draw, notes_y, new_page_started = ensure_space(image, draw, notes_y, block_h)
+                    if new_page_started:
+                        notes_y = draw_faturamento_header(draw, notes_y)
                     fd = vinculo.faturamento_direto
                     texto = f'{fd.numero_nf or fd.numero_ordem_compra or "-"} - {fd.empresa_comprou} - {fd.descricao} ({vinculo.percentual_descontado:.2f}%)'
                     _draw_report_cell(draw, texto, margin, notes_y, table_w - 220, block_h, small_font, align='left')
                     _draw_report_cell(draw, _money(vinculo.valor_descontado), margin + table_w - 220, notes_y, 220, block_h, small_font, align='right')
                     notes_y += block_h
 
-        footer = f'Pagina {page_index + 1} de {len(chunks)}'
-        draw.text((margin, page_h - 44), date.today().strftime('%d/%m/%Y'), font=_font(15), fill=muted)
-        draw.text(((page_w - _font(15).getlength('AMBAR ENGENHARIA')) / 2, page_h - 44), 'AMBAR ENGENHARIA', font=_font(15, True), fill=muted)
-        draw.text((page_w - margin - _font(15).getlength(footer), page_h - 44), footer, font=_font(15), fill=muted)
         pages.append(image)
+
+    total_pages = len(pages)
+    for index, image in enumerate(pages, start=1):
+        draw = ImageDraw.Draw(image)
+        footer = f'Pagina {index} de {total_pages}'
+        draw.text((margin, footer_y), date.today().strftime('%d/%m/%Y'), font=_font(15), fill=muted)
+        draw.text(((page_w - _font(15).getlength('AMBAR ENGENHARIA')) / 2, footer_y), 'AMBAR ENGENHARIA', font=_font(15, True), fill=muted)
+        draw.text((page_w - margin - _font(15).getlength(footer), footer_y), footer, font=_font(15), fill=muted)
 
     buffer = BytesIO()
     pages[0].save(buffer, 'PDF', save_all=True, append_images=pages[1:], resolution=150)

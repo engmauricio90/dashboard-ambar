@@ -420,6 +420,33 @@ class MedicoesTests(TestCase):
         self.assertEqual(medicao.total_liquido, Decimal('265.50'))
         self.assertEqual(faturamento.medicao_desconto, 'Medicao 1 (50.00%)')
 
+    def test_pdf_medicao_construtora_pagina_faturamentos_diretos_extensos(self):
+        orcamento, item = self._orcamento()
+        medicao = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=1,
+            periodo_inicio=date(2026, 1, 1),
+            periodo_fim=date(2026, 1, 31),
+            data_medicao=date(2026, 1, 31),
+        )
+        ItemMedicaoConstrutora.objects.create(medicao=medicao, item_orcamento=item, quantidade_periodo=Decimal('20'))
+        for index in range(12):
+            faturamento = FaturamentoDireto.objects.create(
+                obra=self.obra,
+                numero_nf=f'FD-{index + 1}',
+                empresa_comprou='Cliente',
+                valor_nota=Decimal('100.00'),
+                descricao=f'Material comprado direto {index + 1}',
+                vencimento_boleto='30 dias',
+            )
+            FaturamentoDiretoMedicao.objects.create(medicao=medicao, faturamento_direto=faturamento)
+
+        response = self.client.get(reverse('medicao_construtora_pdf', args=[medicao.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertTrue(response.content.startswith(b'%PDF'))
+
     def test_percentuais_sao_calculados_mesmo_sem_valor_salvo(self):
         orcamento, item = self._orcamento()
         medicao = MedicaoConstrutora.objects.create(
