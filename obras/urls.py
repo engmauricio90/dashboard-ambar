@@ -1,5 +1,7 @@
 from django.urls import path
 
+from diarios import views as diarios_views
+
 from . import views
 
 urlpatterns = [
@@ -7,6 +9,8 @@ urlpatterns = [
     path('nova/', views.nova_obra, name='nova_obra'),
     path('<int:obra_id>/', views.detalhe_obra, name='detalhe_obra'),
     path('<int:obra_id>/relatorio/', views.relatorio_obra, name='relatorio_obra'),
+    path('<int:obra_id>/diarios/', diarios_views.lista_diarios_obra, name='lista_diarios_obra'),
+    path('<int:obra_id>/diarios/novo/', diarios_views.novo_diario_obra, name='novo_diario_obra'),
     path('<int:obra_id>/notas/', views.lista_notas_obra, name='lista_notas_obra'),
     path('<int:obra_id>/despesas/', views.lista_despesas_obra, name='lista_despesas_obra'),
     path(

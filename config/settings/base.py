@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     'propostas',
     'financeiro',
     'medicoes',
+    'diarios',
 ]
 
 MIDDLEWARE = [

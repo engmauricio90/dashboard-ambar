@@ -104,6 +104,7 @@ def editar_obra(request, obra_id):
 
 def detalhe_obra(request, obra_id):
     obra = get_object_or_404(_obra_base_queryset(), id=obra_id)
+    from diarios.models import DiarioObra
 
     timeline = defaultdict(lambda: {'faturado': 0, 'despesas': 0, 'aditivos': 0})
 
@@ -164,6 +165,7 @@ def detalhe_obra(request, obra_id):
         'medicoes_empreiteiro': MedicaoEmpreiteiro.objects.filter(obra=obra)
         .select_related('orcamento')
         .order_by('-data_medicao', '-numero', '-id')[:5],
+        'diarios_obra': DiarioObra.objects.filter(obra=obra).order_by('-data', '-id')[:5],
         'margem_real_float': margem_real_float,
         'margem_gauge_angle': margem_gauge_angle,
         'margem_status': margem_status,

@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+
+{% block title %}Diarios de Obra{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">{% if obra %}Diarios - {{ obra.nome_obra }}{% else %}Diarios de Obra{% endif %}</h1>
+        <p class="text-muted mb-0">Registros diarios de campo, efetivo, equipamentos, ocorrencias e fotos.</p>
+    </div>
+    <div class="d-flex gap-2">
+        {% if obra %}
+        <a href="{% url 'novo_diario_obra' obra.id %}" class="btn btn-primary">Novo diario</a>
+        <a href="{% url 'detalhe_obra' obra.id %}" class="btn btn-secondary">Voltar para obra</a>
+        {% else %}
+        <a href="{% url 'novo_diario' %}" class="btn btn-primary">Novo diario</a>
+        <a href="{% url 'home' %}" class="btn btn-secondary">Voltar</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            {% for field in form %}
+            <div class="{% if field.field.widget.input_type == 'checkbox' %}col-md-2{% else %}col-md-3{% endif %}">
+                {% if field.field.widget.input_type == 'checkbox' %}
+                <div class="form-check mt-4">
+                    {{ field }}
+                    <label class="form-check-label">{{ field.label }}</label>
+                </div>
+                {% else %}
+                <label class="form-label">{{ field.label }}</label>
+                {{ field }}
+                {% endif %}
+            </div>
+            {% endfor %}
+            <div class="col-md-2">
+                <button class="btn btn-outline-primary w-100" type="submit">Filtrar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Obra</th>
+                        <th>Data</th>
+                        <th>Responsavel</th>
+                        <th>Situacao</th>
+                        <th>Clima</th>
+                        <th>Efetivo</th>
+                        <th>Equip.</th>
+                        <th>Fotos</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for diario in diarios %}
+                    <tr>
+                        <td>{{ diario.obra.nome_obra }}</td>
+                        <td>{{ diario.data }}</td>
+                        <td>{{ diario.responsavel_preenchimento }}</td>
+                        <td>{{ diario.get_situacao_obra_display|default:'-' }}</td>
+                        <td>{{ diario.get_condicao_climatica_display|default:'-' }}</td>
+                        <td>{{ diario.total_efetivo }}</td>
+                        <td>{{ diario.total_equipamentos }}</td>
+                        <td>{{ diario.fotos.count }}</td>
+                        <td>{{ diario.get_status_display }}</td>
+                        <td class="text-end">
+                            <a href="{% url 'detalhe_diario' diario.id %}" class="btn btn-sm btn-outline-dark">Ver</a>
+                            {% if diario.status == 'rascunho' %}
+                            <a href="{% url 'editar_diario' diario.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                            {% endif %}
+                            <a href="{% url 'diario_pdf' diario.id %}" target="_blank" class="btn btn-sm btn-outline-danger">PDF</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="10">Nenhum diario encontrado.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

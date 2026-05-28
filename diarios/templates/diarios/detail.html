@@ -1,0 +1,159 @@
+{% extends 'base.html' %}
+
+{% block title %}Diario de Obra{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Diario de Obra</h1>
+        <p class="text-muted mb-0">{{ diario.obra.nome_obra }} - {{ diario.data }}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        {% if diario.status == 'rascunho' or pode_admin %}
+        <a href="{% url 'editar_diario' diario.id %}" class="btn btn-outline-primary">Editar</a>
+        {% endif %}
+        {% if pode_operar and diario.status == 'rascunho' %}
+        <form method="post" action="{% url 'finalizar_diario' diario.id %}">{% csrf_token %}<button class="btn btn-success">Finalizar</button></form>
+        {% endif %}
+        {% if pode_admin and diario.status != 'rascunho' %}
+        <form method="post" action="{% url 'reabrir_diario' diario.id %}">{% csrf_token %}<button class="btn btn-outline-warning">Reabrir</button></form>
+        {% endif %}
+        {% if pode_admin and diario.status != 'cancelado' %}
+        <form method="post" action="{% url 'cancelar_diario' diario.id %}">{% csrf_token %}<button class="btn btn-outline-danger">Cancelar</button></form>
+        {% endif %}
+        <a href="{% url 'diario_pdf' diario.id %}" target="_blank" class="btn btn-danger">PDF</a>
+        <a href="{% url 'lista_diarios_obra' diario.obra.id %}" class="btn btn-secondary">Voltar</a>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="mb-3">Dados gerais</h5>
+                <div class="row g-3">
+                    <div class="col-md-4"><strong>Status:</strong> {{ diario.get_status_display }}</div>
+                    <div class="col-md-4"><strong>Clima:</strong> {{ diario.get_condicao_climatica_display|default:'-' }}</div>
+                    <div class="col-md-4"><strong>Turno:</strong> {{ diario.get_turno_display }}</div>
+                    <div class="col-md-4"><strong>Situacao:</strong> {{ diario.get_situacao_obra_display|default:'-' }}</div>
+                    <div class="col-md-4"><strong>Responsavel:</strong> {{ diario.responsavel_preenchimento }}</div>
+                    <div class="col-md-4"><strong>Tecnico:</strong> {{ diario.responsavel_tecnico|default:'-' }}</div>
+                    <div class="col-12"><strong>Servicos executados:</strong><br>{{ diario.descricao_servicos|linebreaksbr|default:'-' }}</div>
+                    <div class="col-md-6"><strong>Ocorrencias/interferencias:</strong><br>{{ diario.ocorrencias_interferencias|linebreaksbr|default:'-' }}</div>
+                    <div class="col-md-6"><strong>Pendencias:</strong><br>{{ diario.pendencias|linebreaksbr|default:'-' }}</div>
+                    <div class="col-md-6"><strong>Orientacoes:</strong><br>{{ diario.orientacoes|linebreaksbr|default:'-' }}</div>
+                    <div class="col-md-6"><strong>Observacoes:</strong><br>{{ diario.observacoes|linebreaksbr|default:'-' }}</div>
+                    <div class="col-12"><strong>Visita:</strong> {% if diario.houve_visita %}Sim - {{ diario.visitante_nome|default:'Nao informado' }}{% else %}Nao{% endif %}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="mb-3">Frentes de servico</h5>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead><tr><th>Frente</th><th>Local</th><th>%</th><th>Situacao</th><th>Descricao</th></tr></thead>
+                        <tbody>
+                            {% for item in diario.frentes.all %}
+                            <tr><td>{{ item.nome }}</td><td>{{ item.local_trecho|default:'-' }}</td><td>{{ item.percentual_executado|default:'-' }}</td><td>{{ item.get_situacao_display }}</td><td>{{ item.descricao|default:'-' }}</td></tr>
+                            {% empty %}<tr><td colspan="5">Sem frentes cadastradas.</td></tr>{% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="mb-3">Ocorrencias</h5>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead><tr><th>Tipo</th><th>Descricao</th><th>Prazo</th><th>Financeiro</th><th>Status</th></tr></thead>
+                        <tbody>
+                            {% for item in diario.ocorrencias.all %}
+                            <tr><td>{{ item.get_tipo_display }}</td><td>{{ item.descricao }}</td><td>{{ item.get_impacto_prazo_display }}</td><td>{{ item.get_impacto_financeiro_display }}</td><td>{{ item.get_status_display }}</td></tr>
+                            {% empty %}<tr><td colspan="5">Sem ocorrencias.</td></tr>{% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h5 class="mb-3">Fotos</h5>
+                <div class="row g-3">
+                    {% for foto in diario.fotos.all %}
+                    <div class="col-md-4">
+                        <div class="border rounded p-2 h-100">
+                            <img src="{{ foto.imagem.url }}" class="img-fluid rounded mb-2" alt="{{ foto.legenda }}">
+                            <div class="small">{{ foto.legenda|default:'Sem legenda' }}</div>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="col-12 text-muted">Nenhuma foto anexada.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="mb-3">Resumo operacional</h5>
+                <p><strong>Efetivo:</strong> {{ diario.total_efetivo }} pessoa(s)</p>
+                <p><strong>Horas efetivo:</strong> {{ diario.total_horas_efetivo }}</p>
+                <p><strong>Equipamentos:</strong> {{ diario.total_equipamentos }}</p>
+                <p><strong>Fotos:</strong> {{ diario.fotos.count }}</p>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="mb-3">Efetivo</h5>
+                {% for item in diario.efetivos.all %}
+                <div class="border-bottom py-2">{{ item.get_funcao_display }} - {{ item.quantidade }} pessoa(s)<br><span class="text-muted small">{{ item.empresa_equipe|default:'-' }} / {{ item.total_horas }} h</span></div>
+                {% empty %}<p class="text-muted">Sem efetivo.</p>{% endfor %}
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="mb-3">Equipamentos</h5>
+                {% for item in diario.equipamentos.all %}
+                <div class="border-bottom py-2">{{ item.get_tipo_display }} - {{ item.quantidade }}<br><span class="text-muted small">{{ item.get_situacao_display }} / {{ item.total_horas }} h</span></div>
+                {% empty %}<p class="text-muted">Sem equipamentos.</p>{% endfor %}
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="mb-3">Materiais</h5>
+                {% for item in diario.materiais.all %}
+                <div class="border-bottom py-2">{{ item.material }} - {{ item.quantidade }} {{ item.unidade }}<br><span class="text-muted small">{{ item.get_movimento_display }} / {{ item.fornecedor|default:'-' }}</span></div>
+                {% empty %}<p class="text-muted">Sem materiais.</p>{% endfor %}
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="mb-3">Checklist</h5>
+                {% for item in diario.checklist.all %}
+                <div class="border-bottom py-2">{{ item.get_item_display }}<br><span class="text-muted small">{{ item.get_resultado_display }} - {{ item.observacoes|default:'-' }}</span></div>
+                {% empty %}<p class="text-muted">Sem checklist.</p>{% endfor %}
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h5 class="mb-3">Historico</h5>
+                {% for item in diario.historico.all %}
+                <div class="border-bottom py-2">{{ item.get_acao_display }}<br><span class="text-muted small">{{ item.created_at }} - {{ item.usuario|default:'Sistema' }}</span></div>
+                {% empty %}<p class="text-muted">Sem historico.</p>{% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

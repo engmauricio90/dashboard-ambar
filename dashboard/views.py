@@ -1,9 +1,12 @@
+from datetime import timedelta
 from decimal import Decimal
 
-from django.db.models import Prefetch
+from django.db.models import Max, Prefetch, Q
 from django.http import HttpResponse
 from django.shortcuts import render
+from django.utils import timezone
 
+from diarios.models import DiarioObra, OcorrenciaDiario
 from obras.models import NotaFiscal, Obra
 
 from .forms import DashboardFiltroForm
@@ -22,6 +25,9 @@ def _obras_base_queryset():
 
 def _build_dashboard_context(obras):
     obras = list(obras.order_by('nome_obra'))
+    hoje = timezone.localdate()
+    inicio_mes = hoje.replace(day=1)
+    limite_sem_diario = hoje - timedelta(days=7)
 
     totais = {
         'total_contratos': Decimal('0'),
@@ -88,6 +94,12 @@ def _build_dashboard_context(obras):
         'quantidade_obras': len(obras),
         'quantidade_obras_em_alerta': len(obras_em_alerta),
         'obras_em_alerta': obras_em_alerta[:5],
+        'diarios_mes': DiarioObra.objects.filter(data__gte=inicio_mes).count(),
+        'ocorrencias_abertas': OcorrenciaDiario.objects.filter(status__in=['aberta', 'em_andamento']).count(),
+        'ultimos_diarios_por_obra': DiarioObra.objects.select_related('obra').order_by('-data', '-id')[:5],
+        'obras_sem_diario_7_dias': Obra.objects.annotate(ultimo_diario=Max('diarios__data'))
+        .filter(status_obra='em_andamento')
+        .filter(Q(ultimo_diario__lt=limite_sem_diario) | Q(ultimo_diario__isnull=True))[:5],
         'grafico_operacional': {
             'labels': chart_labels,
             'faturamento': chart_faturamento,

@@ -1,0 +1,274 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        <p class="text-muted mb-0">Registro diario de atividades, efetivo, equipamentos, ocorrencias e fotos.</p>
+    </div>
+    <div class="d-flex gap-2">
+        {% if diario %}
+        <a href="{% url 'detalhe_diario' diario.id %}" class="btn btn-secondary">Voltar</a>
+        {% else %}
+        <a href="{% url 'lista_diarios' %}" class="btn btn-secondary">Voltar</a>
+        {% endif %}
+    </div>
+</div>
+
+<form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="mb-3">Dados do diario</h5>
+            <div class="row g-3">
+                {% for field in form %}
+                <div class="{% if field.name == 'descricao_servicos' or field.name == 'observacoes' or field.name == 'ocorrencias_interferencias' or field.name == 'pendencias' or field.name == 'orientacoes' %}col-md-6{% else %}col-md-3{% endif %}">
+                    {% if field.field.widget.input_type == 'checkbox' %}
+                    <div class="form-check mt-4">
+                        {{ field }}
+                        <label class="form-check-label">{{ field.label }}</label>
+                    </div>
+                    {% else %}
+                    <label class="form-label">{{ field.label }}</label>
+                    {{ field }}
+                    {% endif %}
+                    {% if field.errors %}<div class="text-danger small">{{ field.errors|join:', ' }}</div>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">Frentes de servico</h5>
+                <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="frentes">Adicionar frente</button>
+            </div>
+            {{ formsets.frentes.management_form }}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead><tr><th>Frente</th><th>Descricao</th><th>Local</th><th>%</th><th>Situacao</th><th>Excluir</th></tr></thead>
+                    <tbody id="frentes-body">
+                        {% for item_form in formsets.frentes %}
+                        <tr>{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
+                            <td>{{ item_form.nome }}</td><td>{{ item_form.descricao }}</td><td>{{ item_form.local_trecho }}</td><td>{{ item_form.percentual_executado }}</td><td>{{ item_form.situacao }}</td><td>{{ item_form.DELETE }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <template id="frentes-empty">
+                        <tr>{% for hidden in formsets.frentes.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+                            <td>{{ formsets.frentes.empty_form.nome }}</td><td>{{ formsets.frentes.empty_form.descricao }}</td><td>{{ formsets.frentes.empty_form.local_trecho }}</td><td>{{ formsets.frentes.empty_form.percentual_executado }}</td><td>{{ formsets.frentes.empty_form.situacao }}</td><td>{{ formsets.frentes.empty_form.DELETE }}</td>
+                        </tr>
+                    </template>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">Efetivo de mao de obra</h5>
+                <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="efetivos">Adicionar efetivo</button>
+            </div>
+            {{ formsets.efetivos.management_form }}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead><tr><th>Funcao</th><th>Nome</th><th>Empresa/equipe</th><th>Qtd</th><th>Entrada</th><th>Saida</th><th>Horas</th><th>Obs</th><th>Excluir</th></tr></thead>
+                    <tbody id="efetivos-body">
+                        {% for item_form in formsets.efetivos %}
+                        <tr>{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
+                            <td>{{ item_form.funcao }}</td><td>{{ item_form.nome_colaborador }}</td><td>{{ item_form.empresa_equipe }}</td><td>{{ item_form.quantidade }}</td><td>{{ item_form.horario_entrada }}</td><td>{{ item_form.horario_saida }}</td><td>{{ item_form.total_horas }}</td><td>{{ item_form.observacoes }}</td><td>{{ item_form.DELETE }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <template id="efetivos-empty">
+                        <tr>{% for hidden in formsets.efetivos.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+                            <td>{{ formsets.efetivos.empty_form.funcao }}</td><td>{{ formsets.efetivos.empty_form.nome_colaborador }}</td><td>{{ formsets.efetivos.empty_form.empresa_equipe }}</td><td>{{ formsets.efetivos.empty_form.quantidade }}</td><td>{{ formsets.efetivos.empty_form.horario_entrada }}</td><td>{{ formsets.efetivos.empty_form.horario_saida }}</td><td>{{ formsets.efetivos.empty_form.total_horas }}</td><td>{{ formsets.efetivos.empty_form.observacoes }}</td><td>{{ formsets.efetivos.empty_form.DELETE }}</td>
+                        </tr>
+                    </template>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">Equipamentos utilizados</h5>
+                <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="equipamentos">Adicionar equipamento</button>
+            </div>
+            {{ formsets.equipamentos.management_form }}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead><tr><th>Tipo</th><th>Identificacao</th><th>Empresa</th><th>Qtd</th><th>H. inicial</th><th>H. final</th><th>Horas</th><th>Situacao</th><th>Obs</th><th>Excluir</th></tr></thead>
+                    <tbody id="equipamentos-body">
+                        {% for item_form in formsets.equipamentos %}
+                        <tr>{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
+                            <td>{{ item_form.tipo }}</td><td>{{ item_form.identificacao }}</td><td>{{ item_form.empresa_proprietario }}</td><td>{{ item_form.quantidade }}</td><td>{{ item_form.horimetro_inicial }}</td><td>{{ item_form.horimetro_final }}</td><td>{{ item_form.total_horas }}</td><td>{{ item_form.situacao }}</td><td>{{ item_form.observacoes }}</td><td>{{ item_form.DELETE }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <template id="equipamentos-empty">
+                        <tr>{% for hidden in formsets.equipamentos.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+                            <td>{{ formsets.equipamentos.empty_form.tipo }}</td><td>{{ formsets.equipamentos.empty_form.identificacao }}</td><td>{{ formsets.equipamentos.empty_form.empresa_proprietario }}</td><td>{{ formsets.equipamentos.empty_form.quantidade }}</td><td>{{ formsets.equipamentos.empty_form.horimetro_inicial }}</td><td>{{ formsets.equipamentos.empty_form.horimetro_final }}</td><td>{{ formsets.equipamentos.empty_form.total_horas }}</td><td>{{ formsets.equipamentos.empty_form.situacao }}</td><td>{{ formsets.equipamentos.empty_form.observacoes }}</td><td>{{ formsets.equipamentos.empty_form.DELETE }}</td>
+                        </tr>
+                    </template>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">Materiais</h5>
+                <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="materiais">Adicionar material</button>
+            </div>
+            {{ formsets.materiais.management_form }}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead><tr><th>Material</th><th>Und</th><th>Qtd</th><th>Fornecedor</th><th>NF</th><th>Movimento</th><th>Obs</th><th>Excluir</th></tr></thead>
+                    <tbody id="materiais-body">
+                        {% for item_form in formsets.materiais %}
+                        <tr>{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
+                            <td>{{ item_form.material }}</td><td>{{ item_form.unidade }}</td><td>{{ item_form.quantidade }}</td><td>{{ item_form.fornecedor }}</td><td>{{ item_form.nota_fiscal }}</td><td>{{ item_form.movimento }}</td><td>{{ item_form.observacoes }}</td><td>{{ item_form.DELETE }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <template id="materiais-empty">
+                        <tr>{% for hidden in formsets.materiais.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+                            <td>{{ formsets.materiais.empty_form.material }}</td><td>{{ formsets.materiais.empty_form.unidade }}</td><td>{{ formsets.materiais.empty_form.quantidade }}</td><td>{{ formsets.materiais.empty_form.fornecedor }}</td><td>{{ formsets.materiais.empty_form.nota_fiscal }}</td><td>{{ formsets.materiais.empty_form.movimento }}</td><td>{{ formsets.materiais.empty_form.observacoes }}</td><td>{{ formsets.materiais.empty_form.DELETE }}</td>
+                        </tr>
+                    </template>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">Ocorrencias</h5>
+                <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="ocorrencias">Adicionar ocorrencia</button>
+            </div>
+            {{ formsets.ocorrencias.management_form }}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead><tr><th>Tipo</th><th>Descricao</th><th>Prazo</th><th>Financ.</th><th>Providencia</th><th>Resp.</th><th>Prazo sol.</th><th>Status</th><th>Excluir</th></tr></thead>
+                    <tbody id="ocorrencias-body">
+                        {% for item_form in formsets.ocorrencias %}
+                        <tr>{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
+                            <td>{{ item_form.tipo }}</td><td>{{ item_form.descricao }}</td><td>{{ item_form.impacto_prazo }}</td><td>{{ item_form.impacto_financeiro }}</td><td>{{ item_form.providencia }}</td><td>{{ item_form.responsavel_providencia }}</td><td>{{ item_form.prazo_solucao }}</td><td>{{ item_form.status }}</td><td>{{ item_form.DELETE }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <template id="ocorrencias-empty">
+                        <tr>{% for hidden in formsets.ocorrencias.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+                            <td>{{ formsets.ocorrencias.empty_form.tipo }}</td><td>{{ formsets.ocorrencias.empty_form.descricao }}</td><td>{{ formsets.ocorrencias.empty_form.impacto_prazo }}</td><td>{{ formsets.ocorrencias.empty_form.impacto_financeiro }}</td><td>{{ formsets.ocorrencias.empty_form.providencia }}</td><td>{{ formsets.ocorrencias.empty_form.responsavel_providencia }}</td><td>{{ formsets.ocorrencias.empty_form.prazo_solucao }}</td><td>{{ formsets.ocorrencias.empty_form.status }}</td><td>{{ formsets.ocorrencias.empty_form.DELETE }}</td>
+                        </tr>
+                    </template>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0">Checklist</h5>
+                        <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="checklist">Adicionar item</button>
+                    </div>
+                    {{ formsets.checklist.management_form }}
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead><tr><th>Item</th><th>Resultado</th><th>Obs</th><th>Excluir</th></tr></thead>
+                            <tbody id="checklist-body">
+                                {% for item_form in formsets.checklist %}
+                                <tr>{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
+                                    <td>{{ item_form.item }}</td><td>{{ item_form.resultado }}</td><td>{{ item_form.observacoes }}</td><td>{{ item_form.DELETE }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                            <template id="checklist-empty">
+                                <tr>{% for hidden in formsets.checklist.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+                                    <td>{{ formsets.checklist.empty_form.item }}</td><td>{{ formsets.checklist.empty_form.resultado }}</td><td>{{ formsets.checklist.empty_form.observacoes }}</td><td>{{ formsets.checklist.empty_form.DELETE }}</td>
+                                </tr>
+                            </template>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0">Fotos</h5>
+                        <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="fotos">Adicionar foto</button>
+                    </div>
+                    {{ formsets.fotos.management_form }}
+                    <div id="fotos-body">
+                        {% for item_form in formsets.fotos %}
+                        <div class="border rounded p-3 mb-3">{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
+                            <div class="row g-3">
+                                <div class="col-md-4">{{ item_form.imagem }}</div>
+                                <div class="col-md-4">{{ item_form.legenda }}</div>
+                                <div class="col-md-3">{{ item_form.frente_servico }}</div>
+                                <div class="col-md-1">{{ item_form.DELETE }}</div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <template id="fotos-empty">
+                        <div class="border rounded p-3 mb-3">{% for hidden in formsets.fotos.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+                            <div class="row g-3">
+                                <div class="col-md-4">{{ formsets.fotos.empty_form.imagem }}</div>
+                                <div class="col-md-4">{{ formsets.fotos.empty_form.legenda }}</div>
+                                <div class="col-md-3">{{ formsets.fotos.empty_form.frente_servico }}</div>
+                                <div class="col-md-1">{{ formsets.fotos.empty_form.DELETE }}</div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2 mb-5">
+        <button type="submit" class="btn btn-primary">Salvar diario</button>
+        {% if diario %}
+        <a href="{% url 'detalhe_diario' diario.id %}" class="btn btn-outline-secondary">Cancelar</a>
+        {% else %}
+        <a href="{% url 'lista_diarios' %}" class="btn btn-outline-secondary">Cancelar</a>
+        {% endif %}
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.querySelectorAll('.js-add-formset').forEach((button) => {
+        button.addEventListener('click', () => {
+            const prefix = button.dataset.prefix;
+            const totalForms = document.querySelector(`input[name="${prefix}-TOTAL_FORMS"]`);
+            const body = document.getElementById(`${prefix}-body`);
+            const template = document.getElementById(`${prefix}-empty`);
+            if (!totalForms || !body || !template) {
+                return;
+            }
+            const index = Number(totalForms.value);
+            const html = template.innerHTML.replaceAll('__prefix__', index);
+            body.insertAdjacentHTML('beforeend', html);
+            totalForms.value = index + 1;
+        });
+    });
+</script>
+{% endblock %}

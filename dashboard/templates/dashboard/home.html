@@ -131,6 +131,47 @@
     </div>
 </div>
 
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Diarios no mes</h6>
+                <h4>{{ diarios_mes }}</h4>
+                <small class="text-muted">Registros de campo lancados</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Ocorrencias abertas</h6>
+                <h4>{{ ocorrencias_abertas }}</h4>
+                <small class="text-muted">Pendencias de diarios em aberto</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Ultimo diario</h6>
+                {% with ultimo=ultimos_diarios_por_obra.0 %}
+                <h4>{% if ultimo %}{{ ultimo.data|date:'d/m' }}{% else %}-{% endif %}</h4>
+                <small class="text-muted">{% if ultimo %}{{ ultimo.obra.nome_obra }}{% else %}Sem diarios cadastrados{% endif %}</small>
+                {% endwith %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Sem diario 7 dias</h6>
+                <h4>{{ obras_sem_diario_7_dias|length }}</h4>
+                <small class="text-muted">Obras em andamento para revisar</small>
+            </div>
+        </div>
+    </div>
+</div>
+
 {{ grafico_operacional|json_script:"grafico-operacional-data" }}
 {{ grafico_resultado_real|json_script:"grafico-resultado-data" }}
 {{ grafico_status|json_script:"grafico-status-data" }}
