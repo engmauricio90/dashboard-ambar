@@ -117,6 +117,25 @@ class ItemOrcamentoMedicao(models.Model):
         return self.quantidade * self.preco_unitario_total
 
 
+class Empreiteiro(models.Model):
+    nome = models.CharField(max_length=180, unique=True)
+    cpf_cnpj = models.CharField(max_length=30, blank=True)
+    pix = models.CharField(max_length=120, blank=True)
+    telefone = models.CharField(max_length=40, blank=True)
+    observacoes = models.TextField(blank=True)
+    ativo = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['nome']
+        verbose_name = 'Empreiteiro'
+        verbose_name_plural = 'Empreiteiros'
+
+    def __str__(self):
+        return self.nome
+
+
 class MedicaoConstrutora(models.Model):
     orcamento = models.ForeignKey(OrcamentoMedicao, on_delete=models.CASCADE, related_name='medicoes_construtora')
     numero = models.PositiveIntegerField(default=1)
@@ -287,6 +306,13 @@ class MedicaoEmpreiteiro(models.Model):
         blank=True,
         null=True,
         related_name='medicoes_empreiteiro',
+    )
+    empreiteiro_cadastro = models.ForeignKey(
+        Empreiteiro,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='medicoes',
     )
     empreiteiro = models.CharField(max_length=180)
     cpf_cnpj = models.CharField(max_length=30, blank=True)

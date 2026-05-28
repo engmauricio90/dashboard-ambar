@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    Empreiteiro,
     FaturamentoDiretoMedicao,
     ItemMedicaoConstrutora,
     ItemMedicaoEmpreiteiro,
@@ -14,6 +15,13 @@ from .models import (
 class ItemOrcamentoMedicaoInline(admin.TabularInline):
     model = ItemOrcamentoMedicao
     extra = 0
+
+
+@admin.register(Empreiteiro)
+class EmpreiteiroAdmin(admin.ModelAdmin):
+    list_display = ['nome', 'cpf_cnpj', 'pix', 'telefone', 'ativo']
+    search_fields = ['nome', 'cpf_cnpj', 'pix', 'telefone']
+    list_filter = ['ativo']
 
 
 @admin.register(OrcamentoMedicao)

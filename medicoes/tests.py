@@ -10,6 +10,7 @@ from obras.models import Obra
 from controles.models import FaturamentoDireto
 
 from .models import (
+    Empreiteiro,
     FaturamentoDiretoMedicao,
     ItemMedicaoConstrutora,
     ItemMedicaoEmpreiteiro,
@@ -486,6 +487,78 @@ class MedicoesTests(TestCase):
         self.assertEqual(pdf['Content-Type'], 'application/pdf')
         self.assertEqual(excel.status_code, 200)
         self.assertIn('spreadsheetml', excel['Content-Type'])
+
+    def test_medicao_simples_usa_cadastro_de_empreiteiro(self):
+        empreiteiro = Empreiteiro.objects.create(
+            nome='Empreiteiro cadastrado',
+            cpf_cnpj='11.111.111/0001-11',
+            pix='pix@empreiteiro.com',
+        )
+
+        response = self.client.post(
+            reverse('nova_medicao_empreiteiro_simples'),
+            {
+                'obra': self.obra.id,
+                'empreiteiro_cadastro': empreiteiro.id,
+                'empreiteiro': '',
+                'cpf_cnpj': '',
+                'pix': '',
+                'numero': '1',
+                'periodo_inicio': '2026-03-01',
+                'periodo_fim': '2026-03-31',
+                'data_medicao': '2026-03-31',
+                'observacoes': '',
+                'itens-TOTAL_FORMS': '1',
+                'itens-INITIAL_FORMS': '0',
+                'itens-MIN_NUM_FORMS': '0',
+                'itens-MAX_NUM_FORMS': '1000',
+                'itens-0-item_orcamento': '',
+                'itens-0-item': '1',
+                'itens-0-descricao': 'Servico',
+                'itens-0-unidade': 'un',
+                'itens-0-quantidade_periodo': '1',
+                'itens-0-valor_unitario': '100.00',
+            },
+        )
+
+        medicao = MedicaoEmpreiteiro.objects.get()
+        self.assertRedirects(response, reverse('editar_medicao_empreiteiro', args=[medicao.id]))
+        self.assertEqual(medicao.empreiteiro_cadastro, empreiteiro)
+        self.assertEqual(medicao.empreiteiro, 'Empreiteiro cadastrado')
+        self.assertEqual(medicao.cpf_cnpj, '11.111.111/0001-11')
+        self.assertEqual(medicao.pix, 'pix@empreiteiro.com')
+
+    def test_medicao_manual_cria_cadastro_e_cumulativa_seguinte_reaproveita(self):
+        orcamento, item = self._orcamento()
+        orcamento.tipo = OrcamentoMedicao.TIPO_EMPREITEIRO
+        orcamento.save(update_fields=['tipo'])
+
+        response = self.client.post(
+            reverse('nova_medicao_empreiteiro_cumulativa', args=[orcamento.id]),
+            {
+                'obra': self.obra.id,
+                'empreiteiro_cadastro': '',
+                'empreiteiro': 'Novo Empreiteiro',
+                'cpf_cnpj': '22.222.222/0001-22',
+                'pix': 'pix@novo.com',
+                'numero': '1',
+                'periodo_inicio': '2026-04-01',
+                'periodo_fim': '2026-04-30',
+                'data_medicao': '2026-04-30',
+                'observacoes': '',
+            },
+        )
+
+        primeira = MedicaoEmpreiteiro.objects.get(orcamento=orcamento)
+        cadastro = Empreiteiro.objects.get(nome='Novo Empreiteiro')
+        self.assertRedirects(response, reverse('editar_medicao_empreiteiro', args=[primeira.id]))
+        self.assertEqual(primeira.empreiteiro_cadastro, cadastro)
+        self.assertEqual(cadastro.pix, 'pix@novo.com')
+
+        response = self.client.get(reverse('nova_medicao_empreiteiro_cumulativa', args=[orcamento.id]))
+
+        self.assertContains(response, 'Novo Empreiteiro')
+        self.assertContains(response, 'pix@novo.com')
 
     def test_exclui_medicao_empreiteiro_simples(self):
         medicao = MedicaoEmpreiteiro.objects.create(

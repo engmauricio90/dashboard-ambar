@@ -6,6 +6,7 @@ from controles.models import FaturamentoDireto
 from obras.forms import BootstrapForm, BootstrapModelForm
 
 from .models import (
+    Empreiteiro,
     ItemMedicaoConstrutora,
     ItemMedicaoEmpreiteiro,
     ItemOrcamentoMedicao,
@@ -50,6 +51,15 @@ class OrcamentoMedicaoManualForm(BootstrapModelForm):
     class Meta:
         model = OrcamentoMedicao
         fields = ['obra', 'nome', 'tipo', 'observacoes']
+        widgets = {
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+
+
+class EmpreiteiroForm(BootstrapModelForm):
+    class Meta:
+        model = Empreiteiro
+        fields = ['nome', 'cpf_cnpj', 'pix', 'telefone', 'ativo', 'observacoes']
         widgets = {
             'observacoes': forms.Textarea(attrs={'rows': 3}),
         }
@@ -193,6 +203,12 @@ class ItemMedicaoConstrutoraForm(BootstrapModelForm):
 
 
 class MedicaoEmpreiteiroForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['empreiteiro_cadastro'].queryset = Empreiteiro.objects.filter(ativo=True).order_by('nome')
+        self.fields['empreiteiro_cadastro'].required = False
+        self.fields['empreiteiro'].required = False
+
     def clean(self):
         cleaned_data = super().clean()
         inicio = cleaned_data.get('periodo_inicio')
@@ -203,12 +219,20 @@ class MedicaoEmpreiteiroForm(BootstrapModelForm):
             value = cleaned_data.get(field)
             if value is not None and value < 0:
                 self.add_error(field, 'Informe um valor positivo.')
+        cadastro = cleaned_data.get('empreiteiro_cadastro')
+        if cadastro:
+            cleaned_data['empreiteiro'] = cadastro.nome
+            cleaned_data['cpf_cnpj'] = cadastro.cpf_cnpj
+            cleaned_data['pix'] = cadastro.pix
+        elif not cleaned_data.get('empreiteiro'):
+            self.add_error('empreiteiro', 'Informe o empreiteiro ou selecione um cadastro.')
         return cleaned_data
 
     class Meta:
         model = MedicaoEmpreiteiro
         fields = [
             'obra',
+            'empreiteiro_cadastro',
             'empreiteiro',
             'cpf_cnpj',
             'pix',
@@ -233,6 +257,8 @@ class MedicaoEmpreiteiroForm(BootstrapModelForm):
             'observacoes': forms.Textarea(attrs={'rows': 3}),
         }
         labels = {
+            'empreiteiro_cadastro': 'Empreiteiro cadastrado',
+            'empreiteiro': 'Empreiteiro novo/manual',
             'retencao_tecnica': 'Retencao tecnica (R$)',
             'retencao_tecnica_percentual': 'Retencao tecnica (%)',
             'desconto_adicional': 'Desconto adicional (R$)',
@@ -244,6 +270,7 @@ class MedicaoEmpreiteiroCabecalhoForm(MedicaoEmpreiteiroForm):
     class Meta(MedicaoEmpreiteiroForm.Meta):
         fields = [
             'obra',
+            'empreiteiro_cadastro',
             'empreiteiro',
             'cpf_cnpj',
             'pix',

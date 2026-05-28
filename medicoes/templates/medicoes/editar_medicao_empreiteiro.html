@@ -24,7 +24,7 @@
         <div class="card-body">
             <div class="row g-3">
                 {% for field in form %}
-                {% if field.name == 'obra' or field.name == 'empreiteiro' or field.name == 'cpf_cnpj' or field.name == 'pix' or field.name == 'numero' or field.name == 'periodo_inicio' or field.name == 'periodo_fim' or field.name == 'data_medicao' or field.name == 'observacoes' %}
+                {% if field.name == 'obra' or field.name == 'empreiteiro_cadastro' or field.name == 'empreiteiro' or field.name == 'cpf_cnpj' or field.name == 'pix' or field.name == 'numero' or field.name == 'periodo_inicio' or field.name == 'periodo_fim' or field.name == 'data_medicao' or field.name == 'observacoes' %}
                 <div class="{% if field.name == 'observacoes' %}col-12{% else %}col-md-3{% endif %}">
                     <label class="form-label">{{ field.label }}</label>
                     {{ field }}
@@ -93,4 +93,39 @@
     {% endif %}
     <button class="btn btn-primary" type="submit">Salvar medicao</button>
 </form>
+{% if empreiteiros_json %}{{ empreiteiros_json|json_script:"empreiteiros-medicao-data" }}{% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+{% if empreiteiros_json %}
+<script>
+    const empreiteirosMedicao = JSON.parse(document.getElementById('empreiteiros-medicao-data').textContent);
+    const empreiteirosPorId = new Map(empreiteirosMedicao.map((empreiteiro) => [String(empreiteiro.id), empreiteiro]));
+    const empreiteiroSelect = document.getElementById('id_empreiteiro_cadastro');
+
+    function setEmpreiteiroValue(id, value) {
+        const field = document.getElementById(id);
+        if (field) {
+            field.value = value || '';
+        }
+    }
+
+    function preencherEmpreiteiro() {
+        const empreiteiro = empreiteirosPorId.get(empreiteiroSelect.value);
+        if (!empreiteiro) {
+            return;
+        }
+        setEmpreiteiroValue('id_empreiteiro', empreiteiro.nome);
+        setEmpreiteiroValue('id_cpf_cnpj', empreiteiro.cpf_cnpj);
+        setEmpreiteiroValue('id_pix', empreiteiro.pix);
+    }
+
+    if (empreiteiroSelect) {
+        empreiteiroSelect.addEventListener('change', preencherEmpreiteiro);
+        if (empreiteiroSelect.value) {
+            preencherEmpreiteiro();
+        }
+    }
+</script>
+{% endif %}
 {% endblock %}

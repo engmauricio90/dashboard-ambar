@@ -38,4 +38,39 @@
         </form>
     </div>
 </div>
+{% if empreiteiros_json %}{{ empreiteiros_json|json_script:"empreiteiros-medicao-data" }}{% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+{% if empreiteiros_json %}
+<script>
+    const empreiteirosMedicao = JSON.parse(document.getElementById('empreiteiros-medicao-data').textContent);
+    const empreiteirosPorId = new Map(empreiteirosMedicao.map((empreiteiro) => [String(empreiteiro.id), empreiteiro]));
+    const empreiteiroSelect = document.getElementById('id_empreiteiro_cadastro');
+
+    function setEmpreiteiroValue(id, value) {
+        const field = document.getElementById(id);
+        if (field) {
+            field.value = value || '';
+        }
+    }
+
+    function preencherEmpreiteiro() {
+        const empreiteiro = empreiteirosPorId.get(empreiteiroSelect.value);
+        if (!empreiteiro) {
+            return;
+        }
+        setEmpreiteiroValue('id_empreiteiro', empreiteiro.nome);
+        setEmpreiteiroValue('id_cpf_cnpj', empreiteiro.cpf_cnpj);
+        setEmpreiteiroValue('id_pix', empreiteiro.pix);
+    }
+
+    if (empreiteiroSelect) {
+        empreiteiroSelect.addEventListener('change', preencherEmpreiteiro);
+        if (empreiteiroSelect.value) {
+            preencherEmpreiteiro();
+        }
+    }
+</script>
+{% endif %}
 {% endblock %}

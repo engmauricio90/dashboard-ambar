@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+
+{% block title %}Empreiteiros{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Empreiteiros</h1>
+        <p class="text-muted mb-0">Cadastro usado nas medicoes simples e cumulativas.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a class="btn btn-success" href="{% url 'novo_empreiteiro_medicao' %}">Novo empreiteiro</a>
+        <a class="btn btn-secondary" href="{% url 'medicoes_empreiteiros_home' %}">Voltar</a>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-10">
+                <label class="form-label">Busca</label>
+                <input type="search" name="busca" value="{{ busca }}" class="form-control" placeholder="Nome, CPF/CNPJ ou PIX">
+            </div>
+            <div class="col-md-2 d-flex align-items-end gap-2">
+                <button class="btn btn-primary w-100" type="submit">Filtrar</button>
+                <a class="btn btn-outline-secondary" href="{% url 'lista_empreiteiros_medicao' %}">Limpar</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>CPF/CNPJ</th>
+                    <th>PIX</th>
+                    <th>Telefone</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for empreiteiro in empreiteiros %}
+                <tr>
+                    <td>{{ empreiteiro.nome }}</td>
+                    <td>{{ empreiteiro.cpf_cnpj|default:'-' }}</td>
+                    <td>{{ empreiteiro.pix|default:'-' }}</td>
+                    <td>{{ empreiteiro.telefone|default:'-' }}</td>
+                    <td>{% if empreiteiro.ativo %}Ativo{% else %}Inativo{% endif %}</td>
+                    <td class="text-end">
+                        <a class="btn btn-sm btn-outline-primary" href="{% url 'editar_empreiteiro_medicao' empreiteiro.id %}">Editar</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6">Nenhum empreiteiro cadastrado.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

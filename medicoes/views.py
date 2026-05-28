@@ -9,6 +9,7 @@ from pathlib import Path
 from django.conf import settings
 from django.contrib import messages
 from django.db import transaction
+from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -20,6 +21,7 @@ from controles.views import _build_simple_pdf
 from obras.models import Obra
 
 from .forms import (
+    EmpreiteiroForm,
     ImportarOrcamentoForm,
     ItemMedicaoConstrutoraFormSet,
     ItemMedicaoEmpreiteiroFormSet,
@@ -31,6 +33,7 @@ from .forms import (
     OrcamentoMedicaoManualForm,
 )
 from .models import (
+    Empreiteiro,
     FaturamentoDiretoMedicao,
     ItemMedicaoConstrutora,
     ItemMedicaoEmpreiteiro,
@@ -465,6 +468,50 @@ def _aplicar_percentuais_empreiteiro(medicao):
         medicao.save(update_fields=updates + ['updated_at'])
 
 
+def _empreiteiros_json():
+    return [
+        {
+            'id': empreiteiro.id,
+            'nome': empreiteiro.nome,
+            'cpf_cnpj': empreiteiro.cpf_cnpj,
+            'pix': empreiteiro.pix,
+        }
+        for empreiteiro in Empreiteiro.objects.filter(ativo=True).order_by('nome')
+    ]
+
+
+def _sync_empreiteiro_medicao(medicao):
+    if medicao.empreiteiro_cadastro_id:
+        cadastro = medicao.empreiteiro_cadastro
+        medicao.empreiteiro = cadastro.nome
+        medicao.cpf_cnpj = cadastro.cpf_cnpj
+        medicao.pix = cadastro.pix
+        medicao.save(update_fields=['empreiteiro', 'cpf_cnpj', 'pix', 'updated_at'])
+        return cadastro
+    nome = (medicao.empreiteiro or '').strip()
+    if not nome:
+        return None
+    cadastro, created = Empreiteiro.objects.get_or_create(
+        nome=nome,
+        defaults={
+            'cpf_cnpj': medicao.cpf_cnpj or '',
+            'pix': medicao.pix or '',
+        },
+    )
+    updates = []
+    if not cadastro.cpf_cnpj and medicao.cpf_cnpj:
+        cadastro.cpf_cnpj = medicao.cpf_cnpj
+        updates.append('cpf_cnpj')
+    if not cadastro.pix and medicao.pix:
+        cadastro.pix = medicao.pix
+        updates.append('pix')
+    if updates:
+        cadastro.save(update_fields=updates + ['updated_at'])
+    medicao.empreiteiro_cadastro = cadastro
+    medicao.save(update_fields=['empreiteiro_cadastro', 'updated_at'])
+    return cadastro
+
+
 def _read_csv(file):
     raw = file.read()
     if not raw:
@@ -518,6 +565,51 @@ def medicoes_empreiteiros_home(request):
         ).select_related('obra')[:15],
     }
     return render(request, 'medicoes/empreiteiros_home.html', contexto)
+
+
+def lista_empreiteiros(request):
+    empreiteiros = Empreiteiro.objects.all()
+    busca = request.GET.get('busca', '').strip()
+    if busca:
+        empreiteiros = empreiteiros.filter(
+            Q(nome__icontains=busca)
+            | Q(cpf_cnpj__icontains=busca)
+            | Q(pix__icontains=busca)
+        )
+    return render(
+        request,
+        'medicoes/lista_empreiteiros.html',
+        {'empreiteiros': empreiteiros, 'busca': busca},
+    )
+
+
+def novo_empreiteiro(request):
+    if request.method == 'POST':
+        form = EmpreiteiroForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Empreiteiro cadastrado com sucesso.')
+            return redirect('lista_empreiteiros_medicao')
+    else:
+        form = EmpreiteiroForm()
+    return render(request, 'medicoes/form_empreiteiro.html', {'form': form, 'titulo': 'Novo empreiteiro'})
+
+
+def editar_empreiteiro(request, empreiteiro_id):
+    empreiteiro = get_object_or_404(Empreiteiro, id=empreiteiro_id)
+    if request.method == 'POST':
+        form = EmpreiteiroForm(request.POST, instance=empreiteiro)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Empreiteiro atualizado com sucesso.')
+            return redirect('lista_empreiteiros_medicao')
+    else:
+        form = EmpreiteiroForm(instance=empreiteiro)
+    return render(
+        request,
+        'medicoes/form_empreiteiro.html',
+        {'form': form, 'titulo': 'Editar empreiteiro', 'empreiteiro': empreiteiro},
+    )
 
 
 def medicoes_obra(request, obra_id):
@@ -751,10 +843,12 @@ def excluir_medicao_construtora(request, medicao_id):
 def nova_medicao_empreiteiro_simples(request):
     if request.method == 'POST':
         form = MedicaoEmpreiteiroCabecalhoForm(request.POST)
+        formset = ItemMedicaoEmpreiteiroFormSet(request.POST)
         if form.is_valid():
             medicao = form.save(commit=False)
             medicao.tipo = MedicaoEmpreiteiro.TIPO_SIMPLES
             medicao.save()
+            _sync_empreiteiro_medicao(medicao)
             formset = ItemMedicaoEmpreiteiroFormSet(request.POST, instance=medicao)
             if formset.is_valid():
                 formset.save()
@@ -775,7 +869,12 @@ def nova_medicao_empreiteiro_simples(request):
     return render(
         request,
         'medicoes/editar_medicao_empreiteiro_simples.html',
-        {'form': form, 'formset': formset, 'titulo': 'Nova medicao simples de empreiteiro'},
+        {
+            'form': form,
+            'formset': formset,
+            'titulo': 'Nova medicao simples de empreiteiro',
+            'empreiteiros_json': _empreiteiros_json(),
+        },
     )
 
 
@@ -788,6 +887,20 @@ def nova_medicao_empreiteiro_cumulativa(request, orcamento_id):
         'periodo_inicio': timezone.localdate(),
         'periodo_fim': timezone.localdate(),
     }
+    ultima_medicao = MedicaoEmpreiteiro.objects.filter(
+        orcamento=orcamento,
+        tipo=MedicaoEmpreiteiro.TIPO_CUMULATIVA,
+    ).select_related('empreiteiro_cadastro').order_by('-numero', '-id').first()
+    if ultima_medicao:
+        initial.update(
+            {
+                'obra': ultima_medicao.obra_id or orcamento.obra_id,
+                'empreiteiro_cadastro': ultima_medicao.empreiteiro_cadastro_id,
+                'empreiteiro': ultima_medicao.empreiteiro,
+                'cpf_cnpj': ultima_medicao.cpf_cnpj,
+                'pix': ultima_medicao.pix,
+            }
+        )
     if request.method == 'POST':
         form = MedicaoEmpreiteiroCabecalhoForm(request.POST)
         if form.is_valid():
@@ -797,6 +910,7 @@ def nova_medicao_empreiteiro_cumulativa(request, orcamento_id):
                 medicao.orcamento = orcamento
                 medicao.obra = medicao.obra or orcamento.obra
                 medicao.save()
+                _sync_empreiteiro_medicao(medicao)
                 ItemMedicaoEmpreiteiro.objects.bulk_create(
                     [
                         ItemMedicaoEmpreiteiro(
@@ -814,7 +928,15 @@ def nova_medicao_empreiteiro_cumulativa(request, orcamento_id):
             return redirect('editar_medicao_empreiteiro', medicao_id=medicao.id)
     else:
         form = MedicaoEmpreiteiroCabecalhoForm(initial=initial)
-    return render(request, 'medicoes/form_medicao.html', {'form': form, 'titulo': 'Nova medicao cumulativa de empreiteiro'})
+    return render(
+        request,
+        'medicoes/form_medicao.html',
+        {
+            'form': form,
+            'titulo': 'Nova medicao cumulativa de empreiteiro',
+            'empreiteiros_json': _empreiteiros_json(),
+        },
+    )
 
 
 def editar_medicao_empreiteiro(request, medicao_id):
@@ -824,6 +946,7 @@ def editar_medicao_empreiteiro(request, medicao_id):
         formset = ItemMedicaoEmpreiteiroFormSet(request.POST, instance=medicao, orcamento=medicao.orcamento)
         if form.is_valid() and formset.is_valid():
             form.save()
+            _sync_empreiteiro_medicao(medicao)
             formset.save()
             _aplicar_percentuais_empreiteiro(medicao)
             messages.success(request, 'Medicao de empreiteiro atualizada com sucesso.')
@@ -839,7 +962,13 @@ def editar_medicao_empreiteiro(request, medicao_id):
     return render(
         request,
         template,
-        {'medicao': medicao, 'form': form, 'formset': formset, 'titulo': 'Medicao de empreiteiro'},
+        {
+            'medicao': medicao,
+            'form': form,
+            'formset': formset,
+            'titulo': 'Medicao de empreiteiro',
+            'empreiteiros_json': _empreiteiros_json(),
+        },
     )
 
 
