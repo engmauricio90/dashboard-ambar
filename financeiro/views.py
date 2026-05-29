@@ -286,12 +286,13 @@ def _draw_table_cell(draw, text, box, font, fill, align='left'):
 
 
 def _financial_report_pdf(grupos, resumo, filtros, ordenacao, agrupamento):
+    dpi = 200
     page_w, page_h = 2339, 1654
-    margin_x = 70
-    top_y = 54
-    row_h = 38
-    first_table_y = 250
-    rows_per_page = 29
+    margin_x = 58
+    top_y = 44
+    row_h = 44
+    first_table_y = 305
+    rows_per_page = 28
     pages = []
     printable_rows = []
     for grupo in grupos:
@@ -299,18 +300,18 @@ def _financial_report_pdf(grupos, resumo, filtros, ordenacao, agrupamento):
         printable_rows.extend({'kind': 'item', 'evento': evento} for evento in grupo['eventos'])
     chunks = [printable_rows[i : i + rows_per_page] for i in range(0, len(printable_rows), rows_per_page)] or [[]]
 
-    title_font = _pdf_font(30, True)
-    small_font = _pdf_font(16)
-    label_font = _pdf_font(17, True)
-    head_font = _pdf_font(15, True)
-    cell_font = _pdf_font(14)
-    dark = (39, 45, 48)
-    muted = (94, 103, 107)
-    line = (204, 212, 216)
-    header_fill = (239, 243, 244)
-    group_fill = (229, 235, 239)
-    positive = (42, 111, 84)
-    negative = (176, 55, 49)
+    title_font = _pdf_font(42, True)
+    small_font = _pdf_font(22)
+    label_font = _pdf_font(25, True)
+    head_font = _pdf_font(20, True)
+    cell_font = _pdf_font(19)
+    dark = (23, 28, 31)
+    muted = (75, 84, 88)
+    line = (150, 160, 166)
+    header_fill = (225, 231, 234)
+    group_fill = (211, 220, 225)
+    positive = (25, 101, 74)
+    negative = (157, 43, 39)
     table_w = page_w - (margin_x * 2)
 
     for page_index, chunk in enumerate(chunks, start=1):
@@ -318,37 +319,43 @@ def _financial_report_pdf(grupos, resumo, filtros, ordenacao, agrupamento):
         draw = ImageDraw.Draw(image)
 
         draw.text((margin_x, top_y), 'Relatorio financeiro', font=title_font, fill=dark)
-        draw.text((margin_x, top_y + 42), f'Emitido em {date.today().strftime("%d/%m/%Y")}', font=small_font, fill=muted)
-        draw.text((margin_x, top_y + 68), f'Filtros: {filtros or "sem filtros"}', font=small_font, fill=muted)
-        draw.text((margin_x, top_y + 94), f'Ordenacao: {ordenacao or "data_asc"} | Agrupamento: {agrupamento or "sem agrupamento"}', font=small_font, fill=muted)
+        draw.text((margin_x, top_y + 56), f'Emitido em {date.today().strftime("%d/%m/%Y")}', font=small_font, fill=muted)
+        draw.text((margin_x, top_y + 88), f'Filtros: {filtros or "sem filtros"}', font=small_font, fill=muted)
+        draw.text(
+            (margin_x, top_y + 120),
+            f'Ordenacao: {ordenacao or "data_asc"} | Agrupamento: {agrupamento or "sem agrupamento"}',
+            font=small_font,
+            fill=muted,
+        )
 
-        summary_y = top_y + 130
+        summary_y = top_y + 165
         cards = [
             ('A receber aberto', resumo['total_receber_aberto'], positive),
             ('A pagar aberto', resumo['total_pagar_aberto'], negative),
             ('Saldo previsto', resumo['saldo_previsto'], positive if resumo['saldo_previsto'] >= 0 else negative),
             ('Saldo realizado', resumo['saldo_realizado'], positive if resumo['saldo_realizado'] >= 0 else negative),
         ]
-        card_w = 350
+        card_gap = 18
+        card_w = int((table_w - (card_gap * 3)) / 4)
         for idx, (label, value, color) in enumerate(cards):
-            x = margin_x + idx * (card_w + 18)
-            draw.rectangle((x, summary_y, x + card_w, summary_y + 84), fill=(250, 251, 251), outline=line, width=1)
-            draw.text((x + 18, summary_y + 18), label, font=small_font, fill=muted)
-            draw.text((x + 18, summary_y + 48), _format_currency_br(value), font=label_font, fill=color)
+            x = margin_x + idx * (card_w + card_gap)
+            draw.rectangle((x, summary_y, x + card_w, summary_y + 92), fill=(247, 249, 250), outline=line, width=2)
+            draw.text((x + 18, summary_y + 16), label, font=small_font, fill=muted)
+            draw.text((x + 18, summary_y + 52), _format_currency_br(value), font=label_font, fill=color)
 
         table_y = first_table_y
         columns = [
-            ('Data', 125, 'left'),
-            ('Tipo', 90, 'center'),
-            ('Descricao', 500, 'left'),
-            ('Fornecedor/Cliente', 350, 'left'),
-            ('Obra', 330, 'left'),
-            ('Centro de custo', 330, 'left'),
-            ('Status', 164, 'center'),
-            ('Valor', 310, 'right'),
+            ('Data', 130, 'left'),
+            ('Tipo', 100, 'center'),
+            ('Descricao', 480, 'left'),
+            ('Fornecedor/Cliente', 345, 'left'),
+            ('Obra', 315, 'left'),
+            ('Centro de custo', 315, 'left'),
+            ('Status', 175, 'center'),
+            ('Valor', 363, 'right'),
         ]
         x = margin_x
-        draw.rectangle((margin_x, table_y, margin_x + table_w, table_y + row_h), fill=header_fill, outline=line, width=1)
+        draw.rectangle((margin_x, table_y, margin_x + table_w, table_y + row_h), fill=header_fill, outline=line, width=2)
         for label, width, align in columns:
             _draw_table_cell(draw, label, (x, table_y, x + width, table_y + row_h), head_font, dark, align)
             x += width
@@ -357,7 +364,7 @@ def _financial_report_pdf(grupos, resumo, filtros, ordenacao, agrupamento):
         item_index = 0
         for row in chunk:
             if row['kind'] == 'group':
-                draw.rectangle((margin_x, y, margin_x + table_w, y + row_h), fill=group_fill, outline=line, width=1)
+                draw.rectangle((margin_x, y, margin_x + table_w, y + row_h), fill=group_fill, outline=line, width=2)
                 group_text = f"{row['titulo']} | Total: {_format_currency_br(row['total'])}"
                 _draw_table_cell(draw, group_text, (margin_x, y, margin_x + table_w, y + row_h), label_font, dark, 'left')
                 y += row_h
@@ -383,11 +390,12 @@ def _financial_report_pdf(grupos, resumo, filtros, ordenacao, agrupamento):
                 x += width
             y += row_h
 
-        draw.text((margin_x, page_h - 48), f'Pagina {page_index} de {len(chunks)}', font=small_font, fill=muted)
+        draw.line((margin_x, page_h - 70, margin_x + table_w, page_h - 70), fill=(190, 198, 202), width=1)
+        draw.text((margin_x, page_h - 52), f'Pagina {page_index} de {len(chunks)}', font=small_font, fill=muted)
         pages.append(image)
 
     buffer = BytesIO()
-    pages[0].save(buffer, 'PDF', resolution=150, save_all=True, append_images=pages[1:])
+    pages[0].save(buffer, 'PDF', resolution=dpi, save_all=True, append_images=pages[1:])
     return buffer.getvalue()
 
 
