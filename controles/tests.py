@@ -11,7 +11,7 @@ from django.urls import reverse
 from openpyxl import Workbook
 
 from obras.models import Obra
-from financeiro.models import CentroCusto, ContaPagar
+from financeiro.models import CentroCusto, ContaPagar, Fornecedor
 
 from .models import (
     ApontamentoMaquinaLocacao,
@@ -287,6 +287,35 @@ class ControleAbastecimentoTests(TestCase):
         pdf_response = self.client.get(reverse('ordem_compra_geral_pdf', args=[ordem.id]))
         self.assertEqual(pdf_response['Content-Type'], 'application/pdf')
         self.assertTrue(pdf_response.content.startswith(b'%PDF'))
+
+    def test_ordem_compra_preenche_endereco_do_fornecedor_central(self):
+        fornecedor = Fornecedor.objects.create(
+            nome='Fornecedor Central',
+            cpf_cnpj='11.111.111/0001-11',
+            ie_identidade='123456',
+            endereco='Rua Central, 100',
+            bairro='Centro',
+            cidade='Porto Alegre',
+            uf='RS',
+            cep='90000-000',
+            telefone='(51) 99999-9999',
+        )
+        obra = Obra.objects.create(nome_obra='Obra Fornecedor')
+
+        ordem = OrdemCompraGeral.objects.create(
+            numero='012/2026',
+            fornecedor_cadastro=fornecedor,
+            obra=obra,
+        )
+
+        self.assertEqual(ordem.fornecedor, 'Fornecedor Central')
+        self.assertEqual(ordem.fornecedor_cpf_cnpj, '11.111.111/0001-11')
+        self.assertEqual(ordem.fornecedor_endereco, 'Rua Central, 100')
+        self.assertEqual(ordem.fornecedor_bairro, 'Centro')
+        self.assertEqual(ordem.fornecedor_cidade, 'Porto Alegre')
+        self.assertEqual(ordem.fornecedor_uf, 'RS')
+        self.assertEqual(ordem.fornecedor_cep, '90000-000')
+        self.assertEqual(ordem.fornecedor_fone, '(51) 99999-9999')
 
     def test_pdf_ordem_compra_geral_com_muitos_itens_quebra_paginas(self):
         ordem = OrdemCompraGeral.objects.create(

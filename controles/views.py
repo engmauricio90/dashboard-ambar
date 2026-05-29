@@ -339,7 +339,10 @@ def _fornecedores_json():
             'cpf_cnpj': fornecedor.cpf_cnpj,
             'ie_identidade': fornecedor.ie_identidade,
             'endereco': fornecedor.endereco,
+            'bairro': fornecedor.bairro,
             'municipio': fornecedor.municipio,
+            'cidade': fornecedor.cidade,
+            'uf': fornecedor.uf,
             'cep': fornecedor.cep,
             'telefone': fornecedor.telefone,
         }

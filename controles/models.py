@@ -334,7 +334,9 @@ class OrdemCompraGeral(models.Model):
             self.fornecedor_cpf_cnpj = fornecedor.cpf_cnpj
             self.fornecedor_ie = fornecedor.ie_identidade
             self.fornecedor_endereco = fornecedor.endereco
-            self.fornecedor_cidade = fornecedor.municipio
+            self.fornecedor_bairro = fornecedor.bairro
+            self.fornecedor_cidade = fornecedor.cidade or fornecedor.municipio
+            self.fornecedor_uf = fornecedor.uf
             self.fornecedor_cep = fornecedor.cep
             self.fornecedor_fone = fornecedor.telefone
         if not self.numero:

@@ -19,7 +19,26 @@ class ImportarCredoresSiengeForm(forms.Form):
 class FornecedorForm(BootstrapModelForm):
     class Meta:
         model = Fornecedor
-        fields = ['nome', 'cpf_cnpj', 'ie_identidade', 'endereco', 'municipio', 'cep', 'telefone', 'ativo']
+        fields = [
+            'nome',
+            'cpf_cnpj',
+            'ie_identidade',
+            'endereco',
+            'bairro',
+            'cidade',
+            'uf',
+            'municipio',
+            'cep',
+            'telefone',
+            'ativo',
+        ]
+        labels = {
+            'municipio': 'Municipio legado',
+            'uf': 'UF',
+        }
+        help_texts = {
+            'municipio': 'Campo antigo mantido para compatibilidade. Priorize cidade e UF.',
+        }
 
 
 class CentroCustoForm(BootstrapModelForm):

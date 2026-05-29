@@ -166,8 +166,9 @@
         setValue('id_fornecedor_cpf_cnpj', fornecedor.cpf_cnpj);
         setValue('id_fornecedor_fone', fornecedor.telefone);
         setValue('id_fornecedor_endereco', fornecedor.endereco);
-        setValue('id_fornecedor_cidade', municipio.cidade);
-        setValue('id_fornecedor_uf', municipio.uf);
+        setValue('id_fornecedor_bairro', fornecedor.bairro);
+        setValue('id_fornecedor_cidade', fornecedor.cidade || municipio.cidade);
+        setValue('id_fornecedor_uf', fornecedor.uf || municipio.uf);
         setValue('id_fornecedor_cep', fornecedor.cep);
         setValue('id_fornecedor_ie', fornecedor.ie_identidade);
     }

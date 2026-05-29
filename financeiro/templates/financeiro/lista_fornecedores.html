@@ -38,7 +38,7 @@
                         <th>Fornecedor</th>
                         <th>CNPJ/CPF</th>
                         <th>IE/Identidade</th>
-                        <th>Municipio</th>
+                        <th>Cidade/UF</th>
                         <th>Telefone</th>
                         <th>Ativo</th>
                         <th></th>
@@ -50,7 +50,7 @@
                         <td>{{ fornecedor.nome }}</td>
                         <td>{{ fornecedor.cpf_cnpj|default:'-' }}</td>
                         <td>{{ fornecedor.ie_identidade|default:'-' }}</td>
-                        <td>{{ fornecedor.municipio|default:'-' }}</td>
+                        <td>{{ fornecedor.cidade|default:fornecedor.municipio|default:'-' }}{% if fornecedor.uf %}/{{ fornecedor.uf }}{% endif %}</td>
                         <td>{{ fornecedor.telefone|default:'-' }}</td>
                         <td>{% if fornecedor.ativo %}Sim{% else %}Nao{% endif %}</td>
                         <td class="text-end">
