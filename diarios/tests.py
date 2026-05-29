@@ -69,6 +69,28 @@ class DiarioObraTests(TestCase):
         self.assertEqual(diario.frentes.count(), 1)
         self.assertEqual(diario.historico.first().acao, HistoricoDiario.ACAO_CRIADO)
 
+    def test_linha_vazia_de_ocorrencia_nao_bloqueia_salvamento(self):
+        data = self._post_data()
+        data.update(
+            {
+                'ocorrencias-TOTAL_FORMS': '1',
+                'ocorrencias-0-tipo': 'chuva',
+                'ocorrencias-0-descricao': '',
+                'ocorrencias-0-impacto_prazo': 'nao',
+                'ocorrencias-0-impacto_financeiro': 'nao',
+                'ocorrencias-0-providencia': '',
+                'ocorrencias-0-responsavel_providencia': '',
+                'ocorrencias-0-prazo_solucao': '',
+                'ocorrencias-0-status': 'aberta',
+            }
+        )
+
+        response = self.client.post(reverse('novo_diario'), data)
+
+        diario = DiarioObra.objects.get()
+        self.assertRedirects(response, reverse('detalhe_diario', args=[diario.id]))
+        self.assertEqual(diario.ocorrencias.count(), 0)
+
     def test_impede_duplicidade_por_obra_e_data(self):
         DiarioObra.objects.create(
             obra=self.obra,

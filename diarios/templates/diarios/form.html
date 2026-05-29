@@ -50,6 +50,7 @@
                 <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="frentes">Adicionar frente</button>
             </div>
             {{ formsets.frentes.management_form }}
+            {% if formsets.frentes.non_form_errors %}<div class="alert alert-danger">{{ formsets.frentes.non_form_errors }}</div>{% endif %}
             <div class="table-responsive">
                 <table class="table table-sm align-middle">
                     <thead><tr><th>Frente</th><th>Descricao</th><th>Local</th><th>%</th><th>Situacao</th><th>Excluir</th></tr></thead>
@@ -58,6 +59,7 @@
                         <tr>{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
                             <td>{{ item_form.nome }}</td><td>{{ item_form.descricao }}</td><td>{{ item_form.local_trecho }}</td><td>{{ item_form.percentual_executado }}</td><td>{{ item_form.situacao }}</td><td>{{ item_form.DELETE }}</td>
                         </tr>
+                        {% if item_form.errors %}<tr><td colspan="6" class="text-danger small">{{ item_form.errors }}</td></tr>{% endif %}
                         {% endfor %}
                     </tbody>
                     <template id="frentes-empty">
@@ -77,6 +79,7 @@
                 <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="efetivos">Adicionar efetivo</button>
             </div>
             {{ formsets.efetivos.management_form }}
+            {% if formsets.efetivos.non_form_errors %}<div class="alert alert-danger">{{ formsets.efetivos.non_form_errors }}</div>{% endif %}
             <div class="table-responsive">
                 <table class="table table-sm align-middle">
                     <thead><tr><th>Funcao</th><th>Nome</th><th>Empresa/equipe</th><th>Qtd</th><th>Entrada</th><th>Saida</th><th>Horas</th><th>Obs</th><th>Excluir</th></tr></thead>
@@ -85,6 +88,7 @@
                         <tr>{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
                             <td>{{ item_form.funcao }}</td><td>{{ item_form.nome_colaborador }}</td><td>{{ item_form.empresa_equipe }}</td><td>{{ item_form.quantidade }}</td><td>{{ item_form.horario_entrada }}</td><td>{{ item_form.horario_saida }}</td><td>{{ item_form.total_horas }}</td><td>{{ item_form.observacoes }}</td><td>{{ item_form.DELETE }}</td>
                         </tr>
+                        {% if item_form.errors %}<tr><td colspan="9" class="text-danger small">{{ item_form.errors }}</td></tr>{% endif %}
                         {% endfor %}
                     </tbody>
                     <template id="efetivos-empty">
@@ -104,6 +108,7 @@
                 <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="equipamentos">Adicionar equipamento</button>
             </div>
             {{ formsets.equipamentos.management_form }}
+            {% if formsets.equipamentos.non_form_errors %}<div class="alert alert-danger">{{ formsets.equipamentos.non_form_errors }}</div>{% endif %}
             <div class="table-responsive">
                 <table class="table table-sm align-middle">
                     <thead><tr><th>Tipo</th><th>Identificacao</th><th>Empresa</th><th>Qtd</th><th>H. inicial</th><th>H. final</th><th>Horas</th><th>Situacao</th><th>Obs</th><th>Excluir</th></tr></thead>
@@ -112,6 +117,7 @@
                         <tr>{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
                             <td>{{ item_form.tipo }}</td><td>{{ item_form.identificacao }}</td><td>{{ item_form.empresa_proprietario }}</td><td>{{ item_form.quantidade }}</td><td>{{ item_form.horimetro_inicial }}</td><td>{{ item_form.horimetro_final }}</td><td>{{ item_form.total_horas }}</td><td>{{ item_form.situacao }}</td><td>{{ item_form.observacoes }}</td><td>{{ item_form.DELETE }}</td>
                         </tr>
+                        {% if item_form.errors %}<tr><td colspan="10" class="text-danger small">{{ item_form.errors }}</td></tr>{% endif %}
                         {% endfor %}
                     </tbody>
                     <template id="equipamentos-empty">
@@ -131,6 +137,7 @@
                 <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="materiais">Adicionar material</button>
             </div>
             {{ formsets.materiais.management_form }}
+            {% if formsets.materiais.non_form_errors %}<div class="alert alert-danger">{{ formsets.materiais.non_form_errors }}</div>{% endif %}
             <div class="table-responsive">
                 <table class="table table-sm align-middle">
                     <thead><tr><th>Material</th><th>Und</th><th>Qtd</th><th>Fornecedor</th><th>NF</th><th>Movimento</th><th>Obs</th><th>Excluir</th></tr></thead>
@@ -139,6 +146,7 @@
                         <tr>{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
                             <td>{{ item_form.material }}</td><td>{{ item_form.unidade }}</td><td>{{ item_form.quantidade }}</td><td>{{ item_form.fornecedor }}</td><td>{{ item_form.nota_fiscal }}</td><td>{{ item_form.movimento }}</td><td>{{ item_form.observacoes }}</td><td>{{ item_form.DELETE }}</td>
                         </tr>
+                        {% if item_form.errors %}<tr><td colspan="8" class="text-danger small">{{ item_form.errors }}</td></tr>{% endif %}
                         {% endfor %}
                     </tbody>
                     <template id="materiais-empty">
@@ -158,6 +166,7 @@
                 <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="ocorrencias">Adicionar ocorrencia</button>
             </div>
             {{ formsets.ocorrencias.management_form }}
+            {% if formsets.ocorrencias.non_form_errors %}<div class="alert alert-danger">{{ formsets.ocorrencias.non_form_errors }}</div>{% endif %}
             <div class="table-responsive">
                 <table class="table table-sm align-middle">
                     <thead><tr><th>Tipo</th><th>Descricao</th><th>Prazo</th><th>Financ.</th><th>Providencia</th><th>Resp.</th><th>Prazo sol.</th><th>Status</th><th>Excluir</th></tr></thead>
@@ -166,6 +175,7 @@
                         <tr>{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
                             <td>{{ item_form.tipo }}</td><td>{{ item_form.descricao }}</td><td>{{ item_form.impacto_prazo }}</td><td>{{ item_form.impacto_financeiro }}</td><td>{{ item_form.providencia }}</td><td>{{ item_form.responsavel_providencia }}</td><td>{{ item_form.prazo_solucao }}</td><td>{{ item_form.status }}</td><td>{{ item_form.DELETE }}</td>
                         </tr>
+                        {% if item_form.errors %}<tr><td colspan="9" class="text-danger small">{{ item_form.errors }}</td></tr>{% endif %}
                         {% endfor %}
                     </tbody>
                     <template id="ocorrencias-empty">
@@ -187,6 +197,7 @@
                         <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="checklist">Adicionar item</button>
                     </div>
                     {{ formsets.checklist.management_form }}
+                    {% if formsets.checklist.non_form_errors %}<div class="alert alert-danger">{{ formsets.checklist.non_form_errors }}</div>{% endif %}
                     <div class="table-responsive">
                         <table class="table table-sm align-middle">
                             <thead><tr><th>Item</th><th>Resultado</th><th>Obs</th><th>Excluir</th></tr></thead>
@@ -195,6 +206,7 @@
                                 <tr>{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
                                     <td>{{ item_form.item }}</td><td>{{ item_form.resultado }}</td><td>{{ item_form.observacoes }}</td><td>{{ item_form.DELETE }}</td>
                                 </tr>
+                                {% if item_form.errors %}<tr><td colspan="4" class="text-danger small">{{ item_form.errors }}</td></tr>{% endif %}
                                 {% endfor %}
                             </tbody>
                             <template id="checklist-empty">
@@ -215,6 +227,7 @@
                         <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="fotos">Adicionar foto</button>
                     </div>
                     {{ formsets.fotos.management_form }}
+                    {% if formsets.fotos.non_form_errors %}<div class="alert alert-danger">{{ formsets.fotos.non_form_errors }}</div>{% endif %}
                     <div id="fotos-body">
                         {% for item_form in formsets.fotos %}
                         <div class="border rounded p-3 mb-3">{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
@@ -224,6 +237,7 @@
                                 <div class="col-md-3">{{ item_form.frente_servico }}</div>
                                 <div class="col-md-1">{{ item_form.DELETE }}</div>
                             </div>
+                            {% if item_form.errors %}<div class="text-danger small mt-2">{{ item_form.errors }}</div>{% endif %}
                         </div>
                         {% endfor %}
                     </div>

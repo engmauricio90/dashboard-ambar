@@ -16,6 +16,34 @@ from .models import (
 )
 
 
+class OptionalExtraFormMixin:
+    meaningful_fields = []
+    ignored_values = {}
+
+    def _raw_value(self, field_name):
+        if getattr(self, 'files', None) and self.prefix:
+            file_value = self.files.get(f'{self.prefix}-{field_name}')
+            if file_value:
+                return file_value
+        if not self.data or not self.prefix:
+            return None
+        return self.data.get(f'{self.prefix}-{field_name}')
+
+    def has_changed(self):
+        if self.instance and self.instance.pk:
+            return super().has_changed()
+        if self.data and self.prefix and self.meaningful_fields:
+            for field_name in self.meaningful_fields:
+                value = self._raw_value(field_name)
+                if value in (None, ''):
+                    continue
+                if str(value) in self.ignored_values.get(field_name, set()):
+                    continue
+                return super().has_changed()
+            return False
+        return super().has_changed()
+
+
 class DiarioObraFiltroForm(BootstrapForm):
     obra = forms.CharField(required=False)
     data_inicial = forms.DateField(required=False, widget=forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}))
@@ -94,7 +122,9 @@ class DiarioObraForm(BootstrapModelForm):
         return cleaned_data
 
 
-class FrenteServicoDiarioForm(BootstrapModelForm):
+class FrenteServicoDiarioForm(OptionalExtraFormMixin, BootstrapModelForm):
+    meaningful_fields = ['nome', 'descricao', 'local_trecho', 'percentual_executado', 'observacoes']
+
     class Meta:
         model = FrenteServicoDiario
         fields = ['nome', 'descricao', 'local_trecho', 'percentual_executado', 'observacoes', 'situacao']
@@ -105,7 +135,21 @@ class FrenteServicoDiarioForm(BootstrapModelForm):
         }
 
 
-class EfetivoDiarioForm(BootstrapModelForm):
+class EfetivoDiarioForm(OptionalExtraFormMixin, BootstrapModelForm):
+    meaningful_fields = [
+        'nome_colaborador',
+        'empresa_equipe',
+        'quantidade',
+        'horario_entrada',
+        'horario_saida',
+        'total_horas',
+        'observacoes',
+    ]
+    ignored_values = {
+        'quantidade': {'1'},
+        'total_horas': {'0', '0.0', '0.00'},
+    }
+
     class Meta:
         model = EfetivoDiario
         fields = [
@@ -125,7 +169,21 @@ class EfetivoDiarioForm(BootstrapModelForm):
         }
 
 
-class EquipamentoDiarioForm(BootstrapModelForm):
+class EquipamentoDiarioForm(OptionalExtraFormMixin, BootstrapModelForm):
+    meaningful_fields = [
+        'identificacao',
+        'empresa_proprietario',
+        'quantidade',
+        'horimetro_inicial',
+        'horimetro_final',
+        'total_horas',
+        'observacoes',
+    ]
+    ignored_values = {
+        'quantidade': {'1'},
+        'total_horas': {'0', '0.0', '0.00'},
+    }
+
     class Meta:
         model = EquipamentoDiario
         fields = [
@@ -146,7 +204,12 @@ class EquipamentoDiarioForm(BootstrapModelForm):
         }
 
 
-class MaterialDiarioForm(BootstrapModelForm):
+class MaterialDiarioForm(OptionalExtraFormMixin, BootstrapModelForm):
+    meaningful_fields = ['material', 'unidade', 'quantidade', 'fornecedor', 'nota_fiscal', 'observacoes']
+    ignored_values = {
+        'quantidade': {'0', '0.0', '0.00', '0.000'},
+    }
+
     class Meta:
         model = MaterialDiario
         fields = ['material', 'unidade', 'quantidade', 'fornecedor', 'nota_fiscal', 'movimento', 'observacoes']
@@ -155,7 +218,9 @@ class MaterialDiarioForm(BootstrapModelForm):
         }
 
 
-class OcorrenciaDiarioForm(BootstrapModelForm):
+class OcorrenciaDiarioForm(OptionalExtraFormMixin, BootstrapModelForm):
+    meaningful_fields = ['descricao', 'providencia', 'responsavel_providencia', 'prazo_solucao']
+
     class Meta:
         model = OcorrenciaDiario
         fields = [
@@ -181,7 +246,9 @@ class ChecklistDiarioForm(BootstrapModelForm):
         fields = ['item', 'resultado', 'observacoes']
 
 
-class FotoDiarioForm(BootstrapModelForm):
+class FotoDiarioForm(OptionalExtraFormMixin, BootstrapModelForm):
+    meaningful_fields = ['imagem', 'legenda', 'frente_servico']
+
     class Meta:
         model = FotoDiario
         fields = ['imagem', 'legenda', 'frente_servico']
