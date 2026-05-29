@@ -1,9 +1,12 @@
+import tempfile
 from datetime import date, time
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
+from django.test.utils import override_settings
 from django.urls import reverse
 
 from obras.models import Obra
@@ -166,6 +169,28 @@ class DiarioObraTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'application/pdf')
         self.assertTrue(response.content.startswith(b'%PDF'))
+
+    def test_foto_do_diario_carrega_pela_url_de_media(self):
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                diario = DiarioObra.objects.create(
+                    obra=self.obra,
+                    data=date(2026, 5, 28),
+                    responsavel_preenchimento='Eng. Responsavel',
+                    descricao_servicos='Servico executado',
+                )
+                gif = (
+                    b'GIF87a\x01\x00\x01\x00\x80\x01\x00\x00\x00\x00ccc,\x00\x00\x00\x00'
+                    b'\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
+                )
+                upload = SimpleUploadedFile('diario.gif', gif, content_type='image/gif')
+                foto = diario.fotos.create(imagem=upload, legenda='Foto da obra', uploaded_by=self.user)
+
+                response = self.client.get(foto.imagem.url)
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response['Content-Type'], 'image/gif')
+                response.close()
 
     def test_lista_diarios_por_obra(self):
         DiarioObra.objects.create(
