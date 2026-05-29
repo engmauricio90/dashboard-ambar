@@ -239,14 +239,46 @@ class FinanceiroFiltroForm(BootstrapForm):
         ('cancelado', 'Cancelado'),
         ('atrasado', 'Atrasado'),
     ]
+    ORDENACAO_CHOICES = [
+        ('data_asc', 'Data: menor para maior'),
+        ('data_desc', 'Data: maior para menor'),
+        ('fornecedor', 'Fornecedor/cliente'),
+        ('centro_custo', 'Centro de custo'),
+        ('obra', 'Obra'),
+        ('valor_desc', 'Valor: maior para menor'),
+        ('valor_asc', 'Valor: menor para maior'),
+    ]
+    AGRUPAMENTO_CHOICES = [
+        ('', 'Sem agrupamento'),
+        ('centro_custo', 'Centro de custo'),
+        ('fornecedor', 'Fornecedor/cliente'),
+        ('obra', 'Obra'),
+        ('status', 'Status'),
+        ('tipo', 'Tipo'),
+    ]
 
-    tipo = forms.ChoiceField(required=False, choices=TIPO_CHOICES)
-    status = forms.ChoiceField(required=False, choices=STATUS_CHOICES)
-    data_inicial = forms.DateField(required=False, widget=forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}))
-    data_final = forms.DateField(required=False, widget=forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}))
-    obra = forms.CharField(required=False)
-    centro_custo = forms.ModelChoiceField(required=False, queryset=CentroCusto.objects.all())
-    busca = forms.CharField(required=False)
+    tipo = forms.ChoiceField(label='Tipo', required=False, choices=TIPO_CHOICES)
+    status = forms.ChoiceField(label='Status', required=False, choices=STATUS_CHOICES)
+    ordenacao = forms.ChoiceField(
+        label='Ordenar por',
+        required=False,
+        choices=ORDENACAO_CHOICES,
+        initial='data_asc',
+    )
+    agrupamento = forms.ChoiceField(label='Separar por', required=False, choices=AGRUPAMENTO_CHOICES)
+    data_inicial = forms.DateField(
+        label='Data inicial',
+        required=False,
+        widget=forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+    )
+    data_final = forms.DateField(
+        label='Data final',
+        required=False,
+        widget=forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+    )
+    obra = forms.CharField(label='Obra', required=False)
+    centro_custo = forms.ModelChoiceField(label='Centro de custo', required=False, queryset=CentroCusto.objects.all())
+    busca = forms.CharField(label='Busca', required=False)
 
     def clean(self):
         cleaned_data = super().clean()

@@ -606,8 +606,45 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertContains(response, 'Financeiro')
         self.assertContains(response, 'Fluxo de caixa')
 
+    def test_relatorio_financeiro_agrupa_por_centro_e_ordena_por_data(self):
+        centro_maquinas = CentroCusto.objects.create(nome='Maquinas')
+        ContaPagar.objects.create(
+            fornecedor='Fornecedor B',
+            obra=self.obra,
+            centro_custo=centro_maquinas,
+            categoria='material',
+            descricao='Despesa posterior',
+            data_emissao=date(2026, 5, 2),
+            data_vencimento=date(2026, 5, 20),
+            valor=Decimal('200.00'),
+        )
+        ContaPagar.objects.create(
+            fornecedor='Fornecedor A',
+            obra=self.obra,
+            centro_custo=self.centro,
+            categoria='material',
+            descricao='Despesa anterior',
+            data_emissao=date(2026, 5, 1),
+            data_vencimento=date(2026, 5, 10),
+            valor=Decimal('100.00'),
+        )
+
+        response = self.client.get(
+            reverse('relatorio_financeiro'),
+            {'tipo': 'pagar', 'ordenacao': 'data_asc', 'agrupamento': 'centro_custo'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Obras')
+        self.assertContains(response, 'Maquinas')
+        content = response.content.decode()
+        self.assertLess(content.index('Despesa anterior'), content.index('Despesa posterior'))
+
     def test_relatorio_pdf_responde_pdf(self):
-        response = self.client.get(reverse('relatorio_financeiro_pdf'))
+        response = self.client.get(
+            reverse('relatorio_financeiro_pdf'),
+            {'tipo': 'pagar', 'ordenacao': 'data_asc', 'agrupamento': 'centro_custo'},
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'application/pdf')

@@ -4,7 +4,6 @@ from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
 
-from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
@@ -134,6 +133,7 @@ def _eventos_fluxo(receber, pagar):
                 'obra': conta.obra,
                 'centro_custo': conta.centro_custo,
                 'status': _status_visual(conta, 'receber'),
+                'valor_abs': conta.valor_liquido,
                 'valor': conta.valor_liquido,
             }
         )
@@ -147,10 +147,56 @@ def _eventos_fluxo(receber, pagar):
                 'obra': conta.obra,
                 'centro_custo': conta.centro_custo,
                 'status': _status_visual(conta, 'pagar'),
+                'valor_abs': conta.valor_pago_efetivo if conta.status == ContaPagar.STATUS_PAGO else conta.valor,
                 'valor': -conta.valor_pago_efetivo if conta.status == ContaPagar.STATUS_PAGO else -conta.valor,
             }
         )
     return sorted(eventos, key=lambda item: (item['data'], item['tipo'], item['descricao']))
+
+
+def _ordenar_eventos(eventos, ordenacao):
+    ordenacao = ordenacao or 'data_asc'
+    key_map = {
+        'data_asc': lambda item: (item['data'], item['pessoa'], item['descricao']),
+        'data_desc': lambda item: (item['data'], item['pessoa'], item['descricao']),
+        'fornecedor': lambda item: ((item['pessoa'] or '').lower(), item['data'], item['descricao']),
+        'centro_custo': lambda item: (str(item['centro_custo'] or '').lower(), item['data'], item['pessoa']),
+        'obra': lambda item: (str(item['obra'] or '').lower(), item['data'], item['pessoa']),
+        'valor_desc': lambda item: (item['valor_abs'], item['data']),
+        'valor_asc': lambda item: (item['valor_abs'], item['data']),
+    }
+    reverse = ordenacao in {'data_desc', 'valor_desc'}
+    return sorted(eventos, key=key_map.get(ordenacao, key_map['data_asc']), reverse=reverse)
+
+
+def _grupo_evento(evento, agrupamento):
+    if agrupamento == 'centro_custo':
+        return str(evento['centro_custo'] or 'Sem centro de custo')
+    if agrupamento == 'fornecedor':
+        return evento['pessoa'] or 'Sem fornecedor/cliente'
+    if agrupamento == 'obra':
+        return str(evento['obra'] or 'Sem obra')
+    if agrupamento == 'status':
+        return evento['status'] or 'Sem status'
+    if agrupamento == 'tipo':
+        return evento['tipo'] or 'Sem tipo'
+    return 'Lancamentos'
+
+
+def _agrupar_eventos(eventos, agrupamento):
+    if not agrupamento:
+        return [{'titulo': 'Lancamentos', 'eventos': eventos, 'total': sum((e['valor'] for e in eventos), Decimal('0'))}]
+    grupos = []
+    indices = {}
+    for evento in eventos:
+        titulo = _grupo_evento(evento, agrupamento)
+        if titulo not in indices:
+            indices[titulo] = len(grupos)
+            grupos.append({'titulo': titulo, 'eventos': [], 'total': Decimal('0')})
+        grupo = grupos[indices[titulo]]
+        grupo['eventos'].append(evento)
+        grupo['total'] += evento['valor']
+    return grupos
 
 
 def _resumo(receber, pagar):
@@ -239,42 +285,42 @@ def _draw_table_cell(draw, text, box, font, fill, align='left'):
     draw.text((x, y1 + 10), text, font=font, fill=fill)
 
 
-def _financial_report_background():
-    bg_path = Path(settings.BASE_DIR) / 'static' / 'propostas' / 'reference' / 'page_frame.png'
-    if bg_path.exists():
-        return Image.open(bg_path).convert('RGB')
-    return Image.new('RGB', (1653, 2338), 'white')
-
-
-def _financial_report_pdf(eventos, resumo, filtros):
-    page_h = 2338
-    margin_x = 150
-    top_y = 360
-    row_h = 44
-    first_table_y = 760
-    rows_per_page = 28
+def _financial_report_pdf(grupos, resumo, filtros, ordenacao, agrupamento):
+    page_w, page_h = 2339, 1654
+    margin_x = 70
+    top_y = 54
+    row_h = 38
+    first_table_y = 250
+    rows_per_page = 29
     pages = []
-    chunks = [eventos[i : i + rows_per_page] for i in range(0, len(eventos), rows_per_page)] or [[]]
+    printable_rows = []
+    for grupo in grupos:
+        printable_rows.append({'kind': 'group', 'titulo': grupo['titulo'], 'total': grupo['total']})
+        printable_rows.extend({'kind': 'item', 'evento': evento} for evento in grupo['eventos'])
+    chunks = [printable_rows[i : i + rows_per_page] for i in range(0, len(printable_rows), rows_per_page)] or [[]]
 
-    title_font = _pdf_font(34, True)
-    small_font = _pdf_font(18)
-    label_font = _pdf_font(18, True)
-    head_font = _pdf_font(16, True)
-    cell_font = _pdf_font(15)
+    title_font = _pdf_font(30, True)
+    small_font = _pdf_font(16)
+    label_font = _pdf_font(17, True)
+    head_font = _pdf_font(15, True)
+    cell_font = _pdf_font(14)
     dark = (39, 45, 48)
     muted = (94, 103, 107)
     line = (204, 212, 216)
     header_fill = (239, 243, 244)
+    group_fill = (229, 235, 239)
     positive = (42, 111, 84)
     negative = (176, 55, 49)
+    table_w = page_w - (margin_x * 2)
 
     for page_index, chunk in enumerate(chunks, start=1):
-        image = _financial_report_background()
+        image = Image.new('RGB', (page_w, page_h), 'white')
         draw = ImageDraw.Draw(image)
 
-        draw.text((margin_x, top_y), 'RELATÓRIO FINANCEIRO', font=title_font, fill=dark)
-        draw.text((margin_x, top_y + 46), f'Emitido em {date.today().strftime("%d/%m/%Y")}', font=small_font, fill=muted)
-        draw.text((margin_x, top_y + 76), f'Filtros: {filtros or "sem filtros"}', font=small_font, fill=muted)
+        draw.text((margin_x, top_y), 'Relatorio financeiro', font=title_font, fill=dark)
+        draw.text((margin_x, top_y + 42), f'Emitido em {date.today().strftime("%d/%m/%Y")}', font=small_font, fill=muted)
+        draw.text((margin_x, top_y + 68), f'Filtros: {filtros or "sem filtros"}', font=small_font, fill=muted)
+        draw.text((margin_x, top_y + 94), f'Ordenacao: {ordenacao or "data_asc"} | Agrupamento: {agrupamento or "sem agrupamento"}', font=small_font, fill=muted)
 
         summary_y = top_y + 130
         cards = [
@@ -283,40 +329,50 @@ def _financial_report_pdf(eventos, resumo, filtros):
             ('Saldo previsto', resumo['saldo_previsto'], positive if resumo['saldo_previsto'] >= 0 else negative),
             ('Saldo realizado', resumo['saldo_realizado'], positive if resumo['saldo_realizado'] >= 0 else negative),
         ]
-        card_w = 315
+        card_w = 350
         for idx, (label, value, color) in enumerate(cards):
-            x = margin_x + idx * (card_w + 22)
-            draw.rounded_rectangle((x, summary_y, x + card_w, summary_y + 100), radius=8, fill=(250, 251, 251), outline=line, width=2)
+            x = margin_x + idx * (card_w + 18)
+            draw.rectangle((x, summary_y, x + card_w, summary_y + 84), fill=(250, 251, 251), outline=line, width=1)
             draw.text((x + 18, summary_y + 18), label, font=small_font, fill=muted)
-            draw.text((x + 18, summary_y + 52), _format_currency_br(value), font=label_font, fill=color)
+            draw.text((x + 18, summary_y + 48), _format_currency_br(value), font=label_font, fill=color)
 
         table_y = first_table_y
         columns = [
-            ('Data', 110, 'left'),
+            ('Data', 125, 'left'),
             ('Tipo', 90, 'center'),
-            ('Descrição', 330, 'left'),
-            ('Cliente/Fornecedor', 260, 'left'),
-            ('Obra/Centro', 270, 'left'),
-            ('Status', 130, 'center'),
-            ('Valor', 160, 'right'),
+            ('Descricao', 500, 'left'),
+            ('Fornecedor/Cliente', 350, 'left'),
+            ('Obra', 330, 'left'),
+            ('Centro de custo', 330, 'left'),
+            ('Status', 164, 'center'),
+            ('Valor', 310, 'right'),
         ]
         x = margin_x
-        draw.rounded_rectangle((margin_x, table_y, margin_x + sum(col[1] for col in columns), table_y + row_h), radius=6, fill=header_fill, outline=line, width=1)
+        draw.rectangle((margin_x, table_y, margin_x + table_w, table_y + row_h), fill=header_fill, outline=line, width=1)
         for label, width, align in columns:
             _draw_table_cell(draw, label, (x, table_y, x + width, table_y + row_h), head_font, dark, align)
             x += width
 
         y = table_y + row_h
-        for idx, evento in enumerate(chunk):
-            row_fill = (255, 255, 255) if idx % 2 == 0 else (248, 250, 250)
-            draw.rectangle((margin_x, y, margin_x + sum(col[1] for col in columns), y + row_h), fill=row_fill, outline=line, width=1)
-            destino = evento['obra'] or evento['centro_custo'] or '-'
+        item_index = 0
+        for row in chunk:
+            if row['kind'] == 'group':
+                draw.rectangle((margin_x, y, margin_x + table_w, y + row_h), fill=group_fill, outline=line, width=1)
+                group_text = f"{row['titulo']} | Total: {_format_currency_br(row['total'])}"
+                _draw_table_cell(draw, group_text, (margin_x, y, margin_x + table_w, y + row_h), label_font, dark, 'left')
+                y += row_h
+                continue
+            evento = row['evento']
+            row_fill = (255, 255, 255) if item_index % 2 == 0 else (248, 250, 250)
+            item_index += 1
+            draw.rectangle((margin_x, y, margin_x + table_w, y + row_h), fill=row_fill, outline=line, width=1)
             values = [
                 evento['data'].strftime('%d/%m/%Y'),
                 evento['tipo'],
                 evento['descricao'],
                 evento['pessoa'],
-                destino,
+                evento['obra'] or '-',
+                evento['centro_custo'] or '-',
                 evento['status'],
                 _format_currency_br(evento['valor']),
             ]
@@ -327,7 +383,7 @@ def _financial_report_pdf(eventos, resumo, filtros):
                 x += width
             y += row_h
 
-        draw.text((margin_x, page_h - 170), f'Página {page_index} de {len(chunks)}', font=small_font, fill=muted)
+        draw.text((margin_x, page_h - 48), f'Pagina {page_index} de {len(chunks)}', font=small_font, fill=muted)
         pages.append(image)
 
     buffer = BytesIO()
@@ -684,11 +740,17 @@ def editar_centro_custo(request, centro_id):
 @financeiro_required
 def relatorio_financeiro(request):
     form, receber, pagar = _filtrar_contas(request)
-    eventos = _eventos_fluxo(receber, pagar)
+    ordenacao = form.cleaned_data.get('ordenacao') if form.is_valid() else 'data_asc'
+    agrupamento = form.cleaned_data.get('agrupamento') if form.is_valid() else ''
+    eventos = _ordenar_eventos(_eventos_fluxo(receber, pagar), ordenacao)
+    grupos = _agrupar_eventos(eventos, agrupamento)
     contexto = {
         'filtro_form': form,
         'eventos': eventos,
+        'grupos_eventos': grupos,
         'total_eventos': len(eventos),
+        'ordenacao_atual': ordenacao,
+        'agrupamento_atual': agrupamento,
         **_resumo(receber, pagar),
     }
     return render(request, 'financeiro/relatorio.html', contexto)
@@ -697,9 +759,15 @@ def relatorio_financeiro(request):
 @financeiro_required
 def relatorio_financeiro_pdf(request):
     form, receber, pagar = _filtrar_contas(request)
-    eventos = _eventos_fluxo(receber, pagar)
+    ordenacao = form.cleaned_data.get('ordenacao') if form.is_valid() else 'data_asc'
+    agrupamento = form.cleaned_data.get('agrupamento') if form.is_valid() else ''
+    eventos = _ordenar_eventos(_eventos_fluxo(receber, pagar), ordenacao)
+    grupos = _agrupar_eventos(eventos, agrupamento)
     resumo = _resumo(receber, pagar)
     filtros = request.GET.urlencode()
-    response = HttpResponse(_financial_report_pdf(eventos, resumo, filtros), content_type='application/pdf')
+    response = HttpResponse(
+        _financial_report_pdf(grupos, resumo, filtros, ordenacao, agrupamento),
+        content_type='application/pdf',
+    )
     response['Content-Disposition'] = 'inline; filename="relatorio_financeiro.pdf"'
     return response
