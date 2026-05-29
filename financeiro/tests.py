@@ -10,7 +10,7 @@ from django.urls import reverse
 from obras.models import DespesaObra, NotaFiscal, Obra, RetencaoTecnicaObra
 from controles.models import ItemOrdemCompraGeral, NotaFiscalOrdemCompraGeral, OrdemCompraGeral
 
-from .models import CentroCusto, ContaPagar, ContaReceber, ItemContaPagarOrdemCompra
+from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor, ItemContaPagarOrdemCompra
 
 
 class FinanceiroIntegracaoObraTests(TestCase):
@@ -190,6 +190,31 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Adicionar item')
         self.assertContains(response, 'name="itens_oc-TOTAL_FORMS" value="0"')
+
+    def test_exclui_fornecedor_sem_apagar_lancamentos(self):
+        fornecedor = Fornecedor.objects.create(nome='Fornecedor Cadastro', cpf_cnpj='00.000.000/0001-00')
+        conta = ContaPagar.objects.create(
+            fornecedor='Fornecedor Cadastro',
+            fornecedor_cadastro=fornecedor,
+            obra=self.obra,
+            centro_custo=self.centro,
+            categoria='material',
+            descricao='Despesa vinculada',
+            data_emissao=date(2026, 4, 2),
+            data_vencimento=date(2026, 4, 20),
+            valor=Decimal('100.00'),
+        )
+
+        response_get = self.client.get(reverse('excluir_fornecedor', args=[fornecedor.id]))
+        self.assertContains(response_get, 'Excluir fornecedor')
+
+        response_post = self.client.post(reverse('excluir_fornecedor', args=[fornecedor.id]))
+
+        self.assertRedirects(response_post, reverse('lista_fornecedores'))
+        self.assertFalse(Fornecedor.objects.filter(id=fornecedor.id).exists())
+        conta.refresh_from_db()
+        self.assertEqual(conta.fornecedor, 'Fornecedor Cadastro')
+        self.assertIsNone(conta.fornecedor_cadastro)
 
     def test_lista_contas_pagar_mostra_apenas_abertas(self):
         ContaPagar.objects.create(

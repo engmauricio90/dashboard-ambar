@@ -630,6 +630,31 @@ def editar_fornecedor(request, fornecedor_id):
 
 
 @financeiro_required
+def excluir_fornecedor(request, fornecedor_id):
+    fornecedor = get_object_or_404(Fornecedor, id=fornecedor_id)
+    detalhe = (
+        'Os lancamentos e ordens ja criados nao serao apagados. '
+        'Eles manterao os dados copiados do fornecedor, mas perderao o vinculo com este cadastro central.'
+    )
+    if request.method == 'POST':
+        nome = fornecedor.nome
+        fornecedor.delete()
+        messages.success(request, f'Fornecedor "{nome}" excluido com sucesso.')
+        return redirect('lista_fornecedores')
+    return render(
+        request,
+        'obras/confirmar_exclusao.html',
+        {
+            'titulo': 'Excluir fornecedor',
+            'mensagem': f'Deseja excluir o fornecedor "{fornecedor}"?',
+            'detalhe': detalhe,
+            'confirmar_label': 'Excluir fornecedor',
+            'cancelar_href': reverse('lista_fornecedores'),
+        },
+    )
+
+
+@financeiro_required
 def novo_centro_custo(request):
     if request.method == 'POST':
         form = CentroCustoForm(request.POST)

@@ -20,6 +20,7 @@ urlpatterns = [
     path('fornecedores/', views.lista_fornecedores, name='lista_fornecedores'),
     path('fornecedores/novo/', views.novo_fornecedor, name='novo_fornecedor'),
     path('fornecedores/<int:fornecedor_id>/editar/', views.editar_fornecedor, name='editar_fornecedor'),
+    path('fornecedores/<int:fornecedor_id>/excluir/', views.excluir_fornecedor, name='excluir_fornecedor'),
     path('centros-custo/', views.lista_centros_custo, name='lista_centros_custo'),
     path('centros-custo/novo/', views.novo_centro_custo, name='novo_centro_custo'),
     path('centros-custo/<int:centro_id>/editar/', views.editar_centro_custo, name='editar_centro_custo'),

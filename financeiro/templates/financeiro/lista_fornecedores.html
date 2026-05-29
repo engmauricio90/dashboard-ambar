@@ -53,7 +53,10 @@
                         <td>{{ fornecedor.municipio|default:'-' }}</td>
                         <td>{{ fornecedor.telefone|default:'-' }}</td>
                         <td>{% if fornecedor.ativo %}Sim{% else %}Nao{% endif %}</td>
-                        <td class="text-end"><a href="{% url 'editar_fornecedor' fornecedor.id %}" class="btn btn-sm btn-outline-primary">Editar</a></td>
+                        <td class="text-end">
+                            <a href="{% url 'editar_fornecedor' fornecedor.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                            <a href="{% url 'excluir_fornecedor' fornecedor.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
+                        </td>
                     </tr>
                     {% empty %}
                     <tr><td colspan="7">Nenhum fornecedor cadastrado.</td></tr>
