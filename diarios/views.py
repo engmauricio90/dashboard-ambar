@@ -10,12 +10,8 @@ from PIL import Image, ImageDraw
 from config.permissions import user_in_groups
 from controles.views import (
     _clean_pdf_text,
-    _draw_key_value_grid,
-    _draw_section_title,
-    _draw_table,
     _draw_wrapped,
     _font,
-    _report_background,
     _report_pdf_response_pages,
 )
 from obras.models import Obra
@@ -340,17 +336,95 @@ def excluir_diario(request, diario_id):
     return redirect('lista_diarios_obra', obra_id=obra_id)
 
 
+DIARIO_PAGE_W = 1653
+DIARIO_PAGE_H = 2338
+DIARIO_MARGIN = 110
+DIARIO_CONTENT_W = DIARIO_PAGE_W - (DIARIO_MARGIN * 2)
+DIARIO_FOOTER_Y = DIARIO_PAGE_H - 95
+
+
 def _nova_pagina():
-    image = _report_background()
+    image = Image.new('RGB', (DIARIO_PAGE_W, DIARIO_PAGE_H), 'white')
     draw = ImageDraw.Draw(image)
     return image, draw
 
 
 def _garantir_espaco(pages, image, draw, y, needed=220):
-    if y + needed < 2160:
+    if y + needed < DIARIO_FOOTER_Y - 30:
         return image, draw, y
     pages.append(image)
-    return (*_nova_pagina(), 360)
+    return (*_nova_pagina(), DIARIO_MARGIN)
+
+
+def _diario_footer(draw, page_number, total_pages):
+    muted = (78, 84, 88)
+    line = (198, 204, 208)
+    today = timezone.localtime().strftime('%d/%m/%Y - %H:%M')
+    draw.line((DIARIO_MARGIN, DIARIO_FOOTER_Y - 20, DIARIO_PAGE_W - DIARIO_MARGIN, DIARIO_FOOTER_Y - 20), fill=line, width=1)
+    draw.text((DIARIO_MARGIN, DIARIO_FOOTER_Y), today, font=_font(15), fill=muted)
+    center = 'Ambar Engenharia'
+    center_w = draw.textlength(center, font=_font(15, True))
+    draw.text(((DIARIO_PAGE_W - center_w) / 2, DIARIO_FOOTER_Y), center, font=_font(15, True), fill=muted)
+    page_text = f'{page_number} de {total_pages}'
+    page_w = draw.textlength(page_text, font=_font(15))
+    draw.text((DIARIO_PAGE_W - DIARIO_MARGIN - page_w, DIARIO_FOOTER_Y), page_text, font=_font(15), fill=muted)
+
+
+def _diario_section(draw, title, x, y, w):
+    dark = (27, 32, 35)
+    border = (44, 49, 52)
+    draw.rectangle((x, y, x + w, y + 42), outline=border, width=2)
+    text_w = draw.textlength(_clean_pdf_text(title), font=_font(18, True))
+    draw.text((x + (w - text_w) / 2, y + 10), _clean_pdf_text(title), font=_font(18, True), fill=dark)
+    return y + 42
+
+
+def _diario_info_grid(draw, rows, x, y, w, columns=2):
+    border = (67, 72, 76)
+    label_font = _font(15, True)
+    value_font = _font(16)
+    row_h = 64
+    col_w = w / columns
+    for index, (label, value) in enumerate(rows):
+        col = index % columns
+        row = index // columns
+        x0 = int(x + col * col_w)
+        y0 = int(y + row * row_h)
+        x1 = int(x0 + col_w)
+        y1 = y0 + row_h
+        draw.rectangle((x0, y0, x1, y1), outline=border, width=1)
+        draw.text((x0 + 12, y0 + 9), _clean_pdf_text(label), font=label_font, fill=(29, 34, 37))
+        _draw_wrapped(draw, value or '-', (x0 + 12, y0 + 32), value_font, (45, 50, 53), int(col_w - 24), line_spacing=3)
+    return y + (((len(rows) + columns - 1) // columns) * row_h)
+
+
+def _diario_table(draw, headers, rows, x, y, widths, row_h=52):
+    border = (67, 72, 76)
+    header_fill = (238, 240, 241)
+    header_font = _font(15, True)
+    cell_font = _font(15)
+    x_cursor = x
+    for header, width in zip(headers, widths):
+        draw.rectangle((x_cursor, y, x_cursor + width, y + row_h), fill=header_fill, outline=border, width=1)
+        _draw_wrapped(draw, header, (x_cursor + 8, y + 14), header_font, (25, 30, 33), width - 16, line_spacing=2)
+        x_cursor += width
+    y += row_h
+    for row in rows:
+        x_cursor = x
+        for value, width in zip(row, widths):
+            draw.rectangle((x_cursor, y, x_cursor + width, y + row_h), outline=border, width=1)
+            _draw_wrapped(draw, value, (x_cursor + 8, y + 13), cell_font, (39, 44, 47), width - 16, line_spacing=2)
+            x_cursor += width
+        y += row_h
+    return y
+
+
+def _diario_text_box(draw, text, x, y, w, min_h=96):
+    border = (67, 72, 76)
+    y_text_end = _draw_wrapped(draw, text or '-', (x + 12, y + 12), _font(16), (39, 44, 47), w - 24, line_spacing=6)
+    box_h = max(min_h, y_text_end - y + 14)
+    draw.rectangle((x, y, x + w, y + box_h), outline=border, width=1)
+    return y + box_h
 
 
 def _linhas_tabela(queryset, fields, empty='Sem registros.'):
@@ -363,113 +437,157 @@ def _linhas_tabela(queryset, fields, empty='Sem registros.'):
 def _pdf_diario(diario):
     pages = []
     image, draw = _nova_pagina()
-    x, y, w = 220, 330, 1213
+    x, y, w = DIARIO_MARGIN, DIARIO_MARGIN, DIARIO_CONTENT_W
+    title_font = _font(30, True)
+    subtitle_font = _font(18)
+    dark = (24, 29, 32)
+    border = (44, 49, 52)
 
-    draw.text((x, 160), 'DIARIO DE OBRA', font=_font(34, True), fill=(38, 48, 52))
-    draw.text((x, 210), _clean_pdf_text(diario.obra.nome_obra), font=_font(22), fill=(80, 92, 98))
-    draw.text((x + 980, 210), diario.data.strftime('%d/%m/%Y'), font=_font(20, True), fill=(80, 92, 98))
+    draw.rectangle((x, y, x + w, y + 92), outline=border, width=2)
+    title = 'Diario de Obra'
+    title_w = draw.textlength(title, font=title_font)
+    draw.text((x + (w - title_w) / 2, y + 14), title, font=title_font, fill=dark)
+    obra_text = _clean_pdf_text(diario.obra.nome_obra)
+    obra_w = draw.textlength(obra_text, font=subtitle_font)
+    draw.text((x + (w - obra_w) / 2, y + 55), obra_text, font=subtitle_font, fill=(70, 76, 80))
+    y += 112
 
-    y = _draw_key_value_grid(
+    weekdays = ['segunda-feira', 'terca-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sabado', 'domingo']
+    y = _diario_info_grid(
         draw,
         [
             ('Obra', diario.obra.nome_obra),
             ('Cliente', diario.obra.cliente or '-'),
+            ('Data', diario.data.strftime('%d/%m/%Y')),
+            ('Dia da semana', weekdays[diario.data.weekday()]),
             ('Responsavel', diario.responsavel_preenchimento),
             ('Responsavel tecnico', diario.responsavel_tecnico or '-'),
-            ('Clima', diario.get_condicao_climatica_display() or '-'),
-            ('Situacao', diario.get_situacao_obra_display() or '-'),
-            ('Turno', diario.get_turno_display()),
-            ('Status', diario.get_status_display()),
         ],
         x,
         y,
         w,
         columns=2,
     )
+    y += 26
+
+    y = _diario_section(draw, 'Turno / Tempo', x, y, w)
+    y = _diario_table(
+        draw,
+        ['Turno', 'Tempo', 'Situacao da obra', 'Status'],
+        [[diario.get_turno_display(), diario.get_condicao_climatica_display() or '-', diario.get_situacao_obra_display() or '-', diario.get_status_display()]],
+        x,
+        y,
+        [280, 360, 470, 323],
+        row_h=58,
+    )
+    y += 24
+
+    y = _diario_section(draw, 'Tarefas realizadas', x, y, w)
+    y = _diario_table(
+        draw,
+        ['Descricao', 'Observacoes'],
+        [[diario.descricao_servicos or '-', diario.observacoes or '-']],
+        x,
+        y,
+        [930, 503],
+        row_h=118,
+    )
+    y += 24
+
+    efetivo_rows = _linhas_tabela(diario.efetivos.all(), [lambda i: i.get_funcao_display(), 'quantidade'])
+    image, draw, y = _garantir_espaco(pages, image, draw, y, 120 + 52 * len(efetivo_rows))
+    y = _diario_section(draw, 'Equipe envolvida', x, y, w)
+    y = _diario_table(draw, ['Descricao', 'Qtde. utilizada'], efetivo_rows, x, y, [1080, 353])
+    y += 24
+
+    equipamento_rows = _linhas_tabela(
+        diario.equipamentos.all(),
+        [lambda i: i.get_tipo_display(), 'quantidade', lambda i: i.get_situacao_display()],
+    )
+    image, draw, y = _garantir_espaco(pages, image, draw, y, 120 + 52 * len(equipamento_rows))
+    y = _diario_section(draw, 'Equipamentos', x, y, w)
+    y = _diario_table(draw, ['Tipo', 'Qtde.', 'Situacao'], equipamento_rows, x, y, [840, 220, 373])
+    y += 24
+
+    ocorrencia_rows = _linhas_tabela(
+        diario.ocorrencias.all(),
+        [
+            lambda i: i.get_tipo_display(),
+            'descricao',
+            lambda i: i.get_impacto_prazo_display(),
+            lambda i: i.get_status_display(),
+        ],
+    )
+    if ocorrencia_rows != [['Sem registros.']] or diario.ocorrencias_interferencias:
+        image, draw, y = _garantir_espaco(pages, image, draw, y, 170 + 52 * len(ocorrencia_rows))
+        y = _diario_section(draw, 'Ocorrencias', x, y, w)
+        if diario.ocorrencias_interferencias:
+            y = _diario_text_box(draw, diario.ocorrencias_interferencias, x, y, w, min_h=86)
+        y = _diario_table(draw, ['Tipo', 'Descricao', 'Impacto prazo', 'Status'], ocorrencia_rows, x, y, [300, 703, 230, 200])
+        y += 24
 
     for titulo, texto in [
-        ('Servicos executados', diario.descricao_servicos),
-        ('Ocorrencias / interferencias', diario.ocorrencias_interferencias),
         ('Pendencias', diario.pendencias),
         ('Orientacoes', diario.orientacoes),
-        ('Observacoes finais', diario.observacoes),
     ]:
-        image, draw, y = _garantir_espaco(pages, image, draw, y, 190)
-        y = _draw_section_title(draw, titulo, x, y, w)
-        y = _draw_wrapped(draw, texto or '-', (x + 12, y), _font(16), (42, 48, 51), w - 24, line_spacing=6) + 24
+        if texto:
+            image, draw, y = _garantir_espaco(pages, image, draw, y, 150)
+            y = _diario_section(draw, titulo, x, y, w)
+            y = _diario_text_box(draw, texto, x, y, w)
+            y += 24
 
-    tabelas = [
-        (
-            'Efetivo',
-            ['Funcao', 'Quantidade'],
-            _linhas_tabela(
-                diario.efetivos.all(),
-                [lambda i: i.get_funcao_display(), 'quantidade'],
-            ),
-            [760, 453],
-        ),
-        (
-            'Equipamentos',
-            ['Tipo', 'Quantidade', 'Situacao'],
-            _linhas_tabela(
-                diario.equipamentos.all(),
-                [lambda i: i.get_tipo_display(), 'quantidade', lambda i: i.get_situacao_display()],
-            ),
-            [640, 220, 353],
-        ),
-        (
-            'Ocorrencias',
-            ['Tipo', 'Impacto prazo', 'Impacto financeiro', 'Status'],
-            _linhas_tabela(
-                diario.ocorrencias.all(),
-                [lambda i: i.get_tipo_display(), lambda i: i.get_impacto_prazo_display(), lambda i: i.get_impacto_financeiro_display(), lambda i: i.get_status_display()],
-            ),
-            [420, 250, 270, 273],
-        ),
-        (
-            'Checklist',
-            ['Item', 'Resultado', 'Obs'],
-            _linhas_tabela(
-                diario.checklist.all(),
-                [lambda i: i.get_item_display(), lambda i: i.get_resultado_display(), 'observacoes'],
-            ),
-            [600, 220, 393],
-        ),
-    ]
-    for titulo, headers, rows, widths in tabelas:
-        image, draw, y = _garantir_espaco(pages, image, draw, y, 120 + 46 * len(rows))
-        y = _draw_section_title(draw, titulo, x, y, w)
-        y = _draw_table(draw, headers, rows, x, y, widths)
+    checklist_rows = _linhas_tabela(
+        diario.checklist.all(),
+        [lambda i: i.get_item_display(), lambda i: i.get_resultado_display(), 'observacoes'],
+    )
+    if checklist_rows != [['Sem registros.']]:
+        image, draw, y = _garantir_espaco(pages, image, draw, y, 120 + 52 * len(checklist_rows))
+        y = _diario_section(draw, 'Checklist', x, y, w)
+        y = _diario_table(draw, ['Item', 'Resultado', 'Observacoes'], checklist_rows, x, y, [720, 250, 463])
+        y += 24
 
     fotos = list(diario.fotos.all())
     if fotos:
-        image, draw, y = _garantir_espaco(pages, image, draw, y, 380)
-        y = _draw_section_title(draw, 'Fotos', x, y, w)
-        col_w = 580
+        image, draw, y = _garantir_espaco(pages, image, draw, y, 80)
+        draw.text((x, y), 'Relatorio fotografico no Anexo I.', font=_font(16, True), fill=(39, 44, 47))
+        y += 46
+
+    pages.append(image)
+
+    if fotos:
+        image, draw = _nova_pagina()
+        y = DIARIO_MARGIN
+        title = 'Diario de Obra - Anexo I'
+        draw.text((x, y), title, font=_font(28, True), fill=dark)
+        draw.text((x, y + 40), _clean_pdf_text(diario.obra.nome_obra), font=_font(18), fill=(70, 76, 80))
+        y += 95
+        col_w = 690
+        photo_h = 430
+        gap_x = 50
+        gap_y = 80
         for index, foto in enumerate(fotos):
-            image, draw, y = _garantir_espaco(pages, image, draw, y, 360)
             col = index % 2
             if col == 0 and index > 0:
-                y += 330
-            fx = x + col * (col_w + 40)
+                y += photo_h + gap_y
+            if y + photo_h + 80 > DIARIO_FOOTER_Y:
+                pages.append(image)
+                image, draw = _nova_pagina()
+                y = DIARIO_MARGIN
+            fx = x + col * (col_w + gap_x)
             try:
                 thumb = Image.open(foto.imagem.path).convert('RGB')
-                thumb.thumbnail((col_w, 260))
-                draw.rectangle((fx, y, fx + col_w, y + 260), outline=(205, 211, 214), width=1)
-                image.paste(thumb, (fx + (col_w - thumb.width) // 2, y + 8))
+                thumb.thumbnail((col_w, photo_h))
+                draw.rectangle((fx, y, fx + col_w, y + photo_h), outline=(112, 119, 124), width=1)
+                image.paste(thumb, (fx + (col_w - thumb.width) // 2, y + (photo_h - thumb.height) // 2))
             except OSError:
-                draw.rectangle((fx, y, fx + col_w, y + 260), outline=(205, 211, 214), width=1)
-                draw.text((fx + 16, y + 110), 'Imagem indisponivel', font=_font(16), fill=(88, 98, 102))
-            _draw_wrapped(draw, foto.legenda or '-', (fx, y + 270), _font(14), (50, 56, 58), col_w, line_spacing=4)
-        y += 360
+                draw.rectangle((fx, y, fx + col_w, y + photo_h), outline=(112, 119, 124), width=1)
+                draw.text((fx + 18, y + 190), 'Imagem indisponivel', font=_font(16), fill=(88, 98, 102))
+            _draw_wrapped(draw, foto.legenda or '-', (fx, y + photo_h + 10), _font(14), (50, 56, 58), col_w, line_spacing=4)
+        pages.append(image)
 
-    image, draw, y = _garantir_espaco(pages, image, draw, y, 220)
-    y += 60
-    draw.line((x, y, x + 470, y), fill=(44, 49, 52), width=2)
-    draw.line((x + 700, y, x + 1170, y), fill=(44, 49, 52), width=2)
-    draw.text((x + 95, y + 18), 'Responsavel tecnico', font=_font(15, True), fill=(44, 49, 52))
-    draw.text((x + 810, y + 18), 'Cliente / Fiscal', font=_font(15, True), fill=(44, 49, 52))
-    pages.append(image)
+    for index, page in enumerate(pages, start=1):
+        _diario_footer(ImageDraw.Draw(page), index, len(pages))
+
     return _report_pdf_response_pages(pages, f'diario_obra_{diario.id}')
 
 
