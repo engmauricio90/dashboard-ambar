@@ -571,28 +571,7 @@ def _sync_empreiteiro_medicao(medicao):
         medicao.pix = cadastro.pix
         medicao.save(update_fields=['empreiteiro', 'cpf_cnpj', 'pix', 'updated_at'])
         return cadastro
-    nome = (medicao.empreiteiro or '').strip()
-    if not nome:
-        return None
-    cadastro, created = Empreiteiro.objects.get_or_create(
-        nome=nome,
-        defaults={
-            'cpf_cnpj': medicao.cpf_cnpj or '',
-            'pix': medicao.pix or '',
-        },
-    )
-    updates = []
-    if not cadastro.cpf_cnpj and medicao.cpf_cnpj:
-        cadastro.cpf_cnpj = medicao.cpf_cnpj
-        updates.append('cpf_cnpj')
-    if not cadastro.pix and medicao.pix:
-        cadastro.pix = medicao.pix
-        updates.append('pix')
-    if updates:
-        cadastro.save(update_fields=updates + ['updated_at'])
-    medicao.empreiteiro_cadastro = cadastro
-    medicao.save(update_fields=['empreiteiro_cadastro', 'updated_at'])
-    return cadastro
+    return None
 
 
 def _read_csv(file):

@@ -243,6 +243,11 @@ class MedicoesTests(TestCase):
         self.assertEqual(medicao.itens.count(), 1)
 
     def test_cria_planilha_manual_e_medicao_cumulativa_empreiteiro(self):
+        empreiteiro = Empreiteiro.objects.create(
+            nome='Empreiteiro cadastrado',
+            cpf_cnpj='11.111.111/0001-11',
+            pix='pix@empreiteiro.com',
+        )
         response = self.client.post(
             reverse('novo_orcamento_manual_medicao'),
             {
@@ -278,7 +283,8 @@ class MedicoesTests(TestCase):
             reverse('nova_medicao_empreiteiro_cumulativa', args=[orcamento.id]),
             {
                 'obra': self.obra.id,
-                'empreiteiro': 'Empreiteiro manual',
+                'empreiteiro_cadastro': empreiteiro.id,
+                'empreiteiro': '',
                 'cpf_cnpj': '',
                 'pix': '',
                 'numero': '1',
@@ -292,6 +298,8 @@ class MedicoesTests(TestCase):
         medicao = MedicaoEmpreiteiro.objects.get(orcamento=orcamento)
         self.assertRedirects(response, reverse('editar_medicao_empreiteiro', args=[medicao.id]))
         self.assertEqual(medicao.tipo, MedicaoEmpreiteiro.TIPO_CUMULATIVA)
+        self.assertEqual(medicao.empreiteiro_cadastro, empreiteiro)
+        self.assertEqual(medicao.empreiteiro, 'Empreiteiro cadastrado')
         self.assertEqual(medicao.itens.count(), 1)
 
     def test_exclui_planilha_importada(self):
@@ -309,6 +317,8 @@ class MedicoesTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Recibo simples de medicao')
         self.assertContains(response, 'Adicionar item')
+        self.assertContains(response, 'Buscar por nome, CPF/CNPJ ou PIX')
+        self.assertNotContains(response, 'Empreiteiro novo/manual')
         self.assertContains(response, 'name="itens-TOTAL_FORMS" value="0"')
 
     def test_telas_separadas_de_medicao_carregam(self):
@@ -558,7 +568,7 @@ class MedicoesTests(TestCase):
         self.assertEqual(medicao.cpf_cnpj, '11.111.111/0001-11')
         self.assertEqual(medicao.pix, 'pix@empreiteiro.com')
 
-    def test_medicao_manual_cria_cadastro_e_cumulativa_seguinte_reaproveita(self):
+    def test_medicao_sem_empreiteiro_cadastrado_nao_salva(self):
         orcamento, item = self._orcamento()
         orcamento.tipo = OrcamentoMedicao.TIPO_EMPREITEIRO
         orcamento.save(update_fields=['tipo'])
@@ -579,11 +589,39 @@ class MedicoesTests(TestCase):
             },
         )
 
-        primeira = MedicaoEmpreiteiro.objects.get(orcamento=orcamento)
-        cadastro = Empreiteiro.objects.get(nome='Novo Empreiteiro')
-        self.assertRedirects(response, reverse('editar_medicao_empreiteiro', args=[primeira.id]))
-        self.assertEqual(primeira.empreiteiro_cadastro, cadastro)
-        self.assertEqual(cadastro.pix, 'pix@novo.com')
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(MedicaoEmpreiteiro.objects.filter(orcamento=orcamento).exists())
+        self.assertFalse(Empreiteiro.objects.filter(nome='Novo Empreiteiro').exists())
+        self.assertContains(response, 'Selecione um empreiteiro cadastrado')
+
+    def test_medicao_cumulativa_reaproveita_empreiteiro_cadastrado(self):
+        empreiteiro = Empreiteiro.objects.create(
+            nome='Novo Empreiteiro',
+            cpf_cnpj='22.222.222/0001-22',
+            pix='pix@novo.com',
+        )
+        orcamento, item = self._orcamento()
+        orcamento.tipo = OrcamentoMedicao.TIPO_EMPREITEIRO
+        orcamento.save(update_fields=['tipo'])
+
+        primeira = MedicaoEmpreiteiro.objects.create(
+            tipo=MedicaoEmpreiteiro.TIPO_CUMULATIVA,
+            orcamento=orcamento,
+            obra=self.obra,
+            empreiteiro_cadastro=empreiteiro,
+            empreiteiro=empreiteiro.nome,
+            cpf_cnpj=empreiteiro.cpf_cnpj,
+            pix=empreiteiro.pix,
+            numero=1,
+            periodo_inicio=date(2026, 4, 1),
+            periodo_fim=date(2026, 4, 30),
+            data_medicao=date(2026, 4, 30),
+        )
+        ItemMedicaoEmpreiteiro.objects.create(
+            medicao=primeira,
+            item_orcamento=item,
+            quantidade_periodo=Decimal('1'),
+        )
 
         response = self.client.get(reverse('nova_medicao_empreiteiro_cumulativa', args=[orcamento.id]))
 

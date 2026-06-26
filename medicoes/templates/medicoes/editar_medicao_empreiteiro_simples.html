@@ -25,9 +25,14 @@
             <h5 class="mb-3">Dados do recibo</h5>
             <div class="row g-3">
                 {% for field in form %}
-                {% if field.name == 'obra' or field.name == 'empreiteiro_cadastro' or field.name == 'empreiteiro' or field.name == 'cpf_cnpj' or field.name == 'pix' or field.name == 'numero' or field.name == 'periodo_inicio' or field.name == 'periodo_fim' or field.name == 'data_medicao' or field.name == 'observacoes' %}
+                {% if field.name == 'empreiteiro' %}
+                    {{ field }}
+                {% elif field.name == 'obra' or field.name == 'empreiteiro_cadastro' or field.name == 'cpf_cnpj' or field.name == 'pix' or field.name == 'numero' or field.name == 'periodo_inicio' or field.name == 'periodo_fim' or field.name == 'data_medicao' or field.name == 'observacoes' %}
                 <div class="{% if field.name == 'observacoes' %}col-12{% else %}col-md-3{% endif %}">
                     <label class="form-label">{{ field.label }}</label>
+                    {% if field.name == 'empreiteiro_cadastro' %}
+                    <input type="search" class="form-control form-control-sm mb-2 js-empreiteiro-search" placeholder="Buscar por nome, CPF/CNPJ ou PIX">
+                    {% endif %}
                     {{ field }}
                     {% if field.errors %}<div class="text-danger small">{{ field.errors|join:', ' }}</div>{% endif %}
                 </div>
@@ -159,6 +164,31 @@
     }
 
     if (empreiteiroSelect) {
+        const searchInput = document.querySelector('.js-empreiteiro-search');
+        const originalOptions = Array.from(empreiteiroSelect.options).map((option) => ({
+            value: option.value,
+            text: option.text,
+            selected: option.selected,
+        }));
+
+        function filtrarEmpreiteiros() {
+            if (!searchInput) {
+                return;
+            }
+            const termo = searchInput.value.trim().toLowerCase();
+            const selectedValue = empreiteiroSelect.value;
+            empreiteiroSelect.innerHTML = '';
+            originalOptions
+                .filter((option, index) => index === 0 || !termo || option.text.toLowerCase().includes(termo) || option.value === selectedValue)
+                .forEach((option) => {
+                    const el = new Option(option.text, option.value, false, option.value === selectedValue);
+                    empreiteiroSelect.add(el);
+                });
+        }
+
+        if (searchInput) {
+            searchInput.addEventListener('input', filtrarEmpreiteiros);
+        }
         empreiteiroSelect.addEventListener('change', preencherEmpreiteiro);
         if (empreiteiroSelect.value) {
             preencherEmpreiteiro();

@@ -169,8 +169,27 @@ class MedicaoEmpreiteiroForm(BootstrapModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['empreiteiro_cadastro'].queryset = Empreiteiro.objects.filter(ativo=True).order_by('nome')
-        self.fields['empreiteiro_cadastro'].required = False
+        self.fields['empreiteiro_cadastro'].required = True
+        self.fields['empreiteiro_cadastro'].empty_label = 'Selecione um empreiteiro cadastrado'
+        self.fields['empreiteiro_cadastro'].label_from_instance = (
+            lambda empreiteiro: ' - '.join(
+                value
+                for value in [empreiteiro.nome, empreiteiro.cpf_cnpj, empreiteiro.pix]
+                if value
+            )
+        )
+        self.fields['empreiteiro_cadastro'].widget.attrs.update(
+            {
+                'data-empreiteiro-search': '1',
+                'autocomplete': 'off',
+            }
+        )
         self.fields['empreiteiro'].required = False
+        self.fields['empreiteiro'].widget = forms.HiddenInput()
+        self.fields['cpf_cnpj'].required = False
+        self.fields['cpf_cnpj'].widget.attrs.update({'readonly': 'readonly'})
+        self.fields['pix'].required = False
+        self.fields['pix'].widget.attrs.update({'readonly': 'readonly'})
 
     def clean(self):
         cleaned_data = super().clean()
@@ -187,8 +206,8 @@ class MedicaoEmpreiteiroForm(BootstrapModelForm):
             cleaned_data['empreiteiro'] = cadastro.nome
             cleaned_data['cpf_cnpj'] = cadastro.cpf_cnpj
             cleaned_data['pix'] = cadastro.pix
-        elif not cleaned_data.get('empreiteiro'):
-            self.add_error('empreiteiro', 'Informe o empreiteiro ou selecione um cadastro.')
+        else:
+            self.add_error('empreiteiro_cadastro', 'Selecione um empreiteiro cadastrado.')
         return cleaned_data
 
     class Meta:
@@ -221,7 +240,8 @@ class MedicaoEmpreiteiroForm(BootstrapModelForm):
         }
         labels = {
             'empreiteiro_cadastro': 'Empreiteiro cadastrado',
-            'empreiteiro': 'Empreiteiro novo/manual',
+            'cpf_cnpj': 'CPF/CNPJ',
+            'pix': 'PIX',
             'retencao_tecnica': 'Retencao tecnica (R$)',
             'retencao_tecnica_percentual': 'Retencao tecnica (%)',
             'desconto_adicional': 'Desconto adicional (R$)',
