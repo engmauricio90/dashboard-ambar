@@ -299,8 +299,12 @@ class OrdemCompraGeral(models.Model):
     )
     categoria_despesa = models.CharField(max_length=30, default='material')
     empresa_razao_social = models.CharField(max_length=180, default='AMBAR ENGENHARIA')
-    empresa_cnpj = models.CharField(max_length=30, blank=True)
-    empresa_endereco = models.CharField(max_length=255, blank=True)
+    empresa_cnpj = models.CharField(max_length=30, blank=True, default='35.693.640/0001-09')
+    empresa_endereco = models.CharField(
+        max_length=255,
+        blank=True,
+        default='Avenida dos Estados, nº 1205, sala 02, centro - Campo Bom',
+    )
     fornecedor = models.CharField(max_length=180)
     fornecedor_cadastro = models.ForeignKey(
         'financeiro.Fornecedor',

@@ -288,6 +288,22 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(pdf_response['Content-Type'], 'application/pdf')
         self.assertTrue(pdf_response.content.startswith(b'%PDF'))
 
+    def test_nova_ordem_compra_traz_dados_ambar_e_busca_fornecedor(self):
+        Fornecedor.objects.create(
+            nome='Fornecedor Teste',
+            cpf_cnpj='12.345.678/0001-90',
+            cidade='Campo Bom',
+            telefone='(51) 99999-0000',
+        )
+
+        response = self.client.get(reverse('nova_ordem_compra_geral'))
+
+        self.assertContains(response, 'AMBAR ENGENHARIA')
+        self.assertContains(response, '35.693.640/0001-09')
+        self.assertContains(response, 'Avenida dos Estados, nº 1205, sala 02, centro - Campo Bom')
+        self.assertContains(response, 'Buscar por nome, CPF/CNPJ, cidade ou telefone')
+        self.assertContains(response, 'Fornecedor Teste - 12.345.678/0001-90 - Campo Bom')
+
     def test_ordem_compra_preenche_endereco_do_fornecedor_central(self):
         fornecedor = Fornecedor.objects.create(
             nome='Fornecedor Central',

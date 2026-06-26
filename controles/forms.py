@@ -1,6 +1,7 @@
 from django import forms
 from django.db.models import Q
 from django.forms import inlineformset_factory
+from financeiro.models import Fornecedor
 from obras.models import DespesaObra
 
 from .models import (
@@ -150,6 +151,20 @@ class OrdemCompraCombustivelForm(BootstrapModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['fornecedor'].required = False
+        self.fields['fornecedor_cadastro'].queryset = Fornecedor.objects.filter(ativo=True).order_by('nome')
+        self.fields['fornecedor_cadastro'].label_from_instance = (
+            lambda fornecedor: ' - '.join(
+                value
+                for value in [fornecedor.nome, fornecedor.cpf_cnpj, fornecedor.cidade or fornecedor.municipio]
+                if value
+            )
+        )
+        self.fields['fornecedor_cadastro'].widget.attrs.update(
+            {
+                'data-fornecedor-search': '1',
+                'autocomplete': 'off',
+            }
+        )
         self.fields['valor_total_previsto'].required = False
 
     class Meta:
@@ -227,6 +242,25 @@ class OrdemCompraGeralForm(BootstrapModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['fornecedor'].required = False
+        self.fields['fornecedor_cadastro'].queryset = Fornecedor.objects.filter(ativo=True).order_by('nome')
+        self.fields['fornecedor_cadastro'].label_from_instance = (
+            lambda fornecedor: ' - '.join(
+                value
+                for value in [
+                    fornecedor.nome,
+                    fornecedor.cpf_cnpj,
+                    fornecedor.cidade or fornecedor.municipio,
+                    fornecedor.telefone,
+                ]
+                if value
+            )
+        )
+        self.fields['fornecedor_cadastro'].widget.attrs.update(
+            {
+                'data-fornecedor-search': '1',
+                'autocomplete': 'off',
+            }
+        )
 
     class Meta:
         model = OrdemCompraGeral
