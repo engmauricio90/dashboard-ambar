@@ -3,23 +3,52 @@
 {% block title %}Diarios de Obra{% endblock %}
 
 {% block content %}
+<style>
+    .diario-list-card {
+        border: 1px solid #dde5e8;
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 1px 4px rgba(20, 30, 35, 0.06);
+    }
+    .diario-table th {
+        background: #f3f6f7;
+        color: #263238;
+        font-size: .78rem;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+    .diario-table td {
+        vertical-align: middle;
+    }
+    .diario-count {
+        display: inline-flex;
+        min-width: 34px;
+        justify-content: center;
+        border: 1px solid #d8e1e5;
+        border-radius: 999px;
+        padding: 2px 8px;
+        background: #f8fafb;
+        font-weight: 700;
+    }
+</style>
+
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
         <h1 class="mb-1">{% if obra %}Diarios - {{ obra.nome_obra }}{% else %}Diarios de Obra{% endif %}</h1>
-        <p class="text-muted mb-0">Registros diarios de campo, efetivo, equipamentos, ocorrencias e fotos.</p>
+        <p class="text-muted mb-0">Lancamento rapido de campo, fotos e acompanhamento operacional.</p>
     </div>
     <div class="d-flex gap-2">
         {% if obra %}
-        <a href="{% url 'novo_diario_obra' obra.id %}" class="btn btn-primary">Novo diario</a>
+        <a href="{% url 'novo_diario_obra' obra.id %}" class="btn btn-primary">Novo diario rapido</a>
         <a href="{% url 'detalhe_obra' obra.id %}" class="btn btn-secondary">Voltar para obra</a>
         {% else %}
-        <a href="{% url 'novo_diario' %}" class="btn btn-primary">Novo diario</a>
+        <a href="{% url 'novo_diario' %}" class="btn btn-primary">Novo diario rapido</a>
         <a href="{% url 'home' %}" class="btn btn-secondary">Voltar</a>
         {% endif %}
     </div>
 </div>
 
-<div class="card shadow-sm mb-4">
+<div class="diario-list-card mb-4">
     <div class="card-body">
         <form method="get" class="row g-3 align-items-end">
             {% for field in form %}
@@ -42,20 +71,24 @@
     </div>
 </div>
 
-<div class="card shadow-sm">
+<div class="diario-list-card">
     <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <div>
+                <h5 class="mb-0">Lancamentos</h5>
+                <div class="text-muted small">Mostrando ate 200 diarios mais recentes.</div>
+            </div>
+        </div>
         <div class="table-responsive">
-            <table class="table table-bordered table-striped align-middle mb-0">
+            <table class="table diario-table align-middle mb-0">
                 <thead>
                     <tr>
-                        <th>Obra</th>
                         <th>Data</th>
+                        <th>Obra</th>
                         <th>Responsavel</th>
                         <th>Situacao</th>
                         <th>Clima</th>
-                        <th>Efetivo</th>
-                        <th>Equip.</th>
-                        <th>Fotos</th>
+                        <th>Resumo</th>
                         <th>Status</th>
                         <th></th>
                     </tr>
@@ -63,25 +96,43 @@
                 <tbody>
                     {% for diario in diarios %}
                     <tr>
-                        <td>{{ diario.obra.nome_obra }}</td>
-                        <td>{{ diario.data }}</td>
-                        <td>{{ diario.responsavel_preenchimento }}</td>
+                        <td class="text-nowrap fw-bold">{{ diario.data|date:"d/m/Y" }}</td>
+                        <td>
+                            <strong>{{ diario.obra.nome_obra }}</strong>
+                            {% if diario.obra.cliente %}<div class="text-muted small">{{ diario.obra.cliente }}</div>{% endif %}
+                        </td>
+                        <td>{{ diario.responsavel_preenchimento|default:'-' }}</td>
                         <td>{{ diario.get_situacao_obra_display|default:'-' }}</td>
                         <td>{{ diario.get_condicao_climatica_display|default:'-' }}</td>
-                        <td>{{ diario.total_efetivo }}</td>
-                        <td>{{ diario.total_equipamentos }}</td>
-                        <td>{{ diario.fotos.count }}</td>
-                        <td>{{ diario.get_status_display }}</td>
+                        <td class="text-nowrap">
+                            <span class="diario-count" title="Efetivo">{{ diario.total_efetivo }}</span>
+                            <span class="diario-count" title="Equipamentos">{{ diario.total_equipamentos }}</span>
+                            <span class="diario-count" title="Fotos">{{ diario.fotos.count }}</span>
+                            {% if diario.possui_ocorrencias_flag %}<span class="badge bg-warning text-dark">Ocorrencia</span>{% endif %}
+                        </td>
+                        <td>
+                            <span class="badge {% if diario.status == 'finalizado' %}bg-success{% elif diario.status == 'cancelado' %}bg-danger{% elif diario.status == 'revisado' %}bg-primary{% else %}bg-secondary{% endif %}">
+                                {{ diario.get_status_display }}
+                            </span>
+                        </td>
                         <td class="text-end">
-                            <a href="{% url 'detalhe_diario' diario.id %}" class="btn btn-sm btn-outline-dark">Ver</a>
-                            {% if diario.status == 'rascunho' %}
-                            <a href="{% url 'editar_diario' diario.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
-                            {% endif %}
-                            <a href="{% url 'diario_pdf' diario.id %}" target="_blank" class="btn btn-sm btn-outline-danger">PDF</a>
+                            <div class="d-inline-flex gap-1 flex-wrap justify-content-end">
+                                <a href="{% url 'detalhe_diario' diario.id %}" class="btn btn-sm btn-outline-dark">Ver</a>
+                                {% if diario.status == 'rascunho' %}
+                                <a href="{% url 'editar_diario' diario.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                                {% if pode_operar %}
+                                <form method="post" action="{% url 'finalizar_diario' diario.id %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <button class="btn btn-sm btn-outline-success">Finalizar</button>
+                                </form>
+                                {% endif %}
+                                {% endif %}
+                                <a href="{% url 'diario_pdf' diario.id %}" target="_blank" class="btn btn-sm btn-outline-danger">PDF</a>
+                            </div>
                         </td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="10">Nenhum diario encontrado.</td></tr>
+                    <tr><td colspan="8">Nenhum diario encontrado.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

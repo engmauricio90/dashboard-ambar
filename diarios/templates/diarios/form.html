@@ -3,10 +3,62 @@
 {% block title %}{{ titulo }}{% endblock %}
 
 {% block content %}
+<style>
+    .diario-quick-card {
+        border: 1px solid #dde5e8;
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 1px 4px rgba(20, 30, 35, 0.06);
+    }
+    .diario-section {
+        border: 1px solid #e2e8eb;
+        border-radius: 8px;
+        background: #fff;
+        overflow: hidden;
+    }
+    .diario-section summary {
+        cursor: pointer;
+        padding: 14px 18px;
+        background: #f7f9fa;
+        border-bottom: 1px solid #e2e8eb;
+        font-weight: 700;
+        list-style: none;
+    }
+    .diario-section summary::-webkit-details-marker {
+        display: none;
+    }
+    .diario-section summary::after {
+        content: "+";
+        float: right;
+        font-weight: 700;
+    }
+    .diario-section[open] summary::after {
+        content: "-";
+    }
+    .diario-section-body {
+        padding: 18px;
+    }
+    .diario-table {
+        min-width: 980px;
+    }
+    .diario-table textarea {
+        min-height: 42px;
+    }
+    .diario-actions {
+        position: sticky;
+        bottom: 0;
+        z-index: 5;
+        border-top: 1px solid #dde5e8;
+        background: rgba(255, 255, 255, .96);
+        backdrop-filter: blur(4px);
+        padding: 14px 0;
+    }
+</style>
+
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
         <h1 class="mb-1">{{ titulo }}</h1>
-        <p class="text-muted mb-0">Registro diario de atividades, efetivo, equipamentos, ocorrencias e fotos.</p>
+        <p class="text-muted mb-0">Preencha o essencial primeiro. Detalhes operacionais ficam nos blocos opcionais.</p>
     </div>
     <div class="d-flex gap-2">
         {% if diario %}
@@ -21,38 +73,106 @@
     {% csrf_token %}
     {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
 
-    <div class="card shadow-sm mb-4">
+    <div class="diario-quick-card mb-4">
         <div class="card-body">
-            <h5 class="mb-3">Dados do diario</h5>
-            <div class="row g-3">
-                {% for field in form %}
-                <div class="{% if field.name == 'descricao_servicos' or field.name == 'observacoes' or field.name == 'ocorrencias_interferencias' or field.name == 'pendencias' or field.name == 'orientacoes' %}col-md-6{% else %}col-md-3{% endif %}">
-                    {% if field.field.widget.input_type == 'checkbox' %}
-                    <div class="form-check mt-4">
-                        {{ field }}
-                        <label class="form-check-label">{{ field.label }}</label>
-                    </div>
-                    {% else %}
-                    <label class="form-label">{{ field.label }}</label>
-                    {{ field }}
-                    {% endif %}
-                    {% if field.errors %}<div class="text-danger small">{{ field.errors|join:', ' }}</div>{% endif %}
+            <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+                <div>
+                    <h5 class="mb-1">Diario rapido</h5>
+                    <div class="text-muted small">Campos suficientes para registrar o dia sem transformar isso numa planilha.</div>
                 </div>
-                {% endfor %}
+                <span class="badge bg-light text-dark border">Rascunho por padrao</span>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.obra.label }}</label>
+                    {{ form.obra }}
+                    {% if form.obra.errors %}<div class="text-danger small">{{ form.obra.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">{{ form.data.label }}</label>
+                    {{ form.data }}
+                    {% if form.data.errors %}<div class="text-danger small">{{ form.data.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.responsavel_preenchimento.label }}</label>
+                    {{ form.responsavel_preenchimento }}
+                    {% if form.responsavel_preenchimento.errors %}<div class="text-danger small">{{ form.responsavel_preenchimento.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.turno.label }}</label>
+                    {{ form.turno }}
+                    {% if form.turno.errors %}<div class="text-danger small">{{ form.turno.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.condicao_climatica.label }}</label>
+                    {{ form.condicao_climatica }}
+                    {% if form.condicao_climatica.errors %}<div class="text-danger small">{{ form.condicao_climatica.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.situacao_obra.label }}</label>
+                    {{ form.situacao_obra }}
+                    {% if form.situacao_obra.errors %}<div class="text-danger small">{{ form.situacao_obra.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">{{ form.observacoes.label }}</label>
+                    {{ form.observacoes }}
+                    {% if form.observacoes.errors %}<div class="text-danger small">{{ form.observacoes.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-12">
+                    <label class="form-label">{{ form.descricao_servicos.label }}</label>
+                    {{ form.descricao_servicos }}
+                    {% if form.descricao_servicos.errors %}<div class="text-danger small">{{ form.descricao_servicos.errors|join:', ' }}</div>{% endif %}
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="mb-0">Frentes de servico</h5>
+    <div class="diario-section mb-3" open>
+        <summary>Fotos do dia</summary>
+        <div class="diario-section-body">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <div class="text-muted small">Adicione uma ou mais fotos. Legenda e frente de servico sao opcionais.</div>
+                <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="fotos">Adicionar foto</button>
+            </div>
+            {{ formsets.fotos.management_form }}
+            {% if formsets.fotos.non_form_errors %}<div class="alert alert-danger">{{ formsets.fotos.non_form_errors }}</div>{% endif %}
+            <div id="fotos-body">
+                {% for item_form in formsets.fotos %}
+                <div class="border rounded p-3 mb-3">{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-4"><label class="form-label">Imagem</label>{{ item_form.imagem }}</div>
+                        <div class="col-md-4"><label class="form-label">Legenda</label>{{ item_form.legenda }}</div>
+                        <div class="col-md-3"><label class="form-label">Frente</label>{{ item_form.frente_servico }}</div>
+                        <div class="col-md-1"><label class="form-label">Excluir</label>{{ item_form.DELETE }}</div>
+                    </div>
+                    {% if item_form.errors %}<div class="text-danger small mt-2">{{ item_form.errors }}</div>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            <template id="fotos-empty">
+                <div class="border rounded p-3 mb-3">{% for hidden in formsets.fotos.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-4"><label class="form-label">Imagem</label>{{ formsets.fotos.empty_form.imagem }}</div>
+                        <div class="col-md-4"><label class="form-label">Legenda</label>{{ formsets.fotos.empty_form.legenda }}</div>
+                        <div class="col-md-3"><label class="form-label">Frente</label>{{ formsets.fotos.empty_form.frente_servico }}</div>
+                        <div class="col-md-1"><label class="form-label">Excluir</label>{{ formsets.fotos.empty_form.DELETE }}</div>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <details class="diario-section mb-3">
+        <summary>Frentes de servico</summary>
+        <div class="diario-section-body">
+            <div class="d-flex justify-content-end mb-3">
                 <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="frentes">Adicionar frente</button>
             </div>
             {{ formsets.frentes.management_form }}
             {% if formsets.frentes.non_form_errors %}<div class="alert alert-danger">{{ formsets.frentes.non_form_errors }}</div>{% endif %}
             <div class="table-responsive">
-                <table class="table table-sm align-middle">
+                <table class="table table-sm align-middle diario-table">
                     <thead><tr><th>Frente</th><th>Descricao</th><th>Local</th><th>%</th><th>Situacao</th><th>Excluir</th></tr></thead>
                     <tbody id="frentes-body">
                         {% for item_form in formsets.frentes %}
@@ -70,18 +190,18 @@
                 </table>
             </div>
         </div>
-    </div>
+    </details>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="mb-0">Efetivo de mao de obra</h5>
+    <details class="diario-section mb-3">
+        <summary>Efetivo de mao de obra</summary>
+        <div class="diario-section-body">
+            <div class="d-flex justify-content-end mb-3">
                 <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="efetivos">Adicionar efetivo</button>
             </div>
             {{ formsets.efetivos.management_form }}
             {% if formsets.efetivos.non_form_errors %}<div class="alert alert-danger">{{ formsets.efetivos.non_form_errors }}</div>{% endif %}
             <div class="table-responsive">
-                <table class="table table-sm align-middle">
+                <table class="table table-sm align-middle diario-table">
                     <thead><tr><th>Funcao</th><th>Nome</th><th>Empresa/equipe</th><th>Qtd</th><th>Entrada</th><th>Saida</th><th>Horas</th><th>Obs</th><th>Excluir</th></tr></thead>
                     <tbody id="efetivos-body">
                         {% for item_form in formsets.efetivos %}
@@ -99,18 +219,18 @@
                 </table>
             </div>
         </div>
-    </div>
+    </details>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="mb-0">Equipamentos utilizados</h5>
+    <details class="diario-section mb-3">
+        <summary>Equipamentos utilizados</summary>
+        <div class="diario-section-body">
+            <div class="d-flex justify-content-end mb-3">
                 <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="equipamentos">Adicionar equipamento</button>
             </div>
             {{ formsets.equipamentos.management_form }}
             {% if formsets.equipamentos.non_form_errors %}<div class="alert alert-danger">{{ formsets.equipamentos.non_form_errors }}</div>{% endif %}
             <div class="table-responsive">
-                <table class="table table-sm align-middle">
+                <table class="table table-sm align-middle diario-table">
                     <thead><tr><th>Tipo</th><th>Identificacao</th><th>Empresa</th><th>Qtd</th><th>H. inicial</th><th>H. final</th><th>Horas</th><th>Situacao</th><th>Obs</th><th>Excluir</th></tr></thead>
                     <tbody id="equipamentos-body">
                         {% for item_form in formsets.equipamentos %}
@@ -128,18 +248,18 @@
                 </table>
             </div>
         </div>
-    </div>
+    </details>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="mb-0">Materiais</h5>
+    <details class="diario-section mb-3">
+        <summary>Materiais</summary>
+        <div class="diario-section-body">
+            <div class="d-flex justify-content-end mb-3">
                 <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="materiais">Adicionar material</button>
             </div>
             {{ formsets.materiais.management_form }}
             {% if formsets.materiais.non_form_errors %}<div class="alert alert-danger">{{ formsets.materiais.non_form_errors }}</div>{% endif %}
             <div class="table-responsive">
-                <table class="table table-sm align-middle">
+                <table class="table table-sm align-middle diario-table">
                     <thead><tr><th>Material</th><th>Und</th><th>Qtd</th><th>Fornecedor</th><th>NF</th><th>Movimento</th><th>Obs</th><th>Excluir</th></tr></thead>
                     <tbody id="materiais-body">
                         {% for item_form in formsets.materiais %}
@@ -157,18 +277,35 @@
                 </table>
             </div>
         </div>
-    </div>
+    </details>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="mb-0">Ocorrencias</h5>
-                <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="ocorrencias">Adicionar ocorrencia</button>
+    <details class="diario-section mb-3">
+        <summary>Ocorrencias e interferencias</summary>
+        <div class="diario-section-body">
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label">{{ form.ocorrencias_interferencias.label }}</label>
+                    {{ form.ocorrencias_interferencias }}
+                    {% if form.ocorrencias_interferencias.errors %}<div class="text-danger small">{{ form.ocorrencias_interferencias.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.pendencias.label }}</label>
+                    {{ form.pendencias }}
+                    {% if form.pendencias.errors %}<div class="text-danger small">{{ form.pendencias.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.orientacoes.label }}</label>
+                    {{ form.orientacoes }}
+                    {% if form.orientacoes.errors %}<div class="text-danger small">{{ form.orientacoes.errors|join:', ' }}</div>{% endif %}
+                </div>
+            </div>
+            <div class="d-flex justify-content-end mb-3">
+                <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="ocorrencias">Adicionar ocorrencia detalhada</button>
             </div>
             {{ formsets.ocorrencias.management_form }}
             {% if formsets.ocorrencias.non_form_errors %}<div class="alert alert-danger">{{ formsets.ocorrencias.non_form_errors }}</div>{% endif %}
             <div class="table-responsive">
-                <table class="table table-sm align-middle">
+                <table class="table table-sm align-middle diario-table">
                     <thead><tr><th>Tipo</th><th>Descricao</th><th>Prazo</th><th>Financ.</th><th>Providencia</th><th>Resp.</th><th>Prazo sol.</th><th>Status</th><th>Excluir</th></tr></thead>
                     <tbody id="ocorrencias-body">
                         {% for item_form in formsets.ocorrencias %}
@@ -186,83 +323,70 @@
                 </table>
             </div>
         </div>
-    </div>
+    </details>
 
-    <div class="row g-4">
-        <div class="col-lg-6">
-            <div class="card shadow-sm mb-4">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5 class="mb-0">Checklist</h5>
-                        <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="checklist">Adicionar item</button>
+    <details class="diario-section mb-3">
+        <summary>Checklist e dados complementares</summary>
+        <div class="diario-section-body">
+            <div class="row g-3 mb-4">
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.responsavel_tecnico.label }}</label>
+                    {{ form.responsavel_tecnico }}
+                    {% if form.responsavel_tecnico.errors %}<div class="text-danger small">{{ form.responsavel_tecnico.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.status.label }}</label>
+                    {{ form.status }}
+                    {% if form.status.errors %}<div class="text-danger small">{{ form.status.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-md-3">
+                    <div class="form-check mt-4">
+                        {{ form.houve_visita }}
+                        <label class="form-check-label">{{ form.houve_visita.label }}</label>
                     </div>
-                    {{ formsets.checklist.management_form }}
-                    {% if formsets.checklist.non_form_errors %}<div class="alert alert-danger">{{ formsets.checklist.non_form_errors }}</div>{% endif %}
-                    <div class="table-responsive">
-                        <table class="table table-sm align-middle">
-                            <thead><tr><th>Item</th><th>Resultado</th><th>Obs</th><th>Excluir</th></tr></thead>
-                            <tbody id="checklist-body">
-                                {% for item_form in formsets.checklist %}
-                                <tr>{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
-                                    <td>{{ item_form.item }}</td><td>{{ item_form.resultado }}</td><td>{{ item_form.observacoes }}</td><td>{{ item_form.DELETE }}</td>
-                                </tr>
-                                {% if item_form.errors %}<tr><td colspan="4" class="text-danger small">{{ item_form.errors }}</td></tr>{% endif %}
-                                {% endfor %}
-                            </tbody>
-                            <template id="checklist-empty">
-                                <tr>{% for hidden in formsets.checklist.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
-                                    <td>{{ formsets.checklist.empty_form.item }}</td><td>{{ formsets.checklist.empty_form.resultado }}</td><td>{{ formsets.checklist.empty_form.observacoes }}</td><td>{{ formsets.checklist.empty_form.DELETE }}</td>
-                                </tr>
-                            </template>
-                        </table>
-                    </div>
+                    {% if form.houve_visita.errors %}<div class="text-danger small">{{ form.houve_visita.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.visitante_nome.label }}</label>
+                    {{ form.visitante_nome }}
+                    {% if form.visitante_nome.errors %}<div class="text-danger small">{{ form.visitante_nome.errors|join:', ' }}</div>{% endif %}
                 </div>
             </div>
-        </div>
-        <div class="col-lg-6">
-            <div class="card shadow-sm mb-4">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5 class="mb-0">Fotos</h5>
-                        <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="fotos">Adicionar foto</button>
-                    </div>
-                    {{ formsets.fotos.management_form }}
-                    {% if formsets.fotos.non_form_errors %}<div class="alert alert-danger">{{ formsets.fotos.non_form_errors }}</div>{% endif %}
-                    <div id="fotos-body">
-                        {% for item_form in formsets.fotos %}
-                        <div class="border rounded p-3 mb-3">{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
-                            <div class="row g-3">
-                                <div class="col-md-4">{{ item_form.imagem }}</div>
-                                <div class="col-md-4">{{ item_form.legenda }}</div>
-                                <div class="col-md-3">{{ item_form.frente_servico }}</div>
-                                <div class="col-md-1">{{ item_form.DELETE }}</div>
-                            </div>
-                            {% if item_form.errors %}<div class="text-danger small mt-2">{{ item_form.errors }}</div>{% endif %}
-                        </div>
+            <div class="d-flex justify-content-end mb-3">
+                <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="checklist">Adicionar item</button>
+            </div>
+            {{ formsets.checklist.management_form }}
+            {% if formsets.checklist.non_form_errors %}<div class="alert alert-danger">{{ formsets.checklist.non_form_errors }}</div>{% endif %}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead><tr><th>Item</th><th>Resultado</th><th>Obs</th><th>Excluir</th></tr></thead>
+                    <tbody id="checklist-body">
+                        {% for item_form in formsets.checklist %}
+                        <tr>{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
+                            <td>{{ item_form.item }}</td><td>{{ item_form.resultado }}</td><td>{{ item_form.observacoes }}</td><td>{{ item_form.DELETE }}</td>
+                        </tr>
+                        {% if item_form.errors %}<tr><td colspan="4" class="text-danger small">{{ item_form.errors }}</td></tr>{% endif %}
                         {% endfor %}
-                    </div>
-                    <template id="fotos-empty">
-                        <div class="border rounded p-3 mb-3">{% for hidden in formsets.fotos.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
-                            <div class="row g-3">
-                                <div class="col-md-4">{{ formsets.fotos.empty_form.imagem }}</div>
-                                <div class="col-md-4">{{ formsets.fotos.empty_form.legenda }}</div>
-                                <div class="col-md-3">{{ formsets.fotos.empty_form.frente_servico }}</div>
-                                <div class="col-md-1">{{ formsets.fotos.empty_form.DELETE }}</div>
-                            </div>
-                        </div>
+                    </tbody>
+                    <template id="checklist-empty">
+                        <tr>{% for hidden in formsets.checklist.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+                            <td>{{ formsets.checklist.empty_form.item }}</td><td>{{ formsets.checklist.empty_form.resultado }}</td><td>{{ formsets.checklist.empty_form.observacoes }}</td><td>{{ formsets.checklist.empty_form.DELETE }}</td>
+                        </tr>
                     </template>
-                </div>
+                </table>
             </div>
         </div>
-    </div>
+    </details>
 
-    <div class="d-flex gap-2 mb-5">
-        <button type="submit" class="btn btn-primary">Salvar diario</button>
-        {% if diario %}
-        <a href="{% url 'detalhe_diario' diario.id %}" class="btn btn-outline-secondary">Cancelar</a>
-        {% else %}
-        <a href="{% url 'lista_diarios' %}" class="btn btn-outline-secondary">Cancelar</a>
-        {% endif %}
+    <div class="diario-actions">
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Salvar diario</button>
+            {% if diario %}
+            <a href="{% url 'detalhe_diario' diario.id %}" class="btn btn-outline-secondary">Cancelar</a>
+            {% else %}
+            <a href="{% url 'lista_diarios' %}" class="btn btn-outline-secondary">Cancelar</a>
+            {% endif %}
+        </div>
     </div>
 </form>
 {% endblock %}

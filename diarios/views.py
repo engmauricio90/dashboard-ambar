@@ -170,7 +170,16 @@ def lista_diarios(request):
     if not _exigir_visualizacao(request):
         return redirect('home')
     form, diarios = _filtros_diarios(request)
-    return render(request, 'diarios/list.html', {'form': form, 'diarios': diarios[:200], 'obra': None})
+    return render(
+        request,
+        'diarios/list.html',
+        {
+            'form': form,
+            'diarios': diarios[:200],
+            'obra': None,
+            'pode_operar': _pode_operar(request.user),
+        },
+    )
 
 
 def lista_diarios_obra(request, obra_id):
@@ -178,7 +187,16 @@ def lista_diarios_obra(request, obra_id):
         return redirect('home')
     obra = get_object_or_404(Obra, id=obra_id)
     form, diarios = _filtros_diarios(request, obra=obra)
-    return render(request, 'diarios/list.html', {'form': form, 'diarios': diarios[:200], 'obra': obra})
+    return render(
+        request,
+        'diarios/list.html',
+        {
+            'form': form,
+            'diarios': diarios[:200],
+            'obra': obra,
+            'pode_operar': _pode_operar(request.user),
+        },
+    )
 
 
 def _render_form(request, form, formsets, titulo, diario=None):
@@ -238,8 +256,12 @@ def _salvar_diario(request, diario=None, obra_id=None):
                 form.add_error(None, 'Ja existe diario para esta obra nesta data.')
     else:
         initial = {}
-        if obra_id:
-            initial['obra'] = obra_id
+        if not diario:
+            if obra_id:
+                initial['obra'] = obra_id
+            if request.user.is_authenticated:
+                initial['responsavel_preenchimento'] = request.user.get_full_name() or request.user.username
+            initial['data'] = timezone.localdate()
         form = DiarioObraForm(instance=diario, initial=initial, usuario=request.user, pode_alterar_status=_pode_admin(request.user))
         formsets = _build_formsets(instance=diario)
 
