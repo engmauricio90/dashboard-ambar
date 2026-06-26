@@ -132,7 +132,7 @@
         <summary>Fotos do dia</summary>
         <div class="diario-section-body">
             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-                <div class="text-muted small">Adicione uma ou mais fotos. Legenda e frente de servico sao opcionais.</div>
+                <div class="text-muted small">Adicione uma ou mais fotos. A legenda e opcional.</div>
                 <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="fotos">Adicionar foto</button>
             </div>
             {{ formsets.fotos.management_form }}
@@ -141,9 +141,8 @@
                 {% for item_form in formsets.fotos %}
                 <div class="border rounded p-3 mb-3">{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
                     <div class="row g-3 align-items-end">
-                        <div class="col-md-4"><label class="form-label">Imagem</label>{{ item_form.imagem }}</div>
-                        <div class="col-md-4"><label class="form-label">Legenda</label>{{ item_form.legenda }}</div>
-                        <div class="col-md-3"><label class="form-label">Frente</label>{{ item_form.frente_servico }}</div>
+                        <div class="col-md-6"><label class="form-label">Imagem</label>{{ item_form.imagem }}</div>
+                        <div class="col-md-5"><label class="form-label">Legenda</label>{{ item_form.legenda }}</div>
                         <div class="col-md-1"><label class="form-label">Excluir</label>{{ item_form.DELETE }}</div>
                     </div>
                     {% if item_form.errors %}<div class="text-danger small mt-2">{{ item_form.errors }}</div>{% endif %}
@@ -153,44 +152,14 @@
             <template id="fotos-empty">
                 <div class="border rounded p-3 mb-3">{% for hidden in formsets.fotos.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
                     <div class="row g-3 align-items-end">
-                        <div class="col-md-4"><label class="form-label">Imagem</label>{{ formsets.fotos.empty_form.imagem }}</div>
-                        <div class="col-md-4"><label class="form-label">Legenda</label>{{ formsets.fotos.empty_form.legenda }}</div>
-                        <div class="col-md-3"><label class="form-label">Frente</label>{{ formsets.fotos.empty_form.frente_servico }}</div>
+                        <div class="col-md-6"><label class="form-label">Imagem</label>{{ formsets.fotos.empty_form.imagem }}</div>
+                        <div class="col-md-5"><label class="form-label">Legenda</label>{{ formsets.fotos.empty_form.legenda }}</div>
                         <div class="col-md-1"><label class="form-label">Excluir</label>{{ formsets.fotos.empty_form.DELETE }}</div>
                     </div>
                 </div>
             </template>
         </div>
     </div>
-
-    <details class="diario-section mb-3">
-        <summary>Frentes de servico</summary>
-        <div class="diario-section-body">
-            <div class="d-flex justify-content-end mb-3">
-                <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="frentes">Adicionar frente</button>
-            </div>
-            {{ formsets.frentes.management_form }}
-            {% if formsets.frentes.non_form_errors %}<div class="alert alert-danger">{{ formsets.frentes.non_form_errors }}</div>{% endif %}
-            <div class="table-responsive">
-                <table class="table table-sm align-middle diario-table">
-                    <thead><tr><th>Frente</th><th>Descricao</th><th>Local</th><th>%</th><th>Situacao</th><th>Excluir</th></tr></thead>
-                    <tbody id="frentes-body">
-                        {% for item_form in formsets.frentes %}
-                        <tr>{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
-                            <td>{{ item_form.nome }}</td><td>{{ item_form.descricao }}</td><td>{{ item_form.local_trecho }}</td><td>{{ item_form.percentual_executado }}</td><td>{{ item_form.situacao }}</td><td>{{ item_form.DELETE }}</td>
-                        </tr>
-                        {% if item_form.errors %}<tr><td colspan="6" class="text-danger small">{{ item_form.errors }}</td></tr>{% endif %}
-                        {% endfor %}
-                    </tbody>
-                    <template id="frentes-empty">
-                        <tr>{% for hidden in formsets.frentes.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
-                            <td>{{ formsets.frentes.empty_form.nome }}</td><td>{{ formsets.frentes.empty_form.descricao }}</td><td>{{ formsets.frentes.empty_form.local_trecho }}</td><td>{{ formsets.frentes.empty_form.percentual_executado }}</td><td>{{ formsets.frentes.empty_form.situacao }}</td><td>{{ formsets.frentes.empty_form.DELETE }}</td>
-                        </tr>
-                    </template>
-                </table>
-            </div>
-        </div>
-    </details>
 
     <details class="diario-section mb-3">
         <summary>Efetivo de mao de obra</summary>
@@ -202,18 +171,18 @@
             {% if formsets.efetivos.non_form_errors %}<div class="alert alert-danger">{{ formsets.efetivos.non_form_errors }}</div>{% endif %}
             <div class="table-responsive">
                 <table class="table table-sm align-middle diario-table">
-                    <thead><tr><th>Funcao</th><th>Nome</th><th>Empresa/equipe</th><th>Qtd</th><th>Entrada</th><th>Saida</th><th>Horas</th><th>Obs</th><th>Excluir</th></tr></thead>
+                    <thead><tr><th>Funcao</th><th>Quantidade</th><th>Excluir</th></tr></thead>
                     <tbody id="efetivos-body">
                         {% for item_form in formsets.efetivos %}
                         <tr>{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
-                            <td>{{ item_form.funcao }}</td><td>{{ item_form.nome_colaborador }}</td><td>{{ item_form.empresa_equipe }}</td><td>{{ item_form.quantidade }}</td><td>{{ item_form.horario_entrada }}</td><td>{{ item_form.horario_saida }}</td><td>{{ item_form.total_horas }}</td><td>{{ item_form.observacoes }}</td><td>{{ item_form.DELETE }}</td>
+                            <td>{{ item_form.funcao }}</td><td>{{ item_form.quantidade }}</td><td>{{ item_form.DELETE }}</td>
                         </tr>
-                        {% if item_form.errors %}<tr><td colspan="9" class="text-danger small">{{ item_form.errors }}</td></tr>{% endif %}
+                        {% if item_form.errors %}<tr><td colspan="3" class="text-danger small">{{ item_form.errors }}</td></tr>{% endif %}
                         {% endfor %}
                     </tbody>
                     <template id="efetivos-empty">
                         <tr>{% for hidden in formsets.efetivos.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
-                            <td>{{ formsets.efetivos.empty_form.funcao }}</td><td>{{ formsets.efetivos.empty_form.nome_colaborador }}</td><td>{{ formsets.efetivos.empty_form.empresa_equipe }}</td><td>{{ formsets.efetivos.empty_form.quantidade }}</td><td>{{ formsets.efetivos.empty_form.horario_entrada }}</td><td>{{ formsets.efetivos.empty_form.horario_saida }}</td><td>{{ formsets.efetivos.empty_form.total_horas }}</td><td>{{ formsets.efetivos.empty_form.observacoes }}</td><td>{{ formsets.efetivos.empty_form.DELETE }}</td>
+                            <td>{{ formsets.efetivos.empty_form.funcao }}</td><td>{{ formsets.efetivos.empty_form.quantidade }}</td><td>{{ formsets.efetivos.empty_form.DELETE }}</td>
                         </tr>
                     </template>
                 </table>
@@ -231,47 +200,18 @@
             {% if formsets.equipamentos.non_form_errors %}<div class="alert alert-danger">{{ formsets.equipamentos.non_form_errors }}</div>{% endif %}
             <div class="table-responsive">
                 <table class="table table-sm align-middle diario-table">
-                    <thead><tr><th>Tipo</th><th>Identificacao</th><th>Empresa</th><th>Qtd</th><th>H. inicial</th><th>H. final</th><th>Horas</th><th>Situacao</th><th>Obs</th><th>Excluir</th></tr></thead>
+                    <thead><tr><th>Tipo</th><th>Quantidade</th><th>Situacao</th><th>Excluir</th></tr></thead>
                     <tbody id="equipamentos-body">
                         {% for item_form in formsets.equipamentos %}
                         <tr>{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
-                            <td>{{ item_form.tipo }}</td><td>{{ item_form.identificacao }}</td><td>{{ item_form.empresa_proprietario }}</td><td>{{ item_form.quantidade }}</td><td>{{ item_form.horimetro_inicial }}</td><td>{{ item_form.horimetro_final }}</td><td>{{ item_form.total_horas }}</td><td>{{ item_form.situacao }}</td><td>{{ item_form.observacoes }}</td><td>{{ item_form.DELETE }}</td>
+                            <td>{{ item_form.tipo }}</td><td>{{ item_form.quantidade }}</td><td>{{ item_form.situacao }}</td><td>{{ item_form.DELETE }}</td>
                         </tr>
-                        {% if item_form.errors %}<tr><td colspan="10" class="text-danger small">{{ item_form.errors }}</td></tr>{% endif %}
+                        {% if item_form.errors %}<tr><td colspan="4" class="text-danger small">{{ item_form.errors }}</td></tr>{% endif %}
                         {% endfor %}
                     </tbody>
                     <template id="equipamentos-empty">
                         <tr>{% for hidden in formsets.equipamentos.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
-                            <td>{{ formsets.equipamentos.empty_form.tipo }}</td><td>{{ formsets.equipamentos.empty_form.identificacao }}</td><td>{{ formsets.equipamentos.empty_form.empresa_proprietario }}</td><td>{{ formsets.equipamentos.empty_form.quantidade }}</td><td>{{ formsets.equipamentos.empty_form.horimetro_inicial }}</td><td>{{ formsets.equipamentos.empty_form.horimetro_final }}</td><td>{{ formsets.equipamentos.empty_form.total_horas }}</td><td>{{ formsets.equipamentos.empty_form.situacao }}</td><td>{{ formsets.equipamentos.empty_form.observacoes }}</td><td>{{ formsets.equipamentos.empty_form.DELETE }}</td>
-                        </tr>
-                    </template>
-                </table>
-            </div>
-        </div>
-    </details>
-
-    <details class="diario-section mb-3">
-        <summary>Materiais</summary>
-        <div class="diario-section-body">
-            <div class="d-flex justify-content-end mb-3">
-                <button type="button" class="btn btn-sm btn-outline-primary js-add-formset" data-prefix="materiais">Adicionar material</button>
-            </div>
-            {{ formsets.materiais.management_form }}
-            {% if formsets.materiais.non_form_errors %}<div class="alert alert-danger">{{ formsets.materiais.non_form_errors }}</div>{% endif %}
-            <div class="table-responsive">
-                <table class="table table-sm align-middle diario-table">
-                    <thead><tr><th>Material</th><th>Und</th><th>Qtd</th><th>Fornecedor</th><th>NF</th><th>Movimento</th><th>Obs</th><th>Excluir</th></tr></thead>
-                    <tbody id="materiais-body">
-                        {% for item_form in formsets.materiais %}
-                        <tr>{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
-                            <td>{{ item_form.material }}</td><td>{{ item_form.unidade }}</td><td>{{ item_form.quantidade }}</td><td>{{ item_form.fornecedor }}</td><td>{{ item_form.nota_fiscal }}</td><td>{{ item_form.movimento }}</td><td>{{ item_form.observacoes }}</td><td>{{ item_form.DELETE }}</td>
-                        </tr>
-                        {% if item_form.errors %}<tr><td colspan="8" class="text-danger small">{{ item_form.errors }}</td></tr>{% endif %}
-                        {% endfor %}
-                    </tbody>
-                    <template id="materiais-empty">
-                        <tr>{% for hidden in formsets.materiais.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
-                            <td>{{ formsets.materiais.empty_form.material }}</td><td>{{ formsets.materiais.empty_form.unidade }}</td><td>{{ formsets.materiais.empty_form.quantidade }}</td><td>{{ formsets.materiais.empty_form.fornecedor }}</td><td>{{ formsets.materiais.empty_form.nota_fiscal }}</td><td>{{ formsets.materiais.empty_form.movimento }}</td><td>{{ formsets.materiais.empty_form.observacoes }}</td><td>{{ formsets.materiais.empty_form.DELETE }}</td>
+                            <td>{{ formsets.equipamentos.empty_form.tipo }}</td><td>{{ formsets.equipamentos.empty_form.quantidade }}</td><td>{{ formsets.equipamentos.empty_form.situacao }}</td><td>{{ formsets.equipamentos.empty_form.DELETE }}</td>
                         </tr>
                     </template>
                 </table>

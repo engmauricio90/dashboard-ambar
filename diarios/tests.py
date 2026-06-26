@@ -1,6 +1,5 @@
 import tempfile
-from datetime import date, time
-from decimal import Decimal
+from datetime import date
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
@@ -11,7 +10,7 @@ from django.urls import reverse
 
 from obras.models import Obra
 
-from .models import DiarioObra, EfetivoDiario, FrenteServicoDiario, HistoricoDiario
+from .models import DiarioObra, EfetivoDiario, HistoricoDiario
 
 
 class DiarioObraTests(TestCase):
@@ -48,28 +47,16 @@ class DiarioObraTests(TestCase):
             'visitante_nome': '',
             'status': DiarioObra.STATUS_RASCUNHO,
         }
-        for prefix in ['efetivos', 'equipamentos', 'materiais', 'ocorrencias', 'checklist', 'fotos']:
+        for prefix in ['efetivos', 'equipamentos', 'ocorrencias', 'checklist', 'fotos']:
             data.update(self._management(prefix))
-        data.update(self._management('frentes', '1'))
-        data.update(
-            {
-                'frentes-0-nome': 'Rede pluvial',
-                'frentes-0-descricao': 'Assentamento de tubos.',
-                'frentes-0-local_trecho': 'Trecho 1',
-                'frentes-0-percentual_executado': '35.50',
-                'frentes-0-observacoes': '',
-                'frentes-0-situacao': FrenteServicoDiario.SITUACAO_EM_EXECUCAO,
-            }
-        )
         return data
 
-    def test_cria_diario_com_frente_de_servico(self):
+    def test_cria_diario_rapido(self):
         response = self.client.post(reverse('novo_diario'), self._post_data())
 
         diario = DiarioObra.objects.get()
         self.assertRedirects(response, reverse('detalhe_diario', args=[diario.id]))
         self.assertEqual(diario.status, DiarioObra.STATUS_RASCUNHO)
-        self.assertEqual(diario.frentes.count(), 1)
         self.assertEqual(diario.historico.first().acao, HistoricoDiario.ACAO_CRIADO)
 
     def test_linha_vazia_de_ocorrencia_nao_bloqueia_salvamento(self):
@@ -107,7 +94,7 @@ class DiarioObraTests(TestCase):
         self.assertContains(response, 'Ja existe diario para esta obra nesta data.')
         self.assertEqual(DiarioObra.objects.count(), 1)
 
-    def test_adiciona_efetivo_e_calcula_horas(self):
+    def test_adiciona_efetivo_por_funcao_e_quantidade(self):
         diario = DiarioObra.objects.create(
             obra=self.obra,
             data=date(2026, 5, 28),
@@ -118,13 +105,10 @@ class DiarioObraTests(TestCase):
             diario=diario,
             funcao='servente',
             quantidade=2,
-            horario_entrada=time(8, 0),
-            horario_saida=time(12, 0),
         )
 
         diario.refresh_from_db()
         self.assertEqual(diario.total_efetivo, 2)
-        self.assertEqual(diario.total_horas_efetivo, Decimal('8'))
 
     def test_finaliza_diario(self):
         diario = DiarioObra.objects.create(

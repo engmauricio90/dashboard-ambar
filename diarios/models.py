@@ -117,8 +117,8 @@ class DiarioObra(models.Model):
             raise ValidationError('Informe a situacao da obra.')
         if not self.condicao_climatica:
             raise ValidationError('Informe a condicao climatica.')
-        if not self.descricao_servicos and not self.frentes.exists():
-            raise ValidationError('Informe a descricao geral ou ao menos uma frente de servico.')
+        if not self.descricao_servicos:
+            raise ValidationError('Informe a descricao geral dos servicos executados.')
 
     def __str__(self):
         return f'{self.obra} - {self.data:%d/%m/%Y}'

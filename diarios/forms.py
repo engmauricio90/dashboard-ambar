@@ -10,8 +10,6 @@ from .models import (
     EfetivoDiario,
     EquipamentoDiario,
     FotoDiario,
-    FrenteServicoDiario,
-    MaterialDiario,
     OcorrenciaDiario,
 )
 
@@ -122,100 +120,26 @@ class DiarioObraForm(BootstrapModelForm):
         return cleaned_data
 
 
-class FrenteServicoDiarioForm(OptionalExtraFormMixin, BootstrapModelForm):
-    meaningful_fields = ['nome', 'descricao', 'local_trecho', 'percentual_executado', 'observacoes']
-
-    class Meta:
-        model = FrenteServicoDiario
-        fields = ['nome', 'descricao', 'local_trecho', 'percentual_executado', 'observacoes', 'situacao']
-        widgets = {
-            'descricao': forms.Textarea(attrs={'rows': 2}),
-            'observacoes': forms.Textarea(attrs={'rows': 2}),
-            'percentual_executado': forms.NumberInput(attrs={'step': '0.01'}),
-        }
-
-
 class EfetivoDiarioForm(OptionalExtraFormMixin, BootstrapModelForm):
-    meaningful_fields = [
-        'nome_colaborador',
-        'empresa_equipe',
-        'quantidade',
-        'horario_entrada',
-        'horario_saida',
-        'total_horas',
-        'observacoes',
-    ]
+    meaningful_fields = ['funcao', 'quantidade']
     ignored_values = {
         'quantidade': {'1'},
-        'total_horas': {'0', '0.0', '0.00'},
     }
 
     class Meta:
         model = EfetivoDiario
-        fields = [
-            'funcao',
-            'nome_colaborador',
-            'empresa_equipe',
-            'quantidade',
-            'horario_entrada',
-            'horario_saida',
-            'total_horas',
-            'observacoes',
-        ]
-        widgets = {
-            'horario_entrada': forms.TimeInput(format='%H:%M', attrs={'type': 'time'}),
-            'horario_saida': forms.TimeInput(format='%H:%M', attrs={'type': 'time'}),
-            'total_horas': forms.NumberInput(attrs={'step': '0.01'}),
-        }
+        fields = ['funcao', 'quantidade']
 
 
 class EquipamentoDiarioForm(OptionalExtraFormMixin, BootstrapModelForm):
-    meaningful_fields = [
-        'identificacao',
-        'empresa_proprietario',
-        'quantidade',
-        'horimetro_inicial',
-        'horimetro_final',
-        'total_horas',
-        'observacoes',
-    ]
+    meaningful_fields = ['tipo', 'quantidade', 'situacao']
     ignored_values = {
         'quantidade': {'1'},
-        'total_horas': {'0', '0.0', '0.00'},
     }
 
     class Meta:
         model = EquipamentoDiario
-        fields = [
-            'tipo',
-            'identificacao',
-            'empresa_proprietario',
-            'quantidade',
-            'horimetro_inicial',
-            'horimetro_final',
-            'total_horas',
-            'situacao',
-            'observacoes',
-        ]
-        widgets = {
-            'horimetro_inicial': forms.NumberInput(attrs={'step': '0.01'}),
-            'horimetro_final': forms.NumberInput(attrs={'step': '0.01'}),
-            'total_horas': forms.NumberInput(attrs={'step': '0.01'}),
-        }
-
-
-class MaterialDiarioForm(OptionalExtraFormMixin, BootstrapModelForm):
-    meaningful_fields = ['material', 'unidade', 'quantidade', 'fornecedor', 'nota_fiscal', 'observacoes']
-    ignored_values = {
-        'quantidade': {'0', '0.0', '0.00', '0.000'},
-    }
-
-    class Meta:
-        model = MaterialDiario
-        fields = ['material', 'unidade', 'quantidade', 'fornecedor', 'nota_fiscal', 'movimento', 'observacoes']
-        widgets = {
-            'quantidade': forms.NumberInput(attrs={'step': '0.001'}),
-        }
+        fields = ['tipo', 'quantidade', 'situacao']
 
 
 class OcorrenciaDiarioForm(OptionalExtraFormMixin, BootstrapModelForm):
@@ -247,11 +171,11 @@ class ChecklistDiarioForm(BootstrapModelForm):
 
 
 class FotoDiarioForm(OptionalExtraFormMixin, BootstrapModelForm):
-    meaningful_fields = ['imagem', 'legenda', 'frente_servico']
+    meaningful_fields = ['imagem', 'legenda']
 
     class Meta:
         model = FotoDiario
-        fields = ['imagem', 'legenda', 'frente_servico']
+        fields = ['imagem', 'legenda']
 
     def clean_imagem(self):
         imagem = self.cleaned_data.get('imagem')
@@ -259,14 +183,6 @@ class FotoDiarioForm(OptionalExtraFormMixin, BootstrapModelForm):
             raise ValidationError('Envie apenas arquivos de imagem.')
         return imagem
 
-
-FrenteServicoFormSet = inlineformset_factory(
-    DiarioObra,
-    FrenteServicoDiario,
-    form=FrenteServicoDiarioForm,
-    extra=0,
-    can_delete=True,
-)
 
 EfetivoDiarioFormSet = inlineformset_factory(
     DiarioObra,
@@ -280,14 +196,6 @@ EquipamentoDiarioFormSet = inlineformset_factory(
     DiarioObra,
     EquipamentoDiario,
     form=EquipamentoDiarioForm,
-    extra=0,
-    can_delete=True,
-)
-
-MaterialDiarioFormSet = inlineformset_factory(
-    DiarioObra,
-    MaterialDiario,
-    form=MaterialDiarioForm,
     extra=0,
     can_delete=True,
 )

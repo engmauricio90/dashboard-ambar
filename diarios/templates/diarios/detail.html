@@ -50,22 +50,6 @@
 
         <div class="card shadow-sm mb-4">
             <div class="card-body">
-                <h5 class="mb-3">Frentes de servico</h5>
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle">
-                        <thead><tr><th>Frente</th><th>Local</th><th>%</th><th>Situacao</th><th>Descricao</th></tr></thead>
-                        <tbody>
-                            {% for item in diario.frentes.all %}
-                            <tr><td>{{ item.nome }}</td><td>{{ item.local_trecho|default:'-' }}</td><td>{{ item.percentual_executado|default:'-' }}</td><td>{{ item.get_situacao_display }}</td><td>{{ item.descricao|default:'-' }}</td></tr>
-                            {% empty %}<tr><td colspan="5">Sem frentes cadastradas.</td></tr>{% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <div class="card shadow-sm mb-4">
-            <div class="card-body">
                 <h5 class="mb-3">Ocorrencias</h5>
                 <div class="table-responsive">
                     <table class="table table-sm align-middle">
@@ -104,7 +88,6 @@
             <div class="card-body">
                 <h5 class="mb-3">Resumo operacional</h5>
                 <p><strong>Efetivo:</strong> {{ diario.total_efetivo }} pessoa(s)</p>
-                <p><strong>Horas efetivo:</strong> {{ diario.total_horas_efetivo }}</p>
                 <p><strong>Equipamentos:</strong> {{ diario.total_equipamentos }}</p>
                 <p><strong>Fotos:</strong> {{ diario.fotos.count }}</p>
             </div>
@@ -114,7 +97,7 @@
             <div class="card-body">
                 <h5 class="mb-3">Efetivo</h5>
                 {% for item in diario.efetivos.all %}
-                <div class="border-bottom py-2">{{ item.get_funcao_display }} - {{ item.quantidade }} pessoa(s)<br><span class="text-muted small">{{ item.empresa_equipe|default:'-' }} / {{ item.total_horas }} h</span></div>
+                <div class="border-bottom py-2">{{ item.get_funcao_display }} - {{ item.quantidade }} pessoa(s)</div>
                 {% empty %}<p class="text-muted">Sem efetivo.</p>{% endfor %}
             </div>
         </div>
@@ -123,17 +106,8 @@
             <div class="card-body">
                 <h5 class="mb-3">Equipamentos</h5>
                 {% for item in diario.equipamentos.all %}
-                <div class="border-bottom py-2">{{ item.get_tipo_display }} - {{ item.quantidade }}<br><span class="text-muted small">{{ item.get_situacao_display }} / {{ item.total_horas }} h</span></div>
+                <div class="border-bottom py-2">{{ item.get_tipo_display }} - {{ item.quantidade }}<br><span class="text-muted small">{{ item.get_situacao_display }}</span></div>
                 {% empty %}<p class="text-muted">Sem equipamentos.</p>{% endfor %}
-            </div>
-        </div>
-
-        <div class="card shadow-sm mb-4">
-            <div class="card-body">
-                <h5 class="mb-3">Materiais</h5>
-                {% for item in diario.materiais.all %}
-                <div class="border-bottom py-2">{{ item.material }} - {{ item.quantidade }} {{ item.unidade }}<br><span class="text-muted small">{{ item.get_movimento_display }} / {{ item.fornecedor|default:'-' }}</span></div>
-                {% empty %}<p class="text-muted">Sem materiais.</p>{% endfor %}
             </div>
         </div>
 

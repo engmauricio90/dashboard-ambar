@@ -1,9 +1,8 @@
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Exists, OuterRef, Prefetch
+from django.db.models import Count, Exists, OuterRef
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from PIL import Image, ImageDraw
@@ -28,15 +27,12 @@ from .forms import (
     EfetivoDiarioFormSet,
     EquipamentoDiarioFormSet,
     FotoDiarioFormSet,
-    FrenteServicoFormSet,
-    MaterialDiarioFormSet,
     OcorrenciaDiarioFormSet,
 )
 from .models import (
     ChecklistDiario,
     DiarioObra,
     FotoDiario,
-    FrenteServicoDiario,
     HistoricoDiario,
     OcorrenciaDiario,
 )
@@ -76,10 +72,8 @@ def _base_queryset():
     return (
         DiarioObra.objects.select_related('obra', 'created_by', 'updated_by')
         .prefetch_related(
-            'frentes',
             'efetivos',
             'equipamentos',
-            'materiais',
             'ocorrencias',
             'checklist',
             'fotos',
@@ -107,10 +101,8 @@ def _build_formsets(data=None, files=None, instance=None):
         kwargs['data'] = data
         kwargs['files'] = files
     return {
-        'frentes': FrenteServicoFormSet(prefix='frentes', **kwargs),
         'efetivos': EfetivoDiarioFormSet(prefix='efetivos', **kwargs),
         'equipamentos': EquipamentoDiarioFormSet(prefix='equipamentos', **kwargs),
-        'materiais': MaterialDiarioFormSet(prefix='materiais', **kwargs),
         'ocorrencias': OcorrenciaDiarioFormSet(prefix='ocorrencias', **kwargs),
         'checklist': ChecklistDiarioFormSet(prefix='checklist', **kwargs),
         'fotos': FotoDiarioFormSet(prefix='fotos', **kwargs),
@@ -130,14 +122,6 @@ def _save_formset(formset, usuario=None, foto=False):
         instance.save()
     formset.save_m2m()
     return deleted_photos, instances
-
-
-def _validar_formsets_para_finalizacao(formsets):
-    tem_frente = any(
-        form.cleaned_data and not form.cleaned_data.get('DELETE') and form.cleaned_data.get('nome')
-        for form in formsets['frentes'].forms
-    )
-    return tem_frente
 
 
 def _filtros_diarios(request, obra=None):
@@ -302,7 +286,7 @@ def detalhe_diario(request, diario_id):
 def finalizar_diario(request, diario_id):
     if not _exigir_operacao(request):
         return redirect('lista_diarios')
-    diario = get_object_or_404(DiarioObra.objects.prefetch_related('frentes'), id=diario_id)
+    diario = get_object_or_404(DiarioObra, id=diario_id)
     try:
         diario.validar_finalizacao()
     except ValidationError as exc:
@@ -416,40 +400,22 @@ def _pdf_diario(diario):
 
     tabelas = [
         (
-            'Frentes de servico',
-            ['Frente', 'Local', '%', 'Situacao'],
-            _linhas_tabela(
-                diario.frentes.all(),
-                ['nome', 'local_trecho', lambda i: i.percentual_executado or '-', lambda i: i.get_situacao_display()],
-            ),
-            [420, 330, 120, 343],
-        ),
-        (
             'Efetivo',
-            ['Funcao', 'Equipe', 'Qtd', 'Horas'],
+            ['Funcao', 'Quantidade'],
             _linhas_tabela(
                 diario.efetivos.all(),
-                [lambda i: i.get_funcao_display(), 'empresa_equipe', 'quantidade', 'total_horas'],
+                [lambda i: i.get_funcao_display(), 'quantidade'],
             ),
-            [420, 360, 120, 313],
+            [760, 453],
         ),
         (
             'Equipamentos',
-            ['Tipo', 'Identificacao', 'Qtd', 'Situacao'],
+            ['Tipo', 'Quantidade', 'Situacao'],
             _linhas_tabela(
                 diario.equipamentos.all(),
-                [lambda i: i.get_tipo_display(), 'identificacao', 'quantidade', lambda i: i.get_situacao_display()],
+                [lambda i: i.get_tipo_display(), 'quantidade', lambda i: i.get_situacao_display()],
             ),
-            [420, 330, 120, 343],
-        ),
-        (
-            'Materiais',
-            ['Material', 'Qtd', 'Fornecedor', 'Movimento'],
-            _linhas_tabela(
-                diario.materiais.all(),
-                ['material', lambda i: f'{i.quantidade} {i.unidade}', 'fornecedor', lambda i: i.get_movimento_display()],
-            ),
-            [420, 190, 360, 243],
+            [640, 220, 353],
         ),
         (
             'Ocorrencias',
