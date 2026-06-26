@@ -575,14 +575,21 @@ def _pdf_diario(diario):
                 y = DIARIO_MARGIN
             fx = x + col * (col_w + gap_x)
             try:
-                thumb = Image.open(foto.imagem.path).convert('RGB')
+                foto.imagem.open('rb')
+                thumb = Image.open(foto.imagem).convert('RGB')
                 thumb.thumbnail((col_w, photo_h))
                 draw.rectangle((fx, y, fx + col_w, y + photo_h), outline=(112, 119, 124), width=1)
                 image.paste(thumb, (fx + (col_w - thumb.width) // 2, y + (photo_h - thumb.height) // 2))
-            except OSError:
+                foto.imagem.close()
+            except (OSError, ValueError):
                 draw.rectangle((fx, y, fx + col_w, y + photo_h), outline=(112, 119, 124), width=1)
                 draw.text((fx + 18, y + 190), 'Imagem indisponivel', font=_font(16), fill=(88, 98, 102))
-            _draw_wrapped(draw, foto.legenda or '-', (fx, y + photo_h + 10), _font(14), (50, 56, 58), col_w, line_spacing=4)
+                try:
+                    foto.imagem.close()
+                except ValueError:
+                    pass
+            if foto.legenda:
+                _draw_wrapped(draw, foto.legenda, (fx, y + photo_h + 10), _font(14), (50, 56, 58), col_w, line_spacing=4)
         pages.append(image)
 
     for index, page in enumerate(pages, start=1):
