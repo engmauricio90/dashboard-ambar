@@ -179,7 +179,8 @@ class FotoDiarioForm(OptionalExtraFormMixin, BootstrapModelForm):
 
     def clean_imagem(self):
         imagem = self.cleaned_data.get('imagem')
-        if imagem and not getattr(imagem, 'content_type', '').startswith('image/'):
+        content_type = getattr(imagem, 'content_type', '')
+        if imagem and content_type and not content_type.startswith('image/'):
             raise ValidationError('Envie apenas arquivos de imagem.')
         return imagem
 

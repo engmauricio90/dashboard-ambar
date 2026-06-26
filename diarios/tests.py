@@ -176,6 +176,58 @@ class DiarioObraTests(TestCase):
                 self.assertEqual(response['Content-Type'], 'image/gif')
                 response.close()
 
+    def test_edita_diario_com_foto_existente_sem_reenviar_arquivo(self):
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                diario = DiarioObra.objects.create(
+                    obra=self.obra,
+                    data=date(2026, 5, 28),
+                    responsavel_preenchimento='Eng. Responsavel',
+                    condicao_climatica=DiarioObra.CLIMA_ENSOLARADO,
+                    turno=DiarioObra.TURNO_INTEGRAL,
+                    situacao_obra=DiarioObra.SITUACAO_ANDAMENTO,
+                    descricao_servicos='Servico executado',
+                )
+                gif = (
+                    b'GIF87a\x01\x00\x01\x00\x80\x01\x00\x00\x00\x00ccc,\x00\x00\x00\x00'
+                    b'\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
+                )
+                upload = SimpleUploadedFile('diario.gif', gif, content_type='image/gif')
+                foto = diario.fotos.create(imagem=upload, legenda='Foto original', uploaded_by=self.user)
+                data = {
+                    'obra': self.obra.id,
+                    'data': '2026-05-28',
+                    'responsavel_preenchimento': 'Eng. Responsavel',
+                    'responsavel_tecnico': '',
+                    'condicao_climatica': DiarioObra.CLIMA_ENSOLARADO,
+                    'turno': DiarioObra.TURNO_INTEGRAL,
+                    'situacao_obra': DiarioObra.SITUACAO_ANDAMENTO,
+                    'descricao_servicos': 'Servico editado',
+                    'observacoes': '',
+                    'ocorrencias_interferencias': '',
+                    'pendencias': '',
+                    'orientacoes': '',
+                    'houve_visita': '',
+                    'visitante_nome': '',
+                    'status': DiarioObra.STATUS_RASCUNHO,
+                    'fotos-TOTAL_FORMS': '1',
+                    'fotos-INITIAL_FORMS': '1',
+                    'fotos-MIN_NUM_FORMS': '0',
+                    'fotos-MAX_NUM_FORMS': '1000',
+                    'fotos-0-id': foto.id,
+                    'fotos-0-legenda': 'Foto mantida',
+                    'fotos-0-DELETE': '',
+                }
+                for prefix in ['efetivos', 'equipamentos', 'ocorrencias', 'checklist']:
+                    data.update(self._management(prefix))
+
+                response = self.client.post(reverse('editar_diario', args=[diario.id]), data)
+
+                self.assertRedirects(response, reverse('detalhe_diario', args=[diario.id]))
+                foto.refresh_from_db()
+                self.assertEqual(foto.legenda, 'Foto mantida')
+                self.assertTrue(foto.imagem.name)
+
     def test_lista_diarios_por_obra(self):
         DiarioObra.objects.create(
             obra=self.obra,
