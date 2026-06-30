@@ -320,9 +320,9 @@ class ItemOrdemCompraGeralForm(BootstrapModelForm):
         model = ItemOrdemCompraGeral
         fields = ['item', 'descricao', 'quantidade', 'unidade', 'valor_unitario', 'valor_total', 'data_entrega']
         widgets = {
-            'quantidade': forms.NumberInput(attrs={'step': '0.01'}),
-            'valor_unitario': forms.NumberInput(attrs={'step': '0.01'}),
-            'valor_total': forms.NumberInput(attrs={'step': '0.01'}),
+            'quantidade': forms.NumberInput(attrs={'step': '0.0001'}),
+            'valor_unitario': forms.NumberInput(attrs={'step': '0.0001'}),
+            'valor_total': forms.NumberInput(attrs={'step': '0.0001'}),
             'data_entrega': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
         }
 
@@ -360,9 +360,9 @@ class NotaFiscalOrdemCompraGeralForm(BootstrapModelForm):
         widgets = {
             'data_emissao': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'data_vencimento': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
-            'quantidade': forms.NumberInput(attrs={'step': '0.01'}),
-            'valor_unitario': forms.NumberInput(attrs={'step': '0.01'}),
-            'valor_total': forms.NumberInput(attrs={'step': '0.01'}),
+            'quantidade': forms.NumberInput(attrs={'step': '0.0001'}),
+            'valor_unitario': forms.NumberInput(attrs={'step': '0.0001'}),
+            'valor_total': forms.NumberInput(attrs={'step': '0.0001'}),
             'observacoes': forms.Textarea(attrs={'rows': 3}),
         }
 

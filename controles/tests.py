@@ -241,9 +241,9 @@ class ControleAbastecimentoTests(TestCase):
                 'itens-MAX_NUM_FORMS': '1000',
                 'itens-0-item': '1',
                 'itens-0-descricao': 'BASE BRITADA - BGS',
-                'itens-0-quantidade': '60.00',
+                'itens-0-quantidade': '60.1234',
                 'itens-0-unidade': 'ton',
-                'itens-0-valor_unitario': '80.00',
+                'itens-0-valor_unitario': '80.1234',
                 'itens-0-valor_total': '',
                 'itens-0-data_entrega': '2026-04-30',
                 'itens-1-item': '',
@@ -280,9 +280,13 @@ class ControleAbastecimentoTests(TestCase):
         ordem = OrdemCompraGeral.objects.get()
         self.assertRedirects(response, reverse('detalhe_ordem_compra_geral', args=[ordem.id]))
         self.assertEqual(ordem.numero, '001/2026')
-        self.assertEqual(ordem.total, Decimal('4800.00'))
+        self.assertEqual(ordem.total, Decimal('4817.2912'))
         self.assertEqual(ordem.condicoes_pagamento, '30 dias apos emissao da NF')
-        self.assertEqual(ItemOrdemCompraGeral.objects.get().unidade, 'ton')
+        item = ItemOrdemCompraGeral.objects.get()
+        self.assertEqual(item.unidade, 'ton')
+        self.assertEqual(item.quantidade, Decimal('60.1234'))
+        self.assertEqual(item.valor_unitario, Decimal('80.1234'))
+        self.assertEqual(item.valor_total, Decimal('4817.2912'))
 
         pdf_response = self.client.get(reverse('ordem_compra_geral_pdf', args=[ordem.id]))
         self.assertEqual(pdf_response['Content-Type'], 'application/pdf')

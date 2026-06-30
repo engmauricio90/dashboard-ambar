@@ -67,12 +67,12 @@
                     <tr>
                         <td>{{ item.item|stringformat:"02d" }}</td>
                         <td>{{ item.descricao }}</td>
-                        <td>{{ item.quantidade|floatformat:2 }}</td>
+                        <td>{{ item.quantidade|floatformat:4 }}</td>
                         <td>{{ item.unidade }}</td>
-                        <td>R$ {{ item.valor_unitario|floatformat:2 }}</td>
-                        <td>R$ {{ item.valor_total|floatformat:2 }}</td>
-                        <td>{{ item.quantidade_faturada|floatformat:2 }}</td>
-                        <td>{{ item.saldo_quantidade|floatformat:2 }}</td>
+                        <td>R$ {{ item.valor_unitario|floatformat:4 }}</td>
+                        <td>R$ {{ item.valor_total|floatformat:4 }}</td>
+                        <td>{{ item.quantidade_faturada|floatformat:4 }}</td>
+                        <td>{{ item.saldo_quantidade|floatformat:4 }}</td>
                         <td>R$ {{ item.valor_faturado|floatformat:2 }}</td>
                         <td>R$ {{ item.diferenca_valor|floatformat:2 }}</td>
                         <td>{{ item.data_entrega|default:'-' }}</td>
@@ -115,9 +115,9 @@
                         <td>{{ nota.data_emissao }}</td>
                         <td>{{ nota.data_vencimento|default:'-' }}</td>
                         <td>{{ nota.item.item|stringformat:"02d" }} - {{ nota.item.descricao }}</td>
-                        <td>{{ nota.quantidade|floatformat:2 }}</td>
-                        <td>R$ {{ nota.valor_unitario|floatformat:2 }}</td>
-                        <td>R$ {{ nota.valor_total|floatformat:2 }}</td>
+                        <td>{{ nota.quantidade|floatformat:4 }}</td>
+                        <td>R$ {{ nota.valor_unitario|floatformat:4 }}</td>
+                        <td>R$ {{ nota.valor_total|floatformat:4 }}</td>
                         <td>{{ nota.get_status_display }}</td>
                         <td>{% if nota.conta_pagar %}Conta #{{ nota.conta_pagar.id }}{% else %}-{% endif %}</td>
                         <td class="text-end">

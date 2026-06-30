@@ -142,6 +142,14 @@ def _format_money(value):
     return f'R$ {value:.2f}'
 
 
+def _format_decimal4(value):
+    return f'{value:.4f}'
+
+
+def _format_money4(value):
+    return f'R$ {value:.4f}'
+
+
 def _font(size, bold=False):
     candidates = [
         Path(settings.BASE_DIR) / 'static' / 'fonts' / ('Arial Bold.ttf' if bold else 'Arial.ttf'),
@@ -1003,10 +1011,10 @@ def ordem_compra_geral_pdf(request, ordem_id):
         [
             f'{item.item:02d}',
             item.descricao,
-            f'{item.quantidade:.2f}',
+            _format_decimal4(item.quantidade),
             item.unidade,
-            _format_money(item.valor_unitario),
-            _format_money(item.valor_total),
+            _format_money4(item.valor_unitario),
+            _format_money4(item.valor_total),
             _format_date(item.data_entrega),
         ]
         for item in ordem.itens.all()
