@@ -74,7 +74,7 @@
                         <td>{{ conta.get_status_display }}</td>
                         <td class="text-end">
                             {% if mostrar_acoes_massa %}
-                            <button type="submit" formaction="{% url 'baixar_conta_pagar' conta.id %}" class="btn btn-sm btn-outline-success">Pagar</button>
+                            <a href="{% url 'baixar_conta_pagar' conta.id %}" class="btn btn-sm btn-outline-success">Pagar</a>
                             {% endif %}
                             <a href="{% url 'editar_conta_pagar' conta.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
                         </td>

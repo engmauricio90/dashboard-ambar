@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+
+{% block title %}Registrar pagamento{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Registrar pagamento</h1>
+        <p class="text-muted mb-0">Baixa financeira da conta a pagar.</p>
+    </div>
+    <a href="{% url 'lista_contas_pagar' %}" class="btn btn-secondary">Voltar</a>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h5 class="mb-3">Resumo da despesa</h5>
+        <div class="row g-3">
+            <div class="col-md-4"><strong>Fornecedor:</strong> {{ conta.fornecedor }}</div>
+            <div class="col-md-4"><strong>Obra:</strong> {{ conta.obra|default:'-' }}</div>
+            <div class="col-md-4"><strong>NF:</strong> {{ conta.numero_nf|default:'-' }}</div>
+            <div class="col-md-4"><strong>Vencimento:</strong> {{ conta.data_vencimento }}</div>
+            <div class="col-md-4"><strong>Valor previsto:</strong> R$ {{ conta.valor|floatformat:2 }}</div>
+            <div class="col-md-4"><strong>Status:</strong> {{ conta.get_status_display }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.data_pagamento.label }}</label>
+                    {{ form.data_pagamento }}
+                    {% if form.data_pagamento.errors %}<div class="text-danger small mt-1">{{ form.data_pagamento.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.valor_pago.label }}</label>
+                    {{ form.valor_pago }}
+                    {% if form.valor_pago.errors %}<div class="text-danger small mt-1">{{ form.valor_pago.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-12">
+                    <label class="form-label">{{ form.observacoes.label }}</label>
+                    {{ form.observacoes }}
+                    {% if form.observacoes.errors %}<div class="text-danger small mt-1">{{ form.observacoes.errors|join:', ' }}</div>{% endif %}
+                </div>
+            </div>
+            <div class="d-flex gap-2 mt-4">
+                <button type="submit" class="btn btn-success">Confirmar pagamento</button>
+                <a href="{% url 'lista_contas_pagar' %}" class="btn btn-outline-secondary">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

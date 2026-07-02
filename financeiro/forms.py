@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django import forms
 from django.forms import inlineformset_factory
 
@@ -124,7 +126,6 @@ class ContaPagarForm(BootstrapModelForm):
         super().__init__(*args, **kwargs)
         from controles.models import ItemOrdemCompraGeral, OrdemCompraGeral
 
-        self.fields['valor_pago'].required = False
         self.fields['ordem_compra'].queryset = OrdemCompraGeral.objects.all()
         self.fields['ordem_compra'].empty_label = 'Nao possui OC'
 
@@ -135,6 +136,17 @@ class ContaPagarForm(BootstrapModelForm):
             ordem_id = self.instance.ordem_compra_id
         elif self.initial.get('ordem_compra'):
             ordem_id = self.initial['ordem_compra']
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if not instance.pk:
+            instance.status = ContaPagar.STATUS_ABERTO
+            instance.data_pagamento = None
+            instance.valor_pago = Decimal('0')
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
 
 
     class Meta:
@@ -150,38 +162,46 @@ class ContaPagarForm(BootstrapModelForm):
             'descricao',
             'data_emissao',
             'data_vencimento',
-            'data_pagamento',
             'valor',
-            'valor_pago',
-            'status',
             'observacoes',
         ]
         widgets = {
             'data_emissao': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'data_vencimento': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
-            'data_pagamento': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'valor': forms.NumberInput(attrs={'step': '0.01'}),
-            'valor_pago': forms.NumberInput(attrs={'step': '0.01'}),
             'observacoes': forms.Textarea(attrs={'rows': 3}),
         }
         labels = {
             'ordem_compra': 'Ordem de compra',
             'numero_nf': 'Numero da NF',
-            'valor_pago': 'Valor pago efetivamente',
         }
 
     def clean(self):
         cleaned_data = super().clean()
-        status = cleaned_data.get('status')
-        data_pagamento = cleaned_data.get('data_pagamento')
         ordem_compra = cleaned_data.get('ordem_compra')
         numero_nf = cleaned_data.get('numero_nf')
-        if status == ContaPagar.STATUS_PAGO and not data_pagamento:
-            self.add_error('data_pagamento', 'Informe a data de pagamento.')
         if ordem_compra:
             if not numero_nf:
                 self.add_error('numero_nf', 'Informe o numero da NF para vincular a OC.')
         return cleaned_data
+
+
+class ContaPagarBaixaForm(forms.Form):
+    data_pagamento = forms.DateField(
+        label='Data do pagamento',
+        widget=forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date', 'class': 'form-control'}),
+    )
+    valor_pago = forms.DecimalField(
+        label='Valor pago efetivamente',
+        max_digits=14,
+        decimal_places=2,
+        widget=forms.NumberInput(attrs={'step': '0.01', 'class': 'form-control'}),
+    )
+    observacoes = forms.CharField(
+        label='Observacoes do pagamento',
+        required=False,
+        widget=forms.Textarea(attrs={'rows': 3, 'class': 'form-control'}),
+    )
 
 
 class ItemContaPagarOrdemCompraForm(BootstrapModelForm):

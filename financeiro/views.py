@@ -20,6 +20,7 @@ from config.permissions import group_required
 
 from .forms import (
     CentroCustoForm,
+    ContaPagarBaixaForm,
     ContaPagarForm,
     ContaReceberBaixaForm,
     ContaReceberForm,
@@ -668,12 +669,36 @@ def editar_conta_pagar(request, conta_id):
 
 
 @financeiro_required
-@require_POST
 def baixar_conta_pagar(request, conta_id):
     conta = get_object_or_404(ContaPagar, id=conta_id)
-    baixar_conta_pagar_service(conta, data_pagamento=timezone.localdate())
-    messages.success(request, 'Pagamento registrado com sucesso.')
-    return redirect('lista_contas_pagar')
+    if conta.status != ContaPagar.STATUS_ABERTO:
+        messages.error(request, 'Somente contas a pagar em aberto podem ser pagas.')
+        return redirect('lista_contas_pagar')
+
+    if request.method == 'POST':
+        form = ContaPagarBaixaForm(request.POST)
+        if form.is_valid():
+            baixar_conta_pagar_service(
+                conta,
+                data_pagamento=form.cleaned_data['data_pagamento'],
+                valor_pago=form.cleaned_data['valor_pago'],
+            )
+            if form.cleaned_data.get('observacoes'):
+                conta.observacoes = '\n'.join(
+                    value for value in [conta.observacoes, form.cleaned_data['observacoes']] if value
+                )
+                conta.save(update_fields=['observacoes', 'updated_at'])
+            messages.success(request, 'Pagamento registrado com sucesso.')
+            return redirect('lista_contas_pagas')
+    else:
+        form = ContaPagarBaixaForm(
+            initial={
+                'data_pagamento': timezone.localdate(),
+                'valor_pago': conta.valor,
+            }
+        )
+
+    return render(request, 'financeiro/form_pagamento.html', {'form': form, 'conta': conta})
 
 
 @financeiro_required

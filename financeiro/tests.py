@@ -210,6 +210,11 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertEqual(nota.valor_total, Decimal('1800.00'))
 
     def test_form_conta_pagar_permite_sem_oc(self):
+        response_get = self.client.get(reverse('nova_conta_pagar'))
+        self.assertNotContains(response_get, 'name="data_pagamento"')
+        self.assertNotContains(response_get, 'name="valor_pago"')
+        self.assertNotContains(response_get, 'name="status"')
+
         response = self.client.post(
             reverse('nova_conta_pagar'),
             {
@@ -245,7 +250,11 @@ class FinanceiroIntegracaoObraTests(TestCase):
         )
 
         self.assertRedirects(response, reverse('lista_contas_pagar'))
-        self.assertEqual(ContaPagar.objects.get().descricao, 'Despesa sem OC')
+        conta = ContaPagar.objects.get()
+        self.assertEqual(conta.descricao, 'Despesa sem OC')
+        self.assertEqual(conta.status, ContaPagar.STATUS_ABERTO)
+        self.assertIsNone(conta.data_pagamento)
+        self.assertEqual(conta.valor_pago, Decimal('0'))
         self.assertFalse(NotaFiscalOrdemCompraGeral.objects.exists())
 
     def test_form_conta_pagar_adiciona_itens_oc_por_botao(self):
@@ -347,7 +356,7 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertEqual(conta_1.valor_pago, Decimal('100.00'))
         self.assertEqual(conta_2.status, ContaPagar.STATUS_PAGO)
 
-    def test_conta_paga_aceita_valor_pago_diferente(self):
+    def test_tela_pagamento_aceita_valor_pago_diferente(self):
         conta = ContaPagar.objects.create(
             fornecedor='Fornecedor A',
             obra=self.obra,
@@ -358,48 +367,30 @@ class FinanceiroIntegracaoObraTests(TestCase):
             valor=Decimal('100.00'),
         )
 
+        response_get = self.client.get(reverse('baixar_conta_pagar', args=[conta.id]))
+        self.assertContains(response_get, 'Registrar pagamento')
+        self.assertContains(response_get, 'name="data_pagamento"')
+        self.assertContains(response_get, 'name="valor_pago"')
+
         response = self.client.post(
-            reverse('editar_conta_pagar', args=[conta.id]),
+            reverse('baixar_conta_pagar', args=[conta.id]),
             {
-                'fornecedor': 'Fornecedor A',
-                'fornecedor_cadastro': '',
-                'obra': self.obra.id,
-                'centro_custo': '',
-                'categoria': 'material',
-                'ordem_compra': '',
-                'numero_nf': '',
-                'descricao': 'Conta com juros',
-                'data_emissao': '2026-04-02',
-                'data_vencimento': '2026-04-20',
                 'data_pagamento': '2026-04-25',
-                'valor': '100.00',
                 'valor_pago': '112.50',
-                'status': ContaPagar.STATUS_PAGO,
-                'observacoes': '',
-                'itens_oc-TOTAL_FORMS': '5',
-                'itens_oc-INITIAL_FORMS': '0',
-                'itens_oc-MIN_NUM_FORMS': '0',
-                'itens_oc-MAX_NUM_FORMS': '1000',
-                'itens_oc-0-item_ordem_compra': '',
-                'itens_oc-0-quantidade': '',
-                'itens_oc-1-item_ordem_compra': '',
-                'itens_oc-1-quantidade': '',
-                'itens_oc-2-item_ordem_compra': '',
-                'itens_oc-2-quantidade': '',
-                'itens_oc-3-item_ordem_compra': '',
-                'itens_oc-3-quantidade': '',
-                'itens_oc-4-item_ordem_compra': '',
-                'itens_oc-4-quantidade': '',
+                'observacoes': 'Pago com juros',
             },
         )
 
-        self.assertRedirects(response, reverse('lista_contas_pagar'))
+        self.assertRedirects(response, reverse('lista_contas_pagas'))
         conta.refresh_from_db()
+        self.assertEqual(conta.status, ContaPagar.STATUS_PAGO)
+        self.assertEqual(conta.data_pagamento, date(2026, 4, 25))
         self.assertEqual(conta.valor_pago_efetivo, Decimal('112.50'))
         self.assertEqual(conta.diferenca_pagamento, Decimal('12.50'))
         self.assertEqual(conta.despesa_obra.valor, Decimal('112.50'))
+        self.assertIn('Pago com juros', conta.observacoes)
 
-    def test_baixa_direta_de_conta_pagar_exige_post(self):
+    def test_pagamento_conta_pagar_tem_tela_propria(self):
         conta = ContaPagar.objects.create(
             fornecedor='Fornecedor A',
             obra=self.obra,
@@ -411,10 +402,18 @@ class FinanceiroIntegracaoObraTests(TestCase):
         )
 
         response_get = self.client.get(reverse('baixar_conta_pagar', args=[conta.id]))
-        self.assertEqual(response_get.status_code, 405)
+        self.assertEqual(response_get.status_code, 200)
+        self.assertContains(response_get, 'Registrar pagamento')
 
-        response_post = self.client.post(reverse('baixar_conta_pagar', args=[conta.id]))
-        self.assertRedirects(response_post, reverse('lista_contas_pagar'))
+        response_post = self.client.post(
+            reverse('baixar_conta_pagar', args=[conta.id]),
+            {
+                'data_pagamento': '2026-04-30',
+                'valor_pago': '100.00',
+                'observacoes': '',
+            },
+        )
+        self.assertRedirects(response_post, reverse('lista_contas_pagas'))
         conta.refresh_from_db()
         self.assertEqual(conta.status, ContaPagar.STATUS_PAGO)
 
