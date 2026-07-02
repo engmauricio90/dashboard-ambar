@@ -51,29 +51,42 @@ class CentroCustoForm(BootstrapModelForm):
 
 
 class ContaReceberForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['obra'].required = True
+        self.fields['numero_nf'].required = True
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if instance.obra_id:
+            instance.cliente = instance.obra.cliente or instance.obra.nome_obra
+        if not instance.pk:
+            instance.status = ContaReceber.STATUS_ABERTO
+            instance.data_recebimento = None
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
+
     class Meta:
         model = ContaReceber
         fields = [
-            'cliente',
             'obra',
             'centro_custo',
             'numero_nf',
             'descricao',
             'data_emissao',
             'data_vencimento',
-            'data_recebimento',
             'valor_bruto',
             'issqn_retido',
             'inss_retido',
             'retencao_tecnica',
             'outras_retencoes',
-            'status',
             'observacoes',
         ]
         widgets = {
             'data_emissao': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'data_vencimento': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
-            'data_recebimento': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'valor_bruto': forms.NumberInput(attrs={'step': '0.01'}),
             'issqn_retido': forms.NumberInput(attrs={'step': '0.01'}),
             'inss_retido': forms.NumberInput(attrs={'step': '0.01'}),
@@ -86,14 +99,24 @@ class ContaReceberForm(BootstrapModelForm):
         cleaned_data = super().clean()
         obra = cleaned_data.get('obra')
         numero_nf = cleaned_data.get('numero_nf')
-        status = cleaned_data.get('status')
-        data_recebimento = cleaned_data.get('data_recebimento')
 
-        if obra and not numero_nf:
+        if not obra:
+            self.add_error('obra', 'Informe a obra da receita.')
+        if not numero_nf:
             self.add_error('numero_nf', 'Informe o numero da NF para integrar com a obra.')
-        if status == ContaReceber.STATUS_RECEBIDO and not data_recebimento:
-            self.add_error('data_recebimento', 'Informe a data de recebimento.')
         return cleaned_data
+
+
+class ContaReceberBaixaForm(forms.Form):
+    data_recebimento = forms.DateField(
+        label='Data do recebimento',
+        widget=forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date', 'class': 'form-control'}),
+    )
+    observacoes = forms.CharField(
+        label='Observacoes do recebimento',
+        required=False,
+        widget=forms.Textarea(attrs={'rows': 3, 'class': 'form-control'}),
+    )
 
 
 class ContaPagarForm(BootstrapModelForm):

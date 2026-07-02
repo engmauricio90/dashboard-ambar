@@ -44,6 +44,70 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertEqual(self.obra.retencoes_tecnicas_registradas.count(), 1)
         self.assertEqual(self.obra.total_retencoes_tecnicas, Decimal('50.00'))
 
+    def test_form_conta_receber_usa_cliente_da_obra_e_cria_em_aberto(self):
+        response_get = self.client.get(reverse('nova_conta_receber'))
+
+        self.assertEqual(response_get.status_code, 200)
+        self.assertNotContains(response_get, 'name="cliente"')
+        self.assertNotContains(response_get, 'name="status"')
+        self.assertNotContains(response_get, 'name="data_recebimento"')
+
+        response = self.client.post(
+            reverse('nova_conta_receber'),
+            {
+                'obra': self.obra.id,
+                'centro_custo': self.centro.id,
+                'numero_nf': 'NF-FORM-1',
+                'descricao': 'Receita pelo formulario',
+                'data_emissao': '2026-04-01',
+                'data_vencimento': '2026-04-30',
+                'valor_bruto': '1000.00',
+                'issqn_retido': '25.00',
+                'inss_retido': '30.00',
+                'retencao_tecnica': '50.00',
+                'outras_retencoes': '0.00',
+                'observacoes': '',
+            },
+        )
+
+        self.assertRedirects(response, reverse('lista_contas_receber'))
+        conta = ContaReceber.objects.get(numero_nf='NF-FORM-1')
+        self.assertEqual(conta.cliente, 'Cliente X')
+        self.assertEqual(conta.status, ContaReceber.STATUS_ABERTO)
+        self.assertIsNone(conta.data_recebimento)
+        self.assertEqual(conta.nota_fiscal.status, NotaFiscal.STATUS_EMITIDA)
+
+    def test_recebimento_conta_receber_tem_tela_propria_com_data(self):
+        conta = ContaReceber.objects.create(
+            cliente='Cliente X',
+            obra=self.obra,
+            centro_custo=self.centro,
+            numero_nf='NF-REC',
+            descricao='NF a receber',
+            data_emissao=date(2026, 4, 1),
+            data_vencimento=date(2026, 4, 30),
+            valor_bruto=Decimal('1000.00'),
+        )
+
+        response_get = self.client.get(reverse('baixar_conta_receber', args=[conta.id]))
+        self.assertContains(response_get, 'Registrar recebimento')
+        self.assertContains(response_get, 'name="data_recebimento"')
+
+        response = self.client.post(
+            reverse('baixar_conta_receber', args=[conta.id]),
+            {
+                'data_recebimento': '2026-05-05',
+                'observacoes': 'Recebido via transferencia',
+            },
+        )
+
+        self.assertRedirects(response, reverse('lista_contas_receber'))
+        conta.refresh_from_db()
+        self.assertEqual(conta.status, ContaReceber.STATUS_RECEBIDO)
+        self.assertEqual(conta.data_recebimento, date(2026, 5, 5))
+        self.assertIn('Recebido via transferencia', conta.observacoes)
+        self.assertEqual(conta.nota_fiscal.status, NotaFiscal.STATUS_RECEBIDA)
+
     def test_conta_pagar_cria_despesa_na_obra(self):
         conta = ContaPagar.objects.create(
             fornecedor='Fornecedor A',

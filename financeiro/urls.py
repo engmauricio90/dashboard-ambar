@@ -9,6 +9,7 @@ urlpatterns = [
     path('receber/nova/', views.nova_conta_receber, name='nova_conta_receber'),
     path('receber/<int:conta_id>/editar/', views.editar_conta_receber, name='editar_conta_receber'),
     path('receber/<int:conta_id>/baixar/', views.baixar_conta_receber, name='baixar_conta_receber'),
+    path('receber/<int:conta_id>/cancelar/', views.cancelar_conta_receber, name='cancelar_conta_receber'),
     path('pagar/', views.lista_contas_pagar, name='lista_contas_pagar'),
     path('pagar/pagas/', views.lista_contas_pagas, name='lista_contas_pagas'),
     path('pagar/canceladas/', views.lista_contas_pagar_canceladas, name='lista_contas_pagar_canceladas'),

@@ -21,6 +21,7 @@ from config.permissions import group_required
 from .forms import (
     CentroCustoForm,
     ContaPagarForm,
+    ContaReceberBaixaForm,
     ContaReceberForm,
     FinanceiroFiltroForm,
     FornecedorForm,
@@ -565,15 +566,43 @@ def editar_conta_receber(request, conta_id):
 
 
 @financeiro_required
-@require_POST
 def baixar_conta_receber(request, conta_id):
     conta = get_object_or_404(ContaReceber, id=conta_id)
-    try:
-        baixar_conta_receber_service(conta, data_recebimento=timezone.localdate())
-    except ValidationError as exc:
-        messages.error(request, exc.messages[0] if exc.messages else 'Nao foi possivel receber esta conta.')
+    if conta.status != ContaReceber.STATUS_ABERTO:
+        messages.error(request, 'Somente contas a receber em aberto podem ser recebidas.')
         return redirect('lista_contas_receber')
-    messages.success(request, 'Recebimento registrado com sucesso.')
+
+    if request.method == 'POST':
+        form = ContaReceberBaixaForm(request.POST)
+        if form.is_valid():
+            try:
+                baixar_conta_receber_service(conta, data_recebimento=form.cleaned_data['data_recebimento'])
+                if form.cleaned_data.get('observacoes'):
+                    conta.observacoes = '\n'.join(
+                        value for value in [conta.observacoes, form.cleaned_data['observacoes']] if value
+                    )
+                    conta.save(update_fields=['observacoes', 'updated_at'])
+            except ValidationError as exc:
+                messages.error(request, exc.messages[0] if exc.messages else 'Nao foi possivel receber esta conta.')
+                return redirect('lista_contas_receber')
+            messages.success(request, 'Recebimento registrado com sucesso.')
+            return redirect('lista_contas_receber')
+    else:
+        form = ContaReceberBaixaForm(initial={'data_recebimento': timezone.localdate()})
+
+    return render(request, 'financeiro/form_recebimento.html', {'form': form, 'conta': conta})
+
+
+@financeiro_required
+@require_POST
+def cancelar_conta_receber(request, conta_id):
+    conta = get_object_or_404(ContaReceber, id=conta_id)
+    if conta.status != ContaReceber.STATUS_ABERTO:
+        messages.error(request, 'Somente contas a receber em aberto podem ser canceladas.')
+        return redirect('lista_contas_receber')
+    conta.status = ContaReceber.STATUS_CANCELADO
+    conta.save()
+    messages.success(request, 'Conta a receber cancelada com sucesso.')
     return redirect('lista_contas_receber')
 
 
