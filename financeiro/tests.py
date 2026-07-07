@@ -555,6 +555,15 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertEqual(conta.status, ContaPagar.STATUS_CANCELADO)
         self.assertFalse(DespesaObra.objects.filter(descricao='Conta cancelada').exists())
 
+    def test_tela_importacao_credores_explica_modelo_csv(self):
+        response = self.client.get(reverse('importar_contas_pagar_sienge'))
+
+        self.assertContains(response, 'Como preparar o arquivo no Excel')
+        self.assertContains(response, 'CSV de contas em aberto')
+        self.assertContains(response, 'CSV de contas pagas')
+        self.assertContains(response, 'Centro de Custo')
+        self.assertContains(response, 'Credor;Documento;Lancamento')
+
     def test_importa_credores_sienge_cria_contas_e_despesas(self):
         Obra.objects.create(nome_obra='IPANEMA')
         csv_text = (

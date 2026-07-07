@@ -13,13 +13,60 @@
     </div>
 </div>
 
-<div class="card shadow-sm">
+<div class="card shadow-sm mb-4">
     <div class="card-body">
         <form method="post" enctype="multipart/form-data">
             {% csrf_token %}
             {{ form.as_p }}
             <button type="submit" class="btn btn-danger">Importar CSV</button>
         </form>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <h5 class="mb-3">Como preparar o arquivo no Excel</h5>
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <h6>Passo a passo</h6>
+                <ol class="mb-0">
+                    <li>Exporte o relatorio de credores do Sienge em CSV.</li>
+                    <li>Abra no Excel apenas para conferir os dados, sem apagar linhas de centro de custo.</li>
+                    <li>Salve como CSV separado por ponto e virgula. Ao abrir no bloco de notas, as colunas devem aparecer separadas por <code>;</code>.</li>
+                    <li>Escolha o tipo correto acima: contas em aberto ou contas pagas.</li>
+                    <li>Importe o arquivo. O sistema identifica a obra ou centro de custo pela linha <code>Centro de Custo</code>.</li>
+                </ol>
+            </div>
+            <div class="col-lg-6">
+                <h6>Cuidados importantes</h6>
+                <ul class="mb-0">
+                    <li>Nao remova a linha <code>Centro de Custo</code>; ela define onde a despesa sera apropriada.</li>
+                    <li>Nao altere os nomes das colunas do relatorio.</li>
+                    <li>Use datas no formato <code>dd/mm/aaaa</code>.</li>
+                    <li>Use valores no padrao brasileiro, por exemplo <code>1.234,56</code>.</li>
+                    <li>Linhas de observacao iniciadas por <code>Obs:</code> podem permanecer no arquivo.</li>
+                </ul>
+            </div>
+        </div>
+
+        <hr>
+
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <h6>CSV de contas em aberto</h6>
+                <p class="text-muted small mb-2">Modelo esperado por centro de custo:</p>
+                <pre class="bg-light border rounded p-3 small mb-0"><code>Centro de Custo: ;4 - Orla de Ipanema
+Credor;Documento;Lancamento;Qt.;Ind.;Data vencto;%;Dias;Valor no vencto;Acrescimo;Desconto;Total
+Fornecedor Obra;NFM. 123;1706/1;1;0;08/04/2026;100,00;34;1.000,00;10,00;5,00;1.005,00</code></pre>
+            </div>
+            <div class="col-lg-6">
+                <h6>CSV de contas pagas</h6>
+                <p class="text-muted small mb-2">Modelo esperado por centro de custo:</p>
+                <pre class="bg-light border rounded p-3 small mb-0"><code>Centro de custo;4 - Orla de Ipanema
+Credor;Cd. cred.;Documento;Lancamento;Qt.;Dt. pagto.;Seq.;Valor baixa;Acrescimo;Desconto;Liquido
+Fornecedor Pago;133;NFM.7284;2548/1;1;13/06/2025;1;1.000,00;15,50;0;1.015,50</code></pre>
+            </div>
+        </div>
     </div>
 </div>
 
