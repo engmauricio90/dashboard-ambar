@@ -15,29 +15,6 @@
     </div>
 </div>
 
-<div class="card shadow-sm mb-4">
-    <div class="card-body">
-        <form method="get" class="row g-3 align-items-end">
-            <div class="col-md-4">
-                <label class="form-label">Buscar obra</label>
-                {{ filtro_form.busca }}
-            </div>
-            <div class="col-md-3">
-                <label class="form-label">Cliente</label>
-                {{ filtro_form.cliente }}
-            </div>
-            <div class="col-md-3">
-                <label class="form-label">Status</label>
-                {{ filtro_form.status }}
-            </div>
-            <div class="col-md-2 d-flex gap-2">
-                <button type="submit" class="btn btn-primary w-100">Filtrar</button>
-                <a href="{% url 'home' %}" class="btn btn-outline-secondary">Limpar</a>
-            </div>
-        </form>
-    </div>
-</div>
-
 <div class="row g-3 mb-4">
     <div class="col-md-3">
         <div class="card shadow-sm h-100">
@@ -104,11 +81,19 @@
     <div class="col-md-3">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h6>Resultado projetado</h6>
-                <h4 class="{% if total_resultado_projetado < 0 %}text-danger{% else %}text-success{% endif %}">
-                    R$ {{ total_resultado_projetado|floatformat:2 }}
-                </h4>
-                <small class="text-muted">Baseado nas metas e projecoes das obras</small>
+                <h6>Retencao tecnica</h6>
+                <h4>R$ {{ total_retencoes_tecnicas|floatformat:2 }}</h4>
+                <small class="text-muted">Saldo a recuperar/devolver</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Obras em alerta</h6>
+                <h4>{{ quantidade_obras_em_alerta }}</h4>
+                <small class="text-muted">{{ quantidade_obras_em_alerta }} obra(s) em alerta</small>
             </div>
         </div>
     </div>
@@ -118,18 +103,22 @@
     <div class="col-md-6">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h6>Retencao tecnica</h6>
-                <h4>R$ {{ total_retencoes_tecnicas|floatformat:2 }}</h4>
-                <small class="text-muted">Saldo a recuperar/devolver</small>
+                <h6>Resultado projetado</h6>
+                <h4 class="{% if total_resultado_projetado < 0 %}text-danger{% else %}text-success{% endif %}">
+                    R$ {{ total_resultado_projetado|floatformat:2 }}
+                </h4>
+                <small class="text-muted">Baseado nas metas e projecoes das obras ativas</small>
             </div>
         </div>
     </div>
     <div class="col-md-6">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h6>Obras em alerta</h6>
-                <h4>{{ quantidade_obras_em_alerta }}</h4>
-                <small class="text-muted">{{ quantidade_obras_em_alerta }} obra(s) em alerta</small>
+                <h6>Resultado real</h6>
+                <h4 class="{% if total_resultado_real < 0 %}text-danger{% else %}text-success{% endif %}">
+                    R$ {{ total_resultado_real|floatformat:2 }}
+                </h4>
+                <small class="text-muted">Faturamento menos despesas, impostos e retencoes das obras ativas</small>
             </div>
         </div>
     </div>
@@ -214,6 +203,36 @@
 
 <div class="card shadow-sm mb-4">
     <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <div>
+                <h5 class="mb-1">Lista de obras</h5>
+                <p class="text-muted small mb-0">{{ quantidade_obras_lista }} obra(s) na listagem. Os filtros abaixo nao alteram os cards do dashboard.</p>
+            </div>
+        </div>
+
+        <form method="get" class="row g-3 align-items-end mb-4">
+            <div class="col-md-3">
+                <label class="form-label">Buscar obra</label>
+                {{ filtro_form.busca }}
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Cliente</label>
+                {{ filtro_form.cliente }}
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Status</label>
+                {{ filtro_form.status }}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Ordenar por</label>
+                {{ filtro_form.ordenacao }}
+            </div>
+            <div class="col-md-2 d-flex gap-2">
+                <button type="submit" class="btn btn-primary w-100">Aplicar</button>
+                <a href="{% url 'home' %}" class="btn btn-outline-secondary">Limpar</a>
+            </div>
+        </form>
+
         <div class="table-responsive">
             <table class="table table-bordered table-striped align-middle mb-0">
                 <thead>
@@ -254,16 +273,6 @@
                 </tbody>
             </table>
         </div>
-    </div>
-</div>
-
-<div class="card shadow-sm">
-    <div class="card-body">
-        <h5 class="mb-3">Resultado real consolidado</h5>
-        <h2 class="{% if total_resultado_real < 0 %}text-danger{% else %}text-success{% endif %}">
-            R$ {{ total_resultado_real|floatformat:2 }}
-        </h2>
-        <p class="text-muted mb-0">Esse total ja considera faturamento bruto, despesas, impostos, INSS e retencoes lancados nas obras.</p>
     </div>
 </div>
 {% endblock %}

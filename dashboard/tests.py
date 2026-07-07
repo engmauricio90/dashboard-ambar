@@ -160,6 +160,26 @@ class DashboardHomeTests(TestCase):
         self.assertEqual(obras[0].nome_obra, 'Obra Melhor')
         self.assertEqual(obras[1].nome_obra, 'Obra Pior')
 
+    def test_filtro_do_dashboard_afeta_apenas_lista_de_obras(self):
+        Obra.objects.create(nome_obra='Obra Cliente A', cliente='Cliente A', valor_contrato=Decimal('100.00'))
+        Obra.objects.create(nome_obra='Obra Cliente B', cliente='Cliente B', valor_contrato=Decimal('200.00'))
+
+        response = self.client.get(reverse('home'), {'cliente': 'Cliente A'})
+
+        self.assertEqual(response.context['total_contratos'], Decimal('300.00'))
+        self.assertEqual(response.context['quantidade_obras_lista'], 1)
+        self.assertEqual(response.context['obras'][0].nome_obra, 'Obra Cliente A')
+
+    def test_dashboard_ordena_lista_por_contrato(self):
+        Obra.objects.create(nome_obra='Obra Menor', valor_contrato=Decimal('100.00'))
+        Obra.objects.create(nome_obra='Obra Maior', valor_contrato=Decimal('300.00'))
+
+        response = self.client.get(reverse('home'), {'ordenacao': 'contrato_desc'})
+
+        obras = response.context['obras']
+        self.assertEqual(obras[0].nome_obra, 'Obra Maior')
+        self.assertEqual(obras[1].nome_obra, 'Obra Menor')
+
     def test_relatorio_geral_aplica_filtro_por_cliente(self):
         Obra.objects.create(nome_obra='Obra Cliente A', cliente='Cliente A', valor_contrato=Decimal('100.00'))
         Obra.objects.create(nome_obra='Obra Cliente B', cliente='Cliente B', valor_contrato=Decimal('200.00'))
