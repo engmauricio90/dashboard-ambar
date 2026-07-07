@@ -91,10 +91,9 @@ class DashboardHomeTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Dashboard Geral')
-        self.assertContains(response, 'R$ 1.500,00')
+        self.assertContains(response, 'R$ 1.700,00')
         self.assertContains(response, 'R$ 200,00')
         self.assertContains(response, 'R$ 700,00')
-        self.assertContains(response, 'R$ 35,00')
         self.assertContains(response, 'R$ 30,00')
         self.assertContains(response, 'R$ 635,00')
         self.assertContains(response, 'R$ 380,00')
@@ -104,6 +103,30 @@ class DashboardHomeTests(TestCase):
         self.assertIn('grafico_resultado_real', response.context)
         self.assertIn('grafico_status', response.context)
         self.assertEqual(response.context['quantidade_obras_em_alerta'], 1)
+
+    def test_total_contratos_ignora_obras_concluidas(self):
+        Obra.objects.create(
+            nome_obra='Obra Ativa',
+            valor_contrato=Decimal('1000.00'),
+            status_obra='em_andamento',
+        )
+        obra_concluida = Obra.objects.create(
+            nome_obra='Obra Concluida',
+            valor_contrato=Decimal('5000.00'),
+            status_obra='concluida',
+        )
+        AditivoContrato.objects.create(
+            obra=obra_concluida,
+            data_referencia=date(2026, 4, 20),
+            descricao='Aditivo concluido',
+            valor=Decimal('1000.00'),
+        )
+
+        response = self.client.get(reverse('home'))
+
+        self.assertEqual(response.context['total_contratos'], Decimal('1000.00'))
+        self.assertContains(response, 'Valor total de contratos ativos')
+        self.assertContains(response, 'R$ 1.000,00')
 
     def test_dashboard_ordena_obras_por_resultado_real(self):
         obra_melhor = Obra.objects.create(nome_obra='Obra Melhor', valor_contrato=Decimal('1000.00'))

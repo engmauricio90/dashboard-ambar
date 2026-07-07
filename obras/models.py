@@ -111,6 +111,22 @@ class Obra(models.Model):
         )
 
     @property
+    def total_retencoes_iss(self):
+        notas = self._notas_fiscais_ativas()
+        if notas is not None:
+            return _sum_decimal(nota.total_retencoes_iss for nota in notas)
+        return (
+            self.notas_fiscais.exclude(status=NotaFiscal.STATUS_CANCELADA)
+            .filter(retencoes__tipo=RetencaoNotaFiscal.TIPO_ISS)
+            .aggregate(total=Sum('retencoes__valor'))['total']
+            or Decimal('0')
+        )
+
+    @property
+    def total_impostos_obra(self):
+        return self.total_retencoes_inss + self.total_retencoes_iss
+
+    @property
     def total_retencoes_nf_sem_inss(self):
         return self.total_retencoes_nf - self.total_retencoes_inss
 
@@ -291,6 +307,20 @@ class NotaFiscal(models.Model):
             )
         return (
             self.retencoes.filter(tipo=RetencaoNotaFiscal.TIPO_INSS).aggregate(total=Sum('valor'))['total']
+            or Decimal('0')
+        )
+
+    @property
+    def total_retencoes_iss(self):
+        retencoes = self._prefetched_items('retencoes')
+        if retencoes is not None:
+            return _sum_decimal(
+                retencao.valor
+                for retencao in retencoes
+                if retencao.tipo == RetencaoNotaFiscal.TIPO_ISS
+            )
+        return (
+            self.retencoes.filter(tipo=RetencaoNotaFiscal.TIPO_ISS).aggregate(total=Sum('valor'))['total']
             or Decimal('0')
         )
 

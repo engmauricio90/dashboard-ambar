@@ -94,7 +94,7 @@
             <table class="table table-bordered align-middle mb-0">
                 <tbody>
                     <tr>
-                        <th>Valor total de contratos</th>
+                        <th>Valor total de contratos ativos</th>
                         <td>R$ {{ total_contratos|floatformat:2 }}</td>
                         <th>Total de aditivos</th>
                         <td>R$ {{ total_aditivos|floatformat:2 }}</td>
@@ -102,14 +102,8 @@
                     <tr>
                         <th>Total de impostos</th>
                         <td>R$ {{ total_impostos|floatformat:2 }}</td>
-                        <th>INSS retido</th>
-                        <td>R$ {{ total_retencoes_inss|floatformat:2 }}</td>
-                    </tr>
-                    <tr>
                         <th>Retencoes tecnicas</th>
                         <td>R$ {{ total_retencoes_tecnicas|floatformat:2 }}</td>
-                        <th>Outras retencoes de NF</th>
-                        <td>R$ {{ total_retencoes_nf_sem_inss|floatformat:2 }}</td>
                     </tr>
                     <tr>
                         <th>Total recebido liquido</th>
@@ -136,8 +130,7 @@
                         <th>Contrato atualizado</th>
                         <th>Faturado</th>
                         <th>Despesas</th>
-                        <th>Impostos</th>
-                        <th>INSS retido</th>
+                        <th>Impostos de obra</th>
                         <th>Ret. tecnica</th>
                         <th>Resultado real</th>
                     </tr>
@@ -151,14 +144,13 @@
                         <td>R$ {{ obra.contrato_atualizado|floatformat:2 }}</td>
                         <td>R$ {{ obra.total_notas_fiscais|floatformat:2 }}</td>
                         <td>R$ {{ obra.total_despesa_real|floatformat:2 }}</td>
-                        <td>R$ {{ obra.total_impostos|floatformat:2 }}</td>
-                        <td>R$ {{ obra.total_retencoes_inss|floatformat:2 }}</td>
+                        <td>R$ {{ obra.total_impostos_obra|floatformat:2 }}</td>
                         <td>R$ {{ obra.total_retencoes_tecnicas|floatformat:2 }}</td>
                         <td class="{% if obra.resultado_real < 0 %}text-danger{% else %}text-success{% endif %}">R$ {{ obra.resultado_real|floatformat:2 }}</td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="10">Nenhuma obra encontrada com os filtros atuais.</td>
+                        <td colspan="9">Nenhuma obra encontrada com os filtros atuais.</td>
                     </tr>
                     {% endfor %}
                 </tbody>

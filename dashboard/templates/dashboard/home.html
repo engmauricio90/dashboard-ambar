@@ -15,13 +15,36 @@
     </div>
 </div>
 
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label">Buscar obra</label>
+                {{ filtro_form.busca }}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Cliente</label>
+                {{ filtro_form.cliente }}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Status</label>
+                {{ filtro_form.status }}
+            </div>
+            <div class="col-md-2 d-flex gap-2">
+                <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+                <a href="{% url 'home' %}" class="btn btn-outline-secondary">Limpar</a>
+            </div>
+        </form>
+    </div>
+</div>
+
 <div class="row g-3 mb-4">
     <div class="col-md-3">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h6>Valor total de contratos</h6>
+                <h6>Valor total de contratos ativos</h6>
                 <h4>R$ {{ total_contratos|floatformat:2 }}</h4>
-                <small class="text-muted">{{ quantidade_obras }} obra(s) cadastrada(s)</small>
+                <small class="text-muted">Contratos atualizados, sem obras concluidas</small>
             </div>
         </div>
     </div>
@@ -73,17 +96,7 @@
             <div class="card-body">
                 <h6>Total de impostos</h6>
                 <h4>R$ {{ total_impostos|floatformat:2 }}</h4>
-                <small class="text-muted">Impostos vinculados as NFs</small>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-3">
-        <div class="card shadow-sm h-100">
-            <div class="card-body">
-                <h6>INSS retido</h6>
-                <h4>R$ {{ total_retencoes_inss|floatformat:2 }}</h4>
-                <small class="text-muted">Separado da retencao tecnica</small>
+                <small class="text-muted">ISSQN e INSS de obra</small>
             </div>
         </div>
     </div>
@@ -102,7 +115,7 @@
 </div>
 
 <div class="row g-3 mb-4">
-    <div class="col-md-4">
+    <div class="col-md-6">
         <div class="card shadow-sm h-100">
             <div class="card-body">
                 <h6>Retencao tecnica</h6>
@@ -111,62 +124,12 @@
             </div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-6">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h6>Outras retencoes de NF</h6>
-                <h4>R$ {{ total_retencoes_nf_sem_inss|floatformat:2 }}</h4>
-                <small class="text-muted">ISS, IRRF e demais retencoes</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card shadow-sm h-100">
-            <div class="card-body">
-                <h6>Total de retencoes</h6>
-                <h4>R$ {{ total_retencoes|floatformat:2 }}</h4>
+                <h6>Obras em alerta</h6>
+                <h4>{{ quantidade_obras_em_alerta }}</h4>
                 <small class="text-muted">{{ quantidade_obras_em_alerta }} obra(s) em alerta</small>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row g-3 mb-4">
-    <div class="col-md-3">
-        <div class="card shadow-sm h-100">
-            <div class="card-body">
-                <h6>Diarios no mes</h6>
-                <h4>{{ diarios_mes }}</h4>
-                <small class="text-muted">Registros de campo lancados</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card shadow-sm h-100">
-            <div class="card-body">
-                <h6>Ocorrencias abertas</h6>
-                <h4>{{ ocorrencias_abertas }}</h4>
-                <small class="text-muted">Pendencias de diarios em aberto</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card shadow-sm h-100">
-            <div class="card-body">
-                <h6>Ultimo diario</h6>
-                {% with ultimo=ultimos_diarios_por_obra.0 %}
-                <h4>{% if ultimo %}{{ ultimo.data|date:'d/m' }}{% else %}-{% endif %}</h4>
-                <small class="text-muted">{% if ultimo %}{{ ultimo.obra.nome_obra }}{% else %}Sem diarios cadastrados{% endif %}</small>
-                {% endwith %}
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card shadow-sm h-100">
-            <div class="card-body">
-                <h6>Sem diario 7 dias</h6>
-                <h4>{{ obras_sem_diario_7_dias|length }}</h4>
-                <small class="text-muted">Obras em andamento para revisar</small>
             </div>
         </div>
     </div>
