@@ -6,7 +6,7 @@
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
         <h1 class="mb-1">Importar Credores</h1>
-        <p class="text-muted mb-0">Importa o CSV de credores em aberto ou pagos e integra despesas das obras.</p>
+        <p class="text-muted mb-0">Importa despesas em CSV padronizado e integra contas a pagar com obras ou centros de custo.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <a href="{% url 'lista_contas_pagar' %}" class="btn btn-secondary">Voltar</a>
@@ -30,42 +30,62 @@
             <div class="col-lg-6">
                 <h6>Passo a passo</h6>
                 <ol class="mb-0">
-                    <li>Exporte o relatorio de credores do Sienge em CSV.</li>
-                    <li>Abra no Excel apenas para conferir os dados, sem apagar linhas de centro de custo.</li>
+                    <li>Exporte o relatorio do Sienge e adapte no Excel para o modelo abaixo.</li>
+                    <li>Deixe a primeira linha como cabecalho, com uma coluna para cada campo do sistema.</li>
+                    <li>Use uma linha por despesa.</li>
                     <li>Salve como CSV separado por ponto e virgula. Ao abrir no bloco de notas, as colunas devem aparecer separadas por <code>;</code>.</li>
-                    <li>Escolha o tipo correto acima: contas em aberto ou contas pagas.</li>
-                    <li>Importe o arquivo. O sistema identifica a obra ou centro de custo pela linha <code>Centro de Custo</code>.</li>
+                    <li>Escolha o tipo acima. Ele sera usado como status padrao quando a coluna <code>status</code> estiver vazia.</li>
                 </ol>
             </div>
             <div class="col-lg-6">
                 <h6>Cuidados importantes</h6>
                 <ul class="mb-0">
-                    <li>Nao remova a linha <code>Centro de Custo</code>; ela define onde a despesa sera apropriada.</li>
-                    <li>Nao altere os nomes das colunas do relatorio.</li>
+                    <li>Informe <code>obra</code> ou <code>centro_custo</code> para a despesa ser apropriada corretamente.</li>
+                    <li>Se preencher <code>obra</code>, use o mesmo nome da obra cadastrada no sistema.</li>
                     <li>Use datas no formato <code>dd/mm/aaaa</code>.</li>
                     <li>Use valores no padrao brasileiro, por exemplo <code>1.234,56</code>.</li>
-                    <li>Linhas de observacao iniciadas por <code>Obs:</code> podem permanecer no arquivo.</li>
+                    <li>A coluna <code>codigo_externo</code> e opcional, mas ajuda a evitar duplicidade em reimportacoes.</li>
                 </ul>
             </div>
         </div>
 
         <hr>
 
-        <div class="row g-4">
-            <div class="col-lg-6">
-                <h6>CSV de contas em aberto</h6>
-                <p class="text-muted small mb-2">Modelo esperado por centro de custo:</p>
-                <pre class="bg-light border rounded p-3 small mb-0"><code>Centro de Custo: ;4 - Orla de Ipanema
-Credor;Documento;Lancamento;Qt.;Ind.;Data vencto;%;Dias;Valor no vencto;Acrescimo;Desconto;Total
-Fornecedor Obra;NFM. 123;1706/1;1;0;08/04/2026;100,00;34;1.000,00;10,00;5,00;1.005,00</code></pre>
-            </div>
-            <div class="col-lg-6">
-                <h6>CSV de contas pagas</h6>
-                <p class="text-muted small mb-2">Modelo esperado por centro de custo:</p>
-                <pre class="bg-light border rounded p-3 small mb-0"><code>Centro de custo;4 - Orla de Ipanema
-Credor;Cd. cred.;Documento;Lancamento;Qt.;Dt. pagto.;Seq.;Valor baixa;Acrescimo;Desconto;Liquido
-Fornecedor Pago;133;NFM.7284;2548/1;1;13/06/2025;1;1.000,00;15,50;0;1.015,50</code></pre>
-            </div>
+        <h6>Colunas do CSV padrao</h6>
+        <div class="table-responsive mb-4">
+            <table class="table table-sm table-bordered align-middle">
+                <thead>
+                    <tr>
+                        <th>Coluna</th>
+                        <th>Obrigatoria?</th>
+                        <th>Como preencher</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td><code>fornecedor</code></td><td>Sim</td><td>Nome do fornecedor/credor.</td></tr>
+                    <tr><td><code>cpf_cnpj</code></td><td>Nao</td><td>Documento do fornecedor, se houver.</td></tr>
+                    <tr><td><code>obra</code></td><td>Recomendado</td><td>Nome da obra cadastrada. Use em vez de centro de custo quando a despesa for de obra.</td></tr>
+                    <tr><td><code>centro_custo</code></td><td>Recomendado</td><td>Use para escritorio, maquinas, abastecimento ou outro centro que nao seja obra.</td></tr>
+                    <tr><td><code>categoria</code></td><td>Nao</td><td>Ex.: material, mao_de_obra, equipamento, terceiro, administrativa ou outra.</td></tr>
+                    <tr><td><code>numero_nf</code></td><td>Nao</td><td>Numero da nota/documento.</td></tr>
+                    <tr><td><code>descricao</code></td><td>Sim</td><td>Descricao curta da despesa.</td></tr>
+                    <tr><td><code>data_emissao</code></td><td>Nao</td><td>Se vazio, usa a data de vencimento.</td></tr>
+                    <tr><td><code>data_vencimento</code></td><td>Sim</td><td>Formato dd/mm/aaaa.</td></tr>
+                    <tr><td><code>valor</code></td><td>Sim</td><td>Valor previsto/original da conta.</td></tr>
+                    <tr><td><code>status</code></td><td>Nao</td><td>aberto, pago ou cancelado. Se vazio, usa o tipo escolhido acima.</td></tr>
+                    <tr><td><code>data_pagamento</code></td><td>Somente pagas</td><td>Data real do pagamento.</td></tr>
+                    <tr><td><code>valor_pago</code></td><td>Somente pagas</td><td>Valor efetivamente pago. Se vazio em conta paga, usa o valor da conta.</td></tr>
+                    <tr><td><code>observacoes</code></td><td>Nao</td><td>Informacao complementar.</td></tr>
+                    <tr><td><code>codigo_externo</code></td><td>Nao</td><td>Identificador unico da linha. Ajuda a atualizar sem duplicar.</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div>
+            <h6>Exemplo de CSV padrao</h6>
+            <pre class="bg-light border rounded p-3 small mb-0"><code>fornecedor;cpf_cnpj;obra;centro_custo;categoria;numero_nf;descricao;data_emissao;data_vencimento;valor;status;data_pagamento;valor_pago;observacoes;codigo_externo
+Fornecedor Obra;00.000.000/0001-00;Orla de Ipanema;;material;NFM. 123;Compra de tubos;01/04/2026;08/04/2026;1.005,00;aberto;;;;SIE-1706-1
+Fornecedor Pago;;;Maquinas E Veiculos;equipamento;NFS. 88;Manutencao maquina;10/05/2026;10/05/2026;500,00;pago;12/05/2026;515,00;Pago com acrescimo;SIE-2000-1</code></pre>
         </div>
     </div>
 </div>

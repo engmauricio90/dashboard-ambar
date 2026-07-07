@@ -559,10 +559,40 @@ class FinanceiroIntegracaoObraTests(TestCase):
         response = self.client.get(reverse('importar_contas_pagar_sienge'))
 
         self.assertContains(response, 'Como preparar o arquivo no Excel')
-        self.assertContains(response, 'CSV de contas em aberto')
-        self.assertContains(response, 'CSV de contas pagas')
-        self.assertContains(response, 'Centro de Custo')
-        self.assertContains(response, 'Credor;Documento;Lancamento')
+        self.assertContains(response, 'Colunas do CSV padrao')
+        self.assertContains(response, '<code>fornecedor</code>')
+        self.assertContains(response, '<code>data_vencimento</code>')
+        self.assertContains(response, '<code>valor_pago</code>')
+        self.assertContains(response, 'fornecedor;cpf_cnpj;obra;centro_custo')
+
+    def test_importa_despesas_csv_padrao_ambar(self):
+        Obra.objects.create(nome_obra='Orla de Ipanema')
+        csv_text = (
+            'fornecedor;cpf_cnpj;obra;centro_custo;categoria;numero_nf;descricao;data_emissao;data_vencimento;valor;status;data_pagamento;valor_pago;observacoes;codigo_externo\n'
+            'Fornecedor Obra;00.000.000/0001-00;Orla de Ipanema;;material;NFM. 123;Compra de tubos;01/04/2026;08/04/2026;1.005,00;aberto;;;;AMB-1\n'
+            'Fornecedor Pago;;;Maquinas E Veiculos;equipamento;NFS. 88;Manutencao maquina;10/05/2026;10/05/2026;500,00;pago;12/05/2026;515,00;Pago com acrescimo;AMB-2\n'
+        )
+        arquivo = SimpleUploadedFile('despesas.csv', csv_text.encode('utf-8-sig'), content_type='text/csv')
+
+        response = self.client.post(
+            reverse('importar_contas_pagar_sienge'),
+            {'tipo_relatorio': 'aberto', 'arquivo': arquivo},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(ContaPagar.objects.count(), 2)
+        conta_obra = ContaPagar.objects.get(codigo_externo='AMB-1')
+        self.assertEqual(conta_obra.obra.nome_obra, 'Orla de Ipanema')
+        self.assertEqual(conta_obra.categoria, 'material')
+        self.assertEqual(conta_obra.status, ContaPagar.STATUS_ABERTO)
+        self.assertEqual(conta_obra.valor, Decimal('1005.00'))
+        self.assertTrue(DespesaObra.objects.filter(obra__nome_obra='Orla de Ipanema', valor=Decimal('1005.00')).exists())
+        conta_paga = ContaPagar.objects.get(codigo_externo='AMB-2')
+        self.assertEqual(conta_paga.centro_custo.nome, 'Maquinas E Veiculos')
+        self.assertEqual(conta_paga.status, ContaPagar.STATUS_PAGO)
+        self.assertEqual(conta_paga.data_pagamento, date(2026, 5, 12))
+        self.assertEqual(conta_paga.valor_pago, Decimal('515.00'))
+        self.assertEqual(conta_paga.diferenca_pagamento, Decimal('15.00'))
 
     def test_importa_credores_sienge_cria_contas_e_despesas(self):
         Obra.objects.create(nome_obra='IPANEMA')

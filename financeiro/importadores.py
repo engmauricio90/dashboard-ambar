@@ -16,6 +16,7 @@ from .models import CentroCusto, ContaPagar, Fornecedor
 
 ORIGEM_SIENGE_CREDORES = 'sienge_credores'
 ORIGEM_SIENGE_PAGOS = 'sienge_pagos'
+ORIGEM_AMBAR_DESPESAS = 'ambar_despesas'
 
 
 OBRAS_POR_CODIGO_CENTRO = {
@@ -102,6 +103,9 @@ def garantir_cadastros_relatorio_credores():
 
 
 def importar_contas_pagar_credores_csv(conteudo):
+    if _is_csv_padrao_ambar(conteudo):
+        return importar_despesas_padrao_csv(conteudo, status_padrao=ContaPagar.STATUS_ABERTO)
+
     resultado = garantir_cadastros_relatorio_credores()
     centro_atual = None
     ultima_conta = None
@@ -148,6 +152,9 @@ def importar_contas_pagar_credores_csv(conteudo):
 
 
 def importar_contas_pagas_credores_csv(conteudo):
+    if _is_csv_padrao_ambar(conteudo):
+        return importar_despesas_padrao_csv(conteudo, status_padrao=ContaPagar.STATUS_PAGO)
+
     resultado = garantir_cadastros_relatorio_credores()
     centro_atual = None
     linhas_validas = []
@@ -195,6 +202,96 @@ def importar_contas_pagas_credores_csv(conteudo):
         resultado.atualizadas += 1
 
     return resultado
+
+
+def importar_despesas_padrao_csv(conteudo, status_padrao=ContaPagar.STATUS_ABERTO):
+    resultado = ResultadoImportacaoCredores()
+    reader = csv.DictReader(StringIO(conteudo), delimiter=';')
+    if not reader.fieldnames:
+        return resultado
+
+    field_map = {_normalizar_header(field): field for field in reader.fieldnames if field}
+    for row in reader:
+        if not row or not any((value or '').strip() for value in row.values()):
+            continue
+        try:
+            conta, created = _importar_linha_padrao(row, field_map, status_padrao)
+        except (ValueError, InvalidOperation):
+            resultado.ignoradas += 1
+            continue
+
+        if created:
+            resultado.criadas += 1
+        else:
+            resultado.atualizadas += 1
+    return resultado
+
+
+def _importar_linha_padrao(row, field_map, status_padrao):
+    def valor(campo):
+        return (row.get(field_map.get(campo, ''), '') or '').strip()
+
+    fornecedor = valor('fornecedor')
+    descricao = valor('descricao')
+    data_vencimento = _parse_data(valor('data_vencimento'))
+    valor_conta = _parse_decimal(valor('valor'))
+    if not fornecedor or not descricao:
+        raise ValueError('Fornecedor e descricao sao obrigatorios.')
+
+    numero_nf = valor('numero_nf')
+    cpf_cnpj = valor('cpf_cnpj')
+    obra_nome = valor('obra')
+    centro_nome = valor('centro_custo')
+    status = _parse_status_padrao(valor('status'), status_padrao)
+    data_emissao = _parse_data(valor('data_emissao')) if valor('data_emissao') else data_vencimento
+    data_pagamento = _parse_data(valor('data_pagamento')) if valor('data_pagamento') else None
+    valor_pago = _parse_decimal(valor('valor_pago')) if valor('valor_pago') else Decimal('0')
+    if status == ContaPagar.STATUS_PAGO:
+        data_pagamento = data_pagamento or data_vencimento
+        valor_pago = valor_pago or valor_conta
+
+    obra = _resolver_obra_por_nome(obra_nome) if obra_nome else None
+    centro_custo = CentroCusto.objects.get_or_create(nome=centro_nome)[0] if centro_nome else None
+    fornecedor_cadastro, _ = Fornecedor.objects.get_or_create(nome=fornecedor, cpf_cnpj=cpf_cnpj)
+    categoria = _parse_categoria_padrao(valor('categoria'))
+    codigo_externo = valor('codigo_externo') or _codigo_externo_padrao(
+        fornecedor,
+        numero_nf,
+        descricao,
+        data_vencimento,
+        valor_conta,
+        obra_nome,
+        centro_nome,
+    )
+    observacoes = valor('observacoes')
+
+    dados = {
+        'fornecedor': fornecedor,
+        'fornecedor_cadastro': fornecedor_cadastro,
+        'obra': obra,
+        'centro_custo': centro_custo,
+        'categoria': categoria,
+        'numero_nf': numero_nf,
+        'descricao': _limitar_texto(descricao, 255),
+        'data_emissao': data_emissao,
+        'data_vencimento': data_vencimento,
+        'data_pagamento': data_pagamento,
+        'valor': valor_conta,
+        'valor_pago': valor_pago,
+        'status': status,
+        'observacoes': observacoes,
+    }
+
+    conta, created = ContaPagar.objects.get_or_create(
+        origem_importacao=ORIGEM_AMBAR_DESPESAS,
+        codigo_externo=codigo_externo,
+        defaults=dados,
+    )
+    if not created:
+        for field, value in dados.items():
+            setattr(conta, field, value)
+        conta.save()
+    return conta, created
 
 
 def _criar_contas_pagas_em_lote(linhas_validas):
@@ -366,6 +463,11 @@ def _resolver_destino(codigo):
     return obra, None
 
 
+def _resolver_obra_por_nome(nome):
+    obra, _ = _get_or_create_obra_normalizada(nome)
+    return obra
+
+
 def _get_or_create_obra_normalizada(nome):
     existente = _buscar_obra_normalizada(nome)
     if existente:
@@ -411,6 +513,91 @@ def _parse_data(valor):
 def _parse_decimal(valor):
     texto = (valor or '0').strip().replace('T', '').replace('.', '').replace(',', '.')
     return Decimal(texto or '0')
+
+
+def _parse_status_padrao(valor, default):
+    texto = _normalizar(valor)
+    if texto in {'pago', 'paga', 'baixado', 'baixada', 'pago/baixado'}:
+        return ContaPagar.STATUS_PAGO
+    if texto in {'cancelado', 'cancelada'}:
+        return ContaPagar.STATUS_CANCELADO
+    if texto in {'aberto', 'em aberto', 'pendente'}:
+        return ContaPagar.STATUS_ABERTO
+    if not texto:
+        return default
+    return default
+
+
+def _parse_categoria_padrao(valor):
+    texto = _normalizar(valor)
+    for codigo, label in DespesaObra.CATEGORIA_CHOICES:
+        if texto in {_normalizar(codigo), _normalizar(label)}:
+            return codigo
+    return 'outra'
+
+
+def _is_csv_padrao_ambar(conteudo):
+    reader = csv.reader(StringIO(conteudo), delimiter=';')
+    for row in reader:
+        if not row or not any((coluna or '').strip() for coluna in row):
+            continue
+        headers = {_normalizar_header(coluna) for coluna in row}
+        return {'fornecedor', 'descricao', 'data_vencimento', 'valor'}.issubset(headers)
+    return False
+
+
+def _normalizar_header(valor):
+    texto = _normalizar(valor).replace('.', '').replace('-', ' ')
+    texto = re.sub(r'[^a-z0-9]+', '_', texto).strip('_')
+    aliases = {
+        'credor': 'fornecedor',
+        'fornecedor_cliente': 'fornecedor',
+        'cpf_cnpj': 'cpf_cnpj',
+        'cpfcnpj': 'cpf_cnpj',
+        'cnpj': 'cpf_cnpj',
+        'documento': 'numero_nf',
+        'numero_nf': 'numero_nf',
+        'n_nf': 'numero_nf',
+        'nf': 'numero_nf',
+        'nota_fiscal': 'numero_nf',
+        'centro': 'centro_custo',
+        'centro_custo': 'centro_custo',
+        'centro_de_custo': 'centro_custo',
+        'data_emissao': 'data_emissao',
+        'emissao': 'data_emissao',
+        'data_vencimento': 'data_vencimento',
+        'data_vencto': 'data_vencimento',
+        'vencimento': 'data_vencimento',
+        'data_pagamento': 'data_pagamento',
+        'dt_pagto': 'data_pagamento',
+        'pagamento': 'data_pagamento',
+        'valor_pago': 'valor_pago',
+        'valor_pago_efetivamente': 'valor_pago',
+        'liquido': 'valor_pago',
+        'valor': 'valor',
+        'valor_total': 'valor',
+        'total': 'valor',
+        'observacao': 'observacoes',
+        'observacoes': 'observacoes',
+        'obs': 'observacoes',
+        'codigo': 'codigo_externo',
+        'codigo_externo': 'codigo_externo',
+        'id': 'codigo_externo',
+    }
+    return aliases.get(texto, texto)
+
+
+def _codigo_externo_padrao(fornecedor, numero_nf, descricao, data_vencimento, valor, obra, centro_custo):
+    partes = [
+        fornecedor,
+        numero_nf,
+        descricao,
+        data_vencimento.isoformat(),
+        f'{valor:.2f}',
+        obra,
+        centro_custo,
+    ]
+    return _normalizar('|'.join(partes))[:120]
 
 
 def _normalizar(valor):
