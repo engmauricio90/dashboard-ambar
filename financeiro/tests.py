@@ -708,6 +708,45 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertContains(response, 'Financeiro')
         self.assertContains(response, 'Fluxo de caixa')
 
+    def test_dashboard_financeiro_agrupa_fluxo_por_semana(self):
+        ContaReceber.objects.create(
+            cliente='Cliente A',
+            obra=self.obra,
+            centro_custo=self.centro,
+            numero_nf='NF-SEM-1',
+            descricao='Receita da semana',
+            data_emissao=date(2026, 5, 1),
+            data_vencimento=date(2026, 5, 4),
+            valor_bruto=Decimal('100.00'),
+        )
+        ContaPagar.objects.create(
+            fornecedor='Fornecedor A',
+            obra=self.obra,
+            centro_custo=self.centro,
+            categoria='material',
+            descricao='Despesa da mesma semana',
+            data_emissao=date(2026, 5, 1),
+            data_vencimento=date(2026, 5, 8),
+            valor=Decimal('40.00'),
+        )
+        ContaPagar.objects.create(
+            fornecedor='Fornecedor B',
+            obra=self.obra,
+            centro_custo=self.centro,
+            categoria='material',
+            descricao='Despesa da semana seguinte',
+            data_emissao=date(2026, 5, 1),
+            data_vencimento=date(2026, 5, 11),
+            valor=Decimal('25.00'),
+        )
+
+        response = self.client.get(reverse('financeiro_home'))
+
+        grafico = response.context['grafico_fluxo']
+        self.assertEqual(grafico['labels'], ['04/05 a 10/05', '11/05 a 17/05'])
+        self.assertEqual(grafico['receber'], [100.0, 0.0])
+        self.assertEqual(grafico['pagar'], [40.0, 25.0])
+
     def test_relatorio_financeiro_agrupa_por_centro_e_ordena_por_data(self):
         centro_maquinas = CentroCusto.objects.create(nome='Maquinas')
         ContaPagar.objects.create(

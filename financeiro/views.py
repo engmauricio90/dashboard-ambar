@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
@@ -230,18 +230,20 @@ def _resumo(receber, pagar):
 
 
 def _grafico_fluxo(eventos):
-    meses = defaultdict(lambda: {'receber': Decimal('0'), 'pagar': Decimal('0')})
+    semanas = defaultdict(lambda: {'receber': Decimal('0'), 'pagar': Decimal('0')})
     for evento in eventos:
-        chave = evento['data'].strftime('%Y-%m')
+        inicio_semana = evento['data'] - timedelta(days=evento['data'].weekday())
+        fim_semana = inicio_semana + timedelta(days=6)
+        chave = (inicio_semana, fim_semana)
         if evento['tipo'] == 'Receber':
-            meses[chave]['receber'] += evento['valor']
+            semanas[chave]['receber'] += evento['valor']
         else:
-            meses[chave]['pagar'] += abs(evento['valor'])
-    labels = sorted(meses.keys())
+            semanas[chave]['pagar'] += abs(evento['valor'])
+    labels = sorted(semanas.keys())
     return {
-        'labels': labels,
-        'receber': [float(meses[label]['receber']) for label in labels],
-        'pagar': [float(meses[label]['pagar']) for label in labels],
+        'labels': [f'{inicio.strftime("%d/%m")} a {fim.strftime("%d/%m")}' for inicio, fim in labels],
+        'receber': [float(semanas[label]['receber']) for label in labels],
+        'pagar': [float(semanas[label]['pagar']) for label in labels],
     }
 
 
