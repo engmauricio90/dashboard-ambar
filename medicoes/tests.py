@@ -301,6 +301,14 @@ class MedicoesTests(TestCase):
         self.assertEqual(medicao.empreiteiro_cadastro, empreiteiro)
         self.assertEqual(medicao.empreiteiro, 'Empreiteiro cadastrado')
         self.assertEqual(medicao.itens.count(), 1)
+        item_medicao = medicao.itens.get()
+        item_medicao.quantidade_periodo = Decimal('5.0000')
+        item_medicao.save()
+
+        response_obra = self.client.get(reverse('medicoes_obra', args=[self.obra.id]))
+
+        self.assertContains(response_obra, 'R$ 75,00')
+        self.assertContains(response_obra, 'R$ 225,00')
 
     def test_exclui_planilha_importada(self):
         orcamento, item = self._orcamento()

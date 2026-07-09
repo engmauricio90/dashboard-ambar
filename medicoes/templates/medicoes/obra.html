@@ -43,8 +43,8 @@
                         <td>R$ {{ planilha.total_medido_construtora|floatformat:2 }}</td>
                         <td>R$ {{ planilha.saldo_medir_construtora|floatformat:2 }}</td>
                         {% else %}
-                        <td>-</td>
-                        <td>-</td>
+                        <td>R$ {{ planilha.total_medido_empreiteiro|floatformat:2 }}</td>
+                        <td>R$ {{ planilha.saldo_medir_empreiteiro|floatformat:2 }}</td>
                         {% endif %}
                         <td>{{ planilha.medicoes_construtora.count|add:planilha.medicoes_empreiteiro.count }}</td>
                         <td class="text-end">

@@ -63,12 +63,24 @@ class OrcamentoMedicao(models.Model):
         return _sum_decimal(medicao.subtotal_periodo for medicao in self.medicoes_construtora.all())
 
     @property
+    def total_medido_empreiteiro(self):
+        return _sum_decimal(medicao.subtotal_periodo for medicao in self.medicoes_empreiteiro.all())
+
+    @property
     def total_liquido_construtora(self):
         return _sum_decimal(medicao.total_liquido for medicao in self.medicoes_construtora.all())
 
     @property
+    def total_liquido_empreiteiro(self):
+        return _sum_decimal(medicao.total_liquido for medicao in self.medicoes_empreiteiro.all())
+
+    @property
     def saldo_medir_construtora(self):
         return self.total_orcamento - self.total_medido_construtora
+
+    @property
+    def saldo_medir_empreiteiro(self):
+        return self.total_orcamento - self.total_medido_empreiteiro
 
     @property
     def percentual_medido_construtora(self):
