@@ -498,19 +498,24 @@ class MedicoesTests(TestCase):
             periodo_fim=date(2026, 1, 31),
             data_medicao=date(2026, 1, 31),
             issqn_percentual=Decimal('5.00'),
+            inss_percentual=Decimal('11.00'),
             desconto_adicional=Decimal('40.00'),
         )
         ItemMedicaoConstrutora.objects.create(medicao=medicao, item_orcamento=item, quantidade_periodo=Decimal('10'))
 
         self.assertEqual(medicao.subtotal_periodo, Decimal('170.00'))
         self.assertEqual(medicao.base_impostos, Decimal('170.00'))
+        self.assertEqual(medicao.base_inss, Decimal('50.00'))
         self.assertEqual(medicao.issqn_calculado, Decimal('8.50'))
+        self.assertEqual(medicao.inss_calculado, Decimal('5.50'))
 
         medicao.desconto_adicional_reduz_base_nf = True
         medicao.save(update_fields=['desconto_adicional_reduz_base_nf', 'updated_at'])
 
         self.assertEqual(medicao.base_impostos, Decimal('130.00'))
+        self.assertEqual(medicao.base_inss, Decimal('10.00'))
         self.assertEqual(medicao.issqn_calculado, Decimal('6.50'))
+        self.assertEqual(medicao.inss_calculado, Decimal('1.10'))
 
     def test_exclui_medicao_construtora(self):
         orcamento, item = self._orcamento()
