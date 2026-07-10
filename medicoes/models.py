@@ -206,9 +206,13 @@ class MedicaoConstrutora(models.Model):
 
     @property
     def base_inss(self):
-        desconto_base = self.desconto_adicional_calculado if self.desconto_adicional_reduz_base_nf else Decimal('0')
-        base = self.total_mao_obra_periodo - desconto_base
-        return max(base, Decimal('0'))
+        base = self.total_mao_obra_periodo
+        subtotal = self.subtotal_periodo
+        if self.desconto_adicional_reduz_base_nf and subtotal:
+            desconto = min(self.desconto_adicional_calculado, subtotal)
+            fator_nf = (subtotal - desconto) / subtotal
+            base = base * fator_nf
+        return max(base, Decimal('0')).quantize(Decimal('0.01'))
 
     @property
     def retencao_tecnica_calculada(self):

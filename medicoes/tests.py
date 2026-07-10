@@ -513,9 +513,9 @@ class MedicoesTests(TestCase):
         medicao.save(update_fields=['desconto_adicional_reduz_base_nf', 'updated_at'])
 
         self.assertEqual(medicao.base_impostos, Decimal('130.00'))
-        self.assertEqual(medicao.base_inss, Decimal('10.00'))
+        self.assertEqual(medicao.base_inss, Decimal('38.24'))
         self.assertEqual(medicao.issqn_calculado, Decimal('6.50'))
-        self.assertEqual(medicao.inss_calculado, Decimal('1.10'))
+        self.assertEqual(medicao.inss_calculado, Decimal('4.21'))
 
     def test_exclui_medicao_construtora(self):
         orcamento, item = self._orcamento()
