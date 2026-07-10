@@ -113,6 +113,7 @@ class MedicaoConstrutoraForm(BootstrapModelForm):
             'inss_percentual',
             'desconto_adicional',
             'desconto_adicional_percentual',
+            'desconto_adicional_reduz_base_nf',
             'observacoes',
         ]
         widgets = {
@@ -138,6 +139,7 @@ class MedicaoConstrutoraForm(BootstrapModelForm):
             'inss_percentual': 'INSS (%)',
             'desconto_adicional': 'Desconto adicional (R$)',
             'desconto_adicional_percentual': 'Desconto adicional (%)',
+            'desconto_adicional_reduz_base_nf': 'Desconto adicional reduz base da NF',
         }
 
 

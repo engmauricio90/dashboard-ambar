@@ -162,6 +162,7 @@ class MedicaoConstrutora(models.Model):
     inss_percentual = models.DecimalField(max_digits=7, decimal_places=4, default=0)
     desconto_adicional = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     desconto_adicional_percentual = models.DecimalField(max_digits=7, decimal_places=4, default=0)
+    desconto_adicional_reduz_base_nf = models.BooleanField(default=False)
     faturamento_direto = models.BooleanField(default=False)
     descricao_faturamento_direto = models.CharField(max_length=255, blank=True)
     valor_faturamento_direto = models.DecimalField(max_digits=14, decimal_places=2, default=0)
@@ -199,7 +200,8 @@ class MedicaoConstrutora(models.Model):
 
     @property
     def base_impostos(self):
-        base = self.subtotal_periodo - self.total_faturamento_direto
+        desconto_base = self.desconto_adicional_calculado if self.desconto_adicional_reduz_base_nf else Decimal('0')
+        base = self.subtotal_periodo - self.total_faturamento_direto - desconto_base
         return max(base, Decimal('0'))
 
     @property
