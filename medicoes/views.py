@@ -156,11 +156,7 @@ def _draw_report_cell(
 def _draw_report_row(draw, row, x, y, widths, height, font, bg=None, bold=False, cell_bgs=None):
     cursor = x
     for index, (value, width) in enumerate(zip(row, widths)):
-        align = 'left'
-        if index in (0, 2):
-            align = 'center'
-        if index >= 3:
-            align = 'right'
+        align = 'left' if index == 1 else 'center'
         cell_bg = cell_bgs[index] if cell_bgs and index < len(cell_bgs) and cell_bgs[index] else bg
         _draw_report_cell(draw, value, cursor, y, width, height, font, bg=cell_bg, align=align, width=1)
         cursor += width
@@ -1417,7 +1413,12 @@ def _xlsx_medicao(medicao, itens):
         ws.append(row)
         if isinstance(medicao, MedicaoConstrutora):
             for col in range(1, 17):
-                ws.cell(row=ws.max_row, column=col).alignment = Alignment(vertical='center', wrap_text=True)
+                horizontal = 'left' if col == 2 else 'center'
+                ws.cell(row=ws.max_row, column=col).alignment = Alignment(
+                    horizontal=horizontal,
+                    vertical='center',
+                    wrap_text=True,
+                )
             for col in range(9, 13):
                 ws.cell(row=ws.max_row, column=col).fill = measured_fill
     ws.append([])
