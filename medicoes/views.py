@@ -184,20 +184,20 @@ def _pdf_medicao_construtora(medicao):
     page_w, page_h = 2339, 1654
     margin = 60
     table_w = page_w - (margin * 2)
-    widths = [165, 620, 75, 120, 135, 135, 95, 140, 165, 170]
+    widths = [90, 560, 55, 95, 95, 95, 70, 120, 120, 120, 120, 120, 120, 120, 120, 199]
     row_h = 38
     header_h = 44
     footer_y = page_h - 44
     content_bottom = page_h - 98
-    rows_per_page = 23
+    rows_per_page = 18
     chunks = [itens[i : i + rows_per_page] for i in range(0, len(itens), rows_per_page)] or [[]]
     pages = []
 
     title_font = _font(28, True)
     label_font = _font(17, True)
     small_font = _font(17)
-    table_font = _font(16)
-    table_bold = _font(16, True)
+    table_font = _font(13)
+    table_bold = _font(13, True)
     header_bg = (229, 231, 235)
     section_bg = (243, 244, 246)
     dark = (17, 24, 39)
@@ -273,20 +273,26 @@ def _pdf_medicao_construtora(medicao):
 
         y += (len(left_info) * info_h) + 28
         headers = [
-            'Referencia',
+            'Ref.',
             'Descricao',
             'Un.',
             'Contratada',
             'Acum. anterior',
             'Medida',
             '%Exe.',
+            'Unit. material',
+            'Unit. mao obra',
+            'Unit. equip.',
             'Preco unit.',
             'Valor anterior',
+            'Material',
+            'Mao de obra',
+            'Equip.',
             'Valor medicao',
         ]
         cursor = margin
         for header, width in zip(headers, widths):
-            _draw_report_cell(draw, header, cursor, y, width, header_h, label_font, bg=header_bg, align='center', width=2)
+            _draw_report_cell(draw, header, cursor, y, width, header_h, table_bold, bg=header_bg, align='center', width=2)
             cursor += width
         y += header_h
 
@@ -304,20 +310,29 @@ def _pdf_medicao_construtora(medicao):
                 _fmt_qty(item.quantidade_acumulada_anterior),
                 _fmt_qty(item.quantidade_periodo),
                 f'{_fmt_qty(_percent_from_item(item))}%',
+                _money(base.preco_unitario_material),
+                _money(base.preco_unitario_mao_obra),
+                _money(base.preco_unitario_equipamentos),
                 _money(base.preco_unitario_total),
                 _money(valor_anterior),
+                _money(item.valor_material_periodo),
+                _money(item.valor_mao_obra_periodo),
+                _money(item.valor_equipamentos_periodo),
                 _money(item.valor_periodo),
             ]
             y = _draw_report_row(draw, row, margin, y, widths, row_h, font, bg=bg)
 
         if page_index == len(chunks) - 1:
             totalizer_rows = [
-                ('Total material', medicao.total_material_periodo),
-                ('Total mao de obra', medicao.total_mao_obra_periodo),
-                ('Total equipamentos', medicao.total_equipamentos_periodo),
+                ('Total material', medicao.total_material_periodo, 12),
+                ('Total mao de obra', medicao.total_mao_obra_periodo, 13),
+                ('Total equipamentos', medicao.total_equipamentos_periodo, 14),
             ]
-            for label, value in totalizer_rows:
-                row = ['', label, '', '', '', '', '', '', '', _money(value)]
+            for label, value, component_index in totalizer_rows:
+                row = [''] * len(widths)
+                row[1] = label
+                row[component_index] = _money(value)
+                row[-1] = _money(value)
                 y = _draw_report_row(draw, row, margin, y, widths, row_h, table_bold, bg=section_bg)
 
             y += 28
@@ -1270,22 +1285,58 @@ def _xlsx_medicao(medicao, itens):
     ws.append(['Medicao', medicao.numero])
     ws.append(['Periodo', f'{medicao.periodo_inicio:%d/%m/%Y} a {medicao.periodo_fim:%d/%m/%Y}'])
     ws.append([])
-    ws.append(['Item', 'Descricao', 'Unidade', 'Contrato', 'Acumulado anterior', 'Periodo', 'Acumulado atual', 'Saldo', 'Valor'])
-    for item in itens:
-        contrato = getattr(getattr(item, 'item_orcamento', None), 'quantidade', Decimal('0'))
+    if isinstance(medicao, MedicaoConstrutora):
         ws.append(
             [
-                getattr(getattr(item, 'item_orcamento', None), 'item', '') or item.item,
-                item.descricao if hasattr(item, 'descricao') else item.item_orcamento.descricao,
-                item.unidade if hasattr(item, 'unidade') else item.item_orcamento.unidade,
-                float(contrato),
-                float(item.quantidade_acumulada_anterior),
-                float(item.quantidade_periodo),
-                float(item.quantidade_acumulada_atual),
-                float(item.saldo_quantidade),
-                float(item.valor_periodo),
+                'Item',
+                'Descricao',
+                'Unidade',
+                'Contrato',
+                'Acumulado anterior',
+                'Periodo',
+                'Acumulado atual',
+                'Saldo',
+                'Unitario material',
+                'Unitario mao de obra',
+                'Unitario equipamentos',
+                'Unitario total',
+                'Valor material',
+                'Valor mao de obra',
+                'Valor equipamentos',
+                'Valor total',
             ]
         )
+    else:
+        ws.append(['Item', 'Descricao', 'Unidade', 'Contrato', 'Acumulado anterior', 'Periodo', 'Acumulado atual', 'Saldo', 'Valor'])
+    for item in itens:
+        contrato = getattr(getattr(item, 'item_orcamento', None), 'quantidade', Decimal('0'))
+        base = getattr(item, 'item_orcamento', None)
+        row = [
+            getattr(base, 'item', '') or getattr(item, 'item', ''),
+            item.descricao if hasattr(item, 'descricao') else base.descricao,
+            item.unidade if hasattr(item, 'unidade') else base.unidade,
+            float(contrato),
+            float(item.quantidade_acumulada_anterior),
+            float(item.quantidade_periodo),
+            float(item.quantidade_acumulada_atual),
+            float(item.saldo_quantidade),
+        ]
+        if isinstance(medicao, MedicaoConstrutora):
+            row.extend(
+                [
+                    float(base.preco_unitario_material),
+                    float(base.preco_unitario_mao_obra),
+                    float(base.preco_unitario_equipamentos),
+                    float(base.preco_unitario_total),
+                    float(item.valor_material_periodo),
+                    float(item.valor_mao_obra_periodo),
+                    float(item.valor_equipamentos_periodo),
+                    float(item.valor_periodo),
+                ]
+            )
+        else:
+            row.append(float(item.valor_periodo))
+        ws.append(row)
     ws.append([])
     ws.append(['Valor bruto', float(medicao.total_bruto if isinstance(medicao, MedicaoConstrutora) else medicao.subtotal_periodo)])
     if isinstance(medicao, MedicaoConstrutora):

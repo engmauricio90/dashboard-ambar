@@ -1,10 +1,12 @@
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
+from openpyxl import load_workbook
 
 from obras.models import Obra
 from controles.models import FaturamentoDireto
@@ -375,6 +377,15 @@ class MedicoesTests(TestCase):
         pdf = self.client.get(reverse('medicao_construtora_pdf', args=[segunda.id]))
         self.assertEqual(pdf.status_code, 200)
         self.assertEqual(pdf['Content-Type'], 'application/pdf')
+
+        excel = self.client.get(reverse('medicao_construtora_excel', args=[segunda.id]))
+        wb = load_workbook(BytesIO(excel.content))
+        headers = [cell.value for cell in wb.active[4]]
+        self.assertIn('Unitario material', headers)
+        self.assertIn('Unitario mao de obra', headers)
+        self.assertIn('Valor material', headers)
+        self.assertIn('Valor mao de obra', headers)
+        self.assertIn('Valor equipamentos', headers)
 
     def test_medicao_construtora_desconta_faturamento_direto_fora_da_base_de_impostos(self):
         orcamento, item = self._orcamento()
