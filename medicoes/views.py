@@ -311,6 +311,15 @@ def _pdf_medicao_construtora(medicao):
             y = _draw_report_row(draw, row, margin, y, widths, row_h, font, bg=bg)
 
         if page_index == len(chunks) - 1:
+            totalizer_rows = [
+                ('Total material', medicao.total_material_periodo),
+                ('Total mao de obra', medicao.total_mao_obra_periodo),
+                ('Total equipamentos', medicao.total_equipamentos_periodo),
+            ]
+            for label, value in totalizer_rows:
+                row = ['', label, '', '', '', '', '', '', '', _money(value)]
+                y = _draw_report_row(draw, row, margin, y, widths, row_h, table_bold, bg=section_bg)
+
             y += 28
             summary_left = margin
             summary_mid = margin + 650
@@ -351,6 +360,9 @@ def _pdf_medicao_construtora(medicao):
             closing = [
                 ('Subtotal', medicao.subtotal_periodo),
                 ('Base da NF', medicao.base_impostos),
+                ('Material NF', medicao.valor_material_nf),
+                ('Mao de obra NF', medicao.valor_mao_obra_nf),
+                ('Equipamentos NF', medicao.valor_equipamentos_nf),
                 ('Base INSS', medicao.base_inss),
                 ('Descontos', medicao.total_descontos),
                 ('Total liquido', medicao.total_liquido),
@@ -1276,12 +1288,19 @@ def _xlsx_medicao(medicao, itens):
         )
     ws.append([])
     ws.append(['Valor bruto', float(medicao.total_bruto if isinstance(medicao, MedicaoConstrutora) else medicao.subtotal_periodo)])
+    if isinstance(medicao, MedicaoConstrutora):
+        ws.append(['Total material medido', float(medicao.total_material_periodo)])
+        ws.append(['Total mao de obra medida', float(medicao.total_mao_obra_periodo)])
+        ws.append(['Total equipamentos medido', float(medicao.total_equipamentos_periodo)])
     ws.append(['Retencao tecnica', float(medicao.retencao_tecnica_calculada if isinstance(medicao, MedicaoConstrutora) else medicao.retencao_tecnica)])
     if isinstance(medicao, MedicaoConstrutora):
         ws.append(['ISSQN', float(medicao.issqn_calculado)])
         ws.append(['INSS', float(medicao.inss_calculado)])
         ws.append(['Faturamento direto descontado', float(medicao.total_faturamento_direto)])
         ws.append(['Base de impostos', float(medicao.base_impostos)])
+        ws.append(['Material para NF', float(medicao.valor_material_nf)])
+        ws.append(['Mao de obra para NF', float(medicao.valor_mao_obra_nf)])
+        ws.append(['Equipamentos para NF', float(medicao.valor_equipamentos_nf)])
         ws.append(['Base INSS', float(medicao.base_inss)])
     ws.append(['Desconto adicional', float(medicao.desconto_adicional_calculado if isinstance(medicao, MedicaoConstrutora) else medicao.desconto_adicional)])
     ws.append(['Total liquido', float(medicao.total_liquido)])

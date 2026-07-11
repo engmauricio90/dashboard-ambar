@@ -506,6 +506,9 @@ class MedicoesTests(TestCase):
         self.assertEqual(medicao.subtotal_periodo, Decimal('170.00'))
         self.assertEqual(medicao.base_impostos, Decimal('170.00'))
         self.assertEqual(medicao.base_inss, Decimal('50.00'))
+        self.assertEqual(medicao.total_material_periodo, Decimal('100.00'))
+        self.assertEqual(medicao.total_mao_obra_periodo, Decimal('50.00'))
+        self.assertEqual(medicao.total_equipamentos_periodo, Decimal('20.00'))
         self.assertEqual(medicao.issqn_calculado, Decimal('8.50'))
         self.assertEqual(medicao.inss_calculado, Decimal('5.50'))
 
@@ -514,6 +517,9 @@ class MedicoesTests(TestCase):
 
         self.assertEqual(medicao.base_impostos, Decimal('130.00'))
         self.assertEqual(medicao.base_inss, Decimal('38.24'))
+        self.assertEqual(medicao.valor_material_nf, Decimal('76.47'))
+        self.assertEqual(medicao.valor_mao_obra_nf, Decimal('38.24'))
+        self.assertEqual(medicao.valor_equipamentos_nf, Decimal('15.29'))
         self.assertEqual(medicao.issqn_calculado, Decimal('6.50'))
         self.assertEqual(medicao.inss_calculado, Decimal('4.21'))
 

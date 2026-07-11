@@ -190,6 +190,14 @@ class MedicaoConstrutora(models.Model):
         return _sum_decimal(item.valor_mao_obra_periodo for item in self.itens.all())
 
     @property
+    def total_material_periodo(self):
+        return _sum_decimal(item.valor_material_periodo for item in self.itens.all())
+
+    @property
+    def total_equipamentos_periodo(self):
+        return _sum_decimal(item.valor_equipamentos_periodo for item in self.itens.all())
+
+    @property
     def total_bruto(self):
         return self.subtotal_periodo
 
@@ -203,6 +211,28 @@ class MedicaoConstrutora(models.Model):
         desconto_base = self.desconto_adicional_calculado if self.desconto_adicional_reduz_base_nf else Decimal('0')
         base = self.subtotal_periodo - self.total_faturamento_direto - desconto_base
         return max(base, Decimal('0'))
+
+    @property
+    def fator_componentes_nf(self):
+        subtotal = self.subtotal_periodo
+        if not subtotal:
+            return Decimal('0')
+        return self.base_impostos / subtotal
+
+    @property
+    def valor_material_nf(self):
+        return (self.total_material_periodo * self.fator_componentes_nf).quantize(Decimal('0.01'))
+
+    @property
+    def valor_equipamentos_nf(self):
+        return (self.total_equipamentos_periodo * self.fator_componentes_nf).quantize(Decimal('0.01'))
+
+    @property
+    def valor_mao_obra_nf(self):
+        return max(
+            self.base_impostos - self.valor_material_nf - self.valor_equipamentos_nf,
+            Decimal('0'),
+        ).quantize(Decimal('0.01'))
 
     @property
     def base_inss(self):
@@ -322,8 +352,16 @@ class ItemMedicaoConstrutora(models.Model):
         return self.quantidade_periodo * self.item_orcamento.preco_unitario_total
 
     @property
+    def valor_material_periodo(self):
+        return self.quantidade_periodo * self.item_orcamento.preco_unitario_material
+
+    @property
     def valor_mao_obra_periodo(self):
         return self.quantidade_periodo * self.item_orcamento.preco_unitario_mao_obra
+
+    @property
+    def valor_equipamentos_periodo(self):
+        return self.quantidade_periodo * self.item_orcamento.preco_unitario_equipamentos
 
 
 class MedicaoEmpreiteiro(models.Model):
