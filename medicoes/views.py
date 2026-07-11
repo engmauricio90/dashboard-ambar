@@ -15,6 +15,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 from PIL import Image, ImageDraw, ImageFont
 
 from controles.models import FaturamentoDireto
@@ -186,9 +187,9 @@ def _pdf_medicao_construtora(medicao):
     page_w, page_h = 2339, 1654
     margin = 60
     table_w = page_w - (margin * 2)
-    widths = [90, 575, 55, 95, 120, 120, 120, 120, 120, 120, 95, 95, 70, 120, 120, 120]
-    row_h = 38
-    header_h = 38
+    widths = [65, 559, 55, 95, 130, 130, 125, 130, 130, 95, 95, 75, 135, 135, 130, 135]
+    row_h = 40
+    header_h = 42
     footer_y = page_h - 44
     content_bottom = page_h - 98
     rows_per_page = 18
@@ -1316,6 +1317,9 @@ def _xlsx_medicao(medicao, itens):
     receivable_fill = PatternFill('solid', fgColor='FEE2E2')
     header_font = Font(bold=True)
     if isinstance(medicao, MedicaoConstrutora):
+        column_widths = [9, 58, 8, 12, 16, 16, 16, 16, 16, 14, 12, 10, 16, 16, 16, 17]
+        for col_index, width in enumerate(column_widths, start=1):
+            ws.column_dimensions[get_column_letter(col_index)].width = width
         ws.append(
             [
                 'Itens contratuais',
@@ -1412,6 +1416,8 @@ def _xlsx_medicao(medicao, itens):
             row.append(float(item.valor_periodo))
         ws.append(row)
         if isinstance(medicao, MedicaoConstrutora):
+            for col in range(1, 17):
+                ws.cell(row=ws.max_row, column=col).alignment = Alignment(vertical='center', wrap_text=True)
             for col in range(9, 13):
                 ws.cell(row=ws.max_row, column=col).fill = measured_fill
     ws.append([])
