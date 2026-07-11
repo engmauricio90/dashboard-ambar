@@ -366,11 +366,16 @@ def _pdf_medicao_construtora(medicao):
 
             _draw_report_cell(draw, 'Total da medicao', summary_left, y, 560, block_h, label_font, bg=header_bg, align='center')
             y_left = y + block_h
+            desconto_adicional_nf = (
+                medicao.desconto_adicional_calculado
+                if medicao.desconto_adicional_reduz_base_nf
+                else Decimal('0')
+            )
             totals = [
-                ('Total dos itens', medicao.subtotal_periodo),
+                ('Total medicao', medicao.subtotal_periodo),
                 ('Desconto faturamento direto', -medicao.total_faturamento_direto),
-                ('Desconto adicional', -medicao.desconto_adicional_calculado),
-                ('Total bruto', medicao.total_bruto),
+                ('Desconto adicional NF', -desconto_adicional_nf),
+                ('Total a faturar', medicao.base_impostos),
             ]
             for label, value in totals:
                 _draw_report_cell(draw, label, summary_left, y_left, 330, block_h, small_font, align='left')
