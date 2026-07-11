@@ -183,7 +183,7 @@ def _pdf_medicao_construtora(medicao):
     page_w, page_h = 2339, 1654
     margin = 60
     table_w = page_w - (margin * 2)
-    widths = [65, 559, 55, 95, 130, 130, 125, 130, 130, 95, 95, 75, 135, 135, 130, 135]
+    widths = [60, 634, 55, 80, 135, 135, 130, 135, 100, 100, 80, 145, 145, 140, 145]
     row_h = 40
     header_h = 42
     footer_y = page_h - 44
@@ -278,12 +278,11 @@ def _pdf_medicao_construtora(medicao):
             'Ref.',
             'Descricao',
             'Un.',
-            'Contratada',
+            'Qtde',
             'Unit. material',
             'Unit. mao obra',
             'Unit. equip.',
             'Preco unit.',
-            'Valor anterior',
             'Acum. anterior',
             'Medida',
             '%Exe.',
@@ -294,8 +293,8 @@ def _pdf_medicao_construtora(medicao):
         ]
         group_headers = [
             ('Itens contratuais', 0, 8, contract_bg),
-            ('Itens medidos', 8, 12, measured_bg),
-            ('Valor a receber', 12, 16, receivable_bg),
+            ('Itens medidos', 8, 11, measured_bg),
+            ('Valor a receber', 11, 15, receivable_bg),
         ]
         cursor = margin
         for label, start, end, bg in group_headers:
@@ -307,7 +306,7 @@ def _pdf_medicao_construtora(medicao):
         for index, (header, width) in enumerate(zip(headers, widths)):
             if index < 8:
                 bg = contract_bg
-            elif index < 12:
+            elif index < 11:
                 bg = measured_bg
             else:
                 bg = receivable_bg
@@ -316,7 +315,7 @@ def _pdf_medicao_construtora(medicao):
         y += header_h
 
         measured_cell_bgs = [None] * len(widths)
-        for measured_index in range(8, 12):
+        for measured_index in range(8, 11):
             measured_cell_bgs[measured_index] = measured_bg
 
         for item in chunk:
@@ -324,7 +323,6 @@ def _pdf_medicao_construtora(medicao):
             is_section = not base.unidade and not base.preco_unitario_total and not base.quantidade
             font = table_bold if is_section else table_font
             bg = section_bg if is_section else None
-            valor_anterior = item.quantidade_acumulada_anterior * base.preco_unitario_total
             row = [
                 base.item,
                 base.descricao,
@@ -334,7 +332,6 @@ def _pdf_medicao_construtora(medicao):
                 _money(base.preco_unitario_mao_obra),
                 _money(base.preco_unitario_equipamentos),
                 _money(base.preco_unitario_total),
-                _money(valor_anterior),
                 _fmt_qty(item.quantidade_acumulada_anterior),
                 _fmt_qty(item.quantidade_periodo),
                 f'{_fmt_qty(_percent_from_item(item))}%',
@@ -347,9 +344,9 @@ def _pdf_medicao_construtora(medicao):
 
         if page_index == len(chunks) - 1:
             totalizer_rows = [
-                ('Total material', medicao.total_material_periodo, 12),
-                ('Total mao de obra', medicao.total_mao_obra_periodo, 13),
-                ('Total equipamentos', medicao.total_equipamentos_periodo, 14),
+                ('Total material', medicao.total_material_periodo, 11),
+                ('Total mao de obra', medicao.total_mao_obra_periodo, 12),
+                ('Total equipamentos', medicao.total_equipamentos_periodo, 13),
             ]
             for label, value, component_index in totalizer_rows:
                 row = [''] * len(widths)
@@ -1318,7 +1315,7 @@ def _xlsx_medicao(medicao, itens):
     receivable_fill = PatternFill('solid', fgColor='FEE2E2')
     header_font = Font(bold=True)
     if isinstance(medicao, MedicaoConstrutora):
-        column_widths = [9, 58, 8, 12, 16, 16, 16, 16, 16, 14, 12, 10, 16, 16, 16, 17]
+        column_widths = [8, 62, 8, 10, 16, 16, 16, 16, 14, 12, 10, 16, 16, 16, 17]
         for col_index, width in enumerate(column_widths, start=1):
             ws.column_dimensions[get_column_letter(col_index)].width = width
         ws.append(
@@ -1334,7 +1331,6 @@ def _xlsx_medicao(medicao, itens):
                 'Itens medidos',
                 '',
                 '',
-                '',
                 'Valor a receber',
                 '',
                 '',
@@ -1346,12 +1342,11 @@ def _xlsx_medicao(medicao, itens):
                 'Item',
                 'Descricao',
                 'Unidade',
-                'Contrato',
+                'Qtde',
                 'Unitario material',
                 'Unitario mao de obra',
                 'Unitario equipamentos',
                 'Unitario total',
-                'Valor anterior',
                 'Acumulado anterior',
                 'Periodo',
                 '% executado',
@@ -1362,13 +1357,13 @@ def _xlsx_medicao(medicao, itens):
             ]
         )
         ws.merge_cells(start_row=4, start_column=1, end_row=4, end_column=8)
-        ws.merge_cells(start_row=4, start_column=9, end_row=4, end_column=12)
-        ws.merge_cells(start_row=4, start_column=13, end_row=4, end_column=16)
+        ws.merge_cells(start_row=4, start_column=9, end_row=4, end_column=11)
+        ws.merge_cells(start_row=4, start_column=12, end_row=4, end_column=15)
         for row in (4, 5):
-            for col in range(1, 17):
+            for col in range(1, 16):
                 if col <= 8:
                     fill = contract_fill
-                elif col <= 12:
+                elif col <= 11:
                     fill = measured_fill
                 else:
                     fill = receivable_fill
@@ -1388,14 +1383,12 @@ def _xlsx_medicao(medicao, itens):
             float(contrato),
         ]
         if isinstance(medicao, MedicaoConstrutora):
-            valor_anterior = item.quantidade_acumulada_anterior * base.preco_unitario_total
             row.extend(
                 [
                     float(base.preco_unitario_material),
                     float(base.preco_unitario_mao_obra),
                     float(base.preco_unitario_equipamentos),
                     float(base.preco_unitario_total),
-                    float(valor_anterior),
                     float(item.quantidade_acumulada_anterior),
                     float(item.quantidade_periodo),
                     float(_percent_from_item(item)),
@@ -1417,14 +1410,14 @@ def _xlsx_medicao(medicao, itens):
             row.append(float(item.valor_periodo))
         ws.append(row)
         if isinstance(medicao, MedicaoConstrutora):
-            for col in range(1, 17):
+            for col in range(1, 16):
                 horizontal = 'left' if col == 2 else 'center'
                 ws.cell(row=ws.max_row, column=col).alignment = Alignment(
                     horizontal=horizontal,
                     vertical='center',
                     wrap_text=True,
                 )
-            for col in range(9, 13):
+            for col in range(9, 12):
                 ws.cell(row=ws.max_row, column=col).fill = measured_fill
     ws.append([])
     ws.append(['Valor bruto', float(medicao.total_bruto if isinstance(medicao, MedicaoConstrutora) else medicao.subtotal_periodo)])

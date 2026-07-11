@@ -51,7 +51,7 @@
             <div class="table-responsive">
                 <table class="table table-sm align-middle">
                     <thead>
-                        <tr><th>Base</th><th>Item</th><th>Descricao</th><th>Und</th><th>Qtd periodo</th><th>Valor unit.</th><th>Valor</th><th>Excluir</th></tr>
+                        <tr><th>Base</th><th>Item</th><th>Descricao</th><th>Und</th><th>Anterior</th><th>Qtd periodo</th><th>Valor unit.</th><th>Valor</th><th>Excluir</th></tr>
                     </thead>
                     <tbody id="itens-medicao-body">
                         {% for item_form in formset %}
@@ -60,12 +60,13 @@
                             <td style="min-width: 90px;">{{ item_form.item }}</td>
                             <td style="min-width: 260px;">{{ item_form.descricao }}</td>
                             <td style="min-width: 80px;">{{ item_form.unidade }}</td>
+                            <td class="text-center fw-semibold" style="min-width: 110px;">{{ item_form.instance.quantidade_acumulada_anterior|floatformat:4 }}</td>
                             <td style="min-width: 130px;">{{ item_form.quantidade_periodo }}</td>
                             <td style="min-width: 130px;">{{ item_form.valor_unitario }}</td>
                             <td>R$ {{ item_form.instance.valor_periodo|floatformat:2 }}</td>
                             <td>{% if item_form.DELETE %}{{ item_form.DELETE }}{% endif %}</td>
                         </tr>
-                        {% if item_form.non_field_errors %}<tr><td colspan="8" class="text-danger small">{{ item_form.non_field_errors }}</td></tr>{% endif %}
+                        {% if item_form.non_field_errors %}<tr><td colspan="9" class="text-danger small">{{ item_form.non_field_errors }}</td></tr>{% endif %}
                         {% endfor %}
                     </tbody>
                     <template id="item-medicao-empty-form">
@@ -74,6 +75,7 @@
                             <td style="min-width: 90px;">{{ formset.empty_form.item }}</td>
                             <td style="min-width: 260px;">{{ formset.empty_form.descricao }}</td>
                             <td style="min-width: 80px;">{{ formset.empty_form.unidade }}</td>
+                            <td class="text-center text-muted" style="min-width: 110px;">-</td>
                             <td style="min-width: 130px;">{{ formset.empty_form.quantidade_periodo }}</td>
                             <td style="min-width: 130px;">{{ formset.empty_form.valor_unitario }}</td>
                             <td class="text-muted">Calculado ao salvar</td>
