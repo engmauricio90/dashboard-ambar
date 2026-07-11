@@ -184,9 +184,9 @@ def _pdf_medicao_construtora(medicao):
     page_w, page_h = 2339, 1654
     margin = 60
     table_w = page_w - (margin * 2)
-    widths = [90, 560, 55, 95, 95, 95, 70, 120, 120, 120, 120, 120, 120, 120, 120, 199]
+    widths = [90, 575, 55, 95, 120, 120, 120, 120, 120, 120, 95, 95, 70, 120, 120, 120]
     row_h = 38
-    header_h = 44
+    header_h = 38
     footer_y = page_h - 44
     content_bottom = page_h - 98
     rows_per_page = 18
@@ -199,6 +199,9 @@ def _pdf_medicao_construtora(medicao):
     table_font = _font(13)
     table_bold = _font(13, True)
     header_bg = (229, 231, 235)
+    contract_bg = (232, 238, 247)
+    measured_bg = (226, 244, 234)
+    receivable_bg = (251, 239, 219)
     section_bg = (243, 244, 246)
     dark = (17, 24, 39)
     muted = (75, 85, 99)
@@ -277,22 +280,39 @@ def _pdf_medicao_construtora(medicao):
             'Descricao',
             'Un.',
             'Contratada',
-            'Acum. anterior',
-            'Medida',
-            '%Exe.',
             'Unit. material',
             'Unit. mao obra',
             'Unit. equip.',
             'Preco unit.',
             'Valor anterior',
+            'Acum. anterior',
+            'Medida',
+            '%Exe.',
             'Material',
             'Mao de obra',
             'Equip.',
             'Valor medicao',
         ]
+        group_headers = [
+            ('Itens contratuais', 0, 8, contract_bg),
+            ('Itens medidos', 8, 12, measured_bg),
+            ('Valor a receber', 12, 16, receivable_bg),
+        ]
         cursor = margin
-        for header, width in zip(headers, widths):
-            _draw_report_cell(draw, header, cursor, y, width, header_h, table_bold, bg=header_bg, align='center', width=2)
+        for label, start, end, bg in group_headers:
+            group_w = sum(widths[start:end])
+            _draw_report_cell(draw, label, cursor, y, group_w, header_h, table_bold, bg=bg, align='center', width=2)
+            cursor += group_w
+        y += header_h
+        cursor = margin
+        for index, (header, width) in enumerate(zip(headers, widths)):
+            if index < 8:
+                bg = contract_bg
+            elif index < 12:
+                bg = measured_bg
+            else:
+                bg = receivable_bg
+            _draw_report_cell(draw, header, cursor, y, width, header_h, table_bold, bg=bg, align='center', width=2)
             cursor += width
         y += header_h
 
@@ -307,14 +327,14 @@ def _pdf_medicao_construtora(medicao):
                 base.descricao,
                 base.unidade or '',
                 _fmt_qty(base.quantidade),
-                _fmt_qty(item.quantidade_acumulada_anterior),
-                _fmt_qty(item.quantidade_periodo),
-                f'{_fmt_qty(_percent_from_item(item))}%',
                 _money(base.preco_unitario_material),
                 _money(base.preco_unitario_mao_obra),
                 _money(base.preco_unitario_equipamentos),
                 _money(base.preco_unitario_total),
                 _money(valor_anterior),
+                _fmt_qty(item.quantidade_acumulada_anterior),
+                _fmt_qty(item.quantidade_periodo),
+                f'{_fmt_qty(_percent_from_item(item))}%',
                 _money(item.valor_material_periodo),
                 _money(item.valor_mao_obra_periodo),
                 _money(item.valor_equipamentos_periodo),
@@ -1288,18 +1308,38 @@ def _xlsx_medicao(medicao, itens):
     if isinstance(medicao, MedicaoConstrutora):
         ws.append(
             [
+                'Itens contratuais',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                'Itens medidos',
+                '',
+                '',
+                '',
+                'Valor a receber',
+                '',
+                '',
+                '',
+            ]
+        )
+        ws.append(
+            [
                 'Item',
                 'Descricao',
                 'Unidade',
                 'Contrato',
-                'Acumulado anterior',
-                'Periodo',
-                'Acumulado atual',
-                'Saldo',
                 'Unitario material',
                 'Unitario mao de obra',
                 'Unitario equipamentos',
                 'Unitario total',
+                'Valor anterior',
+                'Acumulado anterior',
+                'Periodo',
+                '% executado',
                 'Valor material',
                 'Valor mao de obra',
                 'Valor equipamentos',
@@ -1316,18 +1356,19 @@ def _xlsx_medicao(medicao, itens):
             item.descricao if hasattr(item, 'descricao') else base.descricao,
             item.unidade if hasattr(item, 'unidade') else base.unidade,
             float(contrato),
-            float(item.quantidade_acumulada_anterior),
-            float(item.quantidade_periodo),
-            float(item.quantidade_acumulada_atual),
-            float(item.saldo_quantidade),
         ]
         if isinstance(medicao, MedicaoConstrutora):
+            valor_anterior = item.quantidade_acumulada_anterior * base.preco_unitario_total
             row.extend(
                 [
                     float(base.preco_unitario_material),
                     float(base.preco_unitario_mao_obra),
                     float(base.preco_unitario_equipamentos),
                     float(base.preco_unitario_total),
+                    float(valor_anterior),
+                    float(item.quantidade_acumulada_anterior),
+                    float(item.quantidade_periodo),
+                    float(_percent_from_item(item)),
                     float(item.valor_material_periodo),
                     float(item.valor_mao_obra_periodo),
                     float(item.valor_equipamentos_periodo),
@@ -1335,6 +1376,14 @@ def _xlsx_medicao(medicao, itens):
                 ]
             )
         else:
+            row.extend(
+                [
+                    float(item.quantidade_acumulada_anterior),
+                    float(item.quantidade_periodo),
+                    float(item.quantidade_acumulada_atual),
+                    float(item.saldo_quantidade),
+                ]
+            )
             row.append(float(item.valor_periodo))
         ws.append(row)
     ws.append([])

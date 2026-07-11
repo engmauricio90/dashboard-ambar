@@ -380,7 +380,7 @@ class MedicoesTests(TestCase):
 
         excel = self.client.get(reverse('medicao_construtora_excel', args=[segunda.id]))
         wb = load_workbook(BytesIO(excel.content))
-        headers = [cell.value for cell in wb.active[4]]
+        headers = [cell.value for cell in wb.active[5]]
         self.assertIn('Unitario material', headers)
         self.assertIn('Unitario mao de obra', headers)
         self.assertIn('Valor material', headers)
