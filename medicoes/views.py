@@ -14,6 +14,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
 from PIL import Image, ImageDraw, ImageFont
 
 from controles.models import FaturamentoDireto
@@ -151,7 +152,7 @@ def _draw_report_cell(
         y_text += line_height
 
 
-def _draw_report_row(draw, row, x, y, widths, height, font, bg=None, bold=False):
+def _draw_report_row(draw, row, x, y, widths, height, font, bg=None, bold=False, cell_bgs=None):
     cursor = x
     for index, (value, width) in enumerate(zip(row, widths)):
         align = 'left'
@@ -159,7 +160,8 @@ def _draw_report_row(draw, row, x, y, widths, height, font, bg=None, bold=False)
             align = 'center'
         if index >= 3:
             align = 'right'
-        _draw_report_cell(draw, value, cursor, y, width, height, font, bg=bg, align=align, width=1)
+        cell_bg = cell_bgs[index] if cell_bgs and index < len(cell_bgs) and cell_bgs[index] else bg
+        _draw_report_cell(draw, value, cursor, y, width, height, font, bg=cell_bg, align=align, width=1)
         cursor += width
     return y + height
 
@@ -200,8 +202,8 @@ def _pdf_medicao_construtora(medicao):
     table_bold = _font(13, True)
     header_bg = (229, 231, 235)
     contract_bg = (232, 238, 247)
-    measured_bg = (226, 244, 234)
-    receivable_bg = (251, 239, 219)
+    measured_bg = (220, 245, 229)
+    receivable_bg = (254, 226, 226)
     section_bg = (243, 244, 246)
     dark = (17, 24, 39)
     muted = (75, 85, 99)
@@ -316,6 +318,10 @@ def _pdf_medicao_construtora(medicao):
             cursor += width
         y += header_h
 
+        measured_cell_bgs = [None] * len(widths)
+        for measured_index in range(8, 12):
+            measured_cell_bgs[measured_index] = measured_bg
+
         for item in chunk:
             base = item.item_orcamento
             is_section = not base.unidade and not base.preco_unitario_total and not base.quantidade
@@ -340,7 +346,7 @@ def _pdf_medicao_construtora(medicao):
                 _money(item.valor_equipamentos_periodo),
                 _money(item.valor_periodo),
             ]
-            y = _draw_report_row(draw, row, margin, y, widths, row_h, font, bg=bg)
+            y = _draw_report_row(draw, row, margin, y, widths, row_h, font, bg=bg, cell_bgs=measured_cell_bgs)
 
         if page_index == len(chunks) - 1:
             totalizer_rows = [
@@ -1305,6 +1311,10 @@ def _xlsx_medicao(medicao, itens):
     ws.append(['Medicao', medicao.numero])
     ws.append(['Periodo', f'{medicao.periodo_inicio:%d/%m/%Y} a {medicao.periodo_fim:%d/%m/%Y}'])
     ws.append([])
+    contract_fill = PatternFill('solid', fgColor='E8EEF7')
+    measured_fill = PatternFill('solid', fgColor='DCF5E5')
+    receivable_fill = PatternFill('solid', fgColor='FEE2E2')
+    header_font = Font(bold=True)
     if isinstance(medicao, MedicaoConstrutora):
         ws.append(
             [
@@ -1346,6 +1356,21 @@ def _xlsx_medicao(medicao, itens):
                 'Valor total',
             ]
         )
+        ws.merge_cells(start_row=4, start_column=1, end_row=4, end_column=8)
+        ws.merge_cells(start_row=4, start_column=9, end_row=4, end_column=12)
+        ws.merge_cells(start_row=4, start_column=13, end_row=4, end_column=16)
+        for row in (4, 5):
+            for col in range(1, 17):
+                if col <= 8:
+                    fill = contract_fill
+                elif col <= 12:
+                    fill = measured_fill
+                else:
+                    fill = receivable_fill
+                cell = ws.cell(row=row, column=col)
+                cell.fill = fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
     else:
         ws.append(['Item', 'Descricao', 'Unidade', 'Contrato', 'Acumulado anterior', 'Periodo', 'Acumulado atual', 'Saldo', 'Valor'])
     for item in itens:
@@ -1386,6 +1411,9 @@ def _xlsx_medicao(medicao, itens):
             )
             row.append(float(item.valor_periodo))
         ws.append(row)
+        if isinstance(medicao, MedicaoConstrutora):
+            for col in range(9, 13):
+                ws.cell(row=ws.max_row, column=col).fill = measured_fill
     ws.append([])
     ws.append(['Valor bruto', float(medicao.total_bruto if isinstance(medicao, MedicaoConstrutora) else medicao.subtotal_periodo)])
     if isinstance(medicao, MedicaoConstrutora):
