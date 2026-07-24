@@ -813,6 +813,45 @@ class ControleAbastecimentoTests(TestCase):
         self.assertContains(response, 'Radar de Obras')
         self.assertContains(response, 'Cliente Fechado')
 
+    def test_atualiza_radar_obras_em_lote(self):
+        primeiro = OrcamentoRadarObra.objects.create(
+            numero='ORC-003',
+            cliente='Cliente Um',
+            descricao='Primeira oportunidade',
+            data_orcamento='2026-04-23',
+            situacao='aguardando_resposta',
+            temperatura=2,
+            valor_estimado=Decimal('15000.00'),
+        )
+        segundo = OrcamentoRadarObra.objects.create(
+            numero='ORC-004',
+            cliente='Cliente Dois',
+            descricao='Segunda oportunidade',
+            data_orcamento='2026-04-24',
+            situacao='em_revisao',
+            temperatura=3,
+            valor_estimado=Decimal('25000.00'),
+        )
+
+        response = self.client.post(
+            reverse('atualizar_radar_obras_em_lote'),
+            {
+                'orcamento_id': [str(primeiro.id), str(segundo.id)],
+                f'situacao_{primeiro.id}': 'fechada',
+                f'temperatura_{primeiro.id}': '5',
+                f'situacao_{segundo.id}': 'cancelada',
+                f'temperatura_{segundo.id}': '1',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        primeiro.refresh_from_db()
+        segundo.refresh_from_db()
+        self.assertEqual(primeiro.situacao, 'fechada')
+        self.assertEqual(primeiro.temperatura, 5)
+        self.assertEqual(segundo.situacao, 'cancelada')
+        self.assertEqual(segundo.temperatura, 1)
+
     def test_cria_contrato_e_faturamento_concretagem(self):
         obra = Obra.objects.create(nome_obra='Obra Concreto')
         contrato = ContratoConcretagem.objects.create(

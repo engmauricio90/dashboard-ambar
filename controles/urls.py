@@ -172,6 +172,7 @@ urlpatterns = [
     path('radar-obras/', views.lista_radar_obras, name='lista_radar_obras'),
     path('radar-obras/pdf/', views.radar_obras_pdf, name='radar_obras_pdf'),
     path('radar-obras/novo/', views.novo_radar_obra, name='novo_radar_obra'),
+    path('radar-obras/atualizar-lote/', views.atualizar_radar_obras_em_lote, name='atualizar_radar_obras_em_lote'),
     path('radar-obras/<int:orcamento_id>/atualizar/', views.atualizar_radar_obra, name='atualizar_radar_obra'),
     path('radar-obras/<int:orcamento_id>/arquivar/', views.arquivar_radar_obra, name='arquivar_radar_obra'),
     path('radar-obras/<int:orcamento_id>/editar/', views.editar_radar_obra, name='editar_radar_obra'),

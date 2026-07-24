@@ -2081,6 +2081,37 @@ def atualizar_radar_obra(request, orcamento_id):
     return redirect(f"{reverse('lista_radar_obras')}?{request.GET.urlencode()}")
 
 
+def atualizar_radar_obras_em_lote(request):
+    if request.method == 'POST':
+        situacoes = {choice[0] for choice in OrcamentoRadarObra.SITUACAO_CHOICES}
+        temperaturas = {str(choice[0]) for choice in OrcamentoRadarObra.TEMPERATURA_CHOICES}
+        ids = request.POST.getlist('orcamento_id')
+        atualizados = 0
+
+        for orcamento in OrcamentoRadarObra.objects.filter(id__in=ids):
+            situacao = request.POST.get(f'situacao_{orcamento.id}')
+            temperatura = request.POST.get(f'temperatura_{orcamento.id}')
+            update_fields = []
+
+            if situacao in situacoes and situacao != orcamento.situacao:
+                orcamento.situacao = situacao
+                update_fields.append('situacao')
+            if temperatura in temperaturas and int(temperatura) != orcamento.temperatura:
+                orcamento.temperatura = int(temperatura)
+                update_fields.append('temperatura')
+
+            if update_fields:
+                orcamento.save(update_fields=update_fields + ['updated_at'])
+                atualizados += 1
+
+        if atualizados:
+            messages.success(request, f'{atualizados} orcamento(s) atualizado(s) no radar.')
+        else:
+            messages.info(request, 'Nenhuma alteracao para salvar no radar.')
+
+    return redirect(f"{reverse('lista_radar_obras')}?{request.GET.urlencode()}")
+
+
 def arquivar_radar_obra(request, orcamento_id):
     orcamento = get_object_or_404(OrcamentoRadarObra, id=orcamento_id)
     if request.method == 'POST':

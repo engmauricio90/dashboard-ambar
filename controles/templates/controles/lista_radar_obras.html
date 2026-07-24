@@ -108,11 +108,20 @@
     </div>
 </div>
 
+<form id="radar-bulk-form" method="post" action="{% url 'atualizar_radar_obras_em_lote' %}?{{ request.GET.urlencode }}">
+    {% csrf_token %}
+</form>
+
 <div class="card shadow-sm">
     <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="mb-0">Oportunidades</h5>
-            <span class="text-muted small">{{ orcamentos|length }} registro(s)</span>
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <div>
+                <h5 class="mb-0">Oportunidades</h5>
+                <span class="text-muted small">{{ orcamentos|length }} registro(s)</span>
+            </div>
+            {% if orcamentos %}
+            <button class="btn btn-primary btn-sm" type="submit" form="radar-bulk-form">Salvar alteracoes</button>
+            {% endif %}
         </div>
         <div class="table-responsive">
             <table class="table table-bordered table-striped align-middle mb-0">
@@ -137,28 +146,19 @@
                         <td>{{ orcamento.cliente }}</td>
                         <td>{{ orcamento.descricao|truncatechars:90 }}</td>
                         <td>
-                            <form method="post" action="{% url 'atualizar_radar_obra' orcamento.id %}?{{ request.GET.urlencode }}" class="d-flex gap-2">
-                                {% csrf_token %}
-                                <select name="situacao" class="form-select form-select-sm">
-                                    {% for valor, label in situacao_choices %}
-                                    <option value="{{ valor }}" {% if orcamento.situacao == valor %}selected{% endif %}>{{ label }}</option>
-                                    {% endfor %}
-                                </select>
-                                <input type="hidden" name="temperatura" value="{{ orcamento.temperatura }}">
-                                <button class="btn btn-sm btn-outline-primary" type="submit">OK</button>
-                            </form>
+                            <input type="hidden" name="orcamento_id" value="{{ orcamento.id }}" form="radar-bulk-form">
+                            <select name="situacao_{{ orcamento.id }}" class="form-select form-select-sm" form="radar-bulk-form">
+                                {% for valor, label in situacao_choices %}
+                                <option value="{{ valor }}" {% if orcamento.situacao == valor %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
                         </td>
                         <td>
-                            <form method="post" action="{% url 'atualizar_radar_obra' orcamento.id %}?{{ request.GET.urlencode }}" class="d-flex gap-2">
-                                {% csrf_token %}
-                                <input type="hidden" name="situacao" value="{{ orcamento.situacao }}">
-                                <select name="temperatura" class="form-select form-select-sm">
-                                    {% for valor, label in temperatura_choices %}
-                                    <option value="{{ valor }}" {% if orcamento.temperatura == valor %}selected{% endif %}>{{ label }}</option>
-                                    {% endfor %}
-                                </select>
-                                <button class="btn btn-sm {% if orcamento.temperatura >= 4 %}btn-danger{% elif orcamento.temperatura == 3 %}btn-warning{% else %}btn-outline-secondary{% endif %}" type="submit">●</button>
-                            </form>
+                            <select name="temperatura_{{ orcamento.id }}" class="form-select form-select-sm" form="radar-bulk-form">
+                                {% for valor, label in temperatura_choices %}
+                                <option value="{{ valor }}" {% if orcamento.temperatura == valor %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
                         </td>
                         <td>R$ {{ orcamento.valor_estimado|floatformat:2 }}</td>
                         <td>{{ orcamento.responsavel|default:'-' }}</td>
