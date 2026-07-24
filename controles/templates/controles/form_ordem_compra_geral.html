@@ -20,7 +20,7 @@
         <div class="card-body">
             <h5 class="mb-3">Dados da OC</h5>
             <div class="row g-3">
-                <div class="col-md-3"><label class="form-label">Numero</label>{{ form.numero }}{% if form.numero.help_text %}<div class="form-text">{{ form.numero.help_text }}</div>{% endif %}</div>
+                <div class="col-md-3"><label class="form-label">Número</label>{{ form.numero }}{% if form.numero.help_text %}<div class="form-text">{{ form.numero.help_text }}</div>{% endif %}</div>
                 <div class="col-md-3"><label class="form-label">Emissao</label>{{ form.data_emissao }}</div>
                 <div class="col-md-3"><label class="form-label">Status</label>{{ form.status }}</div>
                 <div class="col-md-3"><label class="form-label">Comprador</label>{{ form.comprador }}</div>
@@ -29,7 +29,7 @@
                 <div class="col-md-4"><label class="form-label">Categoria da despesa</label>{{ form.categoria_despesa }}</div>
                 <div class="col-md-4"><label class="form-label">Razao social compradora</label>{{ form.empresa_razao_social }}</div>
                 <div class="col-md-3"><label class="form-label">CNPJ compradora</label>{{ form.empresa_cnpj }}</div>
-                <div class="col-md-5"><label class="form-label">Endereco compradora</label>{{ form.empresa_endereco }}</div>
+                <div class="col-md-5"><label class="form-label">Endereço compradora</label>{{ form.empresa_endereco }}</div>
             </div>
         </div>
     </div>
@@ -47,7 +47,7 @@
                 <div class="col-md-4"><label class="form-label">Fornecedor manual</label>{{ form.fornecedor }}{% if form.fornecedor.errors %}<div class="text-danger small mt-1">{{ form.fornecedor.errors|join:', ' }}</div>{% endif %}</div>
                 <div class="col-md-2"><label class="form-label">CPF/CNPJ</label>{{ form.fornecedor_cpf_cnpj }}</div>
                 <div class="col-md-2"><label class="form-label">Fone</label>{{ form.fornecedor_fone }}</div>
-                <div class="col-md-6"><label class="form-label">Endereco</label>{{ form.fornecedor_endereco }}</div>
+                <div class="col-md-6"><label class="form-label">Endereço</label>{{ form.fornecedor_endereco }}</div>
                 <div class="col-md-3"><label class="form-label">Bairro</label>{{ form.fornecedor_bairro }}</div>
                 <div class="col-md-3"><label class="form-label">Cidade</label>{{ form.fornecedor_cidade }}</div>
                 <div class="col-md-2"><label class="form-label">UF</label>{{ form.fornecedor_uf }}</div>
@@ -66,7 +66,7 @@
                     <thead>
                         <tr>
                             <th>Item</th>
-                            <th>Descricao</th>
+                            <th>Descrição</th>
                             <th>Qtd</th>
                             <th>Un</th>
                             <th>Vlr.</th>
@@ -109,7 +109,7 @@
 
     <div class="card shadow-sm mb-4">
         <div class="card-body">
-            <label class="form-label">Observacoes</label>
+            <label class="form-label">Observações</label>
             {{ form.observacoes }}
         </div>
     </div>

@@ -29,14 +29,14 @@
         <div class="row g-3">
             <div class="col-md-4"><strong>Compradora:</strong> {{ ordem.empresa_razao_social }}</div>
             <div class="col-md-4"><strong>CNPJ:</strong> {{ ordem.empresa_cnpj|default:'-' }}</div>
-            <div class="col-md-4"><strong>Endereco:</strong> {{ ordem.empresa_endereco|default:'-' }}</div>
+            <div class="col-md-4"><strong>Endereço:</strong> {{ ordem.empresa_endereco|default:'-' }}</div>
             <div class="col-md-4"><strong>Obra:</strong> {{ ordem.obra|default:'-' }}</div>
             <div class="col-md-4"><strong>Centro:</strong> {{ ordem.centro_custo|default:'-' }}</div>
             <div class="col-md-4"><strong>Categoria:</strong> {{ ordem.categoria_despesa|default:'-' }}</div>
             <div class="col-md-4"><strong>Fornecedor:</strong> {{ ordem.fornecedor }}</div>
             <div class="col-md-4"><strong>CPF/CNPJ:</strong> {{ ordem.fornecedor_cpf_cnpj|default:'-' }}</div>
             <div class="col-md-4"><strong>Fone:</strong> {{ ordem.fornecedor_fone|default:'-' }}</div>
-            <div class="col-md-8"><strong>Endereco fornecedor:</strong> {{ ordem.fornecedor_endereco|default:'-' }}</div>
+            <div class="col-md-8"><strong>Endereço fornecedor:</strong> {{ ordem.fornecedor_endereco|default:'-' }}</div>
             <div class="col-md-4"><strong>Cidade/UF:</strong> {{ ordem.fornecedor_cidade|default:'-' }} / {{ ordem.fornecedor_uf|default:'-' }}</div>
         </div>
     </div>
@@ -50,7 +50,7 @@
                 <thead>
                     <tr>
                         <th>Item</th>
-                        <th>Descricao</th>
+                        <th>Descrição</th>
                         <th>Qtd</th>
                         <th>Un</th>
                         <th>Vlr.</th>
@@ -148,7 +148,7 @@
 {% if ordem.observacoes %}
 <div class="card shadow-sm">
     <div class="card-body">
-        <h5 class="mb-2">Observacoes</h5>
+        <h5 class="mb-2">Observações</h5>
         <p class="mb-0">{{ ordem.observacoes }}</p>
     </div>
 </div>

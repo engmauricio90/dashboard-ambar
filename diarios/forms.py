@@ -49,7 +49,7 @@ class DiarioObraFiltroForm(BootstrapForm):
     status = forms.ChoiceField(required=False, choices=[('', 'Todos')] + DiarioObra.STATUS_CHOICES)
     responsavel = forms.CharField(required=False)
     situacao_obra = forms.ChoiceField(required=False, choices=[('', 'Todas')] + DiarioObra.SITUACAO_CHOICES)
-    possui_ocorrencias = forms.BooleanField(required=False, label='Com ocorrencias')
+    possui_ocorrencias = forms.BooleanField(required=False, label='Com ocorrências')
     possui_fotos = forms.BooleanField(required=False, label='Com fotos')
 
     def clean(self):
@@ -57,7 +57,7 @@ class DiarioObraFiltroForm(BootstrapForm):
         data_inicial = cleaned_data.get('data_inicial')
         data_final = cleaned_data.get('data_final')
         if data_inicial and data_final and data_inicial > data_final:
-            raise ValidationError('A data inicial nao pode ser maior que a data final.')
+            raise ValidationError('A data inicial não pode ser maior que a data final.')
         return cleaned_data
 
 
@@ -90,14 +90,14 @@ class DiarioObraForm(BootstrapModelForm):
             'orientacoes': forms.Textarea(attrs={'rows': 3}),
         }
         labels = {
-            'data': 'Data do diario',
-            'responsavel_preenchimento': 'Responsavel pelo preenchimento',
-            'responsavel_tecnico': 'Responsavel tecnico',
-            'condicao_climatica': 'Condicao climatica',
-            'situacao_obra': 'Situacao da obra no dia',
-            'descricao_servicos': 'Descricao geral dos servicos executados',
-            'ocorrencias_interferencias': 'Ocorrencias / interferencias',
-            'houve_visita': 'Houve visita de fiscalizacao/cliente/terceiro',
+            'data': 'Data do diário',
+            'responsavel_preenchimento': 'Responsável pelo preenchimento',
+            'responsavel_tecnico': 'Responsável técnico',
+            'condicao_climatica': 'Condição climática',
+            'situacao_obra': 'Situação da obra no dia',
+            'descricao_servicos': 'Descrição geral dos serviços executados',
+            'ocorrencias_interferencias': 'Ocorrências / interferências',
+            'houve_visita': 'Houve visita de fiscalização/cliente/terceiro',
             'visitante_nome': 'Nome do visitante/fiscal',
         }
 

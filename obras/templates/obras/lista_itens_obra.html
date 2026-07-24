@@ -18,7 +18,7 @@
         {% elif tipo == 'aditivos' %}
             <a href="{% url 'novo_aditivo' obra.id %}" class="btn btn-info">Novo Aditivo/Supressao</a>
         {% elif tipo == 'retencoes-tecnicas' %}
-            <a href="{% url 'nova_retencao_tecnica' obra.id %}" class="btn btn-warning">Nova Retencao</a>
+            <a href="{% url 'nova_retencao_tecnica' obra.id %}" class="btn btn-warning">Nova Retenção</a>
         {% endif %}
         <a href="{% url 'detalhe_obra' obra.id %}" class="btn btn-secondary">Voltar para a obra</a>
     </div>
@@ -36,13 +36,13 @@
                 {% if tipo == 'notas' %}
                 <thead>
                     <tr>
-                        <th>Numero</th>
+                        <th>Número</th>
                         <th>Emissao</th>
                         <th>Status</th>
                         <th>Bruto</th>
                         <th>Retencoes</th>
                         <th>Impostos</th>
-                        <th>Liquido</th>
+                        <th>Líquido</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -71,7 +71,7 @@
                     <tr>
                         <th>Data</th>
                         <th>Categoria</th>
-                        <th>Descricao</th>
+                        <th>Descrição</th>
                         <th>Valor</th>
                         <th></th>
                     </tr>
@@ -98,9 +98,9 @@
                         <th>NF</th>
                         <th>OC</th>
                         <th>Empresa</th>
-                        <th>Descricao</th>
+                        <th>Descrição</th>
                         <th>Vencimento</th>
-                        <th>Medicao desconto</th>
+                        <th>Medição desconto</th>
                         <th>Valor</th>
                         <th></th>
                     </tr>
@@ -130,7 +130,7 @@
                     <tr>
                         <th>Data</th>
                         <th>Tipo</th>
-                        <th>Descricao</th>
+                        <th>Descrição</th>
                         <th>Valor</th>
                         <th></th>
                     </tr>
@@ -155,7 +155,7 @@
                     <tr>
                         <th>Data</th>
                         <th>Tipo</th>
-                        <th>Descricao</th>
+                        <th>Descrição</th>
                         <th>Previsao devolucao</th>
                         <th>Data devolucao</th>
                         <th>Valor</th>

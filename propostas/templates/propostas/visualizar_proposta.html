@@ -61,8 +61,8 @@
         .mt-4 { margin-top: 1.6rem; }
         .signature-block { margin-top: 2.25rem; font-size: 1rem; }
         .signature-name { margin-top: 2rem; font-weight: 700; }
-        .observacoes { margin-top: 1rem; padding-left: 1.1rem; }
-        .observacoes li { margin-bottom: .45rem; }
+        .observações { margin-top: 1rem; padding-left: 1.1rem; }
+        .observações li { margin-bottom: .45rem; }
         .obs-paragraph { white-space: pre-line; line-height: 1.55; }
         .planilha-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: .8rem; }
         .planilha-meta strong { display: block; font-size: .82rem; color: #5f6d76; text-transform: uppercase; letter-spacing: .04em; }
@@ -140,7 +140,7 @@
             <table class="summary-table">
                 <thead>
                     <tr>
-                        <th>Descricao</th>
+                        <th>Descrição</th>
                         <th style="width:18%;">Quantidade</th>
                         <th style="width:24%;">Custo</th>
                     </tr>
@@ -170,7 +170,7 @@
             <div class="mt-3 body-text"><strong>Anexo:</strong> Planilha orcamentaria</div>
             {% endif %}
             {% if proposta.observacoes %}
-            <div class="mt-3 body-text"><strong>Observacoes:</strong></div>
+            <div class="mt-3 body-text"><strong>Observações:</strong></div>
             <div class="obs-paragraph">{{ proposta.observacoes }}</div>
             {% endif %}
         </div>
@@ -209,7 +209,7 @@
                 <thead>
                     <tr>
                         <th style="width:8%;">Item</th>
-                        <th>Descricao</th>
+                        <th>Descrição</th>
                         <th style="width:10%;">Und</th>
                         <th style="width:10%;">Qtde</th>
                         <th style="width:18%;">Preco unitario</th>

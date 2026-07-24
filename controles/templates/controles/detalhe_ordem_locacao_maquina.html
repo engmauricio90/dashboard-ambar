@@ -39,8 +39,8 @@
             <div class="col-md-3"><strong>Valor hora:</strong> R$ {{ ordem.valor_hora|floatformat:2 }}</div>
             <div class="col-md-3"><strong>Previsto:</strong> R$ {{ ordem.valor_previsto_total|floatformat:2 }}</div>
             <div class="col-md-3"><strong>Diferenca:</strong> R$ {{ ordem.diferenca_valor|floatformat:2 }}</div>
-            <div class="col-md-3"><strong>Operador:</strong> {% if ordem.operador_incluso %}Incluso{% else %}Nao incluso{% endif %}</div>
-            {% if ordem.observacoes %}<div class="col-12"><strong>Observacoes:</strong> {{ ordem.observacoes }}</div>{% endif %}
+            <div class="col-md-3"><strong>Operador:</strong> {% if ordem.operador_incluso %}Incluso{% else %}Não incluso{% endif %}</div>
+            {% if ordem.observacoes %}<div class="col-12"><strong>Observações:</strong> {{ ordem.observacoes }}</div>{% endif %}
         </div>
     </div>
 </div>
@@ -82,7 +82,7 @@
         </div>
         <div class="table-responsive">
             <table class="table table-bordered table-striped align-middle mb-0">
-                <thead><tr><th>Numero</th><th>Emissao</th><th>Periodo</th><th>Horas</th><th>Total</th><th>Status</th><th></th></tr></thead>
+                <thead><tr><th>Número</th><th>Emissao</th><th>Período</th><th>Horas</th><th>Total</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                     {% for nota in ordem.notas_fiscais.all %}
                     <tr>
@@ -108,7 +108,7 @@
         <h5 class="mb-3">Historico</h5>
         <div class="table-responsive">
             <table class="table table-bordered align-middle mb-0">
-                <thead><tr><th>Data/Hora</th><th>Evento</th><th>Descricao</th><th>Status</th></tr></thead>
+                <thead><tr><th>Data/Hora</th><th>Evento</th><th>Descrição</th><th>Status</th></tr></thead>
                 <tbody>
                     {% for item in ordem.historico.all %}
                     <tr>

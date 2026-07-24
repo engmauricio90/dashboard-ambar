@@ -52,7 +52,7 @@
                         <td>{{ fornecedor.ie_identidade|default:'-' }}</td>
                         <td>{{ fornecedor.cidade|default:fornecedor.municipio|default:'-' }}{% if fornecedor.uf %}/{{ fornecedor.uf }}{% endif %}</td>
                         <td>{{ fornecedor.telefone|default:'-' }}</td>
-                        <td>{% if fornecedor.ativo %}Sim{% else %}Nao{% endif %}</td>
+                        <td>{% if fornecedor.ativo %}Sim{% else %}Não{% endif %}</td>
                         <td class="text-end">
                             <a href="{% url 'editar_fornecedor' fornecedor.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
                             <a href="{% url 'excluir_fornecedor' fornecedor.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>

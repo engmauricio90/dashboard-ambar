@@ -17,7 +17,7 @@
             {% csrf_token %}
             <div class="row g-3">
                 <div class="col-md-4">
-                    <label class="form-label">Nr do orcamento</label>
+                    <label class="form-label">Nr do orçamento</label>
                     {{ form.numero }}
                     {% if form.numero.errors %}<div class="text-danger small mt-1">{{ form.numero.errors|join:', ' }}</div>{% endif %}
                 </div>
@@ -27,7 +27,7 @@
                     {% if form.data_orcamento.errors %}<div class="text-danger small mt-1">{{ form.data_orcamento.errors|join:', ' }}</div>{% endif %}
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label">Situacao</label>
+                    <label class="form-label">Situação</label>
                     {{ form.situacao }}
                     {% if form.situacao.errors %}<div class="text-danger small mt-1">{{ form.situacao.errors|join:', ' }}</div>{% endif %}
                 </div>
@@ -47,19 +47,19 @@
                     {% if form.responsavel.errors %}<div class="text-danger small mt-1">{{ form.responsavel.errors|join:', ' }}</div>{% endif %}
                 </div>
                 <div class="col-12">
-                    <label class="form-label">Descricao do orcamento</label>
+                    <label class="form-label">Descrição do orçamento</label>
                     {{ form.descricao }}
                     {% if form.descricao.errors %}<div class="text-danger small mt-1">{{ form.descricao.errors|join:', ' }}</div>{% endif %}
                 </div>
                 <div class="col-12">
-                    <label class="form-label">Observacoes</label>
+                    <label class="form-label">Observações</label>
                     {{ form.observacoes }}
                     {% if form.observacoes.errors %}<div class="text-danger small mt-1">{{ form.observacoes.errors|join:', ' }}</div>{% endif %}
                 </div>
             </div>
 
             <div class="mt-4">
-                <button type="submit" class="btn btn-success">Salvar orcamento</button>
+                <button type="submit" class="btn btn-success">Salvar orçamento</button>
             </div>
         </form>
     </div>

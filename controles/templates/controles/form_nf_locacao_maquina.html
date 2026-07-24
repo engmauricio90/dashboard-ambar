@@ -15,17 +15,17 @@
     {% csrf_token %}
     <div class="card-body">
         <div class="row g-3">
-            <div class="col-md-3"><label class="form-label">Numero NF</label>{{ form.numero }}</div>
+            <div class="col-md-3"><label class="form-label">Número NF</label>{{ form.numero }}</div>
             <div class="col-md-3"><label class="form-label">Data emissao</label>{{ form.data_emissao }}</div>
             <div class="col-md-3"><label class="form-label">Status</label>{{ form.status }}</div>
             <div class="col-md-3"><label class="form-label">Horas faturadas</label>{{ form.horas_faturadas }}</div>
-            <div class="col-md-3"><label class="form-label">Periodo inicio</label>{{ form.periodo_inicio }}</div>
-            <div class="col-md-3"><label class="form-label">Periodo fim</label>{{ form.periodo_fim }}</div>
+            <div class="col-md-3"><label class="form-label">Período inicio</label>{{ form.periodo_inicio }}</div>
+            <div class="col-md-3"><label class="form-label">Período fim</label>{{ form.periodo_fim }}</div>
             <div class="col-md-3"><label class="form-label">Valor maquina</label>{{ form.valor_maquina }}</div>
             <div class="col-md-3"><label class="form-label">Valor mobilizacao</label>{{ form.valor_mobilizacao }}</div>
             <div class="col-md-3"><label class="form-label">Valor desmobilizacao</label>{{ form.valor_desmobilizacao }}</div>
             <div class="col-md-3"><label class="form-label">Valor total</label>{{ form.valor_total }}</div>
-            <div class="col-12"><label class="form-label">Observacoes</label>{{ form.observacoes }}</div>
+            <div class="col-12"><label class="form-label">Observações</label>{{ form.observacoes }}</div>
         </div>
         {% if form.non_field_errors %}<div class="alert alert-danger mt-3">{{ form.non_field_errors|join:', ' }}</div>{% endif %}
     </div>

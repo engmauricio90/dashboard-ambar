@@ -6,10 +6,11 @@
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
         <h1 class="mb-1">Radar de Obras</h1>
-        <p class="text-muted mb-0">Lista de orcamentos e oportunidades acompanhadas pela diretoria.</p>
+        <p class="text-muted mb-0">Lista de orçamentos e oportunidades acompanhadas pela diretoria.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a href="{% url 'novo_radar_obra' %}" class="btn btn-success">Novo orcamento</a>
+        <a href="{% url 'radar_obras_pdf' %}?{{ request.GET.urlencode }}" target="_blank" class="btn btn-outline-danger">PDF</a>
+        <a href="{% url 'novo_radar_obra' %}" class="btn btn-success">Novo orçamento</a>
         <a href="{% url 'controles_home' %}" class="btn btn-secondary">Voltar</a>
     </div>
 </div>
@@ -19,52 +20,162 @@
         <div class="card shadow-sm h-100"><div class="card-body"><h6>Aguardando</h6><h4>{{ contadores.aguardando_resposta }}</h4></div></div>
     </div>
     <div class="col-md">
-        <div class="card shadow-sm h-100"><div class="card-body"><h6>Em revisao</h6><h4>{{ contadores.em_revisao }}</h4></div></div>
+        <div class="card shadow-sm h-100"><div class="card-body"><h6>Em revisão</h6><h4>{{ contadores.em_revisao }}</h4></div></div>
     </div>
     <div class="col-md">
         <div class="card shadow-sm h-100"><div class="card-body"><h6>Fechadas</h6><h4>{{ contadores.fechada }}</h4></div></div>
     </div>
     <div class="col-md">
-        <div class="card shadow-sm h-100"><div class="card-body"><h6>Nao foi</h6><h4>{{ contadores.nao_foi_para_frente }}</h4></div></div>
+        <div class="card shadow-sm h-100"><div class="card-body"><h6>Não foi</h6><h4>{{ contadores.nao_foi_para_frente }}</h4></div></div>
     </div>
     <div class="col-md">
-        <div class="card shadow-sm h-100"><div class="card-body"><h6>Canceladas</h6><h4>{{ contadores.cancelada }}</h4></div></div>
+        <div class="card shadow-sm h-100"><div class="card-body"><h6>Arquivados</h6><h4>{{ contadores.arquivados }}</h4></div></div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Busca</label>
+                <input type="search" name="busca" value="{{ filtros.busca }}" class="form-control" placeholder="Número, cliente, descrição ou responsável">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Situação</label>
+                <select name="situacao" class="form-select">
+                    <option value="">Todas</option>
+                    {% for valor, label in situacao_choices %}
+                    <option value="{{ valor }}" {% if filtros.situacao == valor %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Sensor de calor</label>
+                <select name="temperatura" class="form-select">
+                    <option value="">Todos</option>
+                    {% for valor, label in temperatura_choices %}
+                    <option value="{{ valor }}" {% if filtros.temperatura == valor|stringformat:'s' %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Responsável</label>
+                <input type="text" name="responsavel" value="{{ filtros.responsavel }}" class="form-control">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Ordenar por</label>
+                <select name="ordenar" class="form-select">
+                    <option value="temperatura_desc" {% if filtros.ordenar == 'temperatura_desc' %}selected{% endif %}>Mais quente primeiro</option>
+                    <option value="temperatura_asc" {% if filtros.ordenar == 'temperatura_asc' %}selected{% endif %}>Mais frio primeiro</option>
+                    <option value="valor_desc" {% if filtros.ordenar == 'valor_desc' %}selected{% endif %}>Maior valor</option>
+                    <option value="valor_asc" {% if filtros.ordenar == 'valor_asc' %}selected{% endif %}>Menor valor</option>
+                    <option value="data_desc" {% if filtros.ordenar == 'data_desc' %}selected{% endif %}>Mais recente</option>
+                    <option value="data_asc" {% if filtros.ordenar == 'data_asc' %}selected{% endif %}>Mais antigo</option>
+                    <option value="cliente" {% if filtros.ordenar == 'cliente' %}selected{% endif %}>Cliente</option>
+                    <option value="responsavel" {% if filtros.ordenar == 'responsavel' %}selected{% endif %}>Responsável</option>
+                    <option value="situacao" {% if filtros.ordenar == 'situacao' %}selected{% endif %}>Situação</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Valor mínimo</label>
+                <input type="number" step="0.01" name="valor_min" value="{{ filtros.valor_min }}" class="form-control">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Valor máximo</label>
+                <input type="number" step="0.01" name="valor_max" value="{{ filtros.valor_max }}" class="form-control">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Data inicial</label>
+                <input type="date" name="data_inicio" value="{{ filtros.data_inicio }}" class="form-control">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Data final</label>
+                <input type="date" name="data_fim" value="{{ filtros.data_fim }}" class="form-control">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Arquivo</label>
+                <select name="arquivados" class="form-select">
+                    <option value="ativos" {% if filtros.arquivados == 'ativos' %}selected{% endif %}>Ativos</option>
+                    <option value="todos" {% if filtros.arquivados == 'todos' %}selected{% endif %}>Todos</option>
+                    <option value="arquivados" {% if filtros.arquivados == 'arquivados' %}selected{% endif %}>Arquivados</option>
+                </select>
+            </div>
+            <div class="col-md-2 d-flex gap-2">
+                <button class="btn btn-primary flex-fill" type="submit">Filtrar</button>
+                <a class="btn btn-outline-secondary" href="{% url 'lista_radar_obras' %}">Limpar</a>
+            </div>
+        </form>
     </div>
 </div>
 
 <div class="card shadow-sm">
     <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Oportunidades</h5>
+            <span class="text-muted small">{{ orcamentos|length }} registro(s)</span>
+        </div>
         <div class="table-responsive">
             <table class="table table-bordered table-striped align-middle mb-0">
                 <thead>
                     <tr>
-                        <th>Nr orcamento</th>
+                        <th>Nr orçamento</th>
                         <th>Data</th>
                         <th>Cliente</th>
-                        <th>Descricao</th>
-                        <th>Situacao</th>
+                        <th>Descrição</th>
+                        <th style="min-width: 180px;">Situação</th>
+                        <th style="min-width: 170px;">Calor</th>
                         <th>Valor estimado</th>
-                        <th>Responsavel</th>
-                        <th></th>
+                        <th>Responsável</th>
+                        <th style="min-width: 150px;"></th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for orcamento in orcamentos %}
-                    <tr>
+                    <tr {% if orcamento.arquivado %}class="table-light text-muted"{% endif %}>
                         <td>{{ orcamento.numero }}</td>
-                        <td>{{ orcamento.data_orcamento }}</td>
+                        <td>{{ orcamento.data_orcamento|date:'d/m/Y' }}</td>
                         <td>{{ orcamento.cliente }}</td>
                         <td>{{ orcamento.descricao|truncatechars:90 }}</td>
-                        <td>{{ orcamento.get_situacao_display }}</td>
+                        <td>
+                            <form method="post" action="{% url 'atualizar_radar_obra' orcamento.id %}?{{ request.GET.urlencode }}" class="d-flex gap-2">
+                                {% csrf_token %}
+                                <select name="situacao" class="form-select form-select-sm">
+                                    {% for valor, label in situacao_choices %}
+                                    <option value="{{ valor }}" {% if orcamento.situacao == valor %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <input type="hidden" name="temperatura" value="{{ orcamento.temperatura }}">
+                                <button class="btn btn-sm btn-outline-primary" type="submit">OK</button>
+                            </form>
+                        </td>
+                        <td>
+                            <form method="post" action="{% url 'atualizar_radar_obra' orcamento.id %}?{{ request.GET.urlencode }}" class="d-flex gap-2">
+                                {% csrf_token %}
+                                <input type="hidden" name="situacao" value="{{ orcamento.situacao }}">
+                                <select name="temperatura" class="form-select form-select-sm">
+                                    {% for valor, label in temperatura_choices %}
+                                    <option value="{{ valor }}" {% if orcamento.temperatura == valor %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button class="btn btn-sm {% if orcamento.temperatura >= 4 %}btn-danger{% elif orcamento.temperatura == 3 %}btn-warning{% else %}btn-outline-secondary{% endif %}" type="submit">●</button>
+                            </form>
+                        </td>
                         <td>R$ {{ orcamento.valor_estimado|floatformat:2 }}</td>
                         <td>{{ orcamento.responsavel|default:'-' }}</td>
                         <td class="text-end">
-                            <a href="{% url 'editar_radar_obra' orcamento.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                            <div class="d-flex gap-2 justify-content-end">
+                                <form method="post" action="{% url 'arquivar_radar_obra' orcamento.id %}?{{ request.GET.urlencode }}">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="arquivar" value="{% if orcamento.arquivado %}0{% else %}1{% endif %}">
+                                    <button class="btn btn-sm btn-outline-secondary" type="submit">{% if orcamento.arquivado %}Reativar{% else %}Arquivar{% endif %}</button>
+                                </form>
+                                <a href="{% url 'editar_radar_obra' orcamento.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                            </div>
                         </td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="8">Nenhum orcamento cadastrado no radar.</td>
+                        <td colspan="9">Nenhum orçamento encontrado no radar.</td>
                     </tr>
                     {% endfor %}
                 </tbody>

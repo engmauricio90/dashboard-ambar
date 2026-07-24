@@ -91,9 +91,9 @@
         <a href="{% url 'nova_conta_receber' %}?obra={{ obra.id }}" class="btn btn-success">Nova Receita/NF</a>
         <a href="{% url 'nova_conta_pagar' %}?obra={{ obra.id }}" class="btn btn-outline-danger">Nova Despesa</a>
         <a href="{% url 'novo_faturamento_direto' %}?obra={{ obra.id }}" class="btn btn-outline-primary">Faturamento Direto</a>
-        <a href="{% url 'medicoes_obra' obra.id %}" class="btn btn-outline-primary">Medicoes</a>
-        <a href="{% url 'lista_diarios_obra' obra.id %}" class="btn btn-outline-dark">Diarios de Obra</a>
-        <a href="{% url 'nova_retencao_tecnica' obra.id %}" class="btn btn-outline-warning">Nova Retencao Tecnica</a>
+        <a href="{% url 'medicoes_obra' obra.id %}" class="btn btn-outline-primary">Medições</a>
+        <a href="{% url 'lista_diarios_obra' obra.id %}" class="btn btn-outline-dark">Diários de Obra</a>
+        <a href="{% url 'nova_retencao_tecnica' obra.id %}" class="btn btn-outline-warning">Nova Retenção Técnica</a>
         <a href="{% url 'novo_aditivo' obra.id %}" class="btn btn-outline-info">Novo Aditivo/Supressao</a>
         <a href="{% url 'historico_financeiro' obra.id %}" class="btn btn-outline-dark">Historico Financeiro</a>
         <a href="{% url 'relatorio_obra' obra.id %}" class="btn btn-outline-secondary">Relatorio</a>
@@ -209,7 +209,7 @@
     <div class="col-md-3">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h6>Retencao tecnica</h6>
+                <h6>Retenção tecnica</h6>
                 <h4>R$ {{ obra.total_retencoes_tecnicas|floatformat:2 }}</h4>
                 <small class="text-muted">Saldo a recuperar/devolver</small>
             </div>
@@ -287,7 +287,7 @@
             <div class="col-md-8"><span class="text-muted">Valor considerado como deducao do saldo contratual.</span></div>
         </div>
         <div class="row mt-3">
-            <div class="col-12"><strong>Observacoes:</strong> {{ obra.observacoes|default:'-' }}</div>
+            <div class="col-12"><strong>Observações:</strong> {{ obra.observacoes|default:'-' }}</div>
         </div>
     </div>
 </div>
@@ -307,7 +307,7 @@
                     <table class="table table-sm align-middle">
                         <thead>
                             <tr>
-                                <th>Numero</th>
+                                <th>Número</th>
                                 <th>Data</th>
                                 <th>Valor bruto</th>
                                 <th></th>
@@ -383,7 +383,7 @@
         <div class="card shadow-sm">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="mb-0">Diarios de obra</h5>
+                    <h5 class="mb-0">Diários de obra</h5>
                     <div class="d-flex gap-2">
                         <a href="{% url 'lista_diarios_obra' obra.id %}" class="btn btn-sm btn-outline-dark">Ver todos</a>
                         <a href="{% url 'novo_diario_obra' obra.id %}" class="btn btn-sm btn-outline-primary">Novo diario</a>
@@ -395,7 +395,7 @@
                             <tr>
                                 <th>Data</th>
                                 <th>Responsavel</th>
-                                <th>Situacao</th>
+                                <th>Situação</th>
                                 <th>Clima</th>
                                 <th>Status</th>
                                 <th></th>
@@ -522,9 +522,9 @@
                                 <th>NF</th>
                                 <th>OC</th>
                                 <th>Empresa</th>
-                                <th>Descricao</th>
+                                <th>Descrição</th>
                                 <th>Vencimento</th>
-                                <th>Medicao desconto</th>
+                                <th>Medição desconto</th>
                                 <th>Valor</th>
                                 <th></th>
                             </tr>
@@ -571,7 +571,7 @@
                             <tr>
                                 <th>Data</th>
                                 <th>Tipo</th>
-                                <th>Descricao</th>
+                                <th>Descrição</th>
                                 <th>Valor</th>
                                 <th></th>
                             </tr>
@@ -615,7 +615,7 @@
                             <tr>
                                 <th>Data</th>
                                 <th>Tipo</th>
-                                <th>Descricao</th>
+                                <th>Descrição</th>
                                 <th>Previsao devolucao</th>
                                 <th>Data devolucao</th>
                                 <th>Valor</th>

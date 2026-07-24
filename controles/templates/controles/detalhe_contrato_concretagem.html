@@ -82,7 +82,7 @@
                         <td>{{ faturamento.volume_m3|floatformat:2 }}</td>
                         <td>{{ faturamento.get_fck_traco_display|default:'-' }}</td>
                         <td>{{ faturamento.get_tipo_bomba_display|default:'-' }}</td>
-                        <td>{% if faturamento.usou_bomba %}Sim{% else %}Nao{% endif %}</td>
+                        <td>{% if faturamento.usou_bomba %}Sim{% else %}Não{% endif %}</td>
                         <td>R$ {{ faturamento.valor_previsto|floatformat:2 }}</td>
                         <td>R$ {{ faturamento.valor_cobrado|floatformat:2 }}</td>
                         <td>{{ faturamento.numero_documento|default:'-' }}</td>

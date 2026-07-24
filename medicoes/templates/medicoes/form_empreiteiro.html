@@ -6,7 +6,7 @@
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
         <h1 class="mb-1">{{ titulo }}</h1>
-        <p class="text-muted mb-0">Dados reutilizados nas medicoes de empreiteiros.</p>
+        <p class="text-muted mb-0">Dados reutilizados nas medições de empreiteiros.</p>
     </div>
     <a class="btn btn-secondary" href="{% url 'lista_empreiteiros_medicao' %}">Voltar</a>
 </div>
@@ -24,7 +24,7 @@
                 <div class="col-md-2">
                     <div class="form-check mt-4">{{ form.ativo }} <label class="form-check-label">Ativo</label></div>
                 </div>
-                <div class="col-12"><label class="form-label">Observacoes</label>{{ form.observacoes }}</div>
+                <div class="col-12"><label class="form-label">Observações</label>{{ form.observacoes }}</div>
             </div>
             {% for field in form %}
             {% if field.errors %}<div class="text-danger small mt-2">{{ field.label }}: {{ field.errors|join:', ' }}</div>{% endif %}

@@ -31,7 +31,7 @@
                 <h6>Passo a passo</h6>
                 <ol class="mb-0">
                     <li>Exporte o relatorio do Sienge e adapte no Excel para o modelo abaixo.</li>
-                    <li>Deixe a primeira linha como cabecalho, com uma coluna para cada campo do sistema.</li>
+                    <li>Deixe a primeira linha como cabeçalho, com uma coluna para cada campo do sistema.</li>
                     <li>Use uma linha por despesa.</li>
                     <li>Salve como CSV separado por ponto e virgula. Ao abrir no bloco de notas, as colunas devem aparecer separadas por <code>;</code>.</li>
                     <li>Escolha o tipo acima. Ele sera usado como status padrao quando a coluna <code>status</code> estiver vazia.</li>
@@ -63,20 +63,20 @@
                 </thead>
                 <tbody>
                     <tr><td><code>fornecedor</code></td><td>Sim</td><td>Nome do fornecedor/credor.</td></tr>
-                    <tr><td><code>cpf_cnpj</code></td><td>Nao</td><td>Documento do fornecedor, se houver.</td></tr>
+                    <tr><td><code>cpf_cnpj</code></td><td>Não</td><td>Documento do fornecedor, se houver.</td></tr>
                     <tr><td><code>obra</code></td><td>Recomendado</td><td>Nome da obra cadastrada. Use em vez de centro de custo quando a despesa for de obra.</td></tr>
                     <tr><td><code>centro_custo</code></td><td>Recomendado</td><td>Use para escritorio, maquinas, abastecimento ou outro centro que nao seja obra.</td></tr>
-                    <tr><td><code>categoria</code></td><td>Nao</td><td>Ex.: material, mao_de_obra, equipamento, terceiro, administrativa ou outra.</td></tr>
-                    <tr><td><code>numero_nf</code></td><td>Nao</td><td>Numero da nota/documento.</td></tr>
-                    <tr><td><code>descricao</code></td><td>Sim</td><td>Descricao curta da despesa.</td></tr>
-                    <tr><td><code>data_emissao</code></td><td>Nao</td><td>Se vazio, usa a data de vencimento.</td></tr>
+                    <tr><td><code>categoria</code></td><td>Não</td><td>Ex.: material, mao_de_obra, equipamento, terceiro, administrativa ou outra.</td></tr>
+                    <tr><td><code>numero_nf</code></td><td>Não</td><td>Número da nota/documento.</td></tr>
+                    <tr><td><code>descricao</code></td><td>Sim</td><td>Descrição curta da despesa.</td></tr>
+                    <tr><td><code>data_emissao</code></td><td>Não</td><td>Se vazio, usa a data de vencimento.</td></tr>
                     <tr><td><code>data_vencimento</code></td><td>Sim</td><td>Formato dd/mm/aaaa.</td></tr>
                     <tr><td><code>valor</code></td><td>Sim</td><td>Valor previsto/original da conta.</td></tr>
-                    <tr><td><code>status</code></td><td>Nao</td><td>aberto, pago ou cancelado. Se vazio, usa o tipo escolhido acima.</td></tr>
+                    <tr><td><code>status</code></td><td>Não</td><td>aberto, pago ou cancelado. Se vazio, usa o tipo escolhido acima.</td></tr>
                     <tr><td><code>data_pagamento</code></td><td>Somente pagas</td><td>Data real do pagamento.</td></tr>
                     <tr><td><code>valor_pago</code></td><td>Somente pagas</td><td>Valor efetivamente pago. Se vazio em conta paga, usa o valor da conta.</td></tr>
-                    <tr><td><code>observacoes</code></td><td>Nao</td><td>Informacao complementar.</td></tr>
-                    <tr><td><code>codigo_externo</code></td><td>Nao</td><td>Identificador unico da linha. Ajuda a atualizar sem duplicar.</td></tr>
+                    <tr><td><code>observações</code></td><td>Não</td><td>Informacao complementar.</td></tr>
+                    <tr><td><code>codigo_externo</code></td><td>Não</td><td>Identificador unico da linha. Ajuda a atualizar sem duplicar.</td></tr>
                 </tbody>
             </table>
         </div>

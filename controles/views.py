@@ -1971,19 +1971,209 @@ def nova_locadora(request):
 
 
 def lista_radar_obras(request):
-    orcamentos = OrcamentoRadarObra.objects.all()
+    orcamentos = _radar_obras_queryset(request)
+    ativos = OrcamentoRadarObra.objects.filter(arquivado=False)
     contadores = {
-        'aguardando_resposta': orcamentos.filter(situacao='aguardando_resposta').count(),
-        'em_revisao': orcamentos.filter(situacao='em_revisao').count(),
-        'fechada': orcamentos.filter(situacao='fechada').count(),
-        'nao_foi_para_frente': orcamentos.filter(situacao='nao_foi_para_frente').count(),
-        'cancelada': orcamentos.filter(situacao='cancelada').count(),
+        'aguardando_resposta': ativos.filter(situacao='aguardando_resposta').count(),
+        'em_revisao': ativos.filter(situacao='em_revisao').count(),
+        'fechada': ativos.filter(situacao='fechada').count(),
+        'nao_foi_para_frente': ativos.filter(situacao='nao_foi_para_frente').count(),
+        'cancelada': ativos.filter(situacao='cancelada').count(),
+        'arquivados': OrcamentoRadarObra.objects.filter(arquivado=True).count(),
     }
     return render(
         request,
         'controles/lista_radar_obras.html',
-        {'orcamentos': orcamentos, 'contadores': contadores},
+        {
+            'orcamentos': orcamentos,
+            'contadores': contadores,
+            'filtros': _radar_obras_filtros(request),
+            'situacao_choices': OrcamentoRadarObra.SITUACAO_CHOICES,
+            'temperatura_choices': OrcamentoRadarObra.TEMPERATURA_CHOICES,
+        },
     )
+
+
+def _radar_obras_filtros(request):
+    return {
+        'busca': request.GET.get('busca', '').strip(),
+        'situacao': request.GET.get('situacao', ''),
+        'temperatura': request.GET.get('temperatura', ''),
+        'responsavel': request.GET.get('responsavel', '').strip(),
+        'valor_min': request.GET.get('valor_min', '').strip(),
+        'valor_max': request.GET.get('valor_max', '').strip(),
+        'data_inicio': request.GET.get('data_inicio', ''),
+        'data_fim': request.GET.get('data_fim', ''),
+        'arquivados': request.GET.get('arquivados', 'ativos'),
+        'ordenar': request.GET.get('ordenar', 'temperatura_desc'),
+    }
+
+
+def _radar_obras_queryset(request):
+    filtros = _radar_obras_filtros(request)
+    queryset = OrcamentoRadarObra.objects.all()
+
+    if filtros['arquivados'] == 'arquivados':
+        queryset = queryset.filter(arquivado=True)
+    elif filtros['arquivados'] != 'todos':
+        queryset = queryset.filter(arquivado=False)
+
+    if filtros['busca']:
+        busca = filtros['busca']
+        queryset = queryset.filter(
+            Q(numero__icontains=busca)
+            | Q(cliente__icontains=busca)
+            | Q(descricao__icontains=busca)
+            | Q(responsavel__icontains=busca)
+        )
+    if filtros['situacao']:
+        queryset = queryset.filter(situacao=filtros['situacao'])
+    if filtros['temperatura']:
+        queryset = queryset.filter(temperatura=filtros['temperatura'])
+    if filtros['responsavel']:
+        queryset = queryset.filter(responsavel__icontains=filtros['responsavel'])
+    if filtros['valor_min']:
+        try:
+            queryset = queryset.filter(valor_estimado__gte=Decimal(filtros['valor_min'].replace(',', '.')))
+        except Exception:
+            pass
+    if filtros['valor_max']:
+        try:
+            queryset = queryset.filter(valor_estimado__lte=Decimal(filtros['valor_max'].replace(',', '.')))
+        except Exception:
+            pass
+    if filtros['data_inicio']:
+        queryset = queryset.filter(data_orcamento__gte=filtros['data_inicio'])
+    if filtros['data_fim']:
+        queryset = queryset.filter(data_orcamento__lte=filtros['data_fim'])
+
+    order_map = {
+        'temperatura_desc': ['-temperatura', '-valor_estimado', '-data_orcamento'],
+        'temperatura_asc': ['temperatura', '-valor_estimado', '-data_orcamento'],
+        'valor_desc': ['-valor_estimado', '-temperatura', '-data_orcamento'],
+        'valor_asc': ['valor_estimado', '-temperatura', '-data_orcamento'],
+        'data_desc': ['-data_orcamento', '-id'],
+        'data_asc': ['data_orcamento', 'id'],
+        'cliente': ['cliente', '-data_orcamento'],
+        'responsavel': ['responsavel', '-temperatura', '-valor_estimado'],
+        'situacao': ['situacao', '-temperatura', '-valor_estimado'],
+    }
+    return queryset.order_by(*order_map.get(filtros['ordenar'], order_map['temperatura_desc']))
+
+
+def atualizar_radar_obra(request, orcamento_id):
+    orcamento = get_object_or_404(OrcamentoRadarObra, id=orcamento_id)
+    if request.method == 'POST':
+        situacoes = {choice[0] for choice in OrcamentoRadarObra.SITUACAO_CHOICES}
+        temperaturas = {str(choice[0]) for choice in OrcamentoRadarObra.TEMPERATURA_CHOICES}
+        situacao = request.POST.get('situacao')
+        temperatura = request.POST.get('temperatura')
+        update_fields = []
+        if situacao in situacoes:
+            orcamento.situacao = situacao
+            update_fields.append('situacao')
+        if temperatura in temperaturas:
+            orcamento.temperatura = int(temperatura)
+            update_fields.append('temperatura')
+        if update_fields:
+            orcamento.save(update_fields=update_fields + ['updated_at'])
+            messages.success(request, 'Radar atualizado com sucesso.')
+    return redirect(f"{reverse('lista_radar_obras')}?{request.GET.urlencode()}")
+
+
+def arquivar_radar_obra(request, orcamento_id):
+    orcamento = get_object_or_404(OrcamentoRadarObra, id=orcamento_id)
+    if request.method == 'POST':
+        orcamento.arquivado = request.POST.get('arquivar') == '1'
+        orcamento.save(update_fields=['arquivado', 'updated_at'])
+        messages.success(request, 'Orçamento arquivado.' if orcamento.arquivado else 'Orçamento reativado.')
+    return redirect(f"{reverse('lista_radar_obras')}?{request.GET.urlencode()}")
+
+
+def radar_obras_pdf(request):
+    orcamentos = list(_radar_obras_queryset(request))
+    pdf = _radar_obras_pdf(orcamentos, _radar_obras_filtros(request))
+    response = HttpResponse(pdf, content_type='application/pdf')
+    response['Content-Disposition'] = 'inline; filename="radar_obras.pdf"'
+    return response
+
+
+def _radar_obras_pdf(orcamentos, filtros):
+    page_w, page_h = 1754, 1240
+    margin = 52
+    row_h = 34
+    header_h = 38
+    rows_per_page = 25
+    widths = [125, 120, 200, 385, 180, 110, 155, 180]
+    chunks = [orcamentos[i : i + rows_per_page] for i in range(0, len(orcamentos), rows_per_page)] or [[]]
+    pages = []
+    title_font = _font(28, True)
+    header_font = _font(18, True)
+    cell_font = _font(16)
+    small_font = _font(14)
+    dark = (17, 24, 39)
+    muted = (75, 85, 99)
+    border = (190, 197, 208)
+    header_bg = (229, 231, 235)
+
+    def draw_cell(draw, text, x, y, w, h, font, fill=dark, bg=None, align='left', bold_border=1):
+        if bg:
+            draw.rectangle((x, y, x + w, y + h), fill=bg, outline=border, width=bold_border)
+        else:
+            draw.rectangle((x, y, x + w, y + h), outline=border, width=bold_border)
+        clean = str(text or '-')
+        avg = max(font.getlength('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz') / 52, 1)
+        lines = textwrap.wrap(clean, width=max(int((w - 10) / avg), 6)) or ['']
+        line_h = font.getbbox('Ag')[3] - font.getbbox('Ag')[1] + 4
+        y_text = y + max((h - min(len(lines), 2) * line_h) // 2, 3)
+        for line in lines[:2]:
+            if align == 'right':
+                x_text = x + w - font.getlength(line) - 6
+            elif align == 'center':
+                x_text = x + (w - font.getlength(line)) / 2
+            else:
+                x_text = x + 6
+            draw.text((x_text, y_text), line, font=font, fill=fill)
+            y_text += line_h
+
+    for page_index, chunk in enumerate(chunks, start=1):
+        image = Image.new('RGB', (page_w, page_h), 'white')
+        draw = ImageDraw.Draw(image)
+        y = 36
+        draw.text((margin, y), 'Radar de Obras', font=title_font, fill=dark)
+        draw.text((page_w - margin - 210, y + 8), f'Página {page_index} de {len(chunks)}', font=small_font, fill=muted)
+        y += 46
+        resumo = f"Filtros: {filtros['arquivados']} | Ordenação: {filtros['ordenar']} | Registros: {len(orcamentos)}"
+        draw.text((margin, y), resumo, font=small_font, fill=muted)
+        y += 28
+        headers = ['Nr orçamento', 'Data', 'Cliente', 'Descrição', 'Situação', 'Calor', 'Valor', 'Responsável']
+        x = margin
+        for header, width in zip(headers, widths):
+            draw_cell(draw, header, x, y, width, header_h, header_font, bg=header_bg, align='center', bold_border=2)
+            x += width
+        y += header_h
+        for orcamento in chunk:
+            x = margin
+            row = [
+                orcamento.numero,
+                orcamento.data_orcamento.strftime('%d/%m/%Y'),
+                orcamento.cliente,
+                orcamento.descricao,
+                orcamento.get_situacao_display(),
+                orcamento.get_temperatura_display(),
+                _format_money(orcamento.valor_estimado),
+                orcamento.responsavel or '-',
+            ]
+            for index, (value, width) in enumerate(zip(row, widths)):
+                align = 'right' if index == 6 else 'center' if index in {0, 1, 4, 5} else 'left'
+                draw_cell(draw, value, x, y, width, row_h, cell_font, align=align)
+                x += width
+            y += row_h
+        pages.append(image)
+
+    buffer = BytesIO()
+    pages[0].save(buffer, 'PDF', save_all=True, append_images=pages[1:], resolution=150)
+    return buffer.getvalue()
 
 
 def novo_radar_obra(request):

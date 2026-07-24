@@ -1,18 +1,18 @@
 {% extends 'base.html' %}
 
-{% block title %}Medicoes - {{ obra.nome_obra }}{% endblock %}
+{% block title %}Medições - {{ obra.nome_obra }}{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
-        <h1 class="mb-1">Medicoes da obra</h1>
+        <h1 class="mb-1">Medições da obra</h1>
         <p class="text-muted mb-0">{{ obra.nome_obra }}</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-primary" href="{% url 'importar_orcamento_medicao' %}?obra={{ obra.id }}">Importar planilha</a>
         <a class="btn btn-outline-primary" href="{% url 'novo_orcamento_manual_medicao' %}?tipo=construtora&obra={{ obra.id }}">Planilha manual construtora</a>
         <a class="btn btn-outline-primary" href="{% url 'novo_orcamento_manual_medicao' %}?tipo=empreiteiro&obra={{ obra.id }}">Planilha manual empreiteiro</a>
-        <a class="btn btn-outline-dark" href="{% url 'nova_medicao_empreiteiro_simples' %}?obra={{ obra.id }}">Medicao simples</a>
+        <a class="btn btn-outline-dark" href="{% url 'nova_medicao_empreiteiro_simples' %}?obra={{ obra.id }}">Medição simples</a>
         <a class="btn btn-secondary" href="{% url 'medicoes_construtora_home' %}">Voltar</a>
     </div>
 </div>
@@ -29,7 +29,7 @@
                         <th>Contrato</th>
                         <th>Medido</th>
                         <th>Saldo</th>
-                        <th>Medicoes</th>
+                        <th>Medições</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -49,7 +49,7 @@
                         <td>{{ planilha.medicoes_construtora.count|add:planilha.medicoes_empreiteiro.count }}</td>
                         <td class="text-end">
                             {% if planilha.tipo == 'construtora' %}
-                            <a class="btn btn-sm btn-primary" href="{% url 'nova_medicao_construtora' planilha.id %}">Nova medicao</a>
+                            <a class="btn btn-sm btn-primary" href="{% url 'nova_medicao_construtora' planilha.id %}">Nova medição</a>
                             {% else %}
                             <a class="btn btn-sm btn-primary" href="{% url 'nova_medicao_empreiteiro_cumulativa' planilha.id %}">Nova cumulativa</a>
                             {% endif %}
@@ -69,19 +69,19 @@
     <div class="col-lg-6">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h5 class="mb-3">Medicoes da construtora</h5>
+                <h5 class="mb-3">Medições da construtora</h5>
                 <div class="list-group list-group-flush">
                     {% for medicao in medicoes_construtora %}
                     <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_construtora' medicao.id %}">
-                        Medicao {{ medicao.numero }} - {{ medicao.orcamento.nome }}<br>
+                        Medição {{ medicao.numero }} - {{ medicao.orcamento.nome }}<br>
                         <small class="text-muted">
                             Bruto R$ {{ medicao.total_bruto|floatformat:2 }} |
                             Faturamento direto R$ {{ medicao.total_faturamento_direto|floatformat:2 }} |
-                            Liquido R$ {{ medicao.total_liquido|floatformat:2 }}
+                            Líquido R$ {{ medicao.total_liquido|floatformat:2 }}
                         </small>
                     </a>
                     {% empty %}
-                    <div class="text-muted">Nenhuma medicao da construtora.</div>
+                    <div class="text-muted">Nenhuma medição da construtora.</div>
                     {% endfor %}
                 </div>
             </div>
@@ -90,15 +90,15 @@
     <div class="col-lg-6">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h5 class="mb-3">Medicoes de empreiteiros</h5>
+                <h5 class="mb-3">Medições de empreiteiros</h5>
                 <div class="list-group list-group-flush">
                     {% for medicao in medicoes_empreiteiro %}
                     <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_empreiteiro' medicao.id %}">
-                        {{ medicao.empreiteiro }} - {{ medicao.get_tipo_display }} - Medicao {{ medicao.numero }}<br>
-                        <small class="text-muted">Liquido R$ {{ medicao.total_liquido|floatformat:2 }}</small>
+                        {{ medicao.empreiteiro }} - {{ medicao.get_tipo_display }} - Medição {{ medicao.numero }}<br>
+                        <small class="text-muted">Líquido R$ {{ medicao.total_liquido|floatformat:2 }}</small>
                     </a>
                     {% empty %}
-                    <div class="text-muted">Nenhuma medicao de empreiteiro.</div>
+                    <div class="text-muted">Nenhuma medição de empreiteiro.</div>
                     {% endfor %}
                 </div>
             </div>

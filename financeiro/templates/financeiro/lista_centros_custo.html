@@ -20,7 +20,7 @@
             <thead>
                 <tr>
                     <th>Nome</th>
-                    <th>Descricao</th>
+                    <th>Descrição</th>
                     <th>Ativo</th>
                     <th></th>
                 </tr>
@@ -30,7 +30,7 @@
                 <tr>
                     <td>{{ centro.nome }}</td>
                     <td>{{ centro.descricao|default:'-' }}</td>
-                    <td>{% if centro.ativo %}Sim{% else %}Nao{% endif %}</td>
+                    <td>{% if centro.ativo %}Sim{% else %}Não{% endif %}</td>
                     <td class="text-end">
                         <a href="{% url 'editar_centro_custo' centro.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
                     </td>

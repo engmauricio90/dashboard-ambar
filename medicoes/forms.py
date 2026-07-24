@@ -19,7 +19,7 @@ class ImportarOrcamentoForm(BootstrapForm):
     nome = forms.CharField(max_length=180)
     tipo = forms.ChoiceField(choices=OrcamentoMedicao.TIPO_CHOICES)
     arquivo = forms.FileField(
-        help_text='CSV com cabecalho: item, descricao, unidade, quantidade, unitario material, unitario mao de obra e unitario equipamentos.'
+        help_text='CSV com cabeçalho: item, descricao, unidade, quantidade, unitario material, unitario mao de obra e unitario equipamentos.'
     )
     observacoes = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows': 3}))
 
@@ -131,8 +131,13 @@ class MedicaoConstrutoraForm(BootstrapModelForm):
             'observacoes': forms.Textarea(attrs={'rows': 3}),
         }
         labels = {
-            'retencao_tecnica': 'Retencao tecnica (R$)',
-            'retencao_tecnica_percentual': 'Retencao tecnica (%)',
+            'numero': 'Número',
+            'periodo_inicio': 'Período início',
+            'periodo_fim': 'Período fim',
+            'data_medicao': 'Data medição',
+            'observacoes': 'Observações',
+            'retencao_tecnica': 'Retenção técnica (R$)',
+            'retencao_tecnica_percentual': 'Retenção técnica (%)',
             'issqn': 'ISSQN (R$)',
             'issqn_percentual': 'ISSQN (%)',
             'inss': 'INSS (R$)',
@@ -244,8 +249,13 @@ class MedicaoEmpreiteiroForm(BootstrapModelForm):
             'empreiteiro_cadastro': 'Empreiteiro cadastrado',
             'cpf_cnpj': 'CPF/CNPJ',
             'pix': 'PIX',
-            'retencao_tecnica': 'Retencao tecnica (R$)',
-            'retencao_tecnica_percentual': 'Retencao tecnica (%)',
+            'numero': 'Número',
+            'periodo_inicio': 'Período início',
+            'periodo_fim': 'Período fim',
+            'data_medicao': 'Data medição',
+            'observacoes': 'Observações',
+            'retencao_tecnica': 'Retenção técnica (R$)',
+            'retencao_tecnica_percentual': 'Retenção técnica (%)',
             'desconto_adicional': 'Desconto adicional (R$)',
             'desconto_adicional_percentual': 'Desconto adicional (%)',
         }

@@ -588,6 +588,13 @@ class NotaFiscalLocacaoMaquinaForm(BootstrapModelForm):
 
 
 class OrcamentoRadarObraForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['temperatura'].required = False
+
+    def clean_temperatura(self):
+        return self.cleaned_data.get('temperatura') or 3
+
     class Meta:
         model = OrcamentoRadarObra
         fields = [
@@ -596,8 +603,10 @@ class OrcamentoRadarObraForm(BootstrapModelForm):
             'descricao',
             'data_orcamento',
             'situacao',
+            'temperatura',
             'valor_estimado',
             'responsavel',
+            'arquivado',
             'observacoes',
         ]
         widgets = {

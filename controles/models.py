@@ -908,12 +908,21 @@ class OrcamentoRadarObra(models.Model):
         ('nao_foi_para_frente', 'Nao foi para frente'),
         ('cancelada', 'Cancelada'),
     ]
+    TEMPERATURA_CHOICES = [
+        (5, 'Muito quente'),
+        (4, 'Quente'),
+        (3, 'Morno'),
+        (2, 'Frio'),
+        (1, 'Muito frio'),
+    ]
 
     numero = models.CharField(max_length=50, unique=True)
     cliente = models.CharField(max_length=150)
     descricao = models.TextField()
     data_orcamento = models.DateField()
     situacao = models.CharField(max_length=30, choices=SITUACAO_CHOICES, default='aguardando_resposta')
+    temperatura = models.PositiveSmallIntegerField(choices=TEMPERATURA_CHOICES, default=3)
+    arquivado = models.BooleanField(default=False)
     valor_estimado = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     responsavel = models.CharField(max_length=120, blank=True)
     observacoes = models.TextField(blank=True)

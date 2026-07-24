@@ -16,7 +16,7 @@
     <div class="card-body">
         <div class="row g-3">
             <div class="col-md-3">
-                <label class="form-label">Numero</label>
+                <label class="form-label">Número</label>
                 {{ form.numero }}
                 {% if form.numero.help_text %}<div class="form-text">{{ form.numero.help_text }}</div>{% endif %}
                 {% if form.numero.errors %}<div class="text-danger small mt-1">{{ form.numero.errors|join:', ' }}</div>{% endif %}
@@ -86,7 +86,7 @@
             </div>
 
             <div class="col-12">
-                <label class="form-label">Observacoes</label>
+                <label class="form-label">Observações</label>
                 {{ form.observacoes }}
                 {% if form.observacoes.errors %}<div class="text-danger small mt-1">{{ form.observacoes.errors|join:', ' }}</div>{% endif %}
             </div>

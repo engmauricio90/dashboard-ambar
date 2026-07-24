@@ -6,7 +6,7 @@
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
         <h1 class="mb-1">{{ titulo }}</h1>
-        <p class="text-muted mb-0">Recibo simples de medicao: empreiteiro, periodo, itens, descontos e PDF.</p>
+        <p class="text-muted mb-0">Recibo simples de medição: empreiteiro, periodo, itens, descontos e PDF.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         {% if medicao %}
@@ -54,7 +54,7 @@
                     <thead>
                         <tr>
                             <th style="width: 90px;">Item</th>
-                            <th>Descricao</th>
+                            <th>Descrição</th>
                             <th style="width: 95px;">Und</th>
                             <th style="width: 140px;">Qtd</th>
                             <th style="width: 150px;">Valor unit.</th>
@@ -102,7 +102,7 @@
             <div class="row g-3 mb-3">
                 <div class="col-md-4"><strong>Bruto:</strong> R$ {{ medicao.subtotal_periodo|floatformat:2 }}</div>
                 <div class="col-md-4"><strong>Descontos:</strong> R$ {{ medicao.total_descontos|floatformat:2 }}</div>
-                <div class="col-md-4"><strong>Liquido:</strong> R$ {{ medicao.total_liquido|floatformat:2 }}</div>
+                <div class="col-md-4"><strong>Líquido:</strong> R$ {{ medicao.total_liquido|floatformat:2 }}</div>
             </div>
             <div class="row g-3">
                 {% for field in form %}
@@ -119,7 +119,7 @@
     </div>
     {% endif %}
 
-    <button class="btn btn-primary" type="submit">Salvar medicao</button>
+    <button class="btn btn-primary" type="submit">Salvar medição</button>
 </form>
 {% if empreiteiros_json %}{{ empreiteiros_json|json_script:"empreiteiros-medicao-data" }}{% endif %}
 {% endblock %}

@@ -63,7 +63,7 @@
                 <div class="col-md-4"><label class="form-label">Formato</label>{{ form.formato }}</div>
                 <div class="col-md-3"><label class="form-label">Data inicial</label>{{ form.data_inicio }}</div>
                 <div class="col-md-3"><label class="form-label">Data final</label>{{ form.data_fim }}</div>
-                <div class="col-12"><label class="form-label">Observacoes</label>{{ form.observacoes }}</div>
+                <div class="col-12"><label class="form-label">Observações</label>{{ form.observacoes }}</div>
             </div>
             {% for field in form %}
             {% if field.errors %}<div class="text-danger small mt-2">{{ field.label }}: {{ field.errors|join:', ' }}</div>{% endif %}

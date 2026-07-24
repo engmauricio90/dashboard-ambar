@@ -325,7 +325,7 @@ class MedicoesTests(TestCase):
         response = self.client.get(reverse('nova_medicao_empreiteiro_simples'))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Recibo simples de medicao')
+        self.assertContains(response, 'Recibo simples de medição')
         self.assertContains(response, 'Adicionar item')
         self.assertContains(response, 'Buscar por nome, CPF/CNPJ ou PIX')
         self.assertNotContains(response, 'Empreiteiro novo/manual')
@@ -337,9 +337,9 @@ class MedicoesTests(TestCase):
         response_empreiteiros = self.client.get(reverse('medicoes_empreiteiros_home'))
         response_obra = self.client.get(reverse('medicoes_obra', args=[self.obra.id]))
 
-        self.assertContains(response_construtora, 'Medicao da construtora')
+        self.assertContains(response_construtora, 'Medição da construtora')
         self.assertContains(response_construtora, orcamento.nome)
-        self.assertContains(response_empreiteiros, 'Medicao de empreiteiro')
+        self.assertContains(response_empreiteiros, 'Medição de empreiteiro')
         self.assertContains(response_obra, 'Painel operacional da obra')
 
     def test_medicao_construtora_calcula_acumulado_e_liquido(self):

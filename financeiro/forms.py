@@ -35,7 +35,7 @@ class FornecedorForm(BootstrapModelForm):
             'ativo',
         ]
         labels = {
-            'municipio': 'Municipio legado',
+            'municipio': 'Município legado',
             'uf': 'UF',
         }
         help_texts = {
@@ -105,7 +105,7 @@ class ContaReceberForm(BootstrapModelForm):
         if not obra:
             self.add_error('obra', 'Informe a obra da receita.')
         if not numero_nf:
-            self.add_error('numero_nf', 'Informe o numero da NF para integrar com a obra.')
+            self.add_error('numero_nf', 'Informe o número da NF para integrar com a obra.')
         return cleaned_data
 
 
@@ -115,7 +115,7 @@ class ContaReceberBaixaForm(forms.Form):
         widget=forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date', 'class': 'form-control'}),
     )
     observacoes = forms.CharField(
-        label='Observacoes do recebimento',
+        label='Observações do recebimento',
         required=False,
         widget=forms.Textarea(attrs={'rows': 3, 'class': 'form-control'}),
     )
@@ -127,7 +127,7 @@ class ContaPagarForm(BootstrapModelForm):
         from controles.models import ItemOrdemCompraGeral, OrdemCompraGeral
 
         self.fields['ordem_compra'].queryset = OrdemCompraGeral.objects.all()
-        self.fields['ordem_compra'].empty_label = 'Nao possui OC'
+        self.fields['ordem_compra'].empty_label = 'Não possui OC'
 
         ordem_id = None
         if self.is_bound:
@@ -173,7 +173,7 @@ class ContaPagarForm(BootstrapModelForm):
         }
         labels = {
             'ordem_compra': 'Ordem de compra',
-            'numero_nf': 'Numero da NF',
+            'numero_nf': 'Número da NF',
         }
 
     def clean(self):
@@ -182,7 +182,7 @@ class ContaPagarForm(BootstrapModelForm):
         numero_nf = cleaned_data.get('numero_nf')
         if ordem_compra:
             if not numero_nf:
-                self.add_error('numero_nf', 'Informe o numero da NF para vincular a OC.')
+                self.add_error('numero_nf', 'Informe o número da NF para vincular a OC.')
         return cleaned_data
 
 
@@ -198,7 +198,7 @@ class ContaPagarBaixaForm(forms.Form):
         widget=forms.NumberInput(attrs={'step': '0.01', 'class': 'form-control'}),
     )
     observacoes = forms.CharField(
-        label='Observacoes do pagamento',
+        label='Observações do pagamento',
         required=False,
         widget=forms.Textarea(attrs={'rows': 3, 'class': 'form-control'}),
     )

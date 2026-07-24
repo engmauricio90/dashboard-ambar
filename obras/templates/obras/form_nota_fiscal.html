@@ -19,7 +19,7 @@
             <h5 class="mb-3">Dados da nota fiscal</h5>
             <div class="row g-3">
                 <div class="col-md-4">
-                    <label class="form-label">Numero da NF</label>
+                    <label class="form-label">Número da NF</label>
                     {{ form.numero }}
                     {% if form.numero.errors %}<div class="text-danger small mt-1">{{ form.numero.errors|join:', ' }}</div>{% endif %}
                 </div>
@@ -39,7 +39,7 @@
                     {% if form.valor_bruto.errors %}<div class="text-danger small mt-1">{{ form.valor_bruto.errors|join:', ' }}</div>{% endif %}
                 </div>
                 <div class="col-12">
-                    <label class="form-label">Observacoes</label>
+                    <label class="form-label">Observações</label>
                     {{ form.observacoes }}
                     {% if form.observacoes.errors %}<div class="text-danger small mt-1">{{ form.observacoes.errors|join:', ' }}</div>{% endif %}
                 </div>
@@ -71,7 +71,7 @@
                                 {% if retencao_form.tipo.errors %}<div class="text-danger small mt-1">{{ retencao_form.tipo.errors|join:', ' }}</div>{% endif %}
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label">Descricao</label>
+                                <label class="form-label">Descrição</label>
                                 {{ retencao_form.descricao }}
                                 {% if retencao_form.descricao.errors %}<div class="text-danger small mt-1">{{ retencao_form.descricao.errors|join:', ' }}</div>{% endif %}
                             </div>
@@ -101,7 +101,7 @@
                                     {{ retencoes_formset.empty_form.tipo }}
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label">Descricao</label>
+                                    <label class="form-label">Descrição</label>
                                     {{ retencoes_formset.empty_form.descricao }}
                                 </div>
                                 <div class="col-md-3">
@@ -146,7 +146,7 @@
                                 {% if imposto_form.tipo.errors %}<div class="text-danger small mt-1">{{ imposto_form.tipo.errors|join:', ' }}</div>{% endif %}
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label">Descricao</label>
+                                <label class="form-label">Descrição</label>
                                 {{ imposto_form.descricao }}
                                 {% if imposto_form.descricao.errors %}<div class="text-danger small mt-1">{{ imposto_form.descricao.errors|join:', ' }}</div>{% endif %}
                             </div>
@@ -176,7 +176,7 @@
                                     {{ impostos_formset.empty_form.tipo }}
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label">Descricao</label>
+                                    <label class="form-label">Descrição</label>
                                     {{ impostos_formset.empty_form.descricao }}
                                 </div>
                                 <div class="col-md-3">

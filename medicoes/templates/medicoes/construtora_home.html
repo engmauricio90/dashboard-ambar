@@ -1,12 +1,12 @@
 {% extends 'base.html' %}
 
-{% block title %}Medicao da Construtora{% endblock %}
+{% block title %}Medição da Construtora{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
-        <h1 class="mb-1">Medicao da construtora</h1>
-        <p class="text-muted mb-0">Planilhas por obra, medicoes acumulativas, impostos, descontos e faturamento direto.</p>
+        <h1 class="mb-1">Medição da construtora</h1>
+        <p class="text-muted mb-0">Planilhas por obra, medições acumulativas, impostos, descontos e faturamento direto.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-primary" href="{% url 'novo_orcamento_manual_medicao' %}?tipo=construtora">Criar planilha manual</a>
@@ -18,7 +18,7 @@
 <div class="card shadow-sm mb-4">
     <div class="card-body">
         <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-            <h5 class="mb-0">Obras com medicao da construtora</h5>
+            <h5 class="mb-0">Obras com medição da construtora</h5>
             <span class="text-muted small">{{ obras|length }} obra(s)</span>
         </div>
         <div class="row g-2">
@@ -61,7 +61,7 @@
                         <td>R$ {{ planilha.saldo_medir_construtora|floatformat:2 }}</td>
                         <td>{{ planilha.percentual_medido_construtora|floatformat:2 }}%</td>
                         <td class="text-end">
-                            <a class="btn btn-sm btn-primary" href="{% url 'nova_medicao_construtora' planilha.id %}">Nova medicao</a>
+                            <a class="btn btn-sm btn-primary" href="{% url 'nova_medicao_construtora' planilha.id %}">Nova medição</a>
                             <a class="btn btn-sm btn-outline-secondary" href="{% url 'detalhe_orcamento_medicao' planilha.id %}">Abrir</a>
                         </td>
                     </tr>
@@ -76,19 +76,19 @@
 
 <div class="card shadow-sm">
     <div class="card-body">
-        <h5 class="mb-3">Ultimas medicoes</h5>
+        <h5 class="mb-3">Ultimas medições</h5>
         <div class="list-group list-group-flush">
             {% for medicao in medicoes %}
             <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_construtora' medicao.id %}">
-                Medicao {{ medicao.numero }} - {{ medicao.orcamento.obra.nome_obra }} - {{ medicao.orcamento.nome }}<br>
+                Medição {{ medicao.numero }} - {{ medicao.orcamento.obra.nome_obra }} - {{ medicao.orcamento.nome }}<br>
                 <small class="text-muted">
                     Bruto R$ {{ medicao.total_bruto|floatformat:2 }} |
                     Faturamento direto R$ {{ medicao.total_faturamento_direto|floatformat:2 }} |
-                    Liquido R$ {{ medicao.total_liquido|floatformat:2 }}
+                    Líquido R$ {{ medicao.total_liquido|floatformat:2 }}
                 </small>
             </a>
             {% empty %}
-            <div class="text-muted">Nenhuma medicao da construtora cadastrada.</div>
+            <div class="text-muted">Nenhuma medição da construtora cadastrada.</div>
             {% endfor %}
         </div>
     </div>

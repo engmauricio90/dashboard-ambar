@@ -55,7 +55,7 @@
                             {{ form.data_proposta }}
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label">Situacao</label>
+                            <label class="form-label">Situação</label>
                             {{ form.situacao }}
                         </div>
                         <div class="col-md-4">
@@ -77,7 +77,7 @@
                             <label class="form-label">Planilha detalhada em imagem</label>
                             <div class="image-dropzone">
                                 {{ form.planilha_imagem }}
-                                <div class="helper-text mt-2">Voce pode selecionar uma imagem da planilha ou colar uma imagem copiada da area de transferencia. Essa imagem sera usada na pagina do orcamento detalhado da proposta.</div>
+                                <div class="helper-text mt-2">Voce pode selecionar uma imagem da planilha ou colar uma imagem copiada da area de transferencia. Essa imagem sera usada na pagina do orçamento detalhado da proposta.</div>
                                 <div class="helper-text mt-1">Sugestao pratica: copie a planilha no Excel como imagem, ou tire um print da area desejada e cole aqui.</div>
                                 <div class="mt-3">
                                     <img
@@ -99,7 +99,7 @@
                             {{ form.forma_pagamento }}
                         </div>
                         <div class="col-12">
-                            <label class="form-label">Observacoes do orcamento</label>
+                            <label class="form-label">Observações do orçamento</label>
                             {{ form.observacoes }}
                         </div>
                     </div>
@@ -118,7 +118,7 @@
                             <thead>
                                 <tr>
                                     <th style="width: 80px;">Item</th>
-                                    <th>Descricao</th>
+                                    <th>Descrição</th>
                                     <th style="width: 140px;">Quantidade</th>
                                     <th style="width: 160px;">Valor</th>
                                     <th style="width: 80px;">Excluir</th>
@@ -162,7 +162,7 @@
                 <div class="card-body">
                     <div class="mb-3">
                         <label class="form-label">Colagem rapida da planilha em tabela</label>
-                        <textarea id="excel-planilha-paste" class="paste-box" placeholder="Cole aqui linhas copiadas do Excel com as colunas: Nr item, Descricao, Und, Qtde, Preco unit material/equipamento, Preco unit mao de obra"></textarea>
+                        <textarea id="excel-planilha-paste" class="paste-box" placeholder="Cole aqui linhas copiadas do Excel com as colunas: Nr item, Descrição, Und, Qtde, Preco unit material/equipamento, Preco unit mao de obra"></textarea>
                         <div class="helper-text mt-2">Essa opcao continua disponivel, mas se quiser reproduzir o fluxo do Word com mais fidelidade, priorize o anexo da planilha em imagem logo acima.</div>
                     </div>
                     {{ planilha_formset.management_form }}
@@ -171,7 +171,7 @@
                             <thead>
                                 <tr>
                                     <th style="width: 80px;">Nr item</th>
-                                    <th style="width: 420px;">Descricao</th>
+                                    <th style="width: 420px;">Descrição</th>
                                     <th style="width: 90px;">Und</th>
                                     <th style="width: 110px;">Qtde</th>
                                     <th style="width: 150px;">Preco unit material/equip.</th>
@@ -247,7 +247,7 @@
                 <div class="card-body">
                     {% if proposta %}
                     <div class="mb-3">
-                        <div class="text-muted small">Numero da proposta</div>
+                        <div class="text-muted small">Número da proposta</div>
                         <div class="fw-semibold">{{ proposta.numero_formatado }}</div>
                     </div>
                     {% endif %}

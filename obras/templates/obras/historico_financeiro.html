@@ -11,7 +11,7 @@
     <div class="d-flex gap-2 flex-wrap">
         <a href="{% url 'nova_conta_receber' %}?obra={{ obra.id }}" class="btn btn-success">Nova Receita/NF</a>
         <a href="{% url 'nova_conta_pagar' %}?obra={{ obra.id }}" class="btn btn-outline-danger">Nova Despesa</a>
-        <a href="{% url 'nova_retencao_tecnica' obra.id %}" class="btn btn-outline-warning">Nova Retencao Tecnica</a>
+        <a href="{% url 'nova_retencao_tecnica' obra.id %}" class="btn btn-outline-warning">Nova Retenção Técnica</a>
         <a href="{% url 'novo_aditivo' obra.id %}" class="btn btn-outline-info">Novo Aditivo/Supressao</a>
         <a href="{% url 'detalhe_obra' obra.id %}" class="btn btn-secondary">Voltar para a obra</a>
     </div>
@@ -77,7 +77,7 @@
                     <tr>
                         <th>Data</th>
                         <th>Tipo</th>
-                        <th>Descricao</th>
+                        <th>Descrição</th>
                         <th>Valor</th>
                         <th></th>
                     </tr>

@@ -15,7 +15,7 @@
     {% csrf_token %}
     <div class="card-body">
         <div class="row g-3">
-            <div class="col-md-3"><label class="form-label">Numero</label>{{ form.numero }}{% if form.numero.help_text %}<div class="form-text">{{ form.numero.help_text }}</div>{% endif %}{% if form.numero.errors %}<div class="text-danger small mt-1">{{ form.numero.errors|join:', ' }}</div>{% endif %}</div>
+            <div class="col-md-3"><label class="form-label">Número</label>{{ form.numero }}{% if form.numero.help_text %}<div class="form-text">{{ form.numero.help_text }}</div>{% endif %}{% if form.numero.errors %}<div class="text-danger small mt-1">{{ form.numero.errors|join:', ' }}</div>{% endif %}</div>
             <div class="col-md-3"><label class="form-label">Data solicitacao</label>{{ form.data_solicitacao }}{% if form.data_solicitacao.errors %}<div class="text-danger small mt-1">{{ form.data_solicitacao.errors|join:', ' }}</div>{% endif %}</div>
             <div class="col-md-3"><label class="form-label">Status</label>{{ form.status }}{% if form.status.errors %}<div class="text-danger small mt-1">{{ form.status.errors|join:', ' }}</div>{% endif %}</div>
             <div class="col-md-3"><label class="form-label">Tipo cobranca</label>{{ form.tipo_cobranca }}{% if form.tipo_cobranca.errors %}<div class="text-danger small mt-1">{{ form.tipo_cobranca.errors|join:', ' }}</div>{% endif %}</div>
@@ -49,7 +49,7 @@
             <div class="col-md-3">
                 <div class="form-check mt-4">{{ form.combustivel_incluso }} <label class="form-check-label" for="{{ form.combustivel_incluso.id_for_label }}">Combustivel incluso</label></div>
             </div>
-            <div class="col-12"><label class="form-label">Observacoes</label>{{ form.observacoes }}</div>
+            <div class="col-12"><label class="form-label">Observações</label>{{ form.observacoes }}</div>
         </div>
         {% if form.non_field_errors %}
             <div class="alert alert-danger mt-3">{{ form.non_field_errors|join:', ' }}</div>

@@ -20,7 +20,7 @@
                 <div class="col-md-4"><label class="form-label">Obra</label>{{ form.obra }}</div>
                 <div class="col-md-4"><label class="form-label">Nome da planilha</label>{{ form.nome }}</div>
                 <div class="col-md-4"><label class="form-label">Tipo</label>{{ form.tipo }}</div>
-                <div class="col-12"><label class="form-label">Observacoes</label>{{ form.observacoes }}</div>
+                <div class="col-12"><label class="form-label">Observações</label>{{ form.observacoes }}</div>
             </div>
             {% for field in form %}
             {% if field.errors %}<div class="text-danger small mt-2">{{ field.label }}: {{ field.errors|join:', ' }}</div>{% endif %}
