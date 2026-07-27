@@ -14,6 +14,9 @@
         {% else %}
         <a class="btn btn-primary" href="{% url 'nova_medicao_empreiteiro_cumulativa' orcamento.id %}">Nova medição cumulativa</a>
         {% endif %}
+        {% if orcamento.tipo == 'construtora' %}
+        <a class="btn btn-outline-success" href="{% url 'saldo_contratual_construtora' orcamento.id %}">Saldo contratual</a>
+        {% endif %}
         <a class="btn btn-outline-primary" href="{% url 'editar_itens_orcamento_medicao' orcamento.id %}">Editar itens</a>
         <a class="btn btn-outline-danger" href="{% url 'excluir_orcamento_medicao' orcamento.id %}">Excluir planilha</a>
         <a class="btn btn-secondary" href="{% url 'medicoes_obra' orcamento.obra.id %}">Voltar para obra</a>

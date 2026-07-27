@@ -29,6 +29,7 @@ SECRET_KEY = env('DJANGO_SECRET_KEY', 'dev-insecure-secret-key')
 DEBUG = env_bool('DJANGO_DEBUG', False)
 ALLOWED_HOSTS = env_list('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1')
 CSRF_TRUSTED_ORIGINS = env_list('DJANGO_CSRF_TRUSTED_ORIGINS', '')
+DATA_UPLOAD_MAX_NUMBER_FIELDS = int(env('DJANGO_DATA_UPLOAD_MAX_NUMBER_FIELDS', '20000'))
 
 render_hostname = env('RENDER_EXTERNAL_HOSTNAME')
 if render_hostname and render_hostname not in ALLOWED_HOSTS:

@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+
+{% block title %}Saldo contratual{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Saldo contratual da construtora</h1>
+        <p class="text-muted mb-0">{{ orcamento.nome }} - {{ orcamento.obra }}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-primary" href="{% url 'editar_itens_orcamento_medicao' orcamento.id %}">Editar itens</a>
+        <a class="btn btn-secondary" href="{% url 'detalhe_orcamento_medicao' orcamento.id %}">Voltar</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Material a medir</h6>
+                <h4>R$ {{ totais.material|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Mao de obra a medir</h6>
+                <h4>R$ {{ totais.mao_obra|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Equipamentos a medir</h6>
+                <h4>R$ {{ totais.equipamentos|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Total ainda em contrato</h6>
+                <h4>R$ {{ totais.total|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <div>
+                <h5 class="mb-0">Itens com saldo a medir</h5>
+                <span class="text-muted small">Mostra somente itens que ainda possuem quantidade contratual disponivel.</span>
+            </div>
+            <span class="badge text-bg-light">{{ linhas|length }} item(ns)</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Ref.</th>
+                        <th>Descricao</th>
+                        <th>Un.</th>
+                        <th class="text-center">Qtde contrato</th>
+                        <th class="text-center">Acum. medido</th>
+                        <th class="text-center">Saldo</th>
+                        <th class="text-end">Unit. material</th>
+                        <th class="text-end">Unit. mao obra</th>
+                        <th class="text-end">Unit. equip.</th>
+                        <th class="text-end">Material saldo</th>
+                        <th class="text-end">Mao obra saldo</th>
+                        <th class="text-end">Equip. saldo</th>
+                        <th class="text-end">Total saldo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for linha in linhas %}
+                    <tr>
+                        <td>{{ linha.item.item }}</td>
+                        <td>{{ linha.item.descricao }}</td>
+                        <td>{{ linha.item.unidade }}</td>
+                        <td class="text-center">{{ linha.item.quantidade|floatformat:4 }}</td>
+                        <td class="text-center">{{ linha.quantidade_medida|floatformat:4 }}</td>
+                        <td class="text-center fw-semibold">{{ linha.saldo_quantidade|floatformat:4 }}</td>
+                        <td class="text-end">R$ {{ linha.item.preco_unitario_material|floatformat:4 }}</td>
+                        <td class="text-end">R$ {{ linha.item.preco_unitario_mao_obra|floatformat:4 }}</td>
+                        <td class="text-end">R$ {{ linha.item.preco_unitario_equipamentos|floatformat:4 }}</td>
+                        <td class="text-end">R$ {{ linha.saldo_material|floatformat:2 }}</td>
+                        <td class="text-end">R$ {{ linha.saldo_mao_obra|floatformat:2 }}</td>
+                        <td class="text-end">R$ {{ linha.saldo_equipamentos|floatformat:2 }}</td>
+                        <td class="text-end fw-semibold">R$ {{ linha.saldo_total|floatformat:2 }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="13" class="text-muted">Todos os itens desta planilha ja foram medidos integralmente.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-light">
+                    <tr>
+                        <th colspan="9" class="text-end">Total ainda em contrato</th>
+                        <th class="text-end">R$ {{ totais.material|floatformat:2 }}</th>
+                        <th class="text-end">R$ {{ totais.mao_obra|floatformat:2 }}</th>
+                        <th class="text-end">R$ {{ totais.equipamentos|floatformat:2 }}</th>
+                        <th class="text-end">R$ {{ totais.total|floatformat:2 }}</th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

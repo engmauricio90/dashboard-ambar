@@ -16,6 +16,11 @@ urlpatterns = [
     path('orcamentos/manual/novo/', views.novo_orcamento_manual, name='novo_orcamento_manual_medicao'),
     path('orcamentos/<int:orcamento_id>/', views.detalhe_orcamento, name='detalhe_orcamento_medicao'),
     path('orcamentos/<int:orcamento_id>/itens/editar/', views.editar_itens_orcamento, name='editar_itens_orcamento_medicao'),
+    path(
+        'orcamentos/<int:orcamento_id>/saldo-contratual/',
+        views.saldo_contratual_construtora,
+        name='saldo_contratual_construtora',
+    ),
     path('orcamentos/<int:orcamento_id>/excluir/', views.excluir_orcamento, name='excluir_orcamento_medicao'),
     path(
         'orcamentos/<int:orcamento_id>/construtora/nova/',

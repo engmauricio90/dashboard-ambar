@@ -197,6 +197,44 @@ class MedicoesTests(TestCase):
         self.assertEqual(item.preco_unitario_total, Decimal('17.6666'))
         self.assertEqual(orcamento.itens.count(), 2)
 
+    def test_saldo_contratual_construtora_mostra_somente_itens_com_saldo(self):
+        orcamento, item = self._orcamento()
+        item_medido_total = ItemOrcamentoMedicao.objects.create(
+            orcamento=orcamento,
+            item='2.1',
+            descricao='Servico ja concluido',
+            unidade='m',
+            quantidade=Decimal('10.0000'),
+            preco_unitario_material=Decimal('1.0000'),
+            preco_unitario_mao_obra=Decimal('1.0000'),
+            preco_unitario_equipamentos=Decimal('0.0000'),
+        )
+        medicao = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=1,
+            periodo_inicio=date(2026, 1, 1),
+            periodo_fim=date(2026, 1, 31),
+            data_medicao=date(2026, 1, 31),
+        )
+        ItemMedicaoConstrutora.objects.create(
+            medicao=medicao,
+            item_orcamento=item,
+            quantidade_periodo=Decimal('40.0000'),
+        )
+        ItemMedicaoConstrutora.objects.create(
+            medicao=medicao,
+            item_orcamento=item_medido_total,
+            quantidade_periodo=Decimal('10.0000'),
+        )
+
+        response = self.client.get(reverse('saldo_contratual_construtora', args=[orcamento.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Escavacao')
+        self.assertContains(response, '60,0000')
+        self.assertContains(response, 'R$ 1.020,00')
+        self.assertNotContains(response, 'Servico ja concluido')
+
     def test_cria_planilha_manual_e_medicao_construtora(self):
         response = self.client.post(
             reverse('novo_orcamento_manual_medicao'),

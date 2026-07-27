@@ -9,7 +9,7 @@ from pathlib import Path
 from django.conf import settings
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -833,6 +833,68 @@ def detalhe_orcamento(request, orcamento_id):
             'itens': itens,
             'medicoes_construtora': medicoes_construtora,
             'medicoes_empreiteiro': medicoes_empreiteiro,
+        },
+    )
+
+
+def _saldo_contratual_construtora(orcamento):
+    medidos = {
+        row['item_orcamento_id']: row['total'] or Decimal('0')
+        for row in ItemMedicaoConstrutora.objects.filter(medicao__orcamento=orcamento)
+        .values('item_orcamento_id')
+        .annotate(total=Sum('quantidade_periodo'))
+    }
+    linhas = []
+    totais = {
+        'material': Decimal('0'),
+        'mao_obra': Decimal('0'),
+        'equipamentos': Decimal('0'),
+        'total': Decimal('0'),
+    }
+
+    for item in orcamento.itens.all():
+        quantidade_medida = medidos.get(item.id, Decimal('0'))
+        saldo_quantidade = max(item.quantidade - quantidade_medida, Decimal('0'))
+        if saldo_quantidade <= 0:
+            continue
+
+        saldo_material = saldo_quantidade * item.preco_unitario_material
+        saldo_mao_obra = saldo_quantidade * item.preco_unitario_mao_obra
+        saldo_equipamentos = saldo_quantidade * item.preco_unitario_equipamentos
+        saldo_total = saldo_material + saldo_mao_obra + saldo_equipamentos
+        linhas.append(
+            {
+                'item': item,
+                'quantidade_medida': quantidade_medida,
+                'saldo_quantidade': saldo_quantidade,
+                'saldo_material': saldo_material,
+                'saldo_mao_obra': saldo_mao_obra,
+                'saldo_equipamentos': saldo_equipamentos,
+                'saldo_total': saldo_total,
+            }
+        )
+        totais['material'] += saldo_material
+        totais['mao_obra'] += saldo_mao_obra
+        totais['equipamentos'] += saldo_equipamentos
+        totais['total'] += saldo_total
+
+    return linhas, totais
+
+
+def saldo_contratual_construtora(request, orcamento_id):
+    orcamento = get_object_or_404(
+        OrcamentoMedicao.objects.select_related('obra').prefetch_related('itens'),
+        id=orcamento_id,
+        tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
+    )
+    linhas, totais = _saldo_contratual_construtora(orcamento)
+    return render(
+        request,
+        'medicoes/saldo_contratual_construtora.html',
+        {
+            'orcamento': orcamento,
+            'linhas': linhas,
+            'totais': totais,
         },
     )
 
