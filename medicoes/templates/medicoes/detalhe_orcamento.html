@@ -38,6 +38,12 @@
                 <thead><tr><th>Item</th><th>Descrição</th><th>Und</th><th>Qtd</th><th>Unitario</th><th>Total</th></tr></thead>
                 <tbody>
                     {% for item in itens %}
+                    {% if item.eh_grupo %}
+                    <tr class="table-secondary fw-semibold">
+                        <td>{{ item.item }}</td>
+                        <td colspan="5">{{ item.descricao }}</td>
+                    </tr>
+                    {% else %}
                     <tr>
                         <td>{{ item.item }}</td>
                         <td>{{ item.descricao }}</td>
@@ -46,6 +52,7 @@
                         <td>R$ {{ item.preco_unitario_total|floatformat:4 }}</td>
                         <td>R$ {{ item.valor_total|floatformat:2 }}</td>
                     </tr>
+                    {% endif %}
                     {% empty %}
                     <tr><td colspan="6">Nenhum item importado.</td></tr>
                     {% endfor %}

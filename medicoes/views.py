@@ -179,7 +179,7 @@ def _percent_from_item(item):
 
 
 def _pdf_medicao_construtora(medicao):
-    itens = list(medicao.itens.select_related('item_orcamento'))
+    itens = _itens_medicao_construtora_com_grupos(medicao)
     page_w, page_h = 2339, 1654
     margin = 60
     table_w = page_w - (margin * 2)
@@ -319,10 +319,13 @@ def _pdf_medicao_construtora(medicao):
             measured_cell_bgs[measured_index] = measured_bg
 
         for item in chunk:
+            if isinstance(item, ItemOrcamentoMedicao) and item.eh_grupo:
+                row = [''] * len(widths)
+                row[0] = item.item
+                row[1] = item.descricao
+                y = _draw_report_row(draw, row, margin, y, widths, row_h, table_bold, bg=section_bg)
+                continue
             base = item.item_orcamento
-            is_section = not base.unidade and not base.preco_unitario_total and not base.quantidade
-            font = table_bold if is_section else table_font
-            bg = section_bg if is_section else None
             row = [
                 base.item,
                 base.descricao,
@@ -340,7 +343,7 @@ def _pdf_medicao_construtora(medicao):
                 _money(item.valor_equipamentos_periodo),
                 _money(item.valor_periodo),
             ]
-            y = _draw_report_row(draw, row, margin, y, widths, row_h, font, bg=bg, cell_bgs=measured_cell_bgs)
+            y = _draw_report_row(draw, row, margin, y, widths, row_h, table_font, cell_bgs=measured_cell_bgs)
 
         if page_index == len(chunks) - 1:
             totalizer_rows = [
@@ -461,6 +464,7 @@ def _normalize_header(value):
 
 HEADER_ALIASES = {
     'item': ['item', 'codigo', 'cod'],
+    'tipo': ['tipo', 'classe', 'categoria'],
     'descricao': ['descricao', 'descricaodoservico', 'servico'],
     'unidade': ['unidade', 'un', 'und'],
     'quantidade': ['quantidade', 'qtd', 'quant'],
@@ -473,7 +477,7 @@ HEADER_ALIASES = {
         'unitario',
         'preco',
     ],
-    'preco_unitario_mao_obra': ['precounitariomaodeobra', 'unitariomaodeobra', 'maodeobra'],
+    'preco_unitario_mao_obra': ['precounitariomaodeobra', 'precounitariomaoobra', 'unitariomaodeobra', 'unitariomaoobra', 'maodeobra'],
     'preco_unitario_equipamentos': ['precounitarioequipamentos', 'unitarioequipamentos', 'equipamentos', 'equipamento'],
 }
 
@@ -484,6 +488,29 @@ def _value(row, field):
         if alias in normalized:
             return normalized[alias]
     return ''
+
+
+def _is_integer_reference(value):
+    text = str(value or '').strip()
+    return bool(text) and text.isdigit()
+
+
+def _tipo_item_orcamento(row, item, unidade, quantidade, material, mao_obra, equipamentos):
+    tipo = _normalize_header(_value(row, 'tipo'))
+    if tipo in {'grupo', 'titulo', 'disciplina', 'separador'}:
+        return ItemOrcamentoMedicao.TIPO_GRUPO
+    if tipo in {'item', 'servico', 'medivel', 'itemmedivel'}:
+        return ItemOrcamentoMedicao.TIPO_ITEM
+    if (
+        _is_integer_reference(item)
+        and not unidade
+        and quantidade == Decimal('0')
+        and material == Decimal('0')
+        and mao_obra == Decimal('0')
+        and equipamentos == Decimal('0')
+    ):
+        return ItemOrcamentoMedicao.TIPO_GRUPO
+    return ItemOrcamentoMedicao.TIPO_ITEM
 
 
 def _next_numero(model, **filters):
@@ -768,16 +795,30 @@ def importar_orcamento(request):
                     descricao = _value(row, 'descricao').strip()
                     if not descricao:
                         continue
+                    item_ref = _value(row, 'item').strip() or str(len(itens) + 1)
+                    unidade = _value(row, 'unidade').strip()
+                    quantidade = _decimal(_value(row, 'quantidade'))
+                    material = _decimal(_value(row, 'preco_unitario_material'))
+                    mao_obra = _decimal(_value(row, 'preco_unitario_mao_obra'))
+                    equipamentos = _decimal(_value(row, 'preco_unitario_equipamentos'))
+                    tipo_item = _tipo_item_orcamento(row, item_ref, unidade, quantidade, material, mao_obra, equipamentos)
+                    if tipo_item == ItemOrcamentoMedicao.TIPO_GRUPO:
+                        unidade = ''
+                        quantidade = Decimal('0')
+                        material = Decimal('0')
+                        mao_obra = Decimal('0')
+                        equipamentos = Decimal('0')
                     itens.append(
                         ItemOrcamentoMedicao(
                             orcamento=orcamento,
-                            item=_value(row, 'item').strip() or str(len(itens) + 1),
+                            tipo=tipo_item,
+                            item=item_ref,
                             descricao=descricao,
-                            unidade=_value(row, 'unidade').strip(),
-                            quantidade=_decimal(_value(row, 'quantidade')),
-                            preco_unitario_material=_decimal(_value(row, 'preco_unitario_material')),
-                            preco_unitario_mao_obra=_decimal(_value(row, 'preco_unitario_mao_obra')),
-                            preco_unitario_equipamentos=_decimal(_value(row, 'preco_unitario_equipamentos')),
+                            unidade=unidade,
+                            quantidade=quantidade,
+                            preco_unitario_material=material,
+                            preco_unitario_mao_obra=mao_obra,
+                            preco_unitario_equipamentos=equipamentos,
                         )
                     )
                 ItemOrcamentoMedicao.objects.bulk_create(itens)
@@ -852,7 +893,7 @@ def _saldo_contratual_construtora(orcamento):
         'total': Decimal('0'),
     }
 
-    for item in orcamento.itens.all():
+    for item in orcamento.itens.filter(tipo=ItemOrcamentoMedicao.TIPO_ITEM):
         quantidade_medida = medidos.get(item.id, Decimal('0'))
         saldo_quantidade = max(item.quantidade - quantidade_medida, Decimal('0'))
         if saldo_quantidade <= 0:
@@ -879,6 +920,31 @@ def _saldo_contratual_construtora(orcamento):
         totais['total'] += saldo_total
 
     return linhas, totais
+
+
+def _linhas_medicao_construtora_formset(medicao, formset):
+    forms_by_item = {form.instance.item_orcamento_id: form for form in formset.forms}
+    linhas = []
+    for item in medicao.orcamento.itens.all():
+        if item.eh_grupo:
+            linhas.append({'tipo': 'grupo', 'item': item})
+        elif item.id in forms_by_item:
+            linhas.append({'tipo': 'item', 'form': forms_by_item[item.id]})
+    return linhas
+
+
+def _itens_medicao_construtora_com_grupos(medicao):
+    itens_medicao = {
+        item.item_orcamento_id: item
+        for item in medicao.itens.select_related('item_orcamento')
+    }
+    linhas = []
+    for item_orcamento in medicao.orcamento.itens.all():
+        if item_orcamento.eh_grupo:
+            linhas.append(item_orcamento)
+        elif item_orcamento.id in itens_medicao:
+            linhas.append(itens_medicao[item_orcamento.id])
+    return linhas
 
 
 def saldo_contratual_construtora(request, orcamento_id):
@@ -1156,7 +1222,10 @@ def nova_medicao_construtora(request, orcamento_id):
                 medicao.orcamento = orcamento
                 medicao.save()
                 ItemMedicaoConstrutora.objects.bulk_create(
-                    [ItemMedicaoConstrutora(medicao=medicao, item_orcamento=item) for item in orcamento.itens.all()]
+                    [
+                        ItemMedicaoConstrutora(medicao=medicao, item_orcamento=item)
+                        for item in orcamento.itens.filter(tipo=ItemOrcamentoMedicao.TIPO_ITEM)
+                    ]
                 )
             messages.success(request, 'Medicao criada. Agora preencha as quantidades medidas.')
             return redirect('editar_medicao_construtora', medicao_id=medicao.id)
@@ -1169,7 +1238,10 @@ def editar_medicao_construtora(request, medicao_id):
     medicao = get_object_or_404(MedicaoConstrutora.objects.select_related('orcamento', 'orcamento__obra'), id=medicao_id)
     if not medicao.itens.exists():
         ItemMedicaoConstrutora.objects.bulk_create(
-            [ItemMedicaoConstrutora(medicao=medicao, item_orcamento=item) for item in medicao.orcamento.itens.all()]
+            [
+                ItemMedicaoConstrutora(medicao=medicao, item_orcamento=item)
+                for item in medicao.orcamento.itens.filter(tipo=ItemOrcamentoMedicao.TIPO_ITEM)
+            ]
         )
     if request.method == 'POST':
         form = MedicaoConstrutoraForm(request.POST, instance=medicao)
@@ -1197,6 +1269,7 @@ def editar_medicao_construtora(request, medicao_id):
             'medicao': medicao,
             'form': form,
             'formset': formset,
+            'linhas_medicao': _linhas_medicao_construtora_formset(medicao, formset),
             'faturamentos_diretos_linhas': _faturamentos_diretos_context(medicao),
             'faturamentos_ja_descontados': faturamentos_ja_descontados,
         },
@@ -1303,7 +1376,7 @@ def nova_medicao_empreiteiro_cumulativa(request, orcamento_id):
                             unidade=item.unidade,
                             valor_unitario=item.preco_unitario_total,
                         )
-                        for item in orcamento.itens.all()
+                        for item in orcamento.itens.filter(tipo=ItemOrcamentoMedicao.TIPO_ITEM)
                     ]
                 )
             messages.success(request, 'Medicao cumulativa criada. Agora preencha as quantidades medidas.')
@@ -1641,6 +1714,17 @@ def _xlsx_medicao(medicao, itens):
     else:
         ws.append(['Item', 'Descricao', 'Unidade', 'Contrato', 'Acumulado anterior', 'Periodo', 'Acumulado atual', 'Saldo', 'Valor'])
     for item in itens:
+        if isinstance(item, ItemOrcamentoMedicao) and item.eh_grupo:
+            ws.append([item.item, item.descricao])
+            row_number = ws.max_row
+            max_column = 15 if isinstance(medicao, MedicaoConstrutora) else 9
+            ws.merge_cells(start_row=row_number, start_column=2, end_row=row_number, end_column=max_column)
+            for col in range(1, max_column + 1):
+                cell = ws.cell(row=row_number, column=col)
+                cell.fill = PatternFill('solid', fgColor='F3F4F6')
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal='left' if col == 2 else 'center', vertical='center')
+            continue
         contrato = getattr(getattr(item, 'item_orcamento', None), 'quantidade', Decimal('0'))
         base = getattr(item, 'item_orcamento', None)
         row = [
@@ -1710,9 +1794,9 @@ def _xlsx_medicao(medicao, itens):
 
 
 def medicao_construtora_excel(request, medicao_id):
-    medicao = get_object_or_404(MedicaoConstrutora, id=medicao_id)
+    medicao = get_object_or_404(MedicaoConstrutora.objects.select_related('orcamento'), id=medicao_id)
     response = HttpResponse(
-        _xlsx_medicao(medicao, medicao.itens.select_related('item_orcamento')),
+        _xlsx_medicao(medicao, _itens_medicao_construtora_com_grupos(medicao)),
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     )
     response['Content-Disposition'] = f'attachment; filename="medicao_construtora_{medicao.numero}.xlsx"'

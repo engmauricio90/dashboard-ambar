@@ -45,7 +45,14 @@
                 <table class="table table-sm align-middle">
                     <thead><tr><th>Item</th><th>Descrição</th><th>Und</th><th>Contrato</th><th>Anterior</th><th>No periodo</th><th>Atual</th><th>Saldo</th><th>Valor</th></tr></thead>
                     <tbody>
-                        {% for item_form in formset %}
+                        {% for linha in linhas_medicao %}
+                        {% if linha.tipo == 'grupo' %}
+                        <tr class="table-secondary fw-semibold">
+                            <td>{{ linha.item.item }}</td>
+                            <td colspan="8">{{ linha.item.descricao }}</td>
+                        </tr>
+                        {% else %}
+                        {% with item_form=linha.form %}
                         <tr>
                             <td>{{ item_form.instance.item_orcamento.item }}{{ item_form.id }}</td>
                             <td>{{ item_form.instance.item_orcamento.descricao }}</td>
@@ -57,6 +64,8 @@
                             <td>{{ item_form.instance.saldo_quantidade|floatformat:4 }}</td>
                             <td>R$ {{ item_form.instance.valor_periodo|floatformat:2 }}</td>
                         </tr>
+                        {% endwith %}
+                        {% endif %}
                         {% endfor %}
                     </tbody>
                 </table>

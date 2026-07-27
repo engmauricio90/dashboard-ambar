@@ -21,6 +21,7 @@
                 <thead>
                     <tr>
                         <th>Item</th>
+                        <th>Tipo</th>
                         <th>Descrição</th>
                         <th>Und</th>
                         <th>Qtd</th>
@@ -35,6 +36,7 @@
                     <tr class="item-orcamento-row">
                         {% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
                         <td>{{ item_form.item }}</td>
+                        <td style="min-width: 130px;">{{ item_form.tipo }}</td>
                         <td>{{ item_form.descricao }}</td>
                         <td>{{ item_form.unidade }}</td>
                         <td>{{ item_form.quantidade }}</td>
@@ -44,7 +46,7 @@
                         <td>{% if item_form.DELETE %}{{ item_form.DELETE }}{% endif %}</td>
                     </tr>
                     {% if item_form.errors %}
-                    <tr><td colspan="8" class="text-danger small">{{ item_form.errors }}</td></tr>
+                    <tr><td colspan="9" class="text-danger small">{{ item_form.errors }}</td></tr>
                     {% endif %}
                     {% endfor %}
                 </tbody>
@@ -69,6 +71,7 @@
     <tr class="item-orcamento-row">
         {% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
         <td>{{ formset.empty_form.item }}</td>
+        <td>{{ formset.empty_form.tipo }}</td>
         <td>{{ formset.empty_form.descricao }}</td>
         <td>{{ formset.empty_form.unidade }}</td>
         <td>{{ formset.empty_form.quantidade }}</td>

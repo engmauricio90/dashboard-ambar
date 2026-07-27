@@ -91,7 +91,15 @@ class OrcamentoMedicao(models.Model):
 
 
 class ItemOrcamentoMedicao(models.Model):
+    TIPO_GRUPO = 'grupo'
+    TIPO_ITEM = 'item'
+    TIPO_CHOICES = [
+        (TIPO_GRUPO, 'Grupo / titulo'),
+        (TIPO_ITEM, 'Item medivel'),
+    ]
+
     orcamento = models.ForeignKey(OrcamentoMedicao, on_delete=models.CASCADE, related_name='itens')
+    tipo = models.CharField(max_length=12, choices=TIPO_CHOICES, default=TIPO_ITEM)
     item = models.CharField(max_length=40)
     descricao = models.CharField(max_length=255)
     unidade = models.CharField(max_length=20, blank=True)
@@ -109,23 +117,41 @@ class ItemOrcamentoMedicao(models.Model):
         return f'{self.item} - {self.descricao}'
 
     @property
+    def eh_grupo(self):
+        return self.tipo == self.TIPO_GRUPO
+
+    @property
+    def eh_item_medivel(self):
+        return self.tipo == self.TIPO_ITEM
+
+    @property
     def preco_unitario_total(self):
+        if self.eh_grupo:
+            return Decimal('0')
         return self.preco_unitario_material + self.preco_unitario_mao_obra + self.preco_unitario_equipamentos
 
     @property
     def total_material(self):
+        if self.eh_grupo:
+            return Decimal('0')
         return self.quantidade * self.preco_unitario_material
 
     @property
     def total_mao_obra(self):
+        if self.eh_grupo:
+            return Decimal('0')
         return self.quantidade * self.preco_unitario_mao_obra
 
     @property
     def total_equipamentos(self):
+        if self.eh_grupo:
+            return Decimal('0')
         return self.quantidade * self.preco_unitario_equipamentos
 
     @property
     def valor_total(self):
+        if self.eh_grupo:
+            return Decimal('0')
         return self.quantidade * self.preco_unitario_total
 
 

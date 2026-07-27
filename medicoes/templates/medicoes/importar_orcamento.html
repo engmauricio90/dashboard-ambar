@@ -11,6 +11,57 @@
     <a class="btn btn-secondary" href="{% url 'medicoes_home' %}">Voltar</a>
 </div>
 
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h5 class="mb-3">Formato recomendado do CSV</h5>
+        <p class="text-muted mb-2">
+            Use uma coluna <strong>tipo</strong> para diferenciar as linhas que sao apenas divisorias das disciplinas orcadas.
+        </p>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-3">
+                <thead class="table-light">
+                    <tr>
+                        <th>item</th>
+                        <th>tipo</th>
+                        <th>descricao</th>
+                        <th>unidade</th>
+                        <th>quantidade</th>
+                        <th>preco_unitario_material</th>
+                        <th>preco_unitario_mao_obra</th>
+                        <th>preco_unitario_equipamentos</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1</td>
+                        <td>grupo</td>
+                        <td>SERVICOS PRELIMINARES</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td>1.1</td>
+                        <td>item</td>
+                        <td>Mobilizacao do canteiro</td>
+                        <td>mes</td>
+                        <td>6</td>
+                        <td>0</td>
+                        <td>3500</td>
+                        <td>0</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="small text-muted mb-0">
+            Se a coluna tipo vier vazia ou nao existir, o sistema tenta identificar como grupo quando a referencia for inteira,
+            a unidade estiver vazia, a quantidade estiver zerada e todos os unitarios estiverem zerados.
+        </p>
+    </div>
+</div>
+
 <div class="card shadow-sm">
     <div class="card-body">
         <form method="post" enctype="multipart/form-data">

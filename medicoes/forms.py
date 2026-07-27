@@ -19,7 +19,7 @@ class ImportarOrcamentoForm(BootstrapForm):
     nome = forms.CharField(max_length=180)
     tipo = forms.ChoiceField(choices=OrcamentoMedicao.TIPO_CHOICES)
     arquivo = forms.FileField(
-        help_text='CSV com cabeçalho: item, descricao, unidade, quantidade, unitario material, unitario mao de obra e unitario equipamentos.'
+        help_text='CSV com cabecalho: item, tipo, descricao, unidade, quantidade, preco_unitario_material, preco_unitario_mao_obra e preco_unitario_equipamentos.'
     )
     observacoes = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows': 3}))
 
@@ -49,9 +49,20 @@ class EmpreiteiroForm(BootstrapModelForm):
 
 
 class ItemOrcamentoMedicaoForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in [
+            'quantidade',
+            'preco_unitario_material',
+            'preco_unitario_mao_obra',
+            'preco_unitario_equipamentos',
+        ]:
+            self.fields[field].required = False
+
     class Meta:
         model = ItemOrcamentoMedicao
         fields = [
+            'tipo',
             'item',
             'descricao',
             'unidade',
@@ -70,6 +81,20 @@ class ItemOrcamentoMedicaoForm(BootstrapModelForm):
     def clean(self):
         cleaned_data = super().clean()
         if cleaned_data.get('DELETE'):
+            return cleaned_data
+        for field in [
+            'quantidade',
+            'preco_unitario_material',
+            'preco_unitario_mao_obra',
+            'preco_unitario_equipamentos',
+        ]:
+            cleaned_data[field] = cleaned_data.get(field) or 0
+        if cleaned_data.get('tipo') == ItemOrcamentoMedicao.TIPO_GRUPO:
+            cleaned_data['unidade'] = ''
+            cleaned_data['quantidade'] = 0
+            cleaned_data['preco_unitario_material'] = 0
+            cleaned_data['preco_unitario_mao_obra'] = 0
+            cleaned_data['preco_unitario_equipamentos'] = 0
             return cleaned_data
         if cleaned_data.get('descricao') and not cleaned_data.get('item'):
             self.add_error('item', 'Informe o item.')

@@ -97,6 +97,35 @@ class MedicoesTests(TestCase):
         item = OrcamentoMedicao.objects.get(nome='Planilha com unitario').itens.get()
         self.assertEqual(item.preco_unitario_total, Decimal('45.50'))
 
+    def test_importa_planilha_com_grupos_e_itens_mediveis(self):
+        arquivo = SimpleUploadedFile(
+            'planilha_grupos.csv',
+            (
+                'item;tipo;descricao;unidade;quantidade;preco_unitario_material;preco_unitario_mao_obra;preco_unitario_equipamentos\n'
+                '1;grupo;SERVICOS PRELIMINARES;;;;;\n'
+                '1.1;item;Mobilizacao do canteiro;mes;6;0;3500;0\n'
+                '2;;TERRAPLANAGEM;;0;0;0;0\n'
+                '2.1;;Escavacao;m3;10;1;2;3\n'
+            ).encode('utf-8-sig'),
+            content_type='text/csv',
+        )
+
+        response = self.client.post(
+            reverse('importar_orcamento_medicao'),
+            {
+                'obra': self.obra.id,
+                'nome': 'Planilha com grupos',
+                'tipo': OrcamentoMedicao.TIPO_CONSTRUTORA,
+                'arquivo': arquivo,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        orcamento = OrcamentoMedicao.objects.get(nome='Planilha com grupos')
+        self.assertEqual(orcamento.itens.filter(tipo=ItemOrcamentoMedicao.TIPO_GRUPO).count(), 2)
+        self.assertEqual(orcamento.itens.filter(tipo=ItemOrcamentoMedicao.TIPO_ITEM).count(), 2)
+        self.assertEqual(orcamento.total_orcamento, Decimal('21060.0000'))
+
     def test_tela_medicao_mostra_detalhes_e_historico_do_faturamento_direto(self):
         orcamento, item = self._orcamento()
         medicao_atual = MedicaoConstrutora.objects.create(
@@ -172,6 +201,7 @@ class MedicoesTests(TestCase):
                 'itens-MIN_NUM_FORMS': '0',
                 'itens-MAX_NUM_FORMS': '1000',
                 'itens-0-id': str(item.id),
+                'itens-0-tipo': ItemOrcamentoMedicao.TIPO_ITEM,
                 'itens-0-item': '1.1',
                 'itens-0-descricao': 'Escavacao revisada',
                 'itens-0-unidade': 'm3',
@@ -180,6 +210,7 @@ class MedicoesTests(TestCase):
                 'itens-0-preco_unitario_mao_obra': '5.2222',
                 'itens-0-preco_unitario_equipamentos': '2.3333',
                 'itens-1-id': '',
+                'itens-1-tipo': ItemOrcamentoMedicao.TIPO_ITEM,
                 'itens-1-item': '1.2',
                 'itens-1-descricao': 'Transporte',
                 'itens-1-unidade': 'm3',
@@ -270,6 +301,7 @@ class MedicoesTests(TestCase):
                 'itens-MIN_NUM_FORMS': '0',
                 'itens-MAX_NUM_FORMS': '1000',
                 'itens-0-id': '',
+                'itens-0-tipo': ItemOrcamentoMedicao.TIPO_ITEM,
                 'itens-0-item': '1',
                 'itens-0-descricao': 'Servico manual',
                 'itens-0-unidade': 'm2',
@@ -322,6 +354,7 @@ class MedicoesTests(TestCase):
                 'itens-MIN_NUM_FORMS': '0',
                 'itens-MAX_NUM_FORMS': '1000',
                 'itens-0-id': '',
+                'itens-0-tipo': ItemOrcamentoMedicao.TIPO_ITEM,
                 'itens-0-item': '1',
                 'itens-0-descricao': 'Servico empreiteiro manual',
                 'itens-0-unidade': 'm',
