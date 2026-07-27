@@ -9,6 +9,8 @@
         <p class="text-muted mb-0">{{ orcamento.nome }} - {{ orcamento.obra }}</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-danger" target="_blank" href="{% url 'saldo_contratual_construtora_pdf' orcamento.id %}">PDF</a>
+        <a class="btn btn-outline-success" href="{% url 'saldo_contratual_construtora_excel' orcamento.id %}">Excel</a>
         <a class="btn btn-outline-primary" href="{% url 'editar_itens_orcamento_medicao' orcamento.id %}">Editar itens</a>
         <a class="btn btn-secondary" href="{% url 'detalhe_orcamento_medicao' orcamento.id %}">Voltar</a>
     </div>

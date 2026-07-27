@@ -235,6 +235,19 @@ class MedicoesTests(TestCase):
         self.assertContains(response, 'R$ 1.020,00')
         self.assertNotContains(response, 'Servico ja concluido')
 
+        pdf = self.client.get(reverse('saldo_contratual_construtora_pdf', args=[orcamento.id]))
+        self.assertEqual(pdf.status_code, 200)
+        self.assertEqual(pdf['Content-Type'], 'application/pdf')
+        self.assertTrue(pdf.content.startswith(b'%PDF'))
+
+        excel = self.client.get(reverse('saldo_contratual_construtora_excel', args=[orcamento.id]))
+        self.assertEqual(excel.status_code, 200)
+        self.assertIn('spreadsheetml', excel['Content-Type'])
+        wb = load_workbook(BytesIO(excel.content))
+        ws = wb.active
+        self.assertEqual(ws['A1'].value, 'Saldo contratual da construtora')
+        self.assertIn('Escavacao', [cell.value for cell in ws['B']])
+
     def test_cria_planilha_manual_e_medicao_construtora(self):
         response = self.client.post(
             reverse('novo_orcamento_manual_medicao'),

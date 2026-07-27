@@ -899,6 +899,211 @@ def saldo_contratual_construtora(request, orcamento_id):
     )
 
 
+def saldo_contratual_construtora_pdf(request, orcamento_id):
+    orcamento = get_object_or_404(
+        OrcamentoMedicao.objects.select_related('obra').prefetch_related('itens'),
+        id=orcamento_id,
+        tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
+    )
+    linhas, totais = _saldo_contratual_construtora(orcamento)
+    response = HttpResponse(_pdf_saldo_contratual(orcamento, linhas, totais), content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="saldo_contratual_{orcamento.id}.pdf"'
+    return response
+
+
+def saldo_contratual_construtora_excel(request, orcamento_id):
+    orcamento = get_object_or_404(
+        OrcamentoMedicao.objects.select_related('obra').prefetch_related('itens'),
+        id=orcamento_id,
+        tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
+    )
+    linhas, totais = _saldo_contratual_construtora(orcamento)
+    response = HttpResponse(
+        _xlsx_saldo_contratual(orcamento, linhas, totais),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    response['Content-Disposition'] = f'attachment; filename="saldo_contratual_{orcamento.id}.xlsx"'
+    return response
+
+
+def _xlsx_saldo_contratual(orcamento, linhas, totais):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Saldo contratual'
+    ws.append(['Saldo contratual da construtora'])
+    ws.append(['Obra', str(orcamento.obra)])
+    ws.append(['Planilha', orcamento.nome])
+    ws.append(['Emitido em', date.today().strftime('%d/%m/%Y')])
+    ws.append([])
+    ws.append(
+        [
+            'Ref.',
+            'Descricao',
+            'Un.',
+            'Qtde contrato',
+            'Acum. medido',
+            'Saldo',
+            'Unit. material',
+            'Unit. mao obra',
+            'Unit. equip.',
+            'Material saldo',
+            'Mao obra saldo',
+            'Equip. saldo',
+            'Total saldo',
+        ]
+    )
+
+    widths = [10, 58, 8, 14, 14, 14, 16, 16, 16, 16, 16, 16, 17]
+    for col_index, width in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(col_index)].width = width
+
+    header_fill = PatternFill('solid', fgColor='E8EEF7')
+    saldo_fill = PatternFill('solid', fgColor='DCF5E5')
+    total_fill = PatternFill('solid', fgColor='F3F4F6')
+    header_font = Font(bold=True)
+
+    for cell in ws[1]:
+        cell.font = Font(bold=True, size=14)
+    for cell in ws[6]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+    for linha in linhas:
+        item = linha['item']
+        ws.append(
+            [
+                item.item,
+                item.descricao,
+                item.unidade,
+                float(item.quantidade),
+                float(linha['quantidade_medida']),
+                float(linha['saldo_quantidade']),
+                float(item.preco_unitario_material),
+                float(item.preco_unitario_mao_obra),
+                float(item.preco_unitario_equipamentos),
+                float(linha['saldo_material']),
+                float(linha['saldo_mao_obra']),
+                float(linha['saldo_equipamentos']),
+                float(linha['saldo_total']),
+            ]
+        )
+        row_number = ws.max_row
+        for col in range(1, 14):
+            ws.cell(row=row_number, column=col).alignment = Alignment(
+                horizontal='left' if col == 2 else 'center',
+                vertical='center',
+                wrap_text=True,
+            )
+        for col in range(10, 14):
+            ws.cell(row=row_number, column=col).fill = saldo_fill
+
+    ws.append([])
+    ws.append(['', '', '', '', '', '', '', '', 'Totais', float(totais['material']), float(totais['mao_obra']), float(totais['equipamentos']), float(totais['total'])])
+    for col in range(9, 14):
+        cell = ws.cell(row=ws.max_row, column=col)
+        cell.font = header_font
+        cell.fill = total_fill
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+
+    output = BytesIO()
+    wb.save(output)
+    return output.getvalue()
+
+
+def _pdf_saldo_contratual(orcamento, linhas, totais):
+    page_w, page_h = 2339, 1654
+    margin = 70
+    table_w = page_w - (margin * 2)
+    rows_per_page = 22
+    chunks = [linhas[i : i + rows_per_page] for i in range(0, len(linhas), rows_per_page)] or [[]]
+    pages = []
+
+    for page_index, chunk in enumerate(chunks):
+        image = Image.new('RGB', (page_w, page_h), 'white')
+        draw = ImageDraw.Draw(image)
+        navy = (15, 23, 42)
+        muted = (100, 116, 139)
+        border = (203, 213, 225)
+        soft = (248, 250, 252)
+
+        draw.rectangle((0, 0, page_w, 118), fill=navy)
+        draw.text((margin, 34), 'SALDO CONTRATUAL DA CONSTRUTORA', font=_font(32, True), fill='white')
+        draw.text((page_w - margin - 360, 42), f'Emitido em {date.today():%d/%m/%Y}', font=_font(21, True), fill=(226, 232, 240))
+
+        y = 150
+        draw.rounded_rectangle((margin, y, page_w - margin, y + 118), radius=8, fill=soft, outline=border, width=2)
+        draw.text((margin + 22, y + 18), 'Obra', font=_font(18, True), fill=muted)
+        _draw_wrapped_cell(draw, orcamento.obra, margin + 12, y + 42, int(table_w * 0.45), 56, _font(22), fill=navy)
+        draw.text((margin + int(table_w * 0.48), y + 18), 'Planilha', font=_font(18, True), fill=muted)
+        _draw_wrapped_cell(
+            draw,
+            orcamento.nome,
+            margin + int(table_w * 0.48) - 8,
+            y + 42,
+            int(table_w * 0.5),
+            56,
+            _font(22),
+            fill=navy,
+        )
+
+        y += 152
+        headers = ['Ref.', 'Descricao', 'Un.', 'Contrato', 'Medido', 'Saldo', 'Unit. total', 'Material', 'Mao obra', 'Equip.', 'Total saldo']
+        widths = [92, 610, 80, 145, 145, 145, 175, 195, 195, 195, 250]
+        rows = []
+        for linha in chunk:
+            item = linha['item']
+            rows.append(
+                [
+                    item.item,
+                    item.descricao,
+                    item.unidade or '-',
+                    f'{item.quantidade:.4f}',
+                    f'{linha["quantidade_medida"]:.4f}',
+                    f'{linha["saldo_quantidade"]:.4f}',
+                    _money(item.preco_unitario_total),
+                    _money(linha['saldo_material']),
+                    _money(linha['saldo_mao_obra']),
+                    _money(linha['saldo_equipamentos']),
+                    _money(linha['saldo_total']),
+                ]
+            )
+        y = _draw_pdf_table(draw, headers, rows, margin, y, widths, row_h=52)
+
+        if page_index == len(chunks) - 1:
+            y += 32
+            summary_w = 780
+            summary_x = page_w - margin - summary_w
+            summary_rows = [
+                ('Material a medir', totais['material']),
+                ('Mao de obra a medir', totais['mao_obra']),
+                ('Equipamentos a medir', totais['equipamentos']),
+                ('Total ainda em contrato', totais['total']),
+            ]
+            draw.rounded_rectangle((summary_x, y, summary_x + summary_w, y + 230), radius=8, fill=soft, outline=border, width=2)
+            row_y = y + 18
+            for label, value in summary_rows:
+                is_total = label.startswith('Total')
+                draw.text((summary_x + 24, row_y), label, font=_font(22, is_total), fill=navy)
+                amount = _money(value)
+                draw.text(
+                    (summary_x + summary_w - 28 - _font(22, is_total).getlength(amount), row_y),
+                    amount,
+                    font=_font(22, is_total),
+                    fill=navy,
+                )
+                row_y += 50
+
+        footer = f'Pagina {page_index + 1} de {len(chunks)}'
+        draw.text((margin, page_h - 56), 'Ambar Engenharia', font=_font(17), fill=muted)
+        draw.text((page_w - margin - _font(17).getlength(footer), page_h - 56), footer, font=_font(17), fill=muted)
+        pages.append(image)
+
+    buffer = BytesIO()
+    pages[0].save(buffer, 'PDF', save_all=True, append_images=pages[1:], resolution=150)
+    return buffer.getvalue()
+
+
 def editar_itens_orcamento(request, orcamento_id):
     orcamento = get_object_or_404(OrcamentoMedicao.objects.select_related('obra'), id=orcamento_id)
     if request.method == 'POST':

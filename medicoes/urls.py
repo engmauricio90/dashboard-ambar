@@ -21,6 +21,16 @@ urlpatterns = [
         views.saldo_contratual_construtora,
         name='saldo_contratual_construtora',
     ),
+    path(
+        'orcamentos/<int:orcamento_id>/saldo-contratual/pdf/',
+        views.saldo_contratual_construtora_pdf,
+        name='saldo_contratual_construtora_pdf',
+    ),
+    path(
+        'orcamentos/<int:orcamento_id>/saldo-contratual/excel/',
+        views.saldo_contratual_construtora_excel,
+        name='saldo_contratual_construtora_excel',
+    ),
     path('orcamentos/<int:orcamento_id>/excluir/', views.excluir_orcamento, name='excluir_orcamento_medicao'),
     path(
         'orcamentos/<int:orcamento_id>/construtora/nova/',
