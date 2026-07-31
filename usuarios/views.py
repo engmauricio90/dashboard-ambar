@@ -1,6 +1,7 @@
 from django.contrib import messages
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth.models import Group
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
@@ -16,7 +17,7 @@ GRUPOS_PADRAO = ['Administrador', 'Diretoria', 'Financeiro', 'Engenharia', 'Comp
 
 
 def _pode_administrar_usuarios(user):
-    return user.is_superuser or user_in_groups(user, ('Administrador', 'Diretoria'))
+    return user.is_superuser or user_in_groups(user, ('Administrador',))
 
 
 def _perfil(user):
@@ -56,6 +57,20 @@ def editar_meu_perfil(request):
     else:
         form = MeuPerfilForm(instance=perfil)
     return render(request, 'usuarios/form_meu_perfil.html', {'form': form})
+
+
+@login_required
+def alterar_minha_senha(request):
+    if request.method == 'POST':
+        form = PasswordChangeForm(request.user, request.POST)
+        if form.is_valid():
+            user = form.save()
+            update_session_auth_hash(request, user)
+            messages.success(request, 'Senha alterada com sucesso.')
+            return redirect('minha_area')
+    else:
+        form = PasswordChangeForm(request.user)
+    return render(request, 'usuarios/form_alterar_senha.html', {'form': form})
 
 
 @login_required

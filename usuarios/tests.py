@@ -30,10 +30,31 @@ class UsuariosTests(TestCase):
 
         self.assertRedirects(response, reverse('minha_area'))
 
-    def test_diretoria_cria_usuario_com_grupo_e_obra(self):
-        diretoria = Group.objects.get_or_create(name='Diretoria')[0]
+    def test_usuario_comum_nao_altera_usuarios_por_acesso_direto(self):
+        outro = User.objects.create_user(username='outro', password='senha')
+
+        response_novo = self.client.post(reverse('novo_usuario'), {'username': 'bloqueado'})
+        response_editar = self.client.post(reverse('editar_usuario', args=[outro.id]), {'username': 'alterado'})
+        response_status = self.client.post(reverse('alternar_status_usuario', args=[outro.id]))
+
+        self.assertRedirects(response_novo, reverse('minha_area'))
+        self.assertRedirects(response_editar, reverse('minha_area'))
+        self.assertRedirects(response_status, reverse('minha_area'))
+        outro.refresh_from_db()
+        self.assertEqual(outro.username, 'outro')
+        self.assertTrue(outro.is_active)
+
+    def test_diretoria_sem_grupo_administrador_nao_administra_usuarios(self):
+        self.user.groups.add(Group.objects.get_or_create(name='Diretoria')[0])
+
+        response = self.client.get(reverse('lista_usuarios'))
+
+        self.assertRedirects(response, reverse('minha_area'))
+
+    def test_administrador_cria_usuario_com_grupo_e_obra(self):
+        administrador = Group.objects.get_or_create(name='Administrador')[0]
         financeiro = Group.objects.get_or_create(name='Financeiro')[0]
-        self.user.groups.add(diretoria)
+        self.user.groups.add(administrador)
 
         response = self.client.post(
             reverse('novo_usuario'),
@@ -78,3 +99,19 @@ class UsuariosTests(TestCase):
         perfil = PerfilUsuario.objects.get(user=self.user)
         self.assertEqual(perfil.telefone, '5100000000')
         self.assertEqual(perfil.setor, 'engenharia')
+
+    def test_usuario_altera_propria_senha(self):
+        response = self.client.post(
+            reverse('alterar_minha_senha'),
+            {
+                'old_password': 'senha',
+                'new_password1': 'nova-senha-forte-123',
+                'new_password2': 'nova-senha-forte-123',
+            },
+        )
+
+        self.assertRedirects(response, reverse('minha_area'))
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('nova-senha-forte-123'))
+        response_area = self.client.get(reverse('minha_area'))
+        self.assertEqual(response_area.status_code, 200)
