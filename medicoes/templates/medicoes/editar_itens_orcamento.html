@@ -20,6 +20,7 @@
             <table class="table table-sm align-middle mb-0">
                 <thead>
                     <tr>
+                        <th style="min-width: 160px;">Acoes</th>
                         <th>Item</th>
                         <th>Tipo</th>
                         <th>Descrição</th>
@@ -35,6 +36,14 @@
                     {% for item_form in formset.forms %}
                     <tr class="item-orcamento-row">
                         {% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
+                        <td>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button type="button" class="btn btn-outline-secondary inserir-acima">+ acima</button>
+                                <button type="button" class="btn btn-outline-secondary inserir-abaixo">+ abaixo</button>
+                                <button type="button" class="btn btn-outline-secondary mover-cima">Subir</button>
+                                <button type="button" class="btn btn-outline-secondary mover-baixo">Descer</button>
+                            </div>
+                        </td>
                         <td>{{ item_form.item }}</td>
                         <td style="min-width: 130px;">{{ item_form.tipo }}</td>
                         <td>{{ item_form.descricao }}</td>
@@ -46,7 +55,7 @@
                         <td>{% if item_form.DELETE %}{{ item_form.DELETE }}{% endif %}</td>
                     </tr>
                     {% if item_form.errors %}
-                    <tr><td colspan="9" class="text-danger small">{{ item_form.errors }}</td></tr>
+                    <tr><td colspan="10" class="text-danger small">{{ item_form.errors }}</td></tr>
                     {% endif %}
                     {% endfor %}
                 </tbody>
@@ -54,6 +63,7 @@
         </div>
         <div class="card-body border-top">
             <button type="button" class="btn btn-sm btn-outline-primary" id="adicionar-item-orcamento">Adicionar item</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="adicionar-grupo-inicio">Adicionar grupo no inicio</button>
         </div>
     </div>
 
@@ -70,6 +80,14 @@
 <template id="item-orcamento-empty-row">
     <tr class="item-orcamento-row">
         {% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+        <td>
+            <div class="btn-group btn-group-sm" role="group">
+                <button type="button" class="btn btn-outline-secondary inserir-acima">+ acima</button>
+                <button type="button" class="btn btn-outline-secondary inserir-abaixo">+ abaixo</button>
+                <button type="button" class="btn btn-outline-secondary mover-cima">Subir</button>
+                <button type="button" class="btn btn-outline-secondary mover-baixo">Descer</button>
+            </div>
+        </td>
         <td>{{ formset.empty_form.item }}</td>
         <td>{{ formset.empty_form.tipo }}</td>
         <td>{{ formset.empty_form.descricao }}</td>
@@ -86,17 +104,100 @@
 {% block extra_scripts %}
 <script>
     const adicionarItemOrcamento = document.getElementById('adicionar-item-orcamento');
+    const adicionarGrupoInicio = document.getElementById('adicionar-grupo-inicio');
     const itensOrcamentoBody = document.getElementById('itens-orcamento-body');
     const itemOrcamentoTemplate = document.getElementById('item-orcamento-empty-row');
     const totalItensOrcamento = document.querySelector('input[name="{{ formset.prefix }}-TOTAL_FORMS"]');
 
-    if (adicionarItemOrcamento && itensOrcamentoBody && itemOrcamentoTemplate && totalItensOrcamento) {
-        adicionarItemOrcamento.addEventListener('click', () => {
-            const index = Number(totalItensOrcamento.value);
-            const html = itemOrcamentoTemplate.innerHTML.replace(/__prefix__/g, index);
-            itensOrcamentoBody.insertAdjacentHTML('beforeend', html);
-            totalItensOrcamento.value = index + 1;
+    function renumerarOrdemItens() {
+        if (!itensOrcamentoBody) return;
+        itensOrcamentoBody.querySelectorAll('.item-orcamento-row').forEach((row, index) => {
+            const ordem = row.querySelector('input[name$="-ordem"]');
+            if (ordem) {
+                ordem.value = index;
+            }
         });
     }
+
+    function novaLinhaOrcamento(tipo = 'item') {
+        if (!itemOrcamentoTemplate || !totalItensOrcamento) return null;
+        const index = Number(totalItensOrcamento.value);
+        const html = itemOrcamentoTemplate.innerHTML.replace(/__prefix__/g, index);
+        const wrapper = document.createElement('tbody');
+        wrapper.innerHTML = html.trim();
+        const row = wrapper.querySelector('.item-orcamento-row');
+        const tipoField = row ? row.querySelector('select[name$="-tipo"]') : null;
+        if (tipoField) {
+            tipoField.value = tipo;
+        }
+        if (tipo === 'grupo' && row) {
+            ['unidade', 'quantidade', 'preco_unitario_material', 'preco_unitario_mao_obra', 'preco_unitario_equipamentos'].forEach((fieldName) => {
+                const field = row.querySelector(`[name$="-${fieldName}"]`);
+                if (field) {
+                    field.value = fieldName === 'unidade' ? '' : '0';
+                }
+            });
+        }
+        totalItensOrcamento.value = index + 1;
+        return row;
+    }
+
+    function inserirLinha(referencia, posicao = 'fim', tipo = 'item') {
+        if (!itensOrcamentoBody) return;
+        const row = novaLinhaOrcamento(tipo);
+        if (!row) return;
+        if (posicao === 'antes' && referencia) {
+            referencia.before(row);
+        } else if (posicao === 'depois' && referencia) {
+            referencia.after(row);
+        } else if (posicao === 'inicio') {
+            itensOrcamentoBody.prepend(row);
+        } else {
+            itensOrcamentoBody.append(row);
+        }
+        renumerarOrdemItens();
+        const primeiroCampo = row.querySelector('input:not([type="hidden"]), select, textarea');
+        if (primeiroCampo) {
+            primeiroCampo.focus();
+        }
+    }
+
+    if (adicionarItemOrcamento && itensOrcamentoBody && itemOrcamentoTemplate && totalItensOrcamento) {
+        adicionarItemOrcamento.addEventListener('click', () => {
+            inserirLinha(null, 'fim', 'item');
+        });
+    }
+
+    if (adicionarGrupoInicio && itensOrcamentoBody && itemOrcamentoTemplate && totalItensOrcamento) {
+        adicionarGrupoInicio.addEventListener('click', () => {
+            inserirLinha(null, 'inicio', 'grupo');
+        });
+    }
+
+    if (itensOrcamentoBody) {
+        itensOrcamentoBody.addEventListener('click', (event) => {
+            const button = event.target.closest('button');
+            const row = event.target.closest('.item-orcamento-row');
+            if (!button || !row) return;
+
+            if (button.classList.contains('inserir-acima')) {
+                inserirLinha(row, 'antes', 'item');
+            }
+            if (button.classList.contains('inserir-abaixo')) {
+                inserirLinha(row, 'depois', 'item');
+            }
+            if (button.classList.contains('mover-cima') && row.previousElementSibling) {
+                row.previousElementSibling.before(row);
+                renumerarOrdemItens();
+            }
+            if (button.classList.contains('mover-baixo') && row.nextElementSibling) {
+                row.nextElementSibling.after(row);
+                renumerarOrdemItens();
+            }
+        });
+    }
+
+    document.querySelector('form')?.addEventListener('submit', renumerarOrdemItens);
+    renumerarOrdemItens();
 </script>
 {% endblock %}

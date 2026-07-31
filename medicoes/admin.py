@@ -15,7 +15,7 @@ from .models import (
 class ItemOrcamentoMedicaoInline(admin.TabularInline):
     model = ItemOrcamentoMedicao
     extra = 0
-    fields = ['tipo', 'item', 'descricao', 'unidade', 'quantidade', 'preco_unitario_material', 'preco_unitario_mao_obra', 'preco_unitario_equipamentos']
+    fields = ['tipo', 'ordem', 'item', 'descricao', 'unidade', 'quantidade', 'preco_unitario_material', 'preco_unitario_mao_obra', 'preco_unitario_equipamentos']
 
 
 @admin.register(Empreiteiro)

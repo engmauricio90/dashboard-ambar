@@ -812,6 +812,7 @@ def importar_orcamento(request):
                         ItemOrcamentoMedicao(
                             orcamento=orcamento,
                             tipo=tipo_item,
+                            ordem=len(itens),
                             item=item_ref,
                             descricao=descricao,
                             unidade=unidade,
@@ -1004,6 +1005,14 @@ def saldo_contratual_construtora_excel(request, orcamento_id):
     return response
 
 
+def _normalizar_ordem_itens_orcamento(orcamento):
+    itens = list(orcamento.itens.order_by('ordem', 'id'))
+    for index, item in enumerate(itens):
+        if item.ordem != index:
+            item.ordem = index
+            item.save(update_fields=['ordem'])
+
+
 def _xlsx_saldo_contratual(orcamento, linhas, totais):
     wb = Workbook()
     ws = wb.active
@@ -1188,6 +1197,7 @@ def editar_itens_orcamento(request, orcamento_id):
         formset = ItemOrcamentoMedicaoFormSet(request.POST, instance=orcamento)
         if formset.is_valid():
             formset.save()
+            _normalizar_ordem_itens_orcamento(orcamento)
             messages.success(request, 'Itens da planilha atualizados com sucesso.')
             return redirect('detalhe_orcamento_medicao', orcamento_id=orcamento.id)
     else:

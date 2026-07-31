@@ -63,6 +63,7 @@ class ItemOrcamentoMedicaoForm(BootstrapModelForm):
         model = ItemOrcamentoMedicao
         fields = [
             'tipo',
+            'ordem',
             'item',
             'descricao',
             'unidade',
@@ -72,6 +73,7 @@ class ItemOrcamentoMedicaoForm(BootstrapModelForm):
             'preco_unitario_equipamentos',
         ]
         widgets = {
+            'ordem': forms.HiddenInput(),
             'quantidade': forms.NumberInput(attrs={'step': '0.0001'}),
             'preco_unitario_material': forms.NumberInput(attrs={'step': '0.0001'}),
             'preco_unitario_mao_obra': forms.NumberInput(attrs={'step': '0.0001'}),

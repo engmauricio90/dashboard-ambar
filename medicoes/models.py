@@ -100,6 +100,7 @@ class ItemOrcamentoMedicao(models.Model):
 
     orcamento = models.ForeignKey(OrcamentoMedicao, on_delete=models.CASCADE, related_name='itens')
     tipo = models.CharField(max_length=12, choices=TIPO_CHOICES, default=TIPO_ITEM)
+    ordem = models.PositiveIntegerField(default=0)
     item = models.CharField(max_length=40)
     descricao = models.CharField(max_length=255)
     unidade = models.CharField(max_length=20, blank=True)
@@ -109,7 +110,7 @@ class ItemOrcamentoMedicao(models.Model):
     preco_unitario_equipamentos = models.DecimalField(max_digits=14, decimal_places=4, default=0)
 
     class Meta:
-        ordering = ['id']
+        ordering = ['ordem', 'id']
         verbose_name = 'Item de orcamento de medicao'
         verbose_name_plural = 'Itens de orcamento de medicao'
 
@@ -345,7 +346,7 @@ class ItemMedicaoConstrutora(models.Model):
     quantidade_periodo = models.DecimalField(max_digits=14, decimal_places=4, default=0)
 
     class Meta:
-        ordering = ['item_orcamento_id']
+        ordering = ['item_orcamento__ordem', 'item_orcamento_id']
         verbose_name = 'Item de medicao da construtora'
         verbose_name_plural = 'Itens de medicao da construtora'
         constraints = [

@@ -202,6 +202,7 @@ class MedicoesTests(TestCase):
                 'itens-MAX_NUM_FORMS': '1000',
                 'itens-0-id': str(item.id),
                 'itens-0-tipo': ItemOrcamentoMedicao.TIPO_ITEM,
+                'itens-0-ordem': '0',
                 'itens-0-item': '1.1',
                 'itens-0-descricao': 'Escavacao revisada',
                 'itens-0-unidade': 'm3',
@@ -211,6 +212,7 @@ class MedicoesTests(TestCase):
                 'itens-0-preco_unitario_equipamentos': '2.3333',
                 'itens-1-id': '',
                 'itens-1-tipo': ItemOrcamentoMedicao.TIPO_ITEM,
+                'itens-1-ordem': '1',
                 'itens-1-item': '1.2',
                 'itens-1-descricao': 'Transporte',
                 'itens-1-unidade': 'm3',
@@ -227,6 +229,46 @@ class MedicoesTests(TestCase):
         self.assertEqual(item.quantidade, Decimal('120.1234'))
         self.assertEqual(item.preco_unitario_total, Decimal('17.6666'))
         self.assertEqual(orcamento.itens.count(), 2)
+
+    def test_insere_grupo_antes_do_primeiro_item_da_planilha(self):
+        orcamento, item = self._orcamento()
+
+        response = self.client.post(
+            reverse('editar_itens_orcamento_medicao', args=[orcamento.id]),
+            {
+                'itens-TOTAL_FORMS': '2',
+                'itens-INITIAL_FORMS': '1',
+                'itens-MIN_NUM_FORMS': '0',
+                'itens-MAX_NUM_FORMS': '1000',
+                'itens-0-id': str(item.id),
+                'itens-0-tipo': ItemOrcamentoMedicao.TIPO_ITEM,
+                'itens-0-ordem': '1',
+                'itens-0-item': '1.1',
+                'itens-0-descricao': 'Escavacao',
+                'itens-0-unidade': 'm3',
+                'itens-0-quantidade': '100.0000',
+                'itens-0-preco_unitario_material': '10.0000',
+                'itens-0-preco_unitario_mao_obra': '5.0000',
+                'itens-0-preco_unitario_equipamentos': '2.0000',
+                'itens-1-id': '',
+                'itens-1-tipo': ItemOrcamentoMedicao.TIPO_GRUPO,
+                'itens-1-ordem': '0',
+                'itens-1-item': '1',
+                'itens-1-descricao': 'TERRAPLANAGEM',
+                'itens-1-unidade': '',
+                'itens-1-quantidade': '',
+                'itens-1-preco_unitario_material': '',
+                'itens-1-preco_unitario_mao_obra': '',
+                'itens-1-preco_unitario_equipamentos': '',
+            },
+        )
+
+        self.assertRedirects(response, reverse('detalhe_orcamento_medicao', args=[orcamento.id]))
+        itens = list(orcamento.itens.order_by('ordem', 'id'))
+        self.assertEqual(itens[0].tipo, ItemOrcamentoMedicao.TIPO_GRUPO)
+        self.assertEqual(itens[0].descricao, 'TERRAPLANAGEM')
+        self.assertEqual(itens[1].id, item.id)
+        self.assertEqual(orcamento.total_orcamento, Decimal('1700.00000000'))
 
     def test_saldo_contratual_construtora_mostra_somente_itens_com_saldo(self):
         orcamento, item = self._orcamento()
@@ -302,6 +344,7 @@ class MedicoesTests(TestCase):
                 'itens-MAX_NUM_FORMS': '1000',
                 'itens-0-id': '',
                 'itens-0-tipo': ItemOrcamentoMedicao.TIPO_ITEM,
+                'itens-0-ordem': '0',
                 'itens-0-item': '1',
                 'itens-0-descricao': 'Servico manual',
                 'itens-0-unidade': 'm2',
@@ -355,6 +398,7 @@ class MedicoesTests(TestCase):
                 'itens-MAX_NUM_FORMS': '1000',
                 'itens-0-id': '',
                 'itens-0-tipo': ItemOrcamentoMedicao.TIPO_ITEM,
+                'itens-0-ordem': '0',
                 'itens-0-item': '1',
                 'itens-0-descricao': 'Servico empreiteiro manual',
                 'itens-0-unidade': 'm',
