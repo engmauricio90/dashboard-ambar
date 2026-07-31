@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+
+{% block title %}Minha area{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Minha area</h1>
+        <p class="text-muted mb-0">{{ request.user.get_full_name|default:request.user.username }}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        {% if pode_administrar_usuarios %}
+        <a class="btn btn-outline-primary" href="{% url 'lista_usuarios' %}">Usuarios</a>
+        {% endif %}
+        <a class="btn btn-primary" href="{% url 'editar_meu_perfil' %}">Editar meu perfil</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-3">Perfil</h5>
+                <p class="mb-1"><strong>Usuario:</strong> {{ request.user.username }}</p>
+                <p class="mb-1"><strong>E-mail:</strong> {{ request.user.email|default:'-' }}</p>
+                <p class="mb-1"><strong>Telefone:</strong> {{ perfil.telefone|default:'-' }}</p>
+                <p class="mb-1"><strong>Cargo:</strong> {{ perfil.cargo|default:'-' }}</p>
+                <p class="mb-0"><strong>Setor:</strong> {{ perfil.get_setor_display|default:'-' }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-3">Grupos</h5>
+                {% for grupo in grupos %}
+                <span class="badge text-bg-secondary me-1 mb-1">{{ grupo.name }}</span>
+                {% empty %}
+                <div class="text-muted">Nenhum grupo vinculado.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-3">Preferencias</h5>
+                <p class="mb-1"><strong>Dashboard inicial:</strong> {{ perfil.dashboard_inicial|default:'-' }}</p>
+                <p class="mb-0"><strong>Itens por pagina:</strong> {{ perfil.itens_por_pagina }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <h5 class="mb-3">Minhas obras</h5>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr>
+                        <th>Obra</th>
+                        <th>Cliente</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for obra in obras %}
+                    <tr>
+                        <td>{{ obra.nome_obra }}</td>
+                        <td>{{ obra.cliente|default:'-' }}</td>
+                        <td>{{ obra.get_status_obra_display }}</td>
+                        <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{% url 'detalhe_obra' obra.id %}">Abrir</a></td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="text-muted">Nenhuma obra vinculada ao seu usuario.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

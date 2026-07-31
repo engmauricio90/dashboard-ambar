@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        <p class="text-muted mb-0">Dados de acesso, perfil, grupos e obras vinculadas.</p>
+    </div>
+    <a class="btn btn-secondary" href="{% url 'lista_usuarios' %}">Voltar</a>
+</div>
+
+<form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="mb-3">Acesso</h5>
+            {% if user_form.non_field_errors %}<div class="alert alert-danger">{{ user_form.non_field_errors }}</div>{% endif %}
+            <div class="row g-3">
+                {% for field in user_form %}
+                <div class="{% if field.name == 'grupos' %}col-md-6{% else %}col-md-3{% endif %}">
+                    {% if field.field.widget.input_type == 'checkbox' %}
+                    <div class="form-check mt-4">{{ field }} <label class="form-check-label">{{ field.label }}</label></div>
+                    {% else %}
+                    <label class="form-label">{{ field.label }}</label>
+                    {{ field }}
+                    {% endif %}
+                    {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                    {% if field.errors %}<div class="text-danger small">{{ field.errors|join:', ' }}</div>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="mb-3">Perfil e obras</h5>
+            {% if perfil_form.non_field_errors %}<div class="alert alert-danger">{{ perfil_form.non_field_errors }}</div>{% endif %}
+            <div class="row g-3">
+                {% for field in perfil_form %}
+                <div class="{% if field.name == 'obras' or field.name == 'observacoes' %}col-12{% else %}col-md-4{% endif %}">
+                    <label class="form-label">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                    {% if field.errors %}<div class="text-danger small">{{ field.errors|join:', ' }}</div>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2 mb-4">
+        <button class="btn btn-primary" type="submit">Salvar</button>
+        <a class="btn btn-outline-secondary" href="{% url 'lista_usuarios' %}">Cancelar</a>
+    </div>
+</form>
+{% endblock %}

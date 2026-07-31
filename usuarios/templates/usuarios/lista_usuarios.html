@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+
+{% block title %}Usuarios{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Usuarios</h1>
+        <p class="text-muted mb-0">Cadastro, grupos e obras vinculadas.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-primary" href="{% url 'novo_usuario' %}">Novo usuario</a>
+        <a class="btn btn-secondary" href="{% url 'minha_area' %}">Minha area</a>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-10">
+                <label class="form-label">Busca</label>
+                <input type="search" name="busca" value="{{ busca }}" class="form-control" placeholder="Nome, usuario ou e-mail">
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-primary w-100" type="submit">Filtrar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr>
+                        <th>Usuario</th>
+                        <th>Nome</th>
+                        <th>E-mail</th>
+                        <th>Grupos</th>
+                        <th>Obras</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for usuario in usuarios %}
+                    <tr>
+                        <td>{{ usuario.username }}</td>
+                        <td>{{ usuario.get_full_name|default:'-' }}</td>
+                        <td>{{ usuario.email|default:'-' }}</td>
+                        <td>
+                            {% for grupo in usuario.groups.all %}
+                            <span class="badge text-bg-secondary">{{ grupo.name }}</span>
+                            {% empty %}-{% endfor %}
+                        </td>
+                        <td>{{ usuario.perfil.obras.count|default:0 }}</td>
+                        <td>{% if usuario.is_active %}<span class="badge text-bg-success">Ativo</span>{% else %}<span class="badge text-bg-danger">Inativo</span>{% endif %}</td>
+                        <td class="text-end">
+                            <div class="d-flex gap-2 justify-content-end">
+                                <a class="btn btn-sm btn-outline-primary" href="{% url 'editar_usuario' usuario.id %}">Editar</a>
+                                <form method="post" action="{% url 'alternar_status_usuario' usuario.id %}">
+                                    {% csrf_token %}
+                                    <button class="btn btn-sm btn-outline-secondary" type="submit">{% if usuario.is_active %}Inativar{% else %}Ativar{% endif %}</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="7" class="text-muted">Nenhum usuario encontrado.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

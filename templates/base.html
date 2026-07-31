@@ -37,6 +37,7 @@
                     </div>
                     <a class="nav-link" href="{% url 'controles_home' %}">Controles</a>
                     <a class="nav-link" href="{% url 'lista_propostas' %}">Propostas</a>
+                    <a class="nav-link" href="{% url 'minha_area' %}">Minha area</a>
                     <a class="nav-link" href="/admin/">Admin</a>
                     <span class="navbar-text text-white-50">{{ request.user.username }}</span>
                     <form method="post" action="{% url 'logout' %}" class="mb-0">
