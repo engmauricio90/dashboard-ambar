@@ -933,6 +933,18 @@ def _linhas_medicao_construtora_formset(medicao, formset):
     return linhas
 
 
+def _sincronizar_itens_medicao_construtora(medicao):
+    medicao.itens.filter(item_orcamento__tipo=ItemOrcamentoMedicao.TIPO_GRUPO).delete()
+    itens_existentes = set(medicao.itens.values_list('item_orcamento_id', flat=True))
+    itens_novos = [
+        ItemMedicaoConstrutora(medicao=medicao, item_orcamento=item)
+        for item in medicao.orcamento.itens.filter(tipo=ItemOrcamentoMedicao.TIPO_ITEM)
+        if item.id not in itens_existentes
+    ]
+    if itens_novos:
+        ItemMedicaoConstrutora.objects.bulk_create(itens_novos)
+
+
 def _itens_medicao_construtora_com_grupos(medicao):
     itens_medicao = {
         item.item_orcamento_id: item
@@ -1236,13 +1248,7 @@ def nova_medicao_construtora(request, orcamento_id):
 
 def editar_medicao_construtora(request, medicao_id):
     medicao = get_object_or_404(MedicaoConstrutora.objects.select_related('orcamento', 'orcamento__obra'), id=medicao_id)
-    if not medicao.itens.exists():
-        ItemMedicaoConstrutora.objects.bulk_create(
-            [
-                ItemMedicaoConstrutora(medicao=medicao, item_orcamento=item)
-                for item in medicao.orcamento.itens.filter(tipo=ItemOrcamentoMedicao.TIPO_ITEM)
-            ]
-        )
+    _sincronizar_itens_medicao_construtora(medicao)
     if request.method == 'POST':
         form = MedicaoConstrutoraForm(request.POST, instance=medicao)
         formset = ItemMedicaoConstrutoraFormSet(request.POST, instance=medicao)

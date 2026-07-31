@@ -40,6 +40,7 @@
     <div class="card shadow-sm mb-4">
         <div class="card-body">
             <h5 class="mb-3">Itens medidos</h5>
+            {% if formset.non_form_errors %}<div class="alert alert-danger">{{ formset.non_form_errors }}</div>{% endif %}
             {{ formset.management_form }}
             <div class="table-responsive">
                 <table class="table table-sm align-middle">
@@ -64,6 +65,11 @@
                             <td>{{ item_form.instance.saldo_quantidade|floatformat:4 }}</td>
                             <td>R$ {{ item_form.instance.valor_periodo|floatformat:2 }}</td>
                         </tr>
+                        {% if item_form.errors %}
+                        <tr>
+                            <td colspan="9" class="text-danger small">{{ item_form.errors }}</td>
+                        </tr>
+                        {% endif %}
                         {% endwith %}
                         {% endif %}
                         {% endfor %}

@@ -471,6 +471,54 @@ class MedicoesTests(TestCase):
         self.assertIn('Valor mao de obra', headers)
         self.assertIn('Valor equipamentos', headers)
 
+    def test_medicao_construtora_salva_mesmo_com_grupo_antigo_na_medicao(self):
+        orcamento, item = self._orcamento()
+        grupo = ItemOrcamentoMedicao.objects.create(
+            orcamento=orcamento,
+            tipo=ItemOrcamentoMedicao.TIPO_GRUPO,
+            item='1',
+            descricao='SERVICOS PRELIMINARES',
+        )
+        medicao = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=1,
+            periodo_inicio=date(2026, 1, 1),
+            periodo_fim=date(2026, 1, 31),
+            data_medicao=date(2026, 1, 31),
+        )
+        ItemMedicaoConstrutora.objects.create(medicao=medicao, item_orcamento=grupo)
+        item_medicao = ItemMedicaoConstrutora.objects.create(medicao=medicao, item_orcamento=item)
+
+        response = self.client.post(
+            reverse('editar_medicao_construtora', args=[medicao.id]),
+            {
+                'numero': '1',
+                'periodo_inicio': '2026-01-01',
+                'periodo_fim': '2026-01-31',
+                'data_medicao': '2026-01-31',
+                'retencao_tecnica': '0',
+                'retencao_tecnica_percentual': '0',
+                'issqn': '0',
+                'issqn_percentual': '0',
+                'inss': '0',
+                'inss_percentual': '0',
+                'desconto_adicional': '0',
+                'desconto_adicional_percentual': '0',
+                'observacoes': '',
+                'itens-TOTAL_FORMS': '1',
+                'itens-INITIAL_FORMS': '1',
+                'itens-MIN_NUM_FORMS': '0',
+                'itens-MAX_NUM_FORMS': '1000',
+                'itens-0-id': str(item_medicao.id),
+                'itens-0-quantidade_periodo': '15',
+            },
+        )
+
+        self.assertRedirects(response, reverse('editar_medicao_construtora', args=[medicao.id]))
+        item_medicao.refresh_from_db()
+        self.assertEqual(item_medicao.quantidade_periodo, Decimal('15'))
+        self.assertFalse(medicao.itens.filter(item_orcamento=grupo).exists())
+
     def test_medicao_construtora_desconta_faturamento_direto_fora_da_base_de_impostos(self):
         orcamento, item = self._orcamento()
         medicao = MedicaoConstrutora.objects.create(
