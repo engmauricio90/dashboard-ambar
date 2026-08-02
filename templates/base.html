@@ -36,7 +36,6 @@
                         </ul>
                     </div>
                     <a class="nav-link" href="{% url 'controles_home' %}">Controles</a>
-                    <a class="nav-link" href="{% url 'lista_propostas' %}">Propostas</a>
                     <a class="nav-link" href="{% url 'minha_area' %}">Minha area</a>
                     {% if request.user.is_staff or request.user.is_superuser %}
                     <a class="nav-link" href="/admin/">Admin</a>
