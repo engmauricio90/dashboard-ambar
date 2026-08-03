@@ -408,10 +408,14 @@ def financeiro_home(request):
     receber = _base_receber()
     pagar = _base_pagar()
     eventos = _eventos_fluxo(receber, pagar)
+    hoje = timezone.localdate()
+    limite_fluxo = hoje + timedelta(days=90)
+    eventos_fluxo = [evento for evento in eventos if hoje <= evento['data'] <= limite_fluxo]
     contexto = {
         **_resumo(receber, pagar),
         'ultimos_eventos': eventos[-10:],
-        'grafico_fluxo': _grafico_fluxo(eventos),
+        'grafico_fluxo': _grafico_fluxo(eventos_fluxo),
+        'fluxo_periodo': f'{hoje.strftime("%d/%m/%Y")} a {limite_fluxo.strftime("%d/%m/%Y")}',
     }
     return render(request, 'financeiro/home.html', contexto)
 

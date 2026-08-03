@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -6,6 +6,7 @@ from django.contrib.auth.models import Group
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from obras.models import DespesaObra, NotaFiscal, Obra, RetencaoTecnicaObra
 from controles.models import ItemOrdemCompraGeral, NotaFiscalOrdemCompraGeral, OrdemCompraGeral
@@ -709,14 +710,22 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertContains(response, 'Fluxo de caixa')
 
     def test_dashboard_financeiro_agrupa_fluxo_por_semana(self):
+        hoje = timezone.localdate()
+        dias_ate_segunda = (7 - hoje.weekday()) % 7
+        inicio_semana = hoje + timedelta(days=dias_ate_segunda)
+        semana_atual = inicio_semana
+        mesma_semana = inicio_semana + timedelta(days=2)
+        proxima_semana = inicio_semana + timedelta(days=7)
+        fora_periodo = hoje + timedelta(days=120)
+
         ContaReceber.objects.create(
             cliente='Cliente A',
             obra=self.obra,
             centro_custo=self.centro,
             numero_nf='NF-SEM-1',
             descricao='Receita da semana',
-            data_emissao=date(2026, 5, 1),
-            data_vencimento=date(2026, 5, 4),
+            data_emissao=hoje,
+            data_vencimento=semana_atual,
             valor_bruto=Decimal('100.00'),
         )
         ContaPagar.objects.create(
@@ -725,8 +734,8 @@ class FinanceiroIntegracaoObraTests(TestCase):
             centro_custo=self.centro,
             categoria='material',
             descricao='Despesa da mesma semana',
-            data_emissao=date(2026, 5, 1),
-            data_vencimento=date(2026, 5, 8),
+            data_emissao=hoje,
+            data_vencimento=mesma_semana,
             valor=Decimal('40.00'),
         )
         ContaPagar.objects.create(
@@ -735,15 +744,31 @@ class FinanceiroIntegracaoObraTests(TestCase):
             centro_custo=self.centro,
             categoria='material',
             descricao='Despesa da semana seguinte',
-            data_emissao=date(2026, 5, 1),
-            data_vencimento=date(2026, 5, 11),
+            data_emissao=hoje,
+            data_vencimento=proxima_semana,
             valor=Decimal('25.00'),
+        )
+        ContaPagar.objects.create(
+            fornecedor='Fornecedor C',
+            obra=self.obra,
+            centro_custo=self.centro,
+            categoria='material',
+            descricao='Despesa fora dos 90 dias',
+            data_emissao=hoje,
+            data_vencimento=fora_periodo,
+            valor=Decimal('999.00'),
         )
 
         response = self.client.get(reverse('financeiro_home'))
 
         grafico = response.context['grafico_fluxo']
-        self.assertEqual(grafico['labels'], ['04/05 a 10/05', '11/05 a 17/05'])
+        self.assertEqual(
+            grafico['labels'],
+            [
+                f'{inicio_semana.strftime("%d/%m")} a {(inicio_semana + timedelta(days=6)).strftime("%d/%m")}',
+                f'{proxima_semana.strftime("%d/%m")} a {(proxima_semana + timedelta(days=6)).strftime("%d/%m")}',
+            ],
+        )
         self.assertEqual(grafico['receber'], [100.0, 0.0])
         self.assertEqual(grafico['pagar'], [40.0, 25.0])
 
