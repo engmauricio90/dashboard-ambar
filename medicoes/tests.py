@@ -437,8 +437,27 @@ class MedicoesTests(TestCase):
 
         response_obra = self.client.get(reverse('medicoes_obra', args=[self.obra.id]))
 
+        self.assertContains(response_obra, 'Pago/Liquido')
+        self.assertContains(response_obra, '% concluida')
+        self.assertContains(response_obra, 'R$ 300,00')
         self.assertContains(response_obra, 'R$ 75,00')
         self.assertContains(response_obra, 'R$ 225,00')
+        self.assertContains(response_obra, '25,00%')
+
+        response_detalhe = self.client.get(reverse('detalhe_orcamento_medicao', args=[orcamento.id]))
+        self.assertContains(response_detalhe, 'Contratado')
+        self.assertContains(response_detalhe, 'Medido')
+        self.assertContains(response_detalhe, 'Saldo contratual')
+        self.assertContains(response_detalhe, 'R$ 300,00')
+        self.assertContains(response_detalhe, 'R$ 75,00')
+        self.assertContains(response_detalhe, 'R$ 225,00')
+        self.assertContains(response_detalhe, '25,00% concluida')
+
+        response_home = self.client.get(reverse('medicoes_empreiteiros_home'))
+        self.assertContains(response_home, 'R$ 300,00')
+        self.assertContains(response_home, 'R$ 75,00')
+        self.assertContains(response_home, 'R$ 225,00')
+        self.assertContains(response_home, '25,00%')
 
     def test_exclui_planilha_importada(self):
         orcamento, item = self._orcamento()

@@ -89,6 +89,23 @@ class OrcamentoMedicao(models.Model):
             return Decimal('0')
         return (self.total_medido_construtora * Decimal('100') / total).quantize(Decimal('0.01'))
 
+    @property
+    def percentual_medido_empreiteiro(self):
+        total = self.total_orcamento
+        if not total:
+            return Decimal('0')
+        return (self.total_medido_empreiteiro * Decimal('100') / total).quantize(Decimal('0.01'))
+
+    @property
+    def percentual_saldo_empreiteiro(self):
+        total = self.total_orcamento
+        if not total:
+            return Decimal('0')
+        saldo = self.saldo_medir_empreiteiro
+        if saldo < 0:
+            saldo = Decimal('0')
+        return (saldo * Decimal('100') / total).quantize(Decimal('0.01'))
+
 
 class ItemOrcamentoMedicao(models.Model):
     TIPO_GRUPO = 'grupo'

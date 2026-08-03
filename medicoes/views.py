@@ -703,7 +703,7 @@ def medicoes_empreiteiros_home(request):
         ).select_related('obra', 'orcamento')[:15],
         'planilhas': OrcamentoMedicao.objects.filter(
             tipo=OrcamentoMedicao.TIPO_EMPREITEIRO,
-        ).select_related('obra')[:15],
+        ).select_related('obra').prefetch_related('itens', 'medicoes_empreiteiro')[:15],
     }
     return render(request, 'medicoes/empreiteiros_home.html', contexto)
 
@@ -863,7 +863,14 @@ def novo_orcamento_manual(request):
 
 
 def detalhe_orcamento(request, orcamento_id):
-    orcamento = get_object_or_404(OrcamentoMedicao.objects.select_related('obra'), id=orcamento_id)
+    orcamento = get_object_or_404(
+        OrcamentoMedicao.objects.select_related('obra').prefetch_related(
+            'itens',
+            'medicoes_construtora',
+            'medicoes_empreiteiro',
+        ),
+        id=orcamento_id,
+    )
     itens = orcamento.itens.all()
     medicoes_construtora = orcamento.medicoes_construtora.all()
     medicoes_empreiteiro = orcamento.medicoes_empreiteiro.all()

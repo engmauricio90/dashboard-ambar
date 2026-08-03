@@ -18,6 +18,38 @@
     </div>
 </div>
 
+{% if medicao and medicao.tipo == 'cumulativa' and medicao.orcamento %}
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100"><div class="card-body">
+            <h6>Contratado</h6>
+            <h4>R$ {{ medicao.orcamento.total_orcamento|floatformat:2 }}</h4>
+        </div></div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100"><div class="card-body">
+            <h6>Medido acumulado</h6>
+            <h4>R$ {{ medicao.orcamento.total_medido_empreiteiro|floatformat:2 }}</h4>
+            <small class="text-muted">{{ medicao.orcamento.percentual_medido_empreiteiro|floatformat:2 }}% concluida</small>
+        </div></div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100"><div class="card-body">
+            <h6>Pago/Liquido</h6>
+            <h4>R$ {{ medicao.orcamento.total_liquido_empreiteiro|floatformat:2 }}</h4>
+            <small class="text-muted">Total liquido das medicoes</small>
+        </div></div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100"><div class="card-body">
+            <h6>Saldo contratual</h6>
+            <h4>R$ {{ medicao.orcamento.saldo_medir_empreiteiro|floatformat:2 }}</h4>
+            <small class="text-muted">{{ medicao.orcamento.percentual_saldo_empreiteiro|floatformat:2 }}% a medir</small>
+        </div></div>
+    </div>
+</div>
+{% endif %}
+
 <form method="post">
     {% csrf_token %}
     <div class="card shadow-sm mb-4">
