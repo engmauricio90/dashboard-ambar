@@ -100,7 +100,7 @@
                 <div class="list-group list-group-flush">
                     {% for medicao in medicoes_empreiteiro %}
                     <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_empreiteiro' medicao.id %}">
-                        {{ medicao.empreiteiro }} - {{ medicao.get_tipo_display }} - Medicao {{ medicao.numero }}<br>
+                        {{ medicao.empreiteiro }} - {{ medicao.get_tipo_display }} - Medicao {{ medicao.numero }} - {{ medicao.data_medicao|date:'d/m/Y' }}<br>
                         <small class="text-muted">
                             {{ medicao.orcamento.nome|default:'Sem planilha' }} |
                             Medido R$ {{ medicao.subtotal_periodo|floatformat:2 }} |
