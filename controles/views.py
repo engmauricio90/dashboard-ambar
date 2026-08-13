@@ -8,6 +8,7 @@ import unicodedata
 
 from django.conf import settings
 from django.contrib import messages
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse
@@ -859,21 +860,28 @@ def lista_ordens_compra_gerais(request):
             | Q(fornecedor_cpf_cnpj__icontains=busca)
             | Q(obra__nome_obra__icontains=busca)
         )
-    ordens = list(ordens)
-    total_filtrado = sum((ordem.total for ordem in ordens), Decimal('0'))
+    ordens_filtradas = list(ordens)
+    total_filtrado = sum((ordem.total for ordem in ordens_filtradas), Decimal('0'))
     total_por_obra = {}
-    for ordem in ordens:
+    for ordem in ordens_filtradas:
         obra_nome = ordem.obra.nome_obra if ordem.obra_id else 'Sem obra'
         if obra_nome not in total_por_obra:
             total_por_obra[obra_nome] = {'obra': obra_nome, 'quantidade': 0, 'total': Decimal('0')}
         total_por_obra[obra_nome]['quantidade'] += 1
         total_por_obra[obra_nome]['total'] += ordem.total
+    paginator = Paginator(ordens_filtradas, 20)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    query_params = request.GET.copy()
+    query_params.pop('page', None)
+    query_string = query_params.urlencode()
 
     return render(
         request,
         'controles/lista_ordens_compra_gerais.html',
         {
-            'ordens': ordens,
+            'ordens': page_obj,
+            'page_obj': page_obj,
+            'query_string': query_string,
             'obras': Obra.objects.order_by('nome_obra'),
             'status_choices': OrdemCompraGeral.STATUS_CHOICES,
             'filtros': {'status': status, 'obra': obra_id, 'busca': busca},

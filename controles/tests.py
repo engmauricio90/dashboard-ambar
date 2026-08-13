@@ -387,6 +387,36 @@ class ControleAbastecimentoTests(TestCase):
         self.assertContains(response, 'R$ 200,00')
         self.assertNotContains(response, 'Fornecedor B')
 
+    def test_lista_ordens_compra_paginas_preservando_filtro(self):
+        obra = Obra.objects.create(nome_obra='Obra Paginada')
+        for index in range(25):
+            ordem = OrdemCompraGeral.objects.create(
+                numero=f'{index + 1:03d}/2026',
+                fornecedor=f'Fornecedor {index + 1:02d}',
+                obra=obra,
+                data_emissao=date(2026, 5, 1),
+            )
+            ItemOrdemCompraGeral.objects.create(
+                ordem=ordem,
+                item=1,
+                descricao='Material',
+                quantidade=Decimal('1.00'),
+                valor_unitario=Decimal('10.00'),
+            )
+
+        response = self.client.get(reverse('lista_ordens_compra_gerais'), {'obra': obra.id})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context['ordens']), 20)
+        self.assertContains(response, 'Pagina 1 de 2')
+        self.assertContains(response, f'obra={obra.id}&page=2')
+        self.assertContains(response, 'R$ 250,00')
+
+        segunda_pagina = self.client.get(reverse('lista_ordens_compra_gerais'), {'obra': obra.id, 'page': 2})
+
+        self.assertEqual(len(segunda_pagina.context['ordens']), 5)
+        self.assertContains(segunda_pagina, 'Pagina 2 de 2')
+
     def test_botao_nf_ordem_compra_direciona_para_conta_pagar(self):
         obra = Obra.objects.create(nome_obra='Obra OC', cliente='Cliente')
         centro = CentroCusto.objects.create(nome='Obras')
