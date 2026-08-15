@@ -11,6 +11,7 @@ from openpyxl import load_workbook
 from obras.models import Obra
 from controles.models import FaturamentoDireto
 
+from .forms import RelatorioMedicoesForm
 from .models import (
     Empreiteiro,
     FaturamentoDiretoMedicao,
@@ -491,6 +492,24 @@ class MedicoesTests(TestCase):
             quantidade_periodo=Decimal('2.0000'),
             valor_unitario=Decimal('50.00'),
         )
+        for index in range(16):
+            extra = MedicaoEmpreiteiro.objects.create(
+                tipo=MedicaoEmpreiteiro.TIPO_SIMPLES,
+                obra=self.obra,
+                empreiteiro_cadastro=empreiteiro,
+                empreiteiro='Empreiteiro Relatorio',
+                numero=index + 3,
+                periodo_inicio=date(2026, 4, 1),
+                periodo_fim=date(2026, 4, 30),
+                data_medicao=date(2026, 4, 30),
+            )
+            ItemMedicaoEmpreiteiro.objects.create(
+                medicao=extra,
+                item='1',
+                descricao='Servico relatorio extra',
+                quantidade_periodo=Decimal('1.0000'),
+                valor_unitario=Decimal('10.00'),
+            )
 
         response = self.client.get(
             reverse('relatorio_medicoes'),
@@ -529,7 +548,7 @@ class MedicoesTests(TestCase):
             {
                 'tipo': 'empreiteiro',
                 'empreiteiro': empreiteiro.id,
-                'colunas': ['tipo', 'empreiteiro', 'data_medicao', 'medido'],
+                'colunas': [choice[0] for choice in RelatorioMedicoesForm.COLUNAS_CHOICES],
                 'export': 'pdf',
             },
         )

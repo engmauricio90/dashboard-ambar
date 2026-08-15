@@ -812,25 +812,92 @@ def _xlsx_relatorio_medicoes(linhas, colunas):
 
 
 def _pdf_relatorio_medicoes(linhas, colunas, totais):
+    colunas = colunas or RelatorioMedicoesForm.COLUNAS_PADRAO
     headers = [RELATORIO_MEDICOES_COLUNAS[coluna] for coluna in colunas]
-    content = [
-        'RELATORIO GERENCIAL DE MEDICOES',
-        f'Emitido em {date.today().strftime("%d/%m/%Y")}',
-        '',
-        ' | '.join(headers),
-    ]
-    for linha in linhas:
-        content.append(' | '.join(_relatorio_linha_display(linha, coluna) for coluna in colunas))
-    content.extend(
-        [
-            '',
-            f'Total medido: {_money(totais["medido"])}',
-            f'Total descontos: {_money(totais["descontos"])}',
-            f'Total liquido: {_money(totais["liquido"])}',
-        ]
-    )
-    pages = [content[i : i + 34] for i in range(0, len(content), 34)] or [[]]
-    return _build_simple_pdf(pages)
+    rows = [[_relatorio_linha_display(linha, coluna) for coluna in colunas] for linha in linhas]
+    page_w, page_h = 2339, 1654
+    margin = 70
+    title_h = 132
+    footer_h = 70
+    row_h = 46
+    header_h = 54
+    table_w = page_w - (margin * 2)
+    content_bottom = page_h - margin - footer_h
+    max_rows = max((content_bottom - margin - title_h - header_h - 130) // row_h, 1)
+
+    weights = {
+        'tipo': 1.2,
+        'obra': 1.8,
+        'planilha': 1.8,
+        'empreiteiro': 1.8,
+        'numero': 0.75,
+        'data_medicao': 1.0,
+        'periodo': 1.3,
+        'medido': 1.05,
+        'descontos': 1.05,
+        'liquido': 1.05,
+        'percentual': 0.9,
+    }
+    total_weight = sum(weights.get(coluna, 1) for coluna in colunas) or 1
+    widths = [int(table_w * weights.get(coluna, 1) / total_weight) for coluna in colunas]
+    widths[-1] += table_w - sum(widths)
+    chunks = [rows[i : i + max_rows] for i in range(0, len(rows), max_rows)] or [[]]
+
+    pages = []
+    dark = (17, 24, 39)
+    muted = (75, 85, 99)
+    border = (203, 213, 225)
+    header_bg = (229, 236, 240)
+    zebra = (248, 250, 252)
+    title_font = _font(32, True)
+    small_font = _font(18)
+    header_font = _font(17, True)
+    cell_font = _font(16)
+
+    for page_index, chunk in enumerate(chunks, start=1):
+        image = Image.new('RGB', (page_w, page_h), 'white')
+        draw = ImageDraw.Draw(image)
+        y = margin
+        draw.text((margin, y), 'Relatorio gerencial de medicoes', font=title_font, fill=dark)
+        y += 48
+        draw.text((margin, y), f'Emitido em {date.today().strftime("%d/%m/%Y")}', font=small_font, fill=muted)
+        draw.text((page_w - margin - _font(18, True).getlength(f'{len(linhas)} registro(s)'), y), f'{len(linhas)} registro(s)', font=_font(18, True), fill=dark)
+        y += 52
+        resumo = (
+            f'Total medido: {_money(totais["medido"])}    '
+            f'Descontos: {_money(totais["descontos"])}    '
+            f'Total liquido: {_money(totais["liquido"])}'
+        )
+        draw.rounded_rectangle((margin, y, page_w - margin, y + 44), radius=8, fill=(245, 247, 250), outline=border, width=1)
+        draw.text((margin + 18, y + 12), _clean_text(resumo), font=small_font, fill=dark)
+        y += 70
+
+        cursor = margin
+        for header, width in zip(headers, widths):
+            _draw_report_cell(draw, header, cursor, y, width, header_h, header_font, bg=header_bg, align='center', width=2)
+            cursor += width
+        y += header_h
+
+        for row_index, row in enumerate(chunk):
+            cursor = margin
+            bg = zebra if row_index % 2 else (255, 255, 255)
+            for value, width, coluna in zip(row, widths, colunas):
+                align = 'right' if coluna in {'medido', 'descontos', 'liquido'} else 'center'
+                if coluna in {'obra', 'planilha', 'empreiteiro'}:
+                    align = 'left'
+                _draw_report_cell(draw, value, cursor, y, width, row_h, cell_font, bg=bg, align=align)
+                cursor += width
+            y += row_h
+
+        footer = f'Pagina {page_index} de {len(chunks)}'
+        draw.text((margin, page_h - margin), date.today().strftime('%d/%m/%Y'), font=_font(15), fill=muted)
+        draw.text(((page_w - _font(15, True).getlength('AMBAR ENGENHARIA')) / 2, page_h - margin), 'AMBAR ENGENHARIA', font=_font(15, True), fill=muted)
+        draw.text((page_w - margin - _font(15).getlength(footer), page_h - margin), footer, font=_font(15), fill=muted)
+        pages.append(image)
+
+    buffer = BytesIO()
+    pages[0].save(buffer, 'PDF', save_all=True, append_images=pages[1:], resolution=150)
+    return buffer.getvalue()
 
 
 def relatorio_medicoes(request):
