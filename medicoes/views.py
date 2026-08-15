@@ -12,6 +12,7 @@ from django.db import transaction
 from django.db.models import Q, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -33,6 +34,7 @@ from .forms import (
     MedicaoEmpreiteiroCabecalhoForm,
     MedicaoEmpreiteiroForm,
     OrcamentoMedicaoManualForm,
+    RelatorioMedicoesForm,
 )
 from .models import (
     Empreiteiro,
@@ -678,6 +680,199 @@ def _read_csv(file):
 
 def medicoes_home(request):
     return redirect('medicoes_construtora_home')
+
+
+RELATORIO_MEDICOES_COLUNAS = dict(RelatorioMedicoesForm.COLUNAS_CHOICES)
+
+
+def _format_date_br(value):
+    return value.strftime('%d/%m/%Y') if value else '-'
+
+
+def _format_periodo(inicio, fim):
+    return f'{_format_date_br(inicio)} a {_format_date_br(fim)}'
+
+
+def _format_percent(value):
+    if value in (None, ''):
+        return '-'
+    return f'{value:.2f}%'.replace('.', ',')
+
+
+def _relatorio_linha_display(row, coluna):
+    if coluna in {'medido', 'descontos', 'liquido'}:
+        return _money(row[coluna])
+    if coluna == 'data_medicao':
+        return _format_date_br(row[coluna])
+    if coluna == 'periodo':
+        return _format_periodo(row['periodo_inicio'], row['periodo_fim'])
+    if coluna == 'percentual':
+        return _format_percent(row[coluna])
+    return row.get(coluna) or '-'
+
+
+def _linhas_relatorio_medicoes(filtros):
+    tipo = filtros.get('tipo') or ''
+    obra = filtros.get('obra')
+    empreiteiro = filtros.get('empreiteiro')
+    data_inicial = filtros.get('data_inicial')
+    data_final = filtros.get('data_final')
+    linhas = []
+
+    if tipo in {'', 'construtora'} and not empreiteiro:
+        medicoes = MedicaoConstrutora.objects.select_related('orcamento', 'orcamento__obra')
+        if obra:
+            medicoes = medicoes.filter(orcamento__obra=obra)
+        if data_inicial:
+            medicoes = medicoes.filter(data_medicao__gte=data_inicial)
+        if data_final:
+            medicoes = medicoes.filter(data_medicao__lte=data_final)
+        for medicao in medicoes:
+            linhas.append(
+                {
+                    'tipo': 'Construtora',
+                    'obra': medicao.orcamento.obra.nome_obra,
+                    'planilha': medicao.orcamento.nome,
+                    'empreiteiro': '-',
+                    'numero': medicao.numero,
+                    'data_medicao': medicao.data_medicao,
+                    'periodo_inicio': medicao.periodo_inicio,
+                    'periodo_fim': medicao.periodo_fim,
+                    'medido': medicao.subtotal_periodo,
+                    'descontos': medicao.total_descontos,
+                    'liquido': medicao.total_liquido,
+                    'percentual': medicao.orcamento.percentual_medido_construtora,
+                    'url': reverse('editar_medicao_construtora', args=[medicao.id]),
+                }
+            )
+
+    if tipo in {'', 'empreiteiro', 'empreiteiro_simples', 'empreiteiro_cumulativa'}:
+        medicoes = MedicaoEmpreiteiro.objects.select_related('obra', 'orcamento', 'orcamento__obra', 'empreiteiro_cadastro')
+        if tipo == 'empreiteiro_simples':
+            medicoes = medicoes.filter(tipo=MedicaoEmpreiteiro.TIPO_SIMPLES)
+        elif tipo == 'empreiteiro_cumulativa':
+            medicoes = medicoes.filter(tipo=MedicaoEmpreiteiro.TIPO_CUMULATIVA)
+        if obra:
+            medicoes = medicoes.filter(Q(obra=obra) | Q(orcamento__obra=obra))
+        if empreiteiro:
+            medicoes = medicoes.filter(empreiteiro_cadastro=empreiteiro)
+        if data_inicial:
+            medicoes = medicoes.filter(data_medicao__gte=data_inicial)
+        if data_final:
+            medicoes = medicoes.filter(data_medicao__lte=data_final)
+        for medicao in medicoes:
+            orcamento = medicao.orcamento
+            linhas.append(
+                {
+                    'tipo': f'Empreiteiro {medicao.get_tipo_display()}',
+                    'obra': str(medicao.obra or getattr(orcamento, 'obra', '-') or '-'),
+                    'planilha': getattr(orcamento, 'nome', '-') or '-',
+                    'empreiteiro': medicao.empreiteiro,
+                    'numero': medicao.numero,
+                    'data_medicao': medicao.data_medicao,
+                    'periodo_inicio': medicao.periodo_inicio,
+                    'periodo_fim': medicao.periodo_fim,
+                    'medido': medicao.subtotal_periodo,
+                    'descontos': medicao.total_descontos,
+                    'liquido': medicao.total_liquido,
+                    'percentual': orcamento.percentual_medido_empreiteiro if orcamento else None,
+                    'url': reverse('editar_medicao_empreiteiro', args=[medicao.id]),
+                }
+            )
+
+    return sorted(linhas, key=lambda row: (row['data_medicao'], row['tipo'], str(row['obra'])), reverse=True)
+
+
+def _totais_relatorio_medicoes(linhas):
+    return {
+        'medido': sum((linha['medido'] for linha in linhas), Decimal('0')),
+        'descontos': sum((linha['descontos'] for linha in linhas), Decimal('0')),
+        'liquido': sum((linha['liquido'] for linha in linhas), Decimal('0')),
+    }
+
+
+def _xlsx_relatorio_medicoes(linhas, colunas):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Relatorio'
+    ws.append([RELATORIO_MEDICOES_COLUNAS[coluna] for coluna in colunas])
+    for linha in linhas:
+        ws.append([_relatorio_linha_display(linha, coluna) for coluna in colunas])
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal='center')
+    for index, coluna in enumerate(colunas, start=1):
+        width = 16
+        if coluna in {'obra', 'planilha', 'empreiteiro'}:
+            width = 32
+        ws.column_dimensions[get_column_letter(index)].width = width
+    output = BytesIO()
+    wb.save(output)
+    return output.getvalue()
+
+
+def _pdf_relatorio_medicoes(linhas, colunas, totais):
+    headers = [RELATORIO_MEDICOES_COLUNAS[coluna] for coluna in colunas]
+    content = [
+        'RELATORIO GERENCIAL DE MEDICOES',
+        f'Emitido em {date.today().strftime("%d/%m/%Y")}',
+        '',
+        ' | '.join(headers),
+    ]
+    for linha in linhas:
+        content.append(' | '.join(_relatorio_linha_display(linha, coluna) for coluna in colunas))
+    content.extend(
+        [
+            '',
+            f'Total medido: {_money(totais["medido"])}',
+            f'Total descontos: {_money(totais["descontos"])}',
+            f'Total liquido: {_money(totais["liquido"])}',
+        ]
+    )
+    pages = [content[i : i + 34] for i in range(0, len(content), 34)] or [[]]
+    return _build_simple_pdf(pages)
+
+
+def relatorio_medicoes(request):
+    data = request.GET.copy()
+    if 'colunas' not in data:
+        data.setlist('colunas', RelatorioMedicoesForm.COLUNAS_PADRAO)
+    form = RelatorioMedicoesForm(data)
+    linhas = []
+    totais = _totais_relatorio_medicoes(linhas)
+    colunas = RelatorioMedicoesForm.COLUNAS_PADRAO
+    if form.is_valid():
+        colunas = form.cleaned_data['colunas']
+        linhas = _linhas_relatorio_medicoes(form.cleaned_data)
+        totais = _totais_relatorio_medicoes(linhas)
+        export = request.GET.get('export')
+        if export == 'excel':
+            response = HttpResponse(
+                _xlsx_relatorio_medicoes(linhas, colunas),
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            )
+            response['Content-Disposition'] = 'attachment; filename="relatorio_medicoes.xlsx"'
+            return response
+        if export == 'pdf':
+            response = HttpResponse(_pdf_relatorio_medicoes(linhas, colunas, totais), content_type='application/pdf')
+            response['Content-Disposition'] = 'inline; filename="relatorio_medicoes.pdf"'
+            return response
+
+    query_params = request.GET.copy()
+    query_params.pop('export', None)
+    query_string = query_params.urlencode()
+    return render(
+        request,
+        'medicoes/relatorio_medicoes.html',
+        {
+            'form': form,
+            'linhas': linhas,
+            'totais': totais,
+            'colunas': colunas,
+            'colunas_labels': RELATORIO_MEDICOES_COLUNAS,
+            'query_string': query_string,
+        },
+    )
 
 
 def medicoes_construtora_home(request):

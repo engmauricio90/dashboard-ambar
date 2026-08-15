@@ -459,6 +459,84 @@ class MedicoesTests(TestCase):
         self.assertContains(response_home, 'R$ 225,00')
         self.assertContains(response_home, '25,00%')
 
+    def test_relatorio_gerencial_medicoes_filtra_colunas_e_exporta(self):
+        orcamento, item = self._orcamento()
+        medicao_construtora = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=1,
+            periodo_inicio=date(2026, 3, 1),
+            periodo_fim=date(2026, 3, 31),
+            data_medicao=date(2026, 3, 31),
+        )
+        ItemMedicaoConstrutora.objects.create(
+            medicao=medicao_construtora,
+            item_orcamento=item,
+            quantidade_periodo=Decimal('10.0000'),
+        )
+        empreiteiro = Empreiteiro.objects.create(nome='Empreiteiro Relatorio')
+        medicao_empreiteiro = MedicaoEmpreiteiro.objects.create(
+            tipo=MedicaoEmpreiteiro.TIPO_SIMPLES,
+            obra=self.obra,
+            empreiteiro_cadastro=empreiteiro,
+            empreiteiro='Empreiteiro Relatorio',
+            numero=2,
+            periodo_inicio=date(2026, 4, 1),
+            periodo_fim=date(2026, 4, 30),
+            data_medicao=date(2026, 4, 30),
+        )
+        ItemMedicaoEmpreiteiro.objects.create(
+            medicao=medicao_empreiteiro,
+            item='1',
+            descricao='Servico relatorio',
+            quantidade_periodo=Decimal('2.0000'),
+            valor_unitario=Decimal('50.00'),
+        )
+
+        response = self.client.get(
+            reverse('relatorio_medicoes'),
+            {
+                'tipo': 'empreiteiro',
+                'empreiteiro': empreiteiro.id,
+                'colunas': ['tipo', 'empreiteiro', 'data_medicao', 'medido', 'liquido'],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Relatorio gerencial de medicoes')
+        self.assertContains(response, 'Empreiteiro Relatorio')
+        self.assertContains(response, '30/04/2026')
+        self.assertContains(response, 'R$ 100,00')
+        self.assertNotContains(response, 'R$ 170,00')
+
+        excel = self.client.get(
+            reverse('relatorio_medicoes'),
+            {
+                'tipo': 'empreiteiro',
+                'empreiteiro': empreiteiro.id,
+                'colunas': ['tipo', 'empreiteiro', 'data_medicao', 'medido'],
+                'export': 'excel',
+            },
+        )
+        self.assertEqual(excel.status_code, 200)
+        self.assertIn('spreadsheetml', excel['Content-Type'])
+        wb = load_workbook(BytesIO(excel.content))
+        ws = wb.active
+        self.assertEqual(ws['A1'].value, 'Tipo')
+        self.assertEqual(ws['B2'].value, 'Empreiteiro Relatorio')
+
+        pdf = self.client.get(
+            reverse('relatorio_medicoes'),
+            {
+                'tipo': 'empreiteiro',
+                'empreiteiro': empreiteiro.id,
+                'colunas': ['tipo', 'empreiteiro', 'data_medicao', 'medido'],
+                'export': 'pdf',
+            },
+        )
+        self.assertEqual(pdf.status_code, 200)
+        self.assertEqual(pdf['Content-Type'], 'application/pdf')
+        self.assertTrue(pdf.content.startswith(b'%PDF'))
+
     def test_exclui_planilha_importada(self):
         orcamento, item = self._orcamento()
 

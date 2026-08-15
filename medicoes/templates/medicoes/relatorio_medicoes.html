@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% load dict_extras %}
+
+{% block title %}Relatorio gerencial de medicoes{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Relatorio gerencial de medicoes</h1>
+        <p class="text-muted mb-0">Filtre por tipo, obra, empreiteiro e periodo. Escolha as colunas que devem aparecer.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-danger" href="?{% if query_string %}{{ query_string }}&{% endif %}export=pdf" target="_blank">PDF</a>
+        <a class="btn btn-outline-success" href="?{% if query_string %}{{ query_string }}&{% endif %}export=excel">Excel</a>
+        <a class="btn btn-secondary" href="{% url 'medicoes_home' %}">Voltar</a>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form method="get">
+            {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.tipo.label }}</label>
+                    {{ form.tipo }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.obra.label }}</label>
+                    {{ form.obra }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.empreiteiro.label }}</label>
+                    {{ form.empreiteiro }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.data_inicial.label }}</label>
+                    {{ form.data_inicial }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.data_final.label }}</label>
+                    {{ form.data_final }}
+                </div>
+                <div class="col-12">
+                    <label class="form-label d-block">{{ form.colunas.label }}</label>
+                    <div class="row g-2">
+                        {% for checkbox in form.colunas %}
+                        <div class="col-md-3 col-lg-2">
+                            <label class="form-check">
+                                {{ checkbox.tag }}
+                                <span class="form-check-label">{{ checkbox.choice_label }}</span>
+                            </label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% if form.colunas.errors %}<div class="text-danger small">{{ form.colunas.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-12 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">Aplicar filtros</button>
+                    <a class="btn btn-outline-secondary" href="{% url 'relatorio_medicoes' %}">Limpar</a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4"><div class="card shadow-sm h-100"><div class="card-body"><h6>Total medido</h6><h4>R$ {{ totais.medido|floatformat:2 }}</h4></div></div></div>
+    <div class="col-md-4"><div class="card shadow-sm h-100"><div class="card-body"><h6>Descontos</h6><h4>R$ {{ totais.descontos|floatformat:2 }}</h4></div></div></div>
+    <div class="col-md-4"><div class="card shadow-sm h-100"><div class="card-body"><h6>Total liquido</h6><h4>R$ {{ totais.liquido|floatformat:2 }}</h4></div></div></div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Resultado</h5>
+            <span class="text-muted small">{{ linhas|length }} registro(s)</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped table-bordered align-middle mb-0">
+                <thead>
+                    <tr>
+                        {% for coluna in colunas %}
+                        <th>{{ colunas_labels|get_item:coluna }}</th>
+                        {% endfor %}
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for linha in linhas %}
+                    <tr>
+                        {% for coluna in colunas %}
+                        <td>
+                            {% if coluna == 'medido' %}
+                                R$ {{ linha.medido|floatformat:2 }}
+                            {% elif coluna == 'descontos' %}
+                                R$ {{ linha.descontos|floatformat:2 }}
+                            {% elif coluna == 'liquido' %}
+                                R$ {{ linha.liquido|floatformat:2 }}
+                            {% elif coluna == 'data_medicao' %}
+                                {{ linha.data_medicao|date:'d/m/Y' }}
+                            {% elif coluna == 'periodo' %}
+                                {{ linha.periodo_inicio|date:'d/m/Y' }} a {{ linha.periodo_fim|date:'d/m/Y' }}
+                            {% elif coluna == 'percentual' %}
+                                {% if linha.percentual != None %}{{ linha.percentual|floatformat:2 }}%{% else %}-{% endif %}
+                            {% else %}
+                                {{ linha|get_item:coluna|default:'-' }}
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ linha.url }}">Abrir</a></td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="{{ colunas|length|add:1 }}" class="text-muted">Nenhuma medicao encontrada para os filtros informados.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

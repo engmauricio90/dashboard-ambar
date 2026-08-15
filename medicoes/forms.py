@@ -48,6 +48,70 @@ class EmpreiteiroForm(BootstrapModelForm):
         }
 
 
+class RelatorioMedicoesForm(BootstrapForm):
+    TIPO_CHOICES = [
+        ('', 'Todas'),
+        ('construtora', 'Construtora'),
+        ('empreiteiro', 'Empreiteiros'),
+        ('empreiteiro_simples', 'Empreiteiro simples'),
+        ('empreiteiro_cumulativa', 'Empreiteiro cumulativa'),
+    ]
+    COLUNAS_CHOICES = [
+        ('tipo', 'Tipo'),
+        ('obra', 'Obra'),
+        ('planilha', 'Planilha'),
+        ('empreiteiro', 'Empreiteiro'),
+        ('numero', 'Numero'),
+        ('data_medicao', 'Data da medicao'),
+        ('periodo', 'Periodo'),
+        ('medido', 'Valor medido'),
+        ('descontos', 'Descontos'),
+        ('liquido', 'Valor liquido'),
+        ('percentual', '% concluida'),
+    ]
+    COLUNAS_PADRAO = ['tipo', 'obra', 'planilha', 'empreiteiro', 'numero', 'data_medicao', 'medido', 'liquido']
+
+    tipo = forms.ChoiceField(label='Tipo', required=False, choices=TIPO_CHOICES)
+    obra = forms.ModelChoiceField(label='Obra', required=False, queryset=None)
+    empreiteiro = forms.ModelChoiceField(label='Empreiteiro', required=False, queryset=None)
+    data_inicial = forms.DateField(
+        label='Data inicial',
+        required=False,
+        widget=forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+    )
+    data_final = forms.DateField(
+        label='Data final',
+        required=False,
+        widget=forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+    )
+    colunas = forms.MultipleChoiceField(
+        label='Colunas do relatorio',
+        required=False,
+        choices=COLUNAS_CHOICES,
+        widget=forms.CheckboxSelectMultiple,
+    )
+
+    def __init__(self, *args, **kwargs):
+        from obras.models import Obra
+
+        super().__init__(*args, **kwargs)
+        self.fields['obra'].queryset = Obra.objects.order_by('nome_obra')
+        self.fields['empreiteiro'].queryset = Empreiteiro.objects.order_by('nome')
+        self.fields['colunas'].initial = self.COLUNAS_PADRAO
+        self.fields['colunas'].widget.attrs['class'] = 'form-check-input'
+
+    def clean_colunas(self):
+        return self.cleaned_data.get('colunas') or self.COLUNAS_PADRAO
+
+    def clean(self):
+        cleaned_data = super().clean()
+        data_inicial = cleaned_data.get('data_inicial')
+        data_final = cleaned_data.get('data_final')
+        if data_inicial and data_final and data_inicial > data_final:
+            raise forms.ValidationError('A data inicial nao pode ser maior que a data final.')
+        return cleaned_data
+
+
 class ItemOrcamentoMedicaoForm(BootstrapModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
