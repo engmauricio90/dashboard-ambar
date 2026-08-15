@@ -324,6 +324,17 @@ class FinanceiroFiltroForm(BootstrapForm):
         ('status', 'Status'),
         ('tipo', 'Tipo'),
     ]
+    COLUNAS_CHOICES = [
+        ('tipo', 'Tipo'),
+        ('data', 'Data'),
+        ('descricao', 'Descricao'),
+        ('pessoa', 'Cliente/Fornecedor'),
+        ('obra', 'Obra'),
+        ('centro_custo', 'Centro de custo'),
+        ('status', 'Status'),
+        ('valor', 'Valor'),
+    ]
+    COLUNAS_PADRAO = ['tipo', 'data', 'descricao', 'pessoa', 'obra', 'status', 'valor']
 
     tipo = forms.ChoiceField(label='Tipo', required=False, choices=TIPO_CHOICES)
     status = forms.ChoiceField(label='Status', required=False, choices=STATUS_CHOICES)
@@ -347,6 +358,20 @@ class FinanceiroFiltroForm(BootstrapForm):
     obra = forms.CharField(label='Obra', required=False)
     centro_custo = forms.ModelChoiceField(label='Centro de custo', required=False, queryset=CentroCusto.objects.all())
     busca = forms.CharField(label='Busca', required=False)
+    colunas = forms.MultipleChoiceField(
+        label='Colunas do relatorio',
+        required=False,
+        choices=COLUNAS_CHOICES,
+        widget=forms.CheckboxSelectMultiple,
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['colunas'].initial = self.COLUNAS_PADRAO
+        self.fields['colunas'].widget.attrs['class'] = 'form-check-input'
+
+    def clean_colunas(self):
+        return self.cleaned_data.get('colunas') or self.COLUNAS_PADRAO
 
     def clean(self):
         cleaned_data = super().clean()

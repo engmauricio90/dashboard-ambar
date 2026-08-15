@@ -1,162 +1,133 @@
 {% extends 'base.html' %}
+{% load dict_extras %}
 
-{% block title %}Relatorio Gerencial Financeiro{% endblock %}
+{% block title %}Relatorio gerencial financeiro{% endblock %}
 
 {% block content %}
-<style>
-    .finance-report-card {
-        border: 1px solid #dfe5e7;
-        border-radius: 8px;
-        background: #fff;
-        box-shadow: 0 1px 4px rgba(20, 30, 35, 0.06);
-    }
-    .finance-summary {
-        border: 1px solid #dde5e7;
-        border-radius: 8px;
-        background: #fbfcfc;
-        padding: 16px;
-        height: 100%;
-    }
-    .finance-summary span {
-        color: #6c757d;
-        font-size: .86rem;
-    }
-    .finance-summary strong {
-        display: block;
-        margin-top: 4px;
-        font-size: 1.25rem;
-    }
-    .finance-table {
-        border-collapse: separate;
-        border-spacing: 0;
-        font-size: .92rem;
-    }
-    .finance-table thead th {
-        background: #f3f6f7;
-        border-bottom: 1px solid #cfd8dc;
-        color: #263238;
-        font-size: .78rem;
-        letter-spacing: 0;
-        text-transform: uppercase;
-        white-space: nowrap;
-    }
-    .finance-table td {
-        border-color: #edf1f2;
-        vertical-align: middle;
-    }
-    .finance-table tbody tr:hover {
-        background: #f8fbfb;
-    }
-    .finance-description {
-        max-width: 340px;
-        white-space: normal;
-    }
-    .finance-muted {
-        color: #6c757d;
-        font-size: .82rem;
-    }
-    .finance-value {
-        font-weight: 700;
-        white-space: nowrap;
-    }
-</style>
-
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
-        <h1 class="mb-1">Relatorio Gerencial Financeiro</h1>
-        <p class="text-muted mb-0">Contas a pagar, contas a receber e previsoes com filtros, ordenacao e agrupamento.</p>
+        <h1 class="mb-1">Relatorio gerencial financeiro</h1>
+        <p class="text-muted mb-0">Filtre contas, previsoes, obras, centros de custo e escolha as colunas que devem aparecer.</p>
     </div>
-    <div class="d-flex gap-2">
-        <a href="{% url 'relatorio_financeiro_pdf' %}?{{ request.GET.urlencode }}" class="btn btn-outline-primary" target="_blank">PDF</a>
-        <a href="{% url 'financeiro_home' %}" class="btn btn-secondary">Voltar</a>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-danger" href="?{% if query_string %}{{ query_string }}&{% endif %}export=pdf" target="_blank">PDF</a>
+        <a class="btn btn-outline-success" href="?{% if query_string %}{{ query_string }}&{% endif %}export=excel">Excel</a>
+        <a class="btn btn-secondary" href="{% url 'financeiro_home' %}">Voltar</a>
     </div>
 </div>
 
-<div class="finance-report-card mb-4">
+<div class="card shadow-sm mb-4">
     <div class="card-body">
-        <form method="get" class="row g-3">
-            {% for field in filtro_form %}
-            <div class="col-md-3">
-                <label class="form-label">{{ field.label }}</label>
-                {{ field }}
-                {% if field.errors %}<div class="text-danger small mt-1">{{ field.errors|join:', ' }}</div>{% endif %}
-            </div>
-            {% endfor %}
-            {% if filtro_form.non_field_errors %}
-            <div class="col-12"><div class="alert alert-danger mb-0">{{ filtro_form.non_field_errors }}</div></div>
-            {% endif %}
-            <div class="col-12 d-flex gap-2">
-                <button type="submit" class="btn btn-primary">Aplicar filtros</button>
-                <a href="{% url 'relatorio_financeiro' %}" class="btn btn-outline-secondary">Limpar</a>
+        <form method="get">
+            {% if filtro_form.non_field_errors %}<div class="alert alert-danger">{{ filtro_form.non_field_errors }}</div>{% endif %}
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">{{ filtro_form.tipo.label }}</label>
+                    {{ filtro_form.tipo }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ filtro_form.status.label }}</label>
+                    {{ filtro_form.status }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ filtro_form.ordenacao.label }}</label>
+                    {{ filtro_form.ordenacao }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ filtro_form.agrupamento.label }}</label>
+                    {{ filtro_form.agrupamento }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ filtro_form.data_inicial.label }}</label>
+                    {{ filtro_form.data_inicial }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ filtro_form.data_final.label }}</label>
+                    {{ filtro_form.data_final }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ filtro_form.obra.label }}</label>
+                    {{ filtro_form.obra }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ filtro_form.centro_custo.label }}</label>
+                    {{ filtro_form.centro_custo }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ filtro_form.busca.label }}</label>
+                    {{ filtro_form.busca }}
+                </div>
+                <div class="col-12">
+                    <label class="form-label d-block">{{ filtro_form.colunas.label }}</label>
+                    <div class="row g-2">
+                        {% for checkbox in filtro_form.colunas %}
+                        <div class="col-md-3 col-lg-2">
+                            <label class="form-check">
+                                {{ checkbox.tag }}
+                                <span class="form-check-label">{{ checkbox.choice_label }}</span>
+                            </label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% if filtro_form.colunas.errors %}<div class="text-danger small">{{ filtro_form.colunas.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-12 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">Aplicar filtros</button>
+                    <a class="btn btn-outline-secondary" href="{% url 'relatorio_financeiro' %}">Limpar</a>
+                </div>
             </div>
         </form>
     </div>
 </div>
 
 <div class="row g-3 mb-4">
-    <div class="col-md-3"><div class="finance-summary"><span>A receber aberto</span><strong class="text-success">R$ {{ total_receber_aberto|floatformat:2 }}</strong></div></div>
-    <div class="col-md-3"><div class="finance-summary"><span>A pagar aberto</span><strong class="text-danger">R$ {{ total_pagar_aberto|floatformat:2 }}</strong></div></div>
-    <div class="col-md-3"><div class="finance-summary"><span>Previsoes ativas</span><strong>R$ {{ total_previsao_receber|floatformat:2 }} / R$ {{ total_previsao_pagar|floatformat:2 }}</strong></div></div>
-    <div class="col-md-3"><div class="finance-summary"><span>Saldo realizado</span><strong class="{% if saldo_realizado < 0 %}text-danger{% else %}text-success{% endif %}">R$ {{ saldo_realizado|floatformat:2 }}</strong></div></div>
-    <div class="col-md-3"><div class="finance-summary"><span>Saldo previsto + previsoes</span><strong class="{% if saldo_com_previsoes < 0 %}text-danger{% else %}text-success{% endif %}">R$ {{ saldo_com_previsoes|floatformat:2 }}</strong></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>A receber aberto</h6><h4 class="text-success">R$ {{ total_receber_aberto|floatformat:2 }}</h4></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>A pagar aberto</h6><h4 class="text-danger">R$ {{ total_pagar_aberto|floatformat:2 }}</h4></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>Saldo previsto</h6><h4 class="{% if saldo_com_previsoes < 0 %}text-danger{% else %}text-success{% endif %}">R$ {{ saldo_com_previsoes|floatformat:2 }}</h4></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>Saldo realizado</h6><h4 class="{% if saldo_realizado < 0 %}text-danger{% else %}text-success{% endif %}">R$ {{ saldo_realizado|floatformat:2 }}</h4></div></div></div>
 </div>
 
-<div class="finance-report-card">
+<div class="card shadow-sm">
     <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-            <div>
-                <h5 class="mb-0">Lançamentos</h5>
-                <div class="finance-muted">{{ total_eventos }} item(ns) encontrados</div>
-            </div>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Resultado</h5>
+            <span class="text-muted small">{{ total_eventos }} registro(s)</span>
         </div>
         <div class="table-responsive">
-            <table class="table finance-table align-middle mb-0">
+            <table class="table table-sm table-striped table-bordered align-middle mb-0">
                 <thead>
                     <tr>
-                        <th>Data</th>
-                        <th>Tipo</th>
-                        <th>Descrição</th>
-                        <th>Cliente/Fornecedor</th>
-                        <th>Obra</th>
-                        <th>Centro</th>
-                        <th>Status</th>
-                        <th>Valor</th>
+                        {% for coluna in colunas %}
+                        <th>{{ colunas_labels|get_item:coluna }}</th>
+                        {% endfor %}
                     </tr>
                 </thead>
                 <tbody>
                     {% for grupo in grupos_eventos %}
+                    {% if agrupamento_atual %}
                     <tr class="table-secondary fw-bold">
-                        <td colspan="7">{{ grupo.titulo }}</td>
-                        <td class="text-end finance-value {% if grupo.total < 0 %}text-danger{% else %}text-success{% endif %}">
-                            R$ {{ grupo.total|floatformat:2 }}
+                        <td colspan="{{ colunas|length }}">
+                            {{ grupo.titulo }} | Total: R$ {{ grupo.total|floatformat:2 }}
                         </td>
                     </tr>
+                    {% endif %}
                     {% for evento in grupo.eventos %}
                     <tr>
-                        <td class="text-nowrap">{{ evento.data|date:"d/m/Y" }}</td>
-                        <td>
-                            <span class="badge {% if evento.tipo == 'Receber' or evento.tipo == 'Previsao entrada' %}bg-success{% elif evento.tipo == 'Previsao saida' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
-                                {{ evento.tipo }}
-                            </span>
+                        {% for coluna in colunas %}
+                        <td class="{% if coluna == 'valor' %}text-end fw-semibold {% if evento.valor < 0 %}text-danger{% else %}text-success{% endif %}{% endif %}">
+                            {% if coluna == 'data' %}
+                                {{ evento.data|date:'d/m/Y' }}
+                            {% elif coluna == 'valor' %}
+                                R$ {{ evento.valor|floatformat:2 }}
+                            {% else %}
+                                {{ evento|get_item:coluna|default:'-' }}
+                            {% endif %}
                         </td>
-                        <td class="finance-description">
-                            <strong>{{ evento.descricao }}</strong>
-                            <div class="finance-muted">{{ evento.pessoa }}</div>
-                        </td>
-                        <td>{{ evento.pessoa }}</td>
-                        <td>
-                            {{ evento.obra|default:'-' }}
-                            {% if evento.centro_custo %}<div class="finance-muted">{{ evento.centro_custo }}</div>{% endif %}
-                        </td>
-                        <td>{{ evento.centro_custo|default:'-' }}</td>
-                        <td><span class="badge bg-light text-dark border">{{ evento.status }}</span></td>
-                        <td class="text-end finance-value {% if evento.valor < 0 %}text-danger{% else %}text-success{% endif %}">
-                            R$ {{ evento.valor|floatformat:2 }}
-                        </td>
+                        {% endfor %}
                     </tr>
                     {% endfor %}
                     {% empty %}
-                    <tr><td colspan="8">Nenhum lancamento encontrado.</td></tr>
+                    <tr><td colspan="{{ colunas|length }}" class="text-muted">Nenhum lancamento encontrado para os filtros informados.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

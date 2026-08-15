@@ -840,3 +840,17 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'application/pdf')
         self.assertTrue(response.content.startswith(b'%PDF'))
+
+    def test_relatorio_financeiro_exporta_excel_com_colunas(self):
+        response = self.client.get(
+            reverse('relatorio_financeiro'),
+            {
+                'tipo': 'pagar',
+                'ordenacao': 'data_asc',
+                'colunas': ['tipo', 'data', 'descricao', 'valor'],
+                'export': 'excel',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('spreadsheetml', response['Content-Type'])
