@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+
+{% block title %}Previsoes Financeiras{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Previsoes Financeiras</h1>
+        <p class="text-muted mb-0">Lancamentos planejados para simular entradas e saidas futuras sem criar contas reais.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'nova_previsao_financeira' %}" class="btn btn-primary">Nova Previsao</a>
+        <a href="{% url 'financeiro_home' %}" class="btn btn-secondary">Voltar</a>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Tipo</label>
+                <select name="tipo" class="form-select">
+                    <option value="">Todos</option>
+                    <option value="receber" {% if tipo_atual == 'receber' %}selected{% endif %}>Entrada prevista</option>
+                    <option value="pagar" {% if tipo_atual == 'pagar' %}selected{% endif %}>Saida prevista</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Status</label>
+                <select name="status" class="form-select">
+                    <option value="">Todos</option>
+                    <option value="ativa" {% if status_atual == 'ativa' %}selected{% endif %}>Ativa</option>
+                    <option value="realizada" {% if status_atual == 'realizada' %}selected{% endif %}>Realizada</option>
+                    <option value="cancelada" {% if status_atual == 'cancelada' %}selected{% endif %}>Cancelada</option>
+                </select>
+            </div>
+            <div class="col-md-6 d-flex gap-2">
+                <button type="submit" class="btn btn-outline-primary">Filtrar</button>
+                <a href="{% url 'lista_previsoes_financeiras' %}" class="btn btn-outline-secondary">Limpar</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Data prevista</th>
+                        <th>Tipo</th>
+                        <th>Descricao</th>
+                        <th>Cliente/Fornecedor</th>
+                        <th>Obra</th>
+                        <th>Centro</th>
+                        <th>Status</th>
+                        <th>Valor</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for previsao in previsoes %}
+                    <tr>
+                        <td>{{ previsao.data_prevista|date:"d/m/Y" }}</td>
+                        <td>{{ previsao.get_tipo_display }}</td>
+                        <td>{{ previsao.descricao }}</td>
+                        <td>{{ previsao.pessoa|default:'-' }}</td>
+                        <td>{{ previsao.obra|default:'-' }}</td>
+                        <td>{{ previsao.centro_custo|default:'-' }}</td>
+                        <td>{{ previsao.get_status_display }}</td>
+                        <td class="{% if previsao.tipo == 'receber' %}text-success{% else %}text-danger{% endif %}">
+                            R$ {{ previsao.valor|floatformat:2 }}
+                        </td>
+                        <td class="text-end">
+                            <a href="{% url 'editar_previsao_financeira' previsao.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="9">Nenhuma previsao cadastrada.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% include 'includes/pagination.html' %}
+    </div>
+</div>
+{% endblock %}

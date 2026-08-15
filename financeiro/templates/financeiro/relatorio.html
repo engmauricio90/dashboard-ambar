@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}Relatorio Financeiro{% endblock %}
+{% block title %}Relatorio Gerencial Financeiro{% endblock %}
 
 {% block content %}
 <style>
@@ -63,8 +63,8 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
-        <h1 class="mb-1">Relatorio Financeiro</h1>
-        <p class="text-muted mb-0">Filtros, ordenacao e agrupamento para conferencia operacional.</p>
+        <h1 class="mb-1">Relatorio Gerencial Financeiro</h1>
+        <p class="text-muted mb-0">Contas a pagar, contas a receber e previsoes com filtros, ordenacao e agrupamento.</p>
     </div>
     <div class="d-flex gap-2">
         <a href="{% url 'relatorio_financeiro_pdf' %}?{{ request.GET.urlencode }}" class="btn btn-outline-primary" target="_blank">PDF</a>
@@ -96,8 +96,9 @@
 <div class="row g-3 mb-4">
     <div class="col-md-3"><div class="finance-summary"><span>A receber aberto</span><strong class="text-success">R$ {{ total_receber_aberto|floatformat:2 }}</strong></div></div>
     <div class="col-md-3"><div class="finance-summary"><span>A pagar aberto</span><strong class="text-danger">R$ {{ total_pagar_aberto|floatformat:2 }}</strong></div></div>
-    <div class="col-md-3"><div class="finance-summary"><span>Saldo previsto</span><strong class="{% if saldo_previsto < 0 %}text-danger{% else %}text-success{% endif %}">R$ {{ saldo_previsto|floatformat:2 }}</strong></div></div>
+    <div class="col-md-3"><div class="finance-summary"><span>Previsoes ativas</span><strong>R$ {{ total_previsao_receber|floatformat:2 }} / R$ {{ total_previsao_pagar|floatformat:2 }}</strong></div></div>
     <div class="col-md-3"><div class="finance-summary"><span>Saldo realizado</span><strong class="{% if saldo_realizado < 0 %}text-danger{% else %}text-success{% endif %}">R$ {{ saldo_realizado|floatformat:2 }}</strong></div></div>
+    <div class="col-md-3"><div class="finance-summary"><span>Saldo previsto + previsoes</span><strong class="{% if saldo_com_previsoes < 0 %}text-danger{% else %}text-success{% endif %}">R$ {{ saldo_com_previsoes|floatformat:2 }}</strong></div></div>
 </div>
 
 <div class="finance-report-card">
@@ -134,7 +135,7 @@
                     <tr>
                         <td class="text-nowrap">{{ evento.data|date:"d/m/Y" }}</td>
                         <td>
-                            <span class="badge {% if evento.tipo == 'Receber' %}bg-success{% else %}bg-danger{% endif %}">
+                            <span class="badge {% if evento.tipo == 'Receber' or evento.tipo == 'Previsao entrada' %}bg-success{% elif evento.tipo == 'Previsao saida' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
                                 {{ evento.tipo }}
                             </span>
                         </td>

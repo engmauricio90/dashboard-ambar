@@ -11,7 +11,7 @@ from django.utils import timezone
 from obras.models import DespesaObra, NotaFiscal, Obra, RetencaoTecnicaObra
 from controles.models import ItemOrdemCompraGeral, NotaFiscalOrdemCompraGeral, OrdemCompraGeral
 
-from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor, ItemContaPagarOrdemCompra
+from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor, ItemContaPagarOrdemCompra, PrevisaoFinanceira
 
 
 class FinanceiroIntegracaoObraTests(TestCase):
@@ -805,6 +805,31 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertContains(response, 'Maquinas')
         content = response.content.decode()
         self.assertLess(content.index('Despesa anterior'), content.index('Despesa posterior'))
+
+    def test_previsao_financeira_aparece_no_dashboard_e_relatorio(self):
+        PrevisaoFinanceira.objects.create(
+            tipo=PrevisaoFinanceira.TIPO_RECEBER,
+            descricao='Previsao de faturamento',
+            data_prevista=timezone.localdate() + timedelta(days=15),
+            valor=Decimal('500.00'),
+            obra=self.obra,
+            centro_custo=self.centro,
+            pessoa='Cliente previsto',
+        )
+
+        dashboard = self.client.get(reverse('financeiro_home'))
+        relatorio = self.client.get(reverse('relatorio_financeiro'), {'tipo': 'previsao'})
+
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertEqual(dashboard.context['total_previsao_receber'], Decimal('500.00'))
+        self.assertContains(relatorio, 'Previsao de faturamento')
+        self.assertContains(relatorio, 'Previsao entrada')
+
+    def test_lista_previsoes_financeiras_responde(self):
+        response = self.client.get(reverse('lista_previsoes_financeiras'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Previsoes Financeiras')
 
     def test_relatorio_pdf_responde_pdf(self):
         response = self.client.get(

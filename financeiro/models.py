@@ -52,6 +52,60 @@ class CentroCusto(models.Model):
         return self.nome
 
 
+class PrevisaoFinanceira(models.Model):
+    TIPO_RECEBER = 'receber'
+    TIPO_PAGAR = 'pagar'
+    TIPO_CHOICES = [
+        (TIPO_RECEBER, 'Entrada prevista'),
+        (TIPO_PAGAR, 'Saida prevista'),
+    ]
+
+    STATUS_ATIVA = 'ativa'
+    STATUS_REALIZADA = 'realizada'
+    STATUS_CANCELADA = 'cancelada'
+    STATUS_CHOICES = [
+        (STATUS_ATIVA, 'Ativa'),
+        (STATUS_REALIZADA, 'Realizada'),
+        (STATUS_CANCELADA, 'Cancelada'),
+    ]
+
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES)
+    descricao = models.CharField(max_length=255)
+    data_prevista = models.DateField()
+    valor = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    obra = models.ForeignKey(Obra, on_delete=models.SET_NULL, blank=True, null=True, related_name='previsoes_financeiras')
+    centro_custo = models.ForeignKey(
+        CentroCusto,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='previsoes_financeiras',
+    )
+    pessoa = models.CharField(max_length=150, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_ATIVA)
+    observacoes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['data_prevista', 'id']
+        verbose_name = 'Previsao financeira'
+        verbose_name_plural = 'Previsoes financeiras'
+        indexes = [
+            models.Index(fields=['data_prevista', 'status']),
+            models.Index(fields=['tipo', 'status']),
+        ]
+
+    @property
+    def valor_fluxo(self):
+        if self.tipo == self.TIPO_RECEBER:
+            return self.valor
+        return -self.valor
+
+    def __str__(self):
+        return f'{self.get_tipo_display()} - {self.descricao} - R$ {self.valor}'
+
+
 class ContaReceber(models.Model):
     STATUS_ABERTO = 'aberto'
     STATUS_RECEBIDO = 'recebido'

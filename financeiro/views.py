@@ -28,9 +28,10 @@ from .forms import (
     FornecedorForm,
     ImportarCredoresSiengeForm,
     ItemContaPagarOrdemCompraFormSet,
+    PrevisaoFinanceiraForm,
 )
 from .importadores import decodificar_csv_upload, importar_contas_pagar_credores_csv, importar_contas_pagas_credores_csv
-from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor
+from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor, PrevisaoFinanceira
 from .services import baixar_conta_pagar as baixar_conta_pagar_service
 from .services import baixar_conta_receber as baixar_conta_receber_service
 
@@ -58,6 +59,10 @@ def _base_pagar():
     return ContaPagar.objects.select_related('obra', 'centro_custo', 'despesa_obra')
 
 
+def _base_previsoes():
+    return PrevisaoFinanceira.objects.select_related('obra', 'centro_custo')
+
+
 def _paginar(request, queryset, per_page=50):
     paginator = Paginator(queryset, per_page)
     return paginator.get_page(request.GET.get('page'))
@@ -75,6 +80,7 @@ def _filtrar_contas(request):
     form = FinanceiroFiltroForm(request.GET or None)
     receber = _base_receber()
     pagar = _base_pagar()
+    previsoes = _base_previsoes()
     tipo = status = ''
 
     if form.is_valid():
@@ -89,41 +95,55 @@ def _filtrar_contas(request):
         if data_inicial:
             receber = receber.filter(data_vencimento__gte=data_inicial)
             pagar = pagar.filter(data_vencimento__gte=data_inicial)
+            previsoes = previsoes.filter(data_prevista__gte=data_inicial)
         if data_final:
             receber = receber.filter(data_vencimento__lte=data_final)
             pagar = pagar.filter(data_vencimento__lte=data_final)
+            previsoes = previsoes.filter(data_prevista__lte=data_final)
         if obra:
             receber = receber.filter(obra__nome_obra__icontains=obra)
             pagar = pagar.filter(obra__nome_obra__icontains=obra)
+            previsoes = previsoes.filter(obra__nome_obra__icontains=obra)
         if centro_custo:
             receber = receber.filter(centro_custo=centro_custo)
             pagar = pagar.filter(centro_custo=centro_custo)
+            previsoes = previsoes.filter(centro_custo=centro_custo)
         if busca:
             receber = receber.filter(Q(cliente__icontains=busca) | Q(descricao__icontains=busca) | Q(numero_nf__icontains=busca))
             pagar = pagar.filter(Q(fornecedor__icontains=busca) | Q(descricao__icontains=busca))
+            previsoes = previsoes.filter(Q(pessoa__icontains=busca) | Q(descricao__icontains=busca))
         if status == 'aberto':
             receber = receber.filter(status=ContaReceber.STATUS_ABERTO)
             pagar = pagar.filter(status=ContaPagar.STATUS_ABERTO)
+            previsoes = previsoes.filter(status=PrevisaoFinanceira.STATUS_ATIVA)
         elif status == 'baixado':
             receber = receber.filter(status=ContaReceber.STATUS_RECEBIDO)
             pagar = pagar.filter(status=ContaPagar.STATUS_PAGO)
+            previsoes = previsoes.filter(status=PrevisaoFinanceira.STATUS_REALIZADA)
         elif status == 'cancelado':
             receber = receber.filter(status=ContaReceber.STATUS_CANCELADO)
             pagar = pagar.filter(status=ContaPagar.STATUS_CANCELADO)
+            previsoes = previsoes.filter(status=PrevisaoFinanceira.STATUS_CANCELADA)
         elif status == 'atrasado':
             hoje = timezone.localdate()
             receber = receber.filter(status=ContaReceber.STATUS_ABERTO, data_vencimento__lt=hoje)
             pagar = pagar.filter(status=ContaPagar.STATUS_ABERTO, data_vencimento__lt=hoje)
+            previsoes = previsoes.filter(status=PrevisaoFinanceira.STATUS_ATIVA, data_prevista__lt=hoje)
 
     if tipo == 'receber':
         pagar = ContaPagar.objects.none()
+        previsoes = PrevisaoFinanceira.objects.none()
     elif tipo == 'pagar':
         receber = ContaReceber.objects.none()
+        previsoes = PrevisaoFinanceira.objects.none()
+    elif tipo == 'previsao':
+        receber = ContaReceber.objects.none()
+        pagar = ContaPagar.objects.none()
 
-    return form, receber, pagar
+    return form, receber, pagar, previsoes
 
 
-def _eventos_fluxo(receber, pagar):
+def _eventos_fluxo(receber, pagar, previsoes=None):
     eventos = []
     for conta in receber:
         eventos.append(
@@ -151,6 +171,21 @@ def _eventos_fluxo(receber, pagar):
                 'status': _status_visual(conta, 'pagar'),
                 'valor_abs': conta.valor_pago_efetivo if conta.status == ContaPagar.STATUS_PAGO else conta.valor,
                 'valor': -conta.valor_pago_efetivo if conta.status == ContaPagar.STATUS_PAGO else -conta.valor,
+            }
+        )
+    for previsao in previsoes or []:
+        tipo_label = 'Previsao entrada' if previsao.tipo == PrevisaoFinanceira.TIPO_RECEBER else 'Previsao saida'
+        eventos.append(
+            {
+                'data': previsao.data_prevista,
+                'tipo': tipo_label,
+                'descricao': previsao.descricao,
+                'pessoa': previsao.pessoa,
+                'obra': previsao.obra,
+                'centro_custo': previsao.centro_custo,
+                'status': previsao.get_status_display(),
+                'valor_abs': previsao.valor,
+                'valor': previsao.valor_fluxo,
             }
         )
     return sorted(eventos, key=lambda item: (item['data'], item['tipo'], item['descricao']))
@@ -201,14 +236,31 @@ def _agrupar_eventos(eventos, agrupamento):
     return grupos
 
 
-def _resumo(receber, pagar):
+def _resumo(receber, pagar, previsoes=None):
     hoje = timezone.localdate()
     receber = list(receber)
     pagar = list(pagar)
+    previsoes = list(previsoes or [])
     total_receber_aberto = sum((c.valor_liquido for c in receber if c.status == ContaReceber.STATUS_ABERTO), Decimal('0'))
     total_recebido = sum((c.valor_liquido for c in receber if c.status == ContaReceber.STATUS_RECEBIDO), Decimal('0'))
     total_pagar_aberto = sum((c.valor for c in pagar if c.status == ContaPagar.STATUS_ABERTO), Decimal('0'))
     total_pago = sum((c.valor_pago_efetivo for c in pagar if c.status == ContaPagar.STATUS_PAGO), Decimal('0'))
+    total_previsao_receber = sum(
+        (
+            p.valor
+            for p in previsoes
+            if p.status == PrevisaoFinanceira.STATUS_ATIVA and p.tipo == PrevisaoFinanceira.TIPO_RECEBER
+        ),
+        Decimal('0'),
+    )
+    total_previsao_pagar = sum(
+        (
+            p.valor
+            for p in previsoes
+            if p.status == PrevisaoFinanceira.STATUS_ATIVA and p.tipo == PrevisaoFinanceira.TIPO_PAGAR
+        ),
+        Decimal('0'),
+    )
     atrasado_receber = sum(
         (c.valor_liquido for c in receber if c.status == ContaReceber.STATUS_ABERTO and c.data_vencimento < hoje),
         Decimal('0'),
@@ -222,7 +274,10 @@ def _resumo(receber, pagar):
         'total_recebido': total_recebido,
         'total_pagar_aberto': total_pagar_aberto,
         'total_pago': total_pago,
+        'total_previsao_receber': total_previsao_receber,
+        'total_previsao_pagar': total_previsao_pagar,
         'saldo_previsto': total_receber_aberto - total_pagar_aberto,
+        'saldo_com_previsoes': total_receber_aberto - total_pagar_aberto + total_previsao_receber - total_previsao_pagar,
         'saldo_realizado': total_recebido - total_pago,
         'atrasado_receber': atrasado_receber,
         'atrasado_pagar': atrasado_pagar,
@@ -235,7 +290,7 @@ def _grafico_fluxo(eventos):
         inicio_semana = evento['data'] - timedelta(days=evento['data'].weekday())
         fim_semana = inicio_semana + timedelta(days=6)
         chave = (inicio_semana, fim_semana)
-        if evento['tipo'] == 'Receber':
+        if evento['tipo'] in {'Receber', 'Previsao entrada'}:
             semanas[chave]['receber'] += evento['valor']
         else:
             semanas[chave]['pagar'] += abs(evento['valor'])
@@ -407,12 +462,13 @@ def _financial_report_pdf(grupos, resumo, filtros, ordenacao, agrupamento):
 def financeiro_home(request):
     receber = _base_receber()
     pagar = _base_pagar()
-    eventos = _eventos_fluxo(receber, pagar)
+    previsoes = _base_previsoes()
+    eventos = _eventos_fluxo(receber, pagar, previsoes)
     hoje = timezone.localdate()
     limite_fluxo = hoje + timedelta(days=90)
     eventos_fluxo = [evento for evento in eventos if hoje <= evento['data'] <= limite_fluxo]
     contexto = {
-        **_resumo(receber, pagar),
+        **_resumo(receber, pagar, previsoes),
         'ultimos_eventos': eventos[-10:],
         'grafico_fluxo': _grafico_fluxo(eventos_fluxo),
         'fluxo_periodo': f'{hoje.strftime("%d/%m/%Y")} a {limite_fluxo.strftime("%d/%m/%Y")}',
@@ -505,6 +561,55 @@ def lista_contas_pagar_canceladas(request):
             'mostrar_acoes_massa': False,
         },
     )
+
+
+@financeiro_required
+def lista_previsoes_financeiras(request):
+    previsoes = _base_previsoes()
+    status = request.GET.get('status')
+    tipo = request.GET.get('tipo')
+    if status:
+        previsoes = previsoes.filter(status=status)
+    if tipo:
+        previsoes = previsoes.filter(tipo=tipo)
+    page_obj = _paginar(request, previsoes)
+    return render(
+        request,
+        'financeiro/lista_previsoes.html',
+        {
+            'previsoes': page_obj,
+            'page_obj': page_obj,
+            'status_atual': status or '',
+            'tipo_atual': tipo or '',
+        },
+    )
+
+
+@financeiro_required
+def nova_previsao_financeira(request):
+    if request.method == 'POST':
+        form = PrevisaoFinanceiraForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Previsao financeira cadastrada com sucesso.')
+            return redirect('lista_previsoes_financeiras')
+    else:
+        form = PrevisaoFinanceiraForm(initial={'status': PrevisaoFinanceira.STATUS_ATIVA})
+    return render(request, 'financeiro/form_conta.html', {'form': form, 'titulo': 'Nova Previsao Financeira'})
+
+
+@financeiro_required
+def editar_previsao_financeira(request, previsao_id):
+    previsao = get_object_or_404(PrevisaoFinanceira, id=previsao_id)
+    if request.method == 'POST':
+        form = PrevisaoFinanceiraForm(request.POST, instance=previsao)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Previsao financeira atualizada com sucesso.')
+            return redirect('lista_previsoes_financeiras')
+    else:
+        form = PrevisaoFinanceiraForm(instance=previsao)
+    return render(request, 'financeiro/form_conta.html', {'form': form, 'titulo': 'Editar Previsao Financeira'})
 
 
 @financeiro_required
@@ -807,10 +912,10 @@ def editar_centro_custo(request, centro_id):
 
 @financeiro_required
 def relatorio_financeiro(request):
-    form, receber, pagar = _filtrar_contas(request)
+    form, receber, pagar, previsoes = _filtrar_contas(request)
     ordenacao = form.cleaned_data.get('ordenacao') if form.is_valid() else 'data_asc'
     agrupamento = form.cleaned_data.get('agrupamento') if form.is_valid() else ''
-    eventos = _ordenar_eventos(_eventos_fluxo(receber, pagar), ordenacao)
+    eventos = _ordenar_eventos(_eventos_fluxo(receber, pagar, previsoes), ordenacao)
     grupos = _agrupar_eventos(eventos, agrupamento)
     contexto = {
         'filtro_form': form,
@@ -819,19 +924,19 @@ def relatorio_financeiro(request):
         'total_eventos': len(eventos),
         'ordenacao_atual': ordenacao,
         'agrupamento_atual': agrupamento,
-        **_resumo(receber, pagar),
+        **_resumo(receber, pagar, previsoes),
     }
     return render(request, 'financeiro/relatorio.html', contexto)
 
 
 @financeiro_required
 def relatorio_financeiro_pdf(request):
-    form, receber, pagar = _filtrar_contas(request)
+    form, receber, pagar, previsoes = _filtrar_contas(request)
     ordenacao = form.cleaned_data.get('ordenacao') if form.is_valid() else 'data_asc'
     agrupamento = form.cleaned_data.get('agrupamento') if form.is_valid() else ''
-    eventos = _ordenar_eventos(_eventos_fluxo(receber, pagar), ordenacao)
+    eventos = _ordenar_eventos(_eventos_fluxo(receber, pagar, previsoes), ordenacao)
     grupos = _agrupar_eventos(eventos, agrupamento)
-    resumo = _resumo(receber, pagar)
+    resumo = _resumo(receber, pagar, previsoes)
     filtros = request.GET.urlencode()
     response = HttpResponse(
         _financial_report_pdf(grupos, resumo, filtros, ordenacao, agrupamento),

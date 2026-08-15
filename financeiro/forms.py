@@ -5,7 +5,7 @@ from django.forms import inlineformset_factory
 
 from obras.forms import BootstrapForm, BootstrapModelForm
 
-from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor, ItemContaPagarOrdemCompra
+from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor, ItemContaPagarOrdemCompra, PrevisaoFinanceira
 
 
 class ImportarCredoresSiengeForm(forms.Form):
@@ -49,6 +49,30 @@ class CentroCustoForm(BootstrapModelForm):
         fields = ['nome', 'descricao', 'ativo']
         widgets = {
             'descricao': forms.Textarea(attrs={'rows': 3}),
+        }
+
+
+class PrevisaoFinanceiraForm(BootstrapModelForm):
+    class Meta:
+        model = PrevisaoFinanceira
+        fields = [
+            'tipo',
+            'descricao',
+            'data_prevista',
+            'valor',
+            'obra',
+            'centro_custo',
+            'pessoa',
+            'status',
+            'observacoes',
+        ]
+        widgets = {
+            'data_prevista': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'valor': forms.NumberInput(attrs={'step': '0.01'}),
+            'observacoes': forms.Textarea(attrs={'rows': 3}),
+        }
+        labels = {
+            'pessoa': 'Cliente/fornecedor previsto',
         }
 
 
@@ -274,6 +298,7 @@ class FinanceiroFiltroForm(BootstrapForm):
         ('', 'Todos'),
         ('receber', 'Contas a receber'),
         ('pagar', 'Contas a pagar'),
+        ('previsao', 'Previsoes'),
     ]
     STATUS_CHOICES = [
         ('', 'Todos'),
