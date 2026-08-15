@@ -398,14 +398,14 @@ def _financial_report_pdf(eventos, colunas, resumo):
     headers = [RELATORIO_FINANCEIRO_COLUNAS[coluna] for coluna in colunas]
     rows = [[_relatorio_financeiro_linha_display(evento, coluna) for coluna in colunas] for evento in eventos]
     page_w, page_h = 2339, 1654
-    margin = 70
-    title_h = 132
-    footer_h = 70
-    row_h = 46
-    header_h = 54
+    margin = 78
+    title_h = 174
+    footer_h = 78
+    row_h = 66
+    header_h = 72
     table_w = page_w - (margin * 2)
     content_bottom = page_h - margin - footer_h
-    max_rows = max((content_bottom - margin - title_h - header_h - 130) // row_h, 1)
+    max_rows = max((content_bottom - margin - title_h - header_h - 118) // row_h, 1)
     weights = {
         'tipo': 1.1,
         'data': 0.9,
@@ -426,30 +426,33 @@ def _financial_report_pdf(eventos, colunas, resumo):
     border = (203, 213, 225)
     header_bg = (229, 236, 240)
     zebra = (248, 250, 252)
-    title_font = _pdf_font(32, True)
-    small_font = _pdf_font(18)
-    header_font = _pdf_font(17, True)
-    cell_font = _pdf_font(16)
+    title_font = _pdf_font(48, True)
+    small_font = _pdf_font(28)
+    summary_font = _pdf_font(26)
+    header_font = _pdf_font(25, True)
+    cell_font = _pdf_font(23)
+    footer_font = _pdf_font(20)
+    footer_bold = _pdf_font(20, True)
 
     for page_index, chunk in enumerate(chunks, start=1):
         image = Image.new('RGB', (page_w, page_h), 'white')
         draw = ImageDraw.Draw(image)
         y = margin
         draw.text((margin, y), 'Relatorio gerencial financeiro', font=title_font, fill=dark)
-        y += 48
+        y += 70
         draw.text((margin, y), f'Emitido em {date.today().strftime("%d/%m/%Y")}', font=small_font, fill=muted)
         registros = f'{len(eventos)} registro(s)'
-        draw.text((page_w - margin - _pdf_font(18, True).getlength(registros), y), registros, font=_pdf_font(18, True), fill=dark)
-        y += 52
+        draw.text((page_w - margin - _pdf_font(28, True).getlength(registros), y), registros, font=_pdf_font(28, True), fill=dark)
+        y += 66
         resumo_texto = (
             f'A receber aberto: {_format_currency_br(resumo["total_receber_aberto"])}    '
             f'A pagar aberto: {_format_currency_br(resumo["total_pagar_aberto"])}    '
             f'Saldo previsto: {_format_currency_br(resumo["saldo_com_previsoes"])}    '
             f'Saldo realizado: {_format_currency_br(resumo["saldo_realizado"])}'
         )
-        draw.rounded_rectangle((margin, y, page_w - margin, y + 44), radius=8, fill=(245, 247, 250), outline=border, width=1)
-        draw.text((margin + 18, y + 12), _clean_pdf_text(resumo_texto), font=small_font, fill=dark)
-        y += 70
+        draw.rounded_rectangle((margin, y, page_w - margin, y + 62), radius=8, fill=(245, 247, 250), outline=border, width=1)
+        draw.text((margin + 20, y + 18), _clean_pdf_text(resumo_texto), font=summary_font, fill=dark)
+        y += 92
 
         cursor = margin
         for header, width in zip(headers, widths):
@@ -469,18 +472,18 @@ def _financial_report_pdf(eventos, colunas, resumo):
             y += row_h
 
         footer = f'Pagina {page_index} de {len(chunks)}'
-        draw.text((margin, page_h - margin), date.today().strftime('%d/%m/%Y'), font=_pdf_font(15), fill=muted)
+        draw.text((margin, page_h - margin), date.today().strftime('%d/%m/%Y'), font=footer_font, fill=muted)
         draw.text(
-            ((page_w - _pdf_font(15, True).getlength('AMBAR ENGENHARIA')) / 2, page_h - margin),
+            ((page_w - footer_bold.getlength('AMBAR ENGENHARIA')) / 2, page_h - margin),
             'AMBAR ENGENHARIA',
-            font=_pdf_font(15, True),
+            font=footer_bold,
             fill=muted,
         )
-        draw.text((page_w - margin - _pdf_font(15).getlength(footer), page_h - margin), footer, font=_pdf_font(15), fill=muted)
+        draw.text((page_w - margin - footer_font.getlength(footer), page_h - margin), footer, font=footer_font, fill=muted)
         pages.append(image)
 
     buffer = BytesIO()
-    pages[0].save(buffer, 'PDF', resolution=150, save_all=True, append_images=pages[1:])
+    pages[0].save(buffer, 'PDF', resolution=200, save_all=True, append_images=pages[1:])
     return buffer.getvalue()
 
 
