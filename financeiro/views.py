@@ -397,12 +397,14 @@ def _financial_report_pdf(eventos, colunas, resumo):
     colunas = colunas or FinanceiroFiltroForm.COLUNAS_PADRAO
     headers = [RELATORIO_FINANCEIRO_COLUNAS[coluna] for coluna in colunas]
     rows = [[_relatorio_financeiro_linha_display(evento, coluna) for coluna in colunas] for evento in eventos]
-    page_w, page_h = 2339, 1654
-    margin = 78
-    title_h = 174
-    footer_h = 78
-    row_h = 66
-    header_h = 72
+    # Render free tem limite baixo de memoria. Usar A4 paisagem em 150 DPI real
+    # preserva legibilidade sem montar imagens enormes em memoria.
+    page_w, page_h = 1754, 1240
+    margin = 58
+    title_h = 130
+    footer_h = 58
+    row_h = 50
+    header_h = 54
     table_w = page_w - (margin * 2)
     content_bottom = page_h - margin - footer_h
     max_rows = max((content_bottom - margin - title_h - header_h - 118) // row_h, 1)
@@ -426,33 +428,33 @@ def _financial_report_pdf(eventos, colunas, resumo):
     border = (203, 213, 225)
     header_bg = (229, 236, 240)
     zebra = (248, 250, 252)
-    title_font = _pdf_font(48, True)
-    small_font = _pdf_font(28)
-    summary_font = _pdf_font(26)
-    header_font = _pdf_font(25, True)
-    cell_font = _pdf_font(23)
-    footer_font = _pdf_font(20)
-    footer_bold = _pdf_font(20, True)
+    title_font = _pdf_font(36, True)
+    small_font = _pdf_font(21)
+    summary_font = _pdf_font(19)
+    header_font = _pdf_font(19, True)
+    cell_font = _pdf_font(17)
+    footer_font = _pdf_font(15)
+    footer_bold = _pdf_font(15, True)
 
     for page_index, chunk in enumerate(chunks, start=1):
         image = Image.new('RGB', (page_w, page_h), 'white')
         draw = ImageDraw.Draw(image)
         y = margin
         draw.text((margin, y), 'Relatorio gerencial financeiro', font=title_font, fill=dark)
-        y += 70
+        y += 52
         draw.text((margin, y), f'Emitido em {date.today().strftime("%d/%m/%Y")}', font=small_font, fill=muted)
         registros = f'{len(eventos)} registro(s)'
-        draw.text((page_w - margin - _pdf_font(28, True).getlength(registros), y), registros, font=_pdf_font(28, True), fill=dark)
-        y += 66
+        draw.text((page_w - margin - _pdf_font(21, True).getlength(registros), y), registros, font=_pdf_font(21, True), fill=dark)
+        y += 50
         resumo_texto = (
             f'A receber aberto: {_format_currency_br(resumo["total_receber_aberto"])}    '
             f'A pagar aberto: {_format_currency_br(resumo["total_pagar_aberto"])}    '
             f'Saldo previsto: {_format_currency_br(resumo["saldo_com_previsoes"])}    '
             f'Saldo realizado: {_format_currency_br(resumo["saldo_realizado"])}'
         )
-        draw.rounded_rectangle((margin, y, page_w - margin, y + 62), radius=8, fill=(245, 247, 250), outline=border, width=1)
-        draw.text((margin + 20, y + 18), _clean_pdf_text(resumo_texto), font=summary_font, fill=dark)
-        y += 92
+        draw.rounded_rectangle((margin, y, page_w - margin, y + 48), radius=8, fill=(245, 247, 250), outline=border, width=1)
+        draw.text((margin + 15, y + 14), _clean_pdf_text(resumo_texto), font=summary_font, fill=dark)
+        y += 68
 
         cursor = margin
         for header, width in zip(headers, widths):
@@ -483,7 +485,7 @@ def _financial_report_pdf(eventos, colunas, resumo):
         pages.append(image)
 
     buffer = BytesIO()
-    pages[0].save(buffer, 'PDF', resolution=200, save_all=True, append_images=pages[1:])
+    pages[0].save(buffer, 'PDF', resolution=150, save_all=True, append_images=pages[1:])
     return buffer.getvalue()
 
 
