@@ -8,6 +8,7 @@ from django.test import TestCase
 from django.test.utils import override_settings
 from django.urls import reverse
 
+from empresas.models import Empresa, UsuarioEmpresa
 from obras.models import Obra
 
 from .models import DiarioObra, EfetivoDiario, HistoricoDiario
@@ -18,8 +19,10 @@ class DiarioObraTests(TestCase):
         user_model = get_user_model()
         self.user = user_model.objects.create_user(username='engenheiro', password='senha-forte-123')
         self.user.groups.add(Group.objects.get_or_create(name='Engenharia')[0])
+        self.empresa = Empresa.objects.get(slug='ambar')
+        UsuarioEmpresa.objects.create(usuario=self.user, empresa=self.empresa)
         self.client.force_login(self.user)
-        self.obra = Obra.objects.create(nome_obra='Obra Diario', cliente='Cliente X')
+        self.obra = Obra.objects.create(empresa=self.empresa, nome_obra='Obra Diario', cliente='Cliente X')
 
     def _management(self, prefix, total='0'):
         return {

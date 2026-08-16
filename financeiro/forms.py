@@ -4,6 +4,7 @@ from django import forms
 from django.forms import inlineformset_factory
 
 from obras.forms import BootstrapForm, BootstrapModelForm
+from obras.models import Obra
 
 from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor, ItemContaPagarOrdemCompra, PrevisaoFinanceira
 
@@ -19,6 +20,19 @@ class ImportarCredoresSiengeForm(forms.Form):
 
 
 class FornecedorForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        self.empresa = kwargs.pop('empresa', None)
+        super().__init__(*args, **kwargs)
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.empresa:
+            instance.empresa = self.empresa
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
+
     class Meta:
         model = Fornecedor
         fields = [
@@ -44,6 +58,19 @@ class FornecedorForm(BootstrapModelForm):
 
 
 class CentroCustoForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        self.empresa = kwargs.pop('empresa', None)
+        super().__init__(*args, **kwargs)
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.empresa:
+            instance.empresa = self.empresa
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
+
     class Meta:
         model = CentroCusto
         fields = ['nome', 'descricao', 'ativo']
@@ -53,6 +80,25 @@ class CentroCustoForm(BootstrapModelForm):
 
 
 class PrevisaoFinanceiraForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        self.empresa = kwargs.pop('empresa', None)
+        super().__init__(*args, **kwargs)
+        if self.empresa:
+            self.fields['obra'].queryset = Obra.objects.filter(empresa=self.empresa)
+            self.fields['centro_custo'].queryset = CentroCusto.objects.filter(empresa=self.empresa)
+        else:
+            self.fields['obra'].queryset = Obra.objects.none()
+            self.fields['centro_custo'].queryset = CentroCusto.objects.none()
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.empresa:
+            instance.empresa = self.empresa
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
+
     class Meta:
         model = PrevisaoFinanceira
         fields = [
@@ -78,12 +124,21 @@ class PrevisaoFinanceiraForm(BootstrapModelForm):
 
 class ContaReceberForm(BootstrapModelForm):
     def __init__(self, *args, **kwargs):
+        self.empresa = kwargs.pop('empresa', None)
         super().__init__(*args, **kwargs)
+        if self.empresa:
+            self.fields['obra'].queryset = Obra.objects.filter(empresa=self.empresa)
+            self.fields['centro_custo'].queryset = CentroCusto.objects.filter(empresa=self.empresa)
+        else:
+            self.fields['obra'].queryset = Obra.objects.none()
+            self.fields['centro_custo'].queryset = CentroCusto.objects.none()
         self.fields['obra'].required = True
         self.fields['numero_nf'].required = True
 
     def save(self, commit=True):
         instance = super().save(commit=False)
+        if self.empresa:
+            instance.empresa = self.empresa
         if instance.obra_id:
             instance.cliente = instance.obra.cliente or instance.obra.nome_obra
         if not instance.pk:
@@ -147,10 +202,20 @@ class ContaReceberBaixaForm(forms.Form):
 
 class ContaPagarForm(BootstrapModelForm):
     def __init__(self, *args, **kwargs):
+        self.empresa = kwargs.pop('empresa', None)
         super().__init__(*args, **kwargs)
-        from controles.models import ItemOrdemCompraGeral, OrdemCompraGeral
+        from controles.models import OrdemCompraGeral
 
-        self.fields['ordem_compra'].queryset = OrdemCompraGeral.objects.all()
+        if self.empresa:
+            self.fields['fornecedor_cadastro'].queryset = Fornecedor.objects.filter(empresa=self.empresa)
+            self.fields['obra'].queryset = Obra.objects.filter(empresa=self.empresa)
+            self.fields['centro_custo'].queryset = CentroCusto.objects.filter(empresa=self.empresa)
+            self.fields['ordem_compra'].queryset = OrdemCompraGeral.objects.filter(empresa=self.empresa)
+        else:
+            self.fields['fornecedor_cadastro'].queryset = Fornecedor.objects.none()
+            self.fields['obra'].queryset = Obra.objects.none()
+            self.fields['centro_custo'].queryset = CentroCusto.objects.none()
+            self.fields['ordem_compra'].queryset = OrdemCompraGeral.objects.none()
         self.fields['ordem_compra'].empty_label = 'Não possui OC'
 
         ordem_id = None
@@ -163,6 +228,8 @@ class ContaPagarForm(BootstrapModelForm):
 
     def save(self, commit=True):
         instance = super().save(commit=False)
+        if self.empresa:
+            instance.empresa = self.empresa
         if not instance.pk:
             instance.status = ContaPagar.STATUS_ABERTO
             instance.data_pagamento = None
@@ -231,12 +298,18 @@ class ContaPagarBaixaForm(forms.Form):
 class ItemContaPagarOrdemCompraForm(BootstrapModelForm):
     def __init__(self, *args, **kwargs):
         ordem = kwargs.pop('ordem', None)
+        empresa = kwargs.pop('empresa', None)
         super().__init__(*args, **kwargs)
         from controles.models import ItemOrdemCompraGeral
 
-        self.fields['item_ordem_compra'].queryset = (
-            ItemOrdemCompraGeral.objects.filter(ordem=ordem) if ordem else ItemOrdemCompraGeral.objects.all()
-        )
+        queryset = ItemOrdemCompraGeral.objects.all()
+        if empresa:
+            queryset = queryset.filter(ordem__empresa=empresa)
+        if ordem:
+            queryset = queryset.filter(ordem=ordem)
+        elif not empresa:
+            queryset = queryset.none()
+        self.fields['item_ordem_compra'].queryset = queryset
         self.fields['item_ordem_compra'].empty_label = 'Selecione o item'
         self.fields['item_ordem_compra'].label_from_instance = (
             lambda item: f'OC {item.ordem_id} - {item.item:02d} - {item.descricao} - R$ {item.valor_unitario:.2f}'
@@ -276,10 +349,12 @@ class ItemContaPagarOrdemCompraForm(BootstrapModelForm):
 class BaseItemContaPagarOrdemCompraFormSet(forms.BaseInlineFormSet):
     def __init__(self, *args, **kwargs):
         self.ordem = kwargs.pop('ordem', None)
+        self.empresa = kwargs.pop('empresa', None)
         super().__init__(*args, **kwargs)
 
     def _construct_form(self, i, **kwargs):
         kwargs['ordem'] = self.ordem
+        kwargs['empresa'] = self.empresa
         return super()._construct_form(i, **kwargs)
 
 
@@ -366,7 +441,12 @@ class FinanceiroFiltroForm(BootstrapForm):
     )
 
     def __init__(self, *args, **kwargs):
+        empresa = kwargs.pop('empresa', None)
         super().__init__(*args, **kwargs)
+        if empresa:
+            self.fields['centro_custo'].queryset = CentroCusto.objects.filter(empresa=empresa)
+        else:
+            self.fields['centro_custo'].queryset = CentroCusto.objects.none()
         self.fields['colunas'].initial = self.COLUNAS_PADRAO
         self.fields['colunas'].widget.attrs['class'] = 'form-check-input'
 

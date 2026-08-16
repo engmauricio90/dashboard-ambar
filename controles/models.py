@@ -7,6 +7,23 @@ from django.utils import timezone
 from .services import calcular_total, calcular_total_multiplicacao
 
 
+def _empresa_de_relacao(empresa, objeto, campo):
+    if not objeto:
+        return empresa
+    objeto_empresa_id = getattr(objeto, 'empresa_id', None)
+    if not objeto_empresa_id:
+        return empresa
+    if empresa and empresa.id != objeto_empresa_id:
+        raise ValidationError({campo: 'O vinculo informado pertence a outra empresa.'})
+    return objeto.empresa
+
+
+def _exigir_empresa(empresa):
+    if not empresa:
+        raise ValidationError({'empresa': 'Empresa ativa obrigatoria para este cadastro operacional.'})
+    return empresa
+
+
 class VeiculoMaquina(models.Model):
     TIPO_CHOICES = [
         ('carro', 'Carro'),
@@ -20,7 +37,12 @@ class VeiculoMaquina(models.Model):
         ('inativo', 'Inativo'),
     ]
 
-    placa = models.CharField(max_length=20, unique=True)
+    empresa = models.ForeignKey(
+        'empresas.Empresa',
+        on_delete=models.PROTECT,
+        related_name='veiculos_maquinas',
+    )
+    placa = models.CharField(max_length=20)
     descricao = models.CharField(max_length=150)
     tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='carro')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ativo')
@@ -32,8 +54,12 @@ class VeiculoMaquina(models.Model):
         ordering = ['placa']
         verbose_name = 'Veiculo/Maquina'
         verbose_name_plural = 'Veiculos/Maquinas'
+        constraints = [
+            models.UniqueConstraint(fields=['empresa', 'placa'], name='unique_veiculo_empresa_placa'),
+        ]
 
     def save(self, *args, **kwargs):
+        self.empresa = _exigir_empresa(self.empresa if self.empresa_id else None)
         self.placa = self.placa.strip().upper()
         super().save(*args, **kwargs)
 
@@ -78,7 +104,12 @@ class BombonaCombustivel(models.Model):
         ('manutencao', 'Manutencao'),
     ]
 
-    identificacao = models.CharField(max_length=80, unique=True)
+    empresa = models.ForeignKey(
+        'empresas.Empresa',
+        on_delete=models.PROTECT,
+        related_name='bombonas_combustivel',
+    )
+    identificacao = models.CharField(max_length=80)
     capacidade_litros = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     localizacao = models.CharField(max_length=150, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ativa')
@@ -90,8 +121,12 @@ class BombonaCombustivel(models.Model):
         ordering = ['identificacao']
         verbose_name = 'Bombona de combustivel'
         verbose_name_plural = 'Bombonas de combustivel'
+        constraints = [
+            models.UniqueConstraint(fields=['empresa', 'identificacao'], name='unique_bombona_empresa_identificacao'),
+        ]
 
     def save(self, *args, **kwargs):
+        self.empresa = _exigir_empresa(self.empresa if self.empresa_id else None)
         self.identificacao = self.identificacao.strip().upper()
         super().save(*args, **kwargs)
 
@@ -124,7 +159,12 @@ class OrdemCompraCombustivel(models.Model):
         ('cancelada', 'Cancelada'),
     ]
 
-    numero = models.CharField(max_length=40, unique=True, blank=True)
+    empresa = models.ForeignKey(
+        'empresas.Empresa',
+        on_delete=models.PROTECT,
+        related_name='ordens_compra_combustivel',
+    )
+    numero = models.CharField(max_length=40, blank=True)
     data_ordem = models.DateField(default=timezone.localdate)
     fornecedor = models.CharField(max_length=150)
     fornecedor_cadastro = models.ForeignKey(
@@ -163,6 +203,9 @@ class OrdemCompraCombustivel(models.Model):
         ordering = ['-data_ordem', '-id']
         verbose_name = 'Ordem de compra de combustivel'
         verbose_name_plural = 'Ordens de compra de combustivel'
+        constraints = [
+            models.UniqueConstraint(fields=['empresa', 'numero'], name='unique_ordem_combustivel_empresa_numero'),
+        ]
 
     def clean(self):
         super().clean()
@@ -180,12 +223,17 @@ class OrdemCompraCombustivel(models.Model):
     def save(self, *args, **kwargs):
         if self.fornecedor_cadastro_id:
             self.fornecedor = self.fornecedor_cadastro.nome
+        empresa = self.empresa if self.empresa_id else None
+        empresa = _empresa_de_relacao(empresa, self.fornecedor_cadastro, 'fornecedor_cadastro')
+        empresa = _empresa_de_relacao(empresa, self.veiculo, 'veiculo')
+        empresa = _empresa_de_relacao(empresa, self.bombona, 'bombona')
+        self.empresa = _exigir_empresa(empresa)
         self.valor_total_previsto = calcular_total_multiplicacao(self.quantidade_litros, self.valor_litro_previsto)
         if not self.numero:
             year = (self.data_ordem or timezone.localdate()).year
             prefix = f'OC-COMB-{year}-'
             last = (
-                self.__class__.objects.filter(numero__startswith=prefix)
+                self.__class__.objects.filter(empresa=self.empresa, numero__startswith=prefix)
                 .order_by('-numero')
                 .values_list('numero', flat=True)
                 .first()
@@ -195,7 +243,7 @@ class OrdemCompraCombustivel(models.Model):
                 try:
                     next_number = int(last.rsplit('-', 1)[-1]) + 1
                 except ValueError:
-                    next_number = self.__class__.objects.filter(numero__startswith=prefix).count() + 1
+                    next_number = self.__class__.objects.filter(empresa=self.empresa, numero__startswith=prefix).count() + 1
             self.numero = f'{prefix}{next_number:04d}'
         super().save(*args, **kwargs)
 
@@ -279,7 +327,12 @@ class OrdemCompraGeral(models.Model):
         ('cancelada', 'Cancelada'),
     ]
 
-    numero = models.CharField(max_length=40, unique=True, blank=True)
+    numero = models.CharField(max_length=40, blank=True)
+    empresa = models.ForeignKey(
+        'empresas.Empresa',
+        on_delete=models.PROTECT,
+        related_name='ordens_compra_gerais',
+    )
     data_emissao = models.DateField(default=timezone.localdate)
     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='emitida')
     comprador = models.CharField(max_length=120, blank=True)
@@ -330,8 +383,17 @@ class OrdemCompraGeral(models.Model):
         ordering = ['-data_emissao', '-id']
         verbose_name = 'Ordem de compra geral'
         verbose_name_plural = 'Ordens de compra gerais'
+        constraints = [
+            models.UniqueConstraint(fields=['empresa', 'numero'], name='unique_ordem_compra_empresa_numero'),
+        ]
 
     def save(self, *args, **kwargs):
+        empresa = self.empresa if self.empresa_id else None
+        if self.obra_id:
+            empresa = _empresa_de_relacao(empresa, self.obra, 'obra')
+        empresa = _empresa_de_relacao(empresa, self.centro_custo, 'centro_custo')
+        empresa = _empresa_de_relacao(empresa, self.fornecedor_cadastro, 'fornecedor_cadastro')
+        self.empresa = _exigir_empresa(empresa)
         if self.fornecedor_cadastro_id:
             fornecedor = self.fornecedor_cadastro
             self.fornecedor = fornecedor.nome
@@ -347,7 +409,7 @@ class OrdemCompraGeral(models.Model):
             year = (self.data_emissao or timezone.localdate()).year
             suffix = f'/{year}'
             last = (
-                self.__class__.objects.filter(numero__endswith=suffix)
+                self.__class__.objects.filter(empresa=self.empresa, numero__endswith=suffix)
                 .order_by('-numero')
                 .values_list('numero', flat=True)
                 .first()
@@ -357,7 +419,7 @@ class OrdemCompraGeral(models.Model):
                 try:
                     next_number = int(last.split('/', 1)[0]) + 1
                 except ValueError:
-                    next_number = self.__class__.objects.filter(numero__endswith=suffix).count() + 1
+                    next_number = self.__class__.objects.filter(empresa=self.empresa, numero__endswith=suffix).count() + 1
             self.numero = f'{next_number:03d}/{year}'
         super().save(*args, **kwargs)
 
@@ -533,7 +595,12 @@ class EquipamentoLocadoCatalogo(models.Model):
 
 
 class LocadoraEquipamento(models.Model):
-    nome = models.CharField(max_length=150, unique=True)
+    empresa = models.ForeignKey(
+        'empresas.Empresa',
+        on_delete=models.PROTECT,
+        related_name='locadoras_equipamentos',
+    )
+    nome = models.CharField(max_length=150)
     contato = models.CharField(max_length=120, blank=True)
     telefone = models.CharField(max_length=40, blank=True)
     email = models.EmailField(blank=True)
@@ -544,6 +611,13 @@ class LocadoraEquipamento(models.Model):
         ordering = ['nome']
         verbose_name = 'Locadora'
         verbose_name_plural = 'Locadoras'
+        constraints = [
+            models.UniqueConstraint(fields=['empresa', 'nome'], name='unique_locadora_empresa_nome'),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.empresa = _exigir_empresa(self.empresa if self.empresa_id else None)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.nome
@@ -621,7 +695,12 @@ class MaquinaLocacaoCatalogo(models.Model):
 
 
 class FornecedorMaquinaLocacao(models.Model):
-    nome = models.CharField(max_length=150, unique=True)
+    empresa = models.ForeignKey(
+        'empresas.Empresa',
+        on_delete=models.PROTECT,
+        related_name='fornecedores_maquinas_locacao',
+    )
+    nome = models.CharField(max_length=150)
     contato = models.CharField(max_length=120, blank=True)
     telefone = models.CharField(max_length=40, blank=True)
     email = models.EmailField(blank=True)
@@ -632,6 +711,13 @@ class FornecedorMaquinaLocacao(models.Model):
         ordering = ['nome']
         verbose_name = 'Fornecedor de maquina'
         verbose_name_plural = 'Fornecedores de maquinas'
+        constraints = [
+            models.UniqueConstraint(fields=['empresa', 'nome'], name='unique_fornecedor_maquina_empresa_nome'),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.empresa = _exigir_empresa(self.empresa if self.empresa_id else None)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.nome
@@ -660,7 +746,7 @@ class OrdemServicoLocacaoMaquina(models.Model):
         ('empreitada', 'Empreitada'),
     ]
 
-    numero = models.CharField(max_length=40, unique=True, blank=True)
+    numero = models.CharField(max_length=40, blank=True)
     data_solicitacao = models.DateField(default=timezone.localdate)
     obra = models.ForeignKey(
         'obras.Obra',
@@ -711,10 +797,15 @@ class OrdemServicoLocacaoMaquina(models.Model):
         ordering = ['-data_solicitacao', '-id']
         verbose_name = 'OS de locacao de maquina'
         verbose_name_plural = 'OS de locacao de maquinas'
+        constraints = [
+            models.UniqueConstraint(fields=['obra', 'numero'], name='unique_os_maquina_obra_numero'),
+        ]
 
     def save(self, *args, **kwargs):
         if self.fornecedor_cadastro_id:
+            empresa = _empresa_de_relacao(self.obra.empresa if self.obra_id else None, self.fornecedor_cadastro, 'fornecedor_cadastro')
             fornecedor, _ = FornecedorMaquinaLocacao.objects.get_or_create(
+                empresa=empresa,
                 nome=self.fornecedor_cadastro.nome,
                 defaults={
                     'telefone': self.fornecedor_cadastro.telefone,
@@ -722,6 +813,8 @@ class OrdemServicoLocacaoMaquina(models.Model):
                 },
             )
             self.fornecedor = fornecedor
+        if self.fornecedor_id:
+            _empresa_de_relacao(self.obra.empresa if self.obra_id else None, self.fornecedor, 'fornecedor')
         for field_name in [
             'valor_hora',
             'valor_diaria',
@@ -736,7 +829,7 @@ class OrdemServicoLocacaoMaquina(models.Model):
             year = (self.data_solicitacao or timezone.localdate()).year
             prefix = f'OS-MAQ-{year}-'
             last = (
-                self.__class__.objects.filter(numero__startswith=prefix)
+                self.__class__.objects.filter(obra__empresa=self.obra.empresa, numero__startswith=prefix)
                 .order_by('-numero')
                 .values_list('numero', flat=True)
                 .first()
@@ -746,7 +839,7 @@ class OrdemServicoLocacaoMaquina(models.Model):
                 try:
                     next_number = int(last.rsplit('-', 1)[-1]) + 1
                 except ValueError:
-                    next_number = self.__class__.objects.filter(numero__startswith=prefix).count() + 1
+                    next_number = self.__class__.objects.filter(obra__empresa=self.obra.empresa, numero__startswith=prefix).count() + 1
             self.numero = f'{prefix}{next_number:04d}'
         super().save(*args, **kwargs)
 
@@ -916,7 +1009,12 @@ class OrcamentoRadarObra(models.Model):
         (1, 'Muito frio'),
     ]
 
-    numero = models.CharField(max_length=50, unique=True)
+    empresa = models.ForeignKey(
+        'empresas.Empresa',
+        on_delete=models.PROTECT,
+        related_name='orcamentos_radar',
+    )
+    numero = models.CharField(max_length=50)
     cliente = models.CharField(max_length=150)
     descricao = models.TextField()
     data_orcamento = models.DateField()
@@ -933,9 +1031,17 @@ class OrcamentoRadarObra(models.Model):
         ordering = ['-data_orcamento', '-id']
         verbose_name = 'Radar de obra'
         verbose_name_plural = 'Radar de obras'
+        constraints = [
+            models.UniqueConstraint(fields=['empresa', 'numero'], name='unique_radar_empresa_numero'),
+        ]
 
     def __str__(self):
         return f'{self.numero} - {self.cliente}'
+
+    def save(self, *args, **kwargs):
+        if not self.empresa_id:
+            raise ValidationError({'empresa': 'Empresa ativa obrigatoria para radar de obras.'})
+        super().save(*args, **kwargs)
 
 
 class ContratoConcretagem(models.Model):
@@ -999,7 +1105,12 @@ class ContratoConcretagem(models.Model):
 
 
 class SolicitanteConcretagem(models.Model):
-    nome = models.CharField(max_length=120, unique=True)
+    empresa = models.ForeignKey(
+        'empresas.Empresa',
+        on_delete=models.PROTECT,
+        related_name='solicitantes_concretagem',
+    )
+    nome = models.CharField(max_length=120)
     ativo = models.BooleanField(default=True)
     observacoes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -1008,6 +1119,13 @@ class SolicitanteConcretagem(models.Model):
         ordering = ['nome']
         verbose_name = 'Solicitante de concretagem'
         verbose_name_plural = 'Solicitantes de concretagem'
+        constraints = [
+            models.UniqueConstraint(fields=['empresa', 'nome'], name='unique_solicitante_concretagem_empresa_nome'),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.empresa = _exigir_empresa(self.empresa if self.empresa_id else None)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.nome
@@ -1163,6 +1281,11 @@ class CronogramaObra(models.Model):
     ]
 
     nome = models.CharField(max_length=180)
+    empresa = models.ForeignKey(
+        'empresas.Empresa',
+        on_delete=models.PROTECT,
+        related_name='cronogramas_obras',
+    )
     obra = models.ForeignKey(
         'obras.Obra',
         on_delete=models.SET_NULL,
@@ -1184,6 +1307,13 @@ class CronogramaObra(models.Model):
 
     def __str__(self):
         return self.nome
+
+    def save(self, *args, **kwargs):
+        empresa = self.empresa if self.empresa_id else None
+        if self.obra_id:
+            empresa = _empresa_de_relacao(empresa, self.obra, 'obra')
+        self.empresa = _exigir_empresa(empresa)
+        super().save(*args, **kwargs)
 
 
 class LinhaCronogramaObra(models.Model):

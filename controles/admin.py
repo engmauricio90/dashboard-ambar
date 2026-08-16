@@ -113,9 +113,9 @@ class NotaFiscalOrdemCompraGeralInline(admin.TabularInline):
 
 @admin.register(OrdemCompraGeral)
 class OrdemCompraGeralAdmin(admin.ModelAdmin):
-    list_display = ('numero', 'data_emissao', 'fornecedor', 'comprador', 'total', 'total_faturado', 'status')
-    search_fields = ('numero', 'fornecedor', 'comprador', 'fornecedor_cpf_cnpj')
-    list_filter = ('status', 'data_emissao')
+    list_display = ('numero', 'empresa', 'data_emissao', 'fornecedor', 'comprador', 'total', 'total_faturado', 'status')
+    search_fields = ('numero', 'fornecedor', 'comprador', 'fornecedor_cpf_cnpj', 'empresa__nome')
+    list_filter = ('empresa', 'status', 'data_emissao')
     inlines = [ItemOrdemCompraGeralInline, NotaFiscalOrdemCompraGeralInline]
 
 
@@ -133,9 +133,9 @@ class LinhaCronogramaObraInline(admin.TabularInline):
 
 @admin.register(CronogramaObra)
 class CronogramaObraAdmin(admin.ModelAdmin):
-    list_display = ('nome', 'obra', 'data_inicio', 'data_fim', 'formato')
-    search_fields = ('nome', 'obra__nome_obra', 'observacoes')
-    list_filter = ('formato', 'data_inicio', 'obra')
+    list_display = ('nome', 'empresa', 'obra', 'data_inicio', 'data_fim', 'formato')
+    search_fields = ('nome', 'obra__nome_obra', 'observacoes', 'empresa__nome')
+    list_filter = ('empresa', 'formato', 'data_inicio', 'obra')
     inlines = [LinhaCronogramaObraInline]
 
 
@@ -255,9 +255,9 @@ class HistoricoLocacaoMaquinaAdmin(admin.ModelAdmin):
 
 @admin.register(OrcamentoRadarObra)
 class OrcamentoRadarObraAdmin(admin.ModelAdmin):
-    list_display = ('numero', 'cliente', 'data_orcamento', 'situacao', 'valor_estimado', 'responsavel')
-    search_fields = ('numero', 'cliente', 'descricao', 'responsavel')
-    list_filter = ('situacao', 'data_orcamento')
+    list_display = ('numero', 'empresa', 'cliente', 'data_orcamento', 'situacao', 'valor_estimado', 'responsavel')
+    search_fields = ('numero', 'cliente', 'descricao', 'responsavel', 'empresa__nome')
+    list_filter = ('empresa', 'situacao', 'data_orcamento')
 
 
 class FaturamentoConcretagemInline(admin.TabularInline):

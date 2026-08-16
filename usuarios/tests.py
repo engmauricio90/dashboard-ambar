@@ -15,8 +15,10 @@ User = get_user_model()
 class UsuariosTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='usuario', password='senha', first_name='Usuario')
+        self.empresa = Empresa.objects.get(slug='ambar')
+        UsuarioEmpresa.objects.create(usuario=self.user, empresa=self.empresa)
         self.client.force_login(self.user)
-        self.obra = Obra.objects.create(nome_obra='Obra Usuario', cliente='Cliente')
+        self.obra = Obra.objects.create(empresa=self.empresa, nome_obra='Obra Usuario', cliente='Cliente')
 
     def test_minha_area_cria_e_exibe_perfil(self):
         response = self.client.get(reverse('minha_area'))
@@ -55,10 +57,9 @@ class UsuariosTests(TestCase):
     def test_administrador_cria_usuario_com_grupo_e_obra(self):
         administrador = Group.objects.get_or_create(name='Administrador')[0]
         financeiro = Group.objects.get_or_create(name='Financeiro')[0]
-        empresa, _created = Empresa.objects.get_or_create(slug='ambar', defaults={'nome': 'Ambar Engenharia'})
-        UsuarioEmpresa.objects.get_or_create(
+        UsuarioEmpresa.objects.update_or_create(
             usuario=self.user,
-            empresa=empresa,
+            empresa=self.empresa,
             defaults={'administrador_empresa': True},
         )
         self.user.groups.add(administrador)
@@ -89,7 +90,7 @@ class UsuariosTests(TestCase):
         self.assertTrue(novo.groups.filter(name='Financeiro').exists())
         self.assertEqual(novo.perfil.cargo, 'Analista financeiro')
         self.assertTrue(novo.perfil.obras.filter(id=self.obra.id).exists())
-        self.assertTrue(UsuarioEmpresa.objects.filter(usuario=novo, empresa=empresa, ativo=True).exists())
+        self.assertTrue(UsuarioEmpresa.objects.filter(usuario=novo, empresa=self.empresa, ativo=True).exists())
 
     def test_usuario_edita_proprio_perfil(self):
         response = self.client.post(

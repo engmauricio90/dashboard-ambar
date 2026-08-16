@@ -7,6 +7,7 @@ from django.test import TestCase
 from django.test.utils import override_settings
 from django.urls import reverse
 
+from empresas.models import Empresa, UsuarioEmpresa
 from obras.models import AditivoContrato, DespesaObra, ImpostoNotaFiscal, NotaFiscal, Obra, RetencaoNotaFiscal
 
 
@@ -14,16 +15,20 @@ class DashboardHomeTests(TestCase):
     def setUp(self):
         user_model = get_user_model()
         self.user = user_model.objects.create_user(username='diretor', password='senha-forte-123')
+        self.empresa = Empresa.objects.get(slug='ambar')
+        UsuarioEmpresa.objects.create(usuario=self.user, empresa=self.empresa)
         self.client.force_login(self.user)
 
     def test_dashboard_exibe_totais_reais_e_alertas(self):
         obra_ok = Obra.objects.create(
+            empresa=self.empresa,
             nome_obra='Obra Azul',
             cliente='Cliente A',
             valor_contrato=Decimal('1000.00'),
             projecao_despesa=Decimal('400.00'),
         )
         obra_alerta = Obra.objects.create(
+            empresa=self.empresa,
             nome_obra='Obra Vermelha',
             cliente='Cliente B',
             valor_contrato=Decimal('500.00'),
@@ -106,11 +111,13 @@ class DashboardHomeTests(TestCase):
 
     def test_total_contratos_ignora_obras_concluidas(self):
         Obra.objects.create(
+            empresa=self.empresa,
             nome_obra='Obra Ativa',
             valor_contrato=Decimal('1000.00'),
             status_obra='em_andamento',
         )
         obra_concluida = Obra.objects.create(
+            empresa=self.empresa,
             nome_obra='Obra Concluida',
             valor_contrato=Decimal('5000.00'),
             status_obra='concluida',
@@ -129,8 +136,8 @@ class DashboardHomeTests(TestCase):
         self.assertContains(response, 'R$ 1.000,00')
 
     def test_dashboard_ordena_obras_por_resultado_real(self):
-        obra_melhor = Obra.objects.create(nome_obra='Obra Melhor', valor_contrato=Decimal('1000.00'))
-        obra_pior = Obra.objects.create(nome_obra='Obra Pior', valor_contrato=Decimal('1000.00'))
+        obra_melhor = Obra.objects.create(empresa=self.empresa, nome_obra='Obra Melhor', valor_contrato=Decimal('1000.00'))
+        obra_pior = Obra.objects.create(empresa=self.empresa, nome_obra='Obra Pior', valor_contrato=Decimal('1000.00'))
 
         NotaFiscal.objects.create(
             obra=obra_melhor,
@@ -161,8 +168,8 @@ class DashboardHomeTests(TestCase):
         self.assertEqual(obras[1].nome_obra, 'Obra Pior')
 
     def test_filtro_do_dashboard_afeta_apenas_lista_de_obras(self):
-        Obra.objects.create(nome_obra='Obra Cliente A', cliente='Cliente A', valor_contrato=Decimal('100.00'))
-        Obra.objects.create(nome_obra='Obra Cliente B', cliente='Cliente B', valor_contrato=Decimal('200.00'))
+        Obra.objects.create(empresa=self.empresa, nome_obra='Obra Cliente A', cliente='Cliente A', valor_contrato=Decimal('100.00'))
+        Obra.objects.create(empresa=self.empresa, nome_obra='Obra Cliente B', cliente='Cliente B', valor_contrato=Decimal('200.00'))
 
         response = self.client.get(reverse('home'), {'cliente': 'Cliente A'})
 
@@ -171,8 +178,8 @@ class DashboardHomeTests(TestCase):
         self.assertEqual(response.context['obras'][0].nome_obra, 'Obra Cliente A')
 
     def test_dashboard_ordena_lista_por_contrato(self):
-        Obra.objects.create(nome_obra='Obra Menor', valor_contrato=Decimal('100.00'))
-        Obra.objects.create(nome_obra='Obra Maior', valor_contrato=Decimal('300.00'))
+        Obra.objects.create(empresa=self.empresa, nome_obra='Obra Menor', valor_contrato=Decimal('100.00'))
+        Obra.objects.create(empresa=self.empresa, nome_obra='Obra Maior', valor_contrato=Decimal('300.00'))
 
         response = self.client.get(reverse('home'), {'ordenacao': 'contrato_desc'})
 
@@ -181,8 +188,8 @@ class DashboardHomeTests(TestCase):
         self.assertEqual(obras[1].nome_obra, 'Obra Menor')
 
     def test_relatorio_geral_aplica_filtro_por_cliente(self):
-        Obra.objects.create(nome_obra='Obra Cliente A', cliente='Cliente A', valor_contrato=Decimal('100.00'))
-        Obra.objects.create(nome_obra='Obra Cliente B', cliente='Cliente B', valor_contrato=Decimal('200.00'))
+        Obra.objects.create(empresa=self.empresa, nome_obra='Obra Cliente A', cliente='Cliente A', valor_contrato=Decimal('100.00'))
+        Obra.objects.create(empresa=self.empresa, nome_obra='Obra Cliente B', cliente='Cliente B', valor_contrato=Decimal('200.00'))
 
         response = self.client.get(reverse('relatorio_geral'), {'cliente': 'Cliente A'})
 
@@ -203,6 +210,18 @@ class DashboardHomeTests(TestCase):
         response = self.client.get(reverse('home'))
 
         self.assertRedirects(response, f"{reverse('login')}?next={reverse('home')}")
+
+    def test_dashboard_nao_mistura_dados_de_outra_empresa(self):
+        outra_empresa = Empresa.objects.create(nome='Empresa Teste', slug='empresa-teste-dashboard')
+        Obra.objects.create(nome_obra='Obra Ambar', empresa=self.empresa, valor_contrato=Decimal('100.00'))
+        Obra.objects.create(nome_obra='Obra Outra Empresa', empresa=outra_empresa, valor_contrato=Decimal('900.00'))
+
+        response = self.client.get(reverse('home'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['total_contratos'], Decimal('100.00'))
+        self.assertContains(response, 'Obra Ambar')
+        self.assertNotContains(response, 'Obra Outra Empresa')
 
 
 @override_settings(

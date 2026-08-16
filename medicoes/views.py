@@ -21,6 +21,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from controles.models import FaturamentoDireto
 from controles.views import _build_simple_pdf
+from empresas.decorators import empresa_required
 from obras.models import Obra
 
 from .forms import (
@@ -46,6 +47,22 @@ from .models import (
     MedicaoEmpreiteiro,
     OrcamentoMedicao,
 )
+
+
+def _obras_empresa(empresa):
+    return Obra.objects.filter(empresa=empresa)
+
+
+def _orcamentos_empresa(empresa):
+    return OrcamentoMedicao.objects.filter(obra__empresa=empresa)
+
+
+def _medicoes_construtora_empresa(empresa):
+    return MedicaoConstrutora.objects.filter(orcamento__obra__empresa=empresa)
+
+
+def _medicoes_empreiteiro_empresa(empresa):
+    return MedicaoEmpreiteiro.objects.filter(empresa=empresa)
 
 
 def _money(value):
@@ -583,7 +600,10 @@ def _sync_faturamentos_diretos(medicao, post_data):
             vinculo.delete()
         _atualizar_resumo_faturamento_direto(faturamento)
     for faturamento_id, vinculo in atuais.items():
-        if faturamento_id not in usados and not FaturamentoDireto.objects.filter(id=faturamento_id).exists():
+        if faturamento_id not in usados and not FaturamentoDireto.objects.filter(
+            id=faturamento_id,
+            obra=medicao.orcamento.obra,
+        ).exists():
             faturamento = vinculo.faturamento_direto
             vinculo.delete()
             _atualizar_resumo_faturamento_direto(faturamento)
@@ -632,7 +652,7 @@ def _aplicar_percentuais_empreiteiro(medicao):
         medicao.save(update_fields=updates + ['updated_at'])
 
 
-def _empreiteiros_json():
+def _empreiteiros_json(empresa):
     return [
         {
             'id': empreiteiro.id,
@@ -640,7 +660,7 @@ def _empreiteiros_json():
             'cpf_cnpj': empreiteiro.cpf_cnpj,
             'pix': empreiteiro.pix,
         }
-        for empreiteiro in Empreiteiro.objects.filter(ativo=True).order_by('nome')
+        for empreiteiro in Empreiteiro.objects.filter(empresa=empresa, ativo=True).order_by('nome')
     ]
 
 
@@ -711,7 +731,7 @@ def _relatorio_linha_display(row, coluna):
     return row.get(coluna) or '-'
 
 
-def _linhas_relatorio_medicoes(filtros):
+def _linhas_relatorio_medicoes(filtros, empresa):
     tipo = filtros.get('tipo') or ''
     obra = filtros.get('obra')
     empreiteiro = filtros.get('empreiteiro')
@@ -720,7 +740,7 @@ def _linhas_relatorio_medicoes(filtros):
     linhas = []
 
     if tipo in {'', 'construtora'} and not empreiteiro:
-        medicoes = MedicaoConstrutora.objects.select_related('orcamento', 'orcamento__obra')
+        medicoes = _medicoes_construtora_empresa(empresa).select_related('orcamento', 'orcamento__obra')
         if obra:
             medicoes = medicoes.filter(orcamento__obra=obra)
         if data_inicial:
@@ -747,7 +767,7 @@ def _linhas_relatorio_medicoes(filtros):
             )
 
     if tipo in {'', 'empreiteiro', 'empreiteiro_simples', 'empreiteiro_cumulativa'}:
-        medicoes = MedicaoEmpreiteiro.objects.select_related('obra', 'orcamento', 'orcamento__obra', 'empreiteiro_cadastro')
+        medicoes = _medicoes_empreiteiro_empresa(empresa).select_related('obra', 'orcamento', 'orcamento__obra', 'empreiteiro_cadastro')
         if tipo == 'empreiteiro_simples':
             medicoes = medicoes.filter(tipo=MedicaoEmpreiteiro.TIPO_SIMPLES)
         elif tipo == 'empreiteiro_cumulativa':
@@ -904,13 +924,13 @@ def relatorio_medicoes(request):
     data = request.GET.copy()
     if 'colunas' not in data:
         data.setlist('colunas', RelatorioMedicoesForm.COLUNAS_PADRAO)
-    form = RelatorioMedicoesForm(data)
+    form = RelatorioMedicoesForm(data, empresa=request.empresa)
     linhas = []
     totais = _totais_relatorio_medicoes(linhas)
     colunas = RelatorioMedicoesForm.COLUNAS_PADRAO
     if form.is_valid():
         colunas = form.cleaned_data['colunas']
-        linhas = _linhas_relatorio_medicoes(form.cleaned_data)
+        linhas = _linhas_relatorio_medicoes(form.cleaned_data, request.empresa)
         totais = _totais_relatorio_medicoes(linhas)
         export = request.GET.get('export')
         if export == 'excel':
@@ -944,26 +964,26 @@ def relatorio_medicoes(request):
 
 def medicoes_construtora_home(request):
     contexto = {
-        'obras': Obra.objects.filter(
+        'obras': _obras_empresa(request.empresa).filter(
             orcamentos_medicao__tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
         ).distinct().order_by('nome_obra'),
-        'planilhas': OrcamentoMedicao.objects.filter(
+        'planilhas': _orcamentos_empresa(request.empresa).filter(
             tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
         ).select_related('obra').prefetch_related('medicoes_construtora', 'itens'),
-        'medicoes': MedicaoConstrutora.objects.select_related('orcamento', 'orcamento__obra')[:12],
+        'medicoes': _medicoes_construtora_empresa(request.empresa).select_related('orcamento', 'orcamento__obra')[:12],
     }
     return render(request, 'medicoes/construtora_home.html', contexto)
 
 
 def medicoes_empreiteiros_home(request):
     contexto = {
-        'simples': MedicaoEmpreiteiro.objects.filter(
+        'simples': _medicoes_empreiteiro_empresa(request.empresa).filter(
             tipo=MedicaoEmpreiteiro.TIPO_SIMPLES,
         ).select_related('obra')[:15],
-        'cumulativas': MedicaoEmpreiteiro.objects.filter(
+        'cumulativas': _medicoes_empreiteiro_empresa(request.empresa).filter(
             tipo=MedicaoEmpreiteiro.TIPO_CUMULATIVA,
         ).select_related('obra', 'orcamento')[:15],
-        'planilhas': OrcamentoMedicao.objects.filter(
+        'planilhas': _orcamentos_empresa(request.empresa).filter(
             tipo=OrcamentoMedicao.TIPO_EMPREITEIRO,
         ).select_related('obra').prefetch_related('itens', 'medicoes_empreiteiro')[:15],
     }
@@ -971,7 +991,7 @@ def medicoes_empreiteiros_home(request):
 
 
 def lista_empreiteiros(request):
-    empreiteiros = Empreiteiro.objects.all()
+    empreiteiros = Empreiteiro.objects.filter(empresa=request.empresa)
     busca = request.GET.get('busca', '').strip()
     if busca:
         empreiteiros = empreiteiros.filter(
@@ -988,26 +1008,26 @@ def lista_empreiteiros(request):
 
 def novo_empreiteiro(request):
     if request.method == 'POST':
-        form = EmpreiteiroForm(request.POST)
+        form = EmpreiteiroForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Empreiteiro cadastrado com sucesso.')
             return redirect('lista_empreiteiros_medicao')
     else:
-        form = EmpreiteiroForm()
+        form = EmpreiteiroForm(empresa=request.empresa)
     return render(request, 'medicoes/form_empreiteiro.html', {'form': form, 'titulo': 'Novo empreiteiro'})
 
 
 def editar_empreiteiro(request, empreiteiro_id):
-    empreiteiro = get_object_or_404(Empreiteiro, id=empreiteiro_id)
+    empreiteiro = get_object_or_404(Empreiteiro, id=empreiteiro_id, empresa=request.empresa)
     if request.method == 'POST':
-        form = EmpreiteiroForm(request.POST, instance=empreiteiro)
+        form = EmpreiteiroForm(request.POST, instance=empreiteiro, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Empreiteiro atualizado com sucesso.')
             return redirect('lista_empreiteiros_medicao')
     else:
-        form = EmpreiteiroForm(instance=empreiteiro)
+        form = EmpreiteiroForm(instance=empreiteiro, empresa=request.empresa)
     return render(
         request,
         'medicoes/form_empreiteiro.html',
@@ -1016,10 +1036,10 @@ def editar_empreiteiro(request, empreiteiro_id):
 
 
 def medicoes_obra(request, obra_id):
-    obra = get_object_or_404(Obra, id=obra_id)
+    obra = get_object_or_404(Obra, id=obra_id, empresa=request.empresa)
     planilhas = obra.orcamentos_medicao.prefetch_related('itens', 'medicoes_construtora', 'medicoes_empreiteiro')
     medicoes_construtora = MedicaoConstrutora.objects.filter(orcamento__obra=obra).select_related('orcamento')
-    medicoes_empreiteiro = MedicaoEmpreiteiro.objects.filter(obra=obra).select_related('orcamento')
+    medicoes_empreiteiro = _medicoes_empreiteiro_empresa(request.empresa).filter(obra=obra).select_related('orcamento')
     return render(
         request,
         'medicoes/obra.html',
@@ -1033,13 +1053,13 @@ def medicoes_obra(request, obra_id):
 
 
 def lista_orcamentos(request):
-    orcamentos = OrcamentoMedicao.objects.select_related('obra')
+    orcamentos = _orcamentos_empresa(request.empresa).select_related('obra')
     return render(request, 'medicoes/lista_orcamentos.html', {'orcamentos': orcamentos})
 
 
 def importar_orcamento(request):
     if request.method == 'POST':
-        form = ImportarOrcamentoForm(request.POST, request.FILES)
+        form = ImportarOrcamentoForm(request.POST, request.FILES, empresa=request.empresa)
         if form.is_valid():
             reader, error = _read_csv(form.cleaned_data['arquivo'])
             if error:
@@ -1095,7 +1115,7 @@ def importar_orcamento(request):
         initial = {}
         if request.GET.get('obra'):
             initial['obra'] = request.GET['obra']
-        form = ImportarOrcamentoForm(initial=initial)
+        form = ImportarOrcamentoForm(initial=initial, empresa=request.empresa)
     return render(request, 'medicoes/importar_orcamento.html', {'form': form})
 
 
@@ -1107,13 +1127,13 @@ def novo_orcamento_manual(request):
     if request.GET.get('obra'):
         initial['obra'] = request.GET['obra']
     if request.method == 'POST':
-        form = OrcamentoMedicaoManualForm(request.POST)
+        form = OrcamentoMedicaoManualForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             orcamento = form.save()
             messages.success(request, 'Planilha manual criada. Agora adicione os itens para usar nas medicoes.')
             return redirect('editar_itens_orcamento_medicao', orcamento_id=orcamento.id)
     else:
-        form = OrcamentoMedicaoManualForm(initial=initial)
+        form = OrcamentoMedicaoManualForm(initial=initial, empresa=request.empresa)
     return render(
         request,
         'medicoes/form_orcamento_manual.html',
@@ -1132,6 +1152,7 @@ def detalhe_orcamento(request, orcamento_id):
             'medicoes_empreiteiro',
         ),
         id=orcamento_id,
+        obra__empresa=request.empresa,
     )
     itens = orcamento.itens.all()
     medicoes_construtora = orcamento.medicoes_construtora.all()
@@ -1233,6 +1254,7 @@ def saldo_contratual_construtora(request, orcamento_id):
     orcamento = get_object_or_404(
         OrcamentoMedicao.objects.select_related('obra').prefetch_related('itens'),
         id=orcamento_id,
+        obra__empresa=request.empresa,
         tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
     )
     linhas, totais = _saldo_contratual_construtora(orcamento)
@@ -1251,6 +1273,7 @@ def saldo_contratual_construtora_pdf(request, orcamento_id):
     orcamento = get_object_or_404(
         OrcamentoMedicao.objects.select_related('obra').prefetch_related('itens'),
         id=orcamento_id,
+        obra__empresa=request.empresa,
         tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
     )
     linhas, totais = _saldo_contratual_construtora(orcamento)
@@ -1263,6 +1286,7 @@ def saldo_contratual_construtora_excel(request, orcamento_id):
     orcamento = get_object_or_404(
         OrcamentoMedicao.objects.select_related('obra').prefetch_related('itens'),
         id=orcamento_id,
+        obra__empresa=request.empresa,
         tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
     )
     linhas, totais = _saldo_contratual_construtora(orcamento)
@@ -1461,7 +1485,11 @@ def _pdf_saldo_contratual(orcamento, linhas, totais):
 
 
 def editar_itens_orcamento(request, orcamento_id):
-    orcamento = get_object_or_404(OrcamentoMedicao.objects.select_related('obra'), id=orcamento_id)
+    orcamento = get_object_or_404(
+        OrcamentoMedicao.objects.select_related('obra'),
+        id=orcamento_id,
+        obra__empresa=request.empresa,
+    )
     if request.method == 'POST':
         formset = ItemOrcamentoMedicaoFormSet(request.POST, instance=orcamento)
         if formset.is_valid():
@@ -1482,7 +1510,11 @@ def editar_itens_orcamento(request, orcamento_id):
 
 
 def excluir_orcamento(request, orcamento_id):
-    orcamento = get_object_or_404(OrcamentoMedicao.objects.select_related('obra'), id=orcamento_id)
+    orcamento = get_object_or_404(
+        OrcamentoMedicao.objects.select_related('obra'),
+        id=orcamento_id,
+        obra__empresa=request.empresa,
+    )
     obra_id = orcamento.obra_id
     if request.method == 'POST':
         orcamento.delete()
@@ -1498,7 +1530,7 @@ def excluir_orcamento(request, orcamento_id):
 
 
 def nova_medicao_construtora(request, orcamento_id):
-    orcamento = get_object_or_404(OrcamentoMedicao, id=orcamento_id)
+    orcamento = get_object_or_404(OrcamentoMedicao, id=orcamento_id, obra__empresa=request.empresa)
     initial = {
         'numero': _next_numero(MedicaoConstrutora, orcamento=orcamento),
         'data_medicao': timezone.localdate(),
@@ -1526,7 +1558,11 @@ def nova_medicao_construtora(request, orcamento_id):
 
 
 def editar_medicao_construtora(request, medicao_id):
-    medicao = get_object_or_404(MedicaoConstrutora.objects.select_related('orcamento', 'orcamento__obra'), id=medicao_id)
+    medicao = get_object_or_404(
+        MedicaoConstrutora.objects.select_related('orcamento', 'orcamento__obra'),
+        id=medicao_id,
+        orcamento__obra__empresa=request.empresa,
+    )
     _sincronizar_itens_medicao_construtora(medicao)
     if request.method == 'POST':
         form = MedicaoConstrutoraForm(request.POST, instance=medicao)
@@ -1562,7 +1598,11 @@ def editar_medicao_construtora(request, medicao_id):
 
 
 def excluir_medicao_construtora(request, medicao_id):
-    medicao = get_object_or_404(MedicaoConstrutora.objects.select_related('orcamento'), id=medicao_id)
+    medicao = get_object_or_404(
+        MedicaoConstrutora.objects.select_related('orcamento'),
+        id=medicao_id,
+        orcamento__obra__empresa=request.empresa,
+    )
     orcamento_id = medicao.orcamento_id
     if request.method == 'POST':
         medicao.delete()
@@ -1582,11 +1622,12 @@ def excluir_medicao_construtora(request, medicao_id):
 
 def nova_medicao_empreiteiro_simples(request):
     if request.method == 'POST':
-        form = MedicaoEmpreiteiroCabecalhoForm(request.POST)
+        form = MedicaoEmpreiteiroCabecalhoForm(request.POST, empresa=request.empresa)
         formset = ItemMedicaoEmpreiteiroFormSet(request.POST)
         if form.is_valid():
             medicao = form.save(commit=False)
             medicao.tipo = MedicaoEmpreiteiro.TIPO_SIMPLES
+            medicao.empresa = request.empresa
             medicao.save()
             _sync_empreiteiro_medicao(medicao)
             formset = ItemMedicaoEmpreiteiroFormSet(request.POST, instance=medicao)
@@ -1597,14 +1638,14 @@ def nova_medicao_empreiteiro_simples(request):
             medicao.delete()
     else:
         initial = {
-            'numero': _next_numero(MedicaoEmpreiteiro, tipo=MedicaoEmpreiteiro.TIPO_SIMPLES),
+            'numero': _next_numero(MedicaoEmpreiteiro, empresa=request.empresa, tipo=MedicaoEmpreiteiro.TIPO_SIMPLES),
             'data_medicao': timezone.localdate(),
             'periodo_inicio': timezone.localdate(),
             'periodo_fim': timezone.localdate(),
         }
         if request.GET.get('obra'):
             initial['obra'] = request.GET['obra']
-        form = MedicaoEmpreiteiroCabecalhoForm(initial=initial)
+        form = MedicaoEmpreiteiroCabecalhoForm(initial=initial, empresa=request.empresa)
         formset = ItemMedicaoEmpreiteiroFormSet()
     return render(
         request,
@@ -1613,21 +1654,21 @@ def nova_medicao_empreiteiro_simples(request):
             'form': form,
             'formset': formset,
             'titulo': 'Nova medicao simples de empreiteiro',
-            'empreiteiros_json': _empreiteiros_json(),
+            'empreiteiros_json': _empreiteiros_json(request.empresa),
         },
     )
 
 
 def nova_medicao_empreiteiro_cumulativa(request, orcamento_id):
-    orcamento = get_object_or_404(OrcamentoMedicao, id=orcamento_id)
+    orcamento = get_object_or_404(OrcamentoMedicao, id=orcamento_id, obra__empresa=request.empresa)
     initial = {
         'obra': orcamento.obra,
-        'numero': _next_numero(MedicaoEmpreiteiro, orcamento=orcamento),
+        'numero': _next_numero(MedicaoEmpreiteiro, empresa=request.empresa, orcamento=orcamento),
         'data_medicao': timezone.localdate(),
         'periodo_inicio': timezone.localdate(),
         'periodo_fim': timezone.localdate(),
     }
-    ultima_medicao = MedicaoEmpreiteiro.objects.filter(
+    ultima_medicao = _medicoes_empreiteiro_empresa(request.empresa).filter(
         orcamento=orcamento,
         tipo=MedicaoEmpreiteiro.TIPO_CUMULATIVA,
     ).select_related('empreiteiro_cadastro').order_by('-numero', '-id').first()
@@ -1642,13 +1683,14 @@ def nova_medicao_empreiteiro_cumulativa(request, orcamento_id):
             }
         )
     if request.method == 'POST':
-        form = MedicaoEmpreiteiroCabecalhoForm(request.POST)
+        form = MedicaoEmpreiteiroCabecalhoForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             with transaction.atomic():
                 medicao = form.save(commit=False)
                 medicao.tipo = MedicaoEmpreiteiro.TIPO_CUMULATIVA
                 medicao.orcamento = orcamento
                 medicao.obra = medicao.obra or orcamento.obra
+                medicao.empresa = request.empresa
                 medicao.save()
                 _sync_empreiteiro_medicao(medicao)
                 ItemMedicaoEmpreiteiro.objects.bulk_create(
@@ -1667,22 +1709,26 @@ def nova_medicao_empreiteiro_cumulativa(request, orcamento_id):
             messages.success(request, 'Medicao cumulativa criada. Agora preencha as quantidades medidas.')
             return redirect('editar_medicao_empreiteiro', medicao_id=medicao.id)
     else:
-        form = MedicaoEmpreiteiroCabecalhoForm(initial=initial)
+        form = MedicaoEmpreiteiroCabecalhoForm(initial=initial, empresa=request.empresa)
     return render(
         request,
         'medicoes/form_medicao.html',
         {
             'form': form,
             'titulo': 'Nova medicao cumulativa de empreiteiro',
-            'empreiteiros_json': _empreiteiros_json(),
+            'empreiteiros_json': _empreiteiros_json(request.empresa),
         },
     )
 
 
 def editar_medicao_empreiteiro(request, medicao_id):
-    medicao = get_object_or_404(MedicaoEmpreiteiro.objects.select_related('obra', 'orcamento'), id=medicao_id)
+    medicao = get_object_or_404(
+        MedicaoEmpreiteiro.objects.select_related('obra', 'orcamento'),
+        id=medicao_id,
+        empresa=request.empresa,
+    )
     if request.method == 'POST':
-        form = MedicaoEmpreiteiroForm(request.POST, instance=medicao)
+        form = MedicaoEmpreiteiroForm(request.POST, instance=medicao, empresa=request.empresa)
         formset = ItemMedicaoEmpreiteiroFormSet(request.POST, instance=medicao, orcamento=medicao.orcamento)
         if form.is_valid() and formset.is_valid():
             form.save()
@@ -1692,7 +1738,7 @@ def editar_medicao_empreiteiro(request, medicao_id):
             messages.success(request, 'Medicao de empreiteiro atualizada com sucesso.')
             return redirect('editar_medicao_empreiteiro', medicao_id=medicao.id)
     else:
-        form = MedicaoEmpreiteiroForm(instance=medicao)
+        form = MedicaoEmpreiteiroForm(instance=medicao, empresa=request.empresa)
         formset = ItemMedicaoEmpreiteiroFormSet(instance=medicao, orcamento=medicao.orcamento)
     template = (
         'medicoes/editar_medicao_empreiteiro_simples.html'
@@ -1707,13 +1753,17 @@ def editar_medicao_empreiteiro(request, medicao_id):
             'form': form,
             'formset': formset,
             'titulo': 'Medicao de empreiteiro',
-            'empreiteiros_json': _empreiteiros_json(),
+            'empreiteiros_json': _empreiteiros_json(request.empresa),
         },
     )
 
 
 def excluir_medicao_empreiteiro(request, medicao_id):
-    medicao = get_object_or_404(MedicaoEmpreiteiro.objects.select_related('orcamento'), id=medicao_id)
+    medicao = get_object_or_404(
+        MedicaoEmpreiteiro.objects.select_related('orcamento'),
+        id=medicao_id,
+        empresa=request.empresa,
+    )
     orcamento_id = medicao.orcamento_id
     if request.method == 'POST':
         medicao.delete()
@@ -1783,7 +1833,11 @@ def _linhas_pdf_medicao(medicao, itens, titulo):
 
 
 def medicao_construtora_pdf(request, medicao_id):
-    medicao = get_object_or_404(MedicaoConstrutora.objects.select_related('orcamento', 'orcamento__obra'), id=medicao_id)
+    medicao = get_object_or_404(
+        MedicaoConstrutora.objects.select_related('orcamento', 'orcamento__obra'),
+        id=medicao_id,
+        orcamento__obra__empresa=request.empresa,
+    )
     response = HttpResponse(
         _pdf_medicao_construtora(medicao),
         content_type='application/pdf',
@@ -1793,7 +1847,11 @@ def medicao_construtora_pdf(request, medicao_id):
 
 
 def medicao_empreiteiro_pdf(request, medicao_id):
-    medicao = get_object_or_404(MedicaoEmpreiteiro.objects.select_related('obra', 'orcamento'), id=medicao_id)
+    medicao = get_object_or_404(
+        MedicaoEmpreiteiro.objects.select_related('obra', 'orcamento'),
+        id=medicao_id,
+        empresa=request.empresa,
+    )
     response = HttpResponse(_pdf_medicao_empreiteiro(medicao), content_type='application/pdf')
     response['Content-Disposition'] = f'inline; filename="medicao_empreiteiro_{medicao.numero}.pdf"'
     return response
@@ -2079,7 +2137,11 @@ def _xlsx_medicao(medicao, itens):
 
 
 def medicao_construtora_excel(request, medicao_id):
-    medicao = get_object_or_404(MedicaoConstrutora.objects.select_related('orcamento'), id=medicao_id)
+    medicao = get_object_or_404(
+        MedicaoConstrutora.objects.select_related('orcamento', 'orcamento__obra'),
+        id=medicao_id,
+        orcamento__obra__empresa=request.empresa,
+    )
     response = HttpResponse(
         _xlsx_medicao(medicao, _itens_medicao_construtora_com_grupos(medicao)),
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -2089,7 +2151,7 @@ def medicao_construtora_excel(request, medicao_id):
 
 
 def medicao_empreiteiro_excel(request, medicao_id):
-    medicao = get_object_or_404(MedicaoEmpreiteiro, id=medicao_id)
+    medicao = get_object_or_404(MedicaoEmpreiteiro, id=medicao_id, empresa=request.empresa)
     response = HttpResponse(
         _xlsx_medicao(medicao, medicao.itens.select_related('item_orcamento')),
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Sum
 
@@ -174,7 +175,12 @@ class ItemOrcamentoMedicao(models.Model):
 
 
 class Empreiteiro(models.Model):
-    nome = models.CharField(max_length=180, unique=True)
+    empresa = models.ForeignKey(
+        'empresas.Empresa',
+        on_delete=models.PROTECT,
+        related_name='empreiteiros',
+    )
+    nome = models.CharField(max_length=180)
     cpf_cnpj = models.CharField(max_length=30, blank=True)
     pix = models.CharField(max_length=120, blank=True)
     telefone = models.CharField(max_length=40, blank=True)
@@ -187,6 +193,14 @@ class Empreiteiro(models.Model):
         ordering = ['nome']
         verbose_name = 'Empreiteiro'
         verbose_name_plural = 'Empreiteiros'
+        constraints = [
+            models.UniqueConstraint(fields=['empresa', 'nome'], name='unique_empreiteiro_empresa_nome'),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.empresa_id:
+            raise ValidationError({'empresa': 'Empresa ativa obrigatoria para cadastrar empreiteiro.'})
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.nome
@@ -417,6 +431,11 @@ class MedicaoEmpreiteiro(models.Model):
     ]
 
     tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default=TIPO_SIMPLES)
+    empresa = models.ForeignKey(
+        'empresas.Empresa',
+        on_delete=models.PROTECT,
+        related_name='medicoes_empreiteiros',
+    )
     obra = models.ForeignKey(Obra, on_delete=models.SET_NULL, blank=True, null=True, related_name='medicoes_empreiteiros')
     orcamento = models.ForeignKey(
         OrcamentoMedicao,
@@ -454,6 +473,29 @@ class MedicaoEmpreiteiro(models.Model):
 
     def __str__(self):
         return f'{self.empreiteiro} - Medicao {self.numero}'
+
+    def save(self, *args, **kwargs):
+        empresa = self.empresa if self.empresa_id else None
+        for campo, objeto in (
+            ('obra', self.obra),
+            ('orcamento', self.orcamento.obra if self.orcamento_id else None),
+            ('empreiteiro_cadastro', self.empreiteiro_cadastro),
+        ):
+            if not objeto:
+                continue
+            objeto_empresa_id = getattr(objeto, 'empresa_id', None)
+            if objeto_empresa_id:
+                if empresa and empresa.id != objeto_empresa_id:
+                    raise ValidationError({campo: 'O vinculo informado pertence a outra empresa.'})
+                empresa = objeto.empresa
+        if not empresa:
+            raise ValidationError({'empresa': 'Empresa ativa obrigatoria para medicao de empreiteiro.'})
+        self.empresa = empresa
+        if self.empreiteiro_cadastro_id:
+            self.empreiteiro = self.empreiteiro_cadastro.nome
+            self.cpf_cnpj = self.empreiteiro_cadastro.cpf_cnpj
+            self.pix = self.empreiteiro_cadastro.pix
+        super().save(*args, **kwargs)
 
     @property
     def subtotal_periodo(self):

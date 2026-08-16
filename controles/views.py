@@ -276,7 +276,9 @@ def _draw_report_heading(draw, title, number, date_text):
 
 
 def _queryset_locacoes_filtradas(request):
-    locacoes = LocacaoEquipamento.objects.select_related('equipamento', 'locadora', 'obra').all()
+    locacoes = LocacaoEquipamento.objects.select_related('equipamento', 'locadora', 'obra').filter(
+        obra__empresa=request.empresa,
+    )
 
     obra_id = request.GET.get('obra', '').strip()
     locadora_id = request.GET.get('locadora', '').strip()
@@ -340,7 +342,7 @@ def _registrar_historico_maquina(ordem, evento, descricao, status_anterior='', s
     )
 
 
-def _fornecedores_json():
+def _fornecedores_json(empresa):
     return [
         {
             'id': fornecedor.id,
@@ -355,7 +357,7 @@ def _fornecedores_json():
             'cep': fornecedor.cep,
             'telefone': fornecedor.telefone,
         }
-        for fornecedor in Fornecedor.objects.filter(ativo=True).order_by('nome')
+        for fornecedor in Fornecedor.objects.filter(empresa=empresa, ativo=True).order_by('nome')
     ]
 
 
@@ -412,30 +414,31 @@ def _grupos_periodos(periodos):
 
 def home(request):
     totais = {
-        'veiculos': VeiculoMaquina.objects.count(),
-        'abastecimentos': RegistroAbastecimento.objects.count(),
-        'ordens_compra_gerais': OrdemCompraGeral.objects.count(),
-        'ordens_compra_gerais_abertas': OrdemCompraGeral.objects.exclude(
+        'veiculos': VeiculoMaquina.objects.filter(empresa=request.empresa).count(),
+        'abastecimentos': RegistroAbastecimento.objects.filter(veiculo__empresa=request.empresa).count(),
+        'ordens_compra_gerais': OrdemCompraGeral.objects.filter(empresa=request.empresa).count(),
+        'ordens_compra_gerais_abertas': OrdemCompraGeral.objects.filter(empresa=request.empresa).exclude(
             status__in=['encerrada', 'cancelada'],
         ).count(),
-        'ordens_combustivel': OrdemCompraCombustivel.objects.count(),
-        'ordens_combustivel_abertas': OrdemCompraCombustivel.objects.exclude(
+        'ordens_combustivel': OrdemCompraCombustivel.objects.filter(empresa=request.empresa).count(),
+        'ordens_combustivel_abertas': OrdemCompraCombustivel.objects.filter(empresa=request.empresa).exclude(
             status__in=['encerrada', 'cancelada'],
         ).count(),
-        'bombonas_combustivel': BombonaCombustivel.objects.count(),
+        'bombonas_combustivel': BombonaCombustivel.objects.filter(empresa=request.empresa).count(),
         'locacoes_abertas': LocacaoEquipamento.objects.filter(
+            obra__empresa=request.empresa,
             status__in=['locado', 'retirada_solicitada'],
         ).count(),
-        'ordens_maquinas': OrdemServicoLocacaoMaquina.objects.count(),
-        'ordens_maquinas_abertas': OrdemServicoLocacaoMaquina.objects.exclude(
+        'ordens_maquinas': OrdemServicoLocacaoMaquina.objects.filter(obra__empresa=request.empresa).count(),
+        'ordens_maquinas_abertas': OrdemServicoLocacaoMaquina.objects.filter(obra__empresa=request.empresa).exclude(
             status__in=['encerrada', 'cancelada'],
         ).count(),
-        'orcamentos_aguardando': OrcamentoRadarObra.objects.filter(situacao='aguardando_resposta').count(),
-        'contratos_concretagem': ContratoConcretagem.objects.filter(status='ativo').count(),
-        'faturamentos_diretos': FaturamentoDireto.objects.count(),
-        'cronogramas_obras': CronogramaObra.objects.count(),
+        'orcamentos_aguardando': OrcamentoRadarObra.objects.filter(empresa=request.empresa, situacao='aguardando_resposta').count(),
+        'contratos_concretagem': ContratoConcretagem.objects.filter(obra__empresa=request.empresa, status='ativo').count(),
+        'faturamentos_diretos': FaturamentoDireto.objects.filter(obra__empresa=request.empresa).count(),
+        'cronogramas_obras': CronogramaObra.objects.filter(empresa=request.empresa).count(),
         'total_abastecido': sum(
-            RegistroAbastecimento.objects.values_list('valor_total', flat=True),
+            RegistroAbastecimento.objects.filter(veiculo__empresa=request.empresa).values_list('valor_total', flat=True),
             Decimal('0'),
         ),
     }
@@ -443,7 +446,7 @@ def home(request):
 
 
 def lista_cronogramas_obras(request):
-    cronogramas = CronogramaObra.objects.select_related('obra').prefetch_related('linhas')
+    cronogramas = CronogramaObra.objects.select_related('obra').prefetch_related('linhas').filter(empresa=request.empresa)
     busca = request.GET.get('busca', '').strip()
     if busca:
         cronogramas = cronogramas.filter(
@@ -460,13 +463,13 @@ def lista_cronogramas_obras(request):
 
 def novo_cronograma_obra(request):
     if request.method == 'POST':
-        form = CronogramaObraForm(request.POST)
+        form = CronogramaObraForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             cronograma = form.save()
             messages.success(request, 'Cronograma criado. Agora adicione os servicos na grade.')
             return redirect('editar_cronograma_obra', cronograma_id=cronograma.id)
     else:
-        form = CronogramaObraForm()
+        form = CronogramaObraForm(empresa=request.empresa)
     return render(
         request,
         'controles/form_cronograma_obra.html',
@@ -475,9 +478,9 @@ def novo_cronograma_obra(request):
 
 
 def editar_cronograma_obra(request, cronograma_id):
-    cronograma = get_object_or_404(CronogramaObra.objects.select_related('obra'), id=cronograma_id)
+    cronograma = get_object_or_404(CronogramaObra.objects.select_related('obra'), id=cronograma_id, empresa=request.empresa)
     if request.method == 'POST':
-        form = CronogramaObraForm(request.POST, instance=cronograma)
+        form = CronogramaObraForm(request.POST, instance=cronograma, empresa=request.empresa)
         if form.is_valid():
             with transaction.atomic():
                 cronograma = form.save()
@@ -504,7 +507,7 @@ def editar_cronograma_obra(request, cronograma_id):
             messages.success(request, 'Cronograma salvo com sucesso.')
             return redirect('editar_cronograma_obra', cronograma_id=cronograma.id)
     else:
-        form = CronogramaObraForm(instance=cronograma)
+        form = CronogramaObraForm(instance=cronograma, empresa=request.empresa)
     periodos = _periodos_cronograma(cronograma)
     return render(
         request,
@@ -520,7 +523,11 @@ def editar_cronograma_obra(request, cronograma_id):
 
 
 def cronograma_obra_pdf(request, cronograma_id):
-    cronograma = get_object_or_404(CronogramaObra.objects.select_related('obra').prefetch_related('linhas'), id=cronograma_id)
+    cronograma = get_object_or_404(
+        CronogramaObra.objects.select_related('obra').prefetch_related('linhas'),
+        id=cronograma_id,
+        empresa=request.empresa,
+    )
     periodos = _periodos_cronograma(cronograma)
     linhas = list(cronograma.linhas.all())
     page_w, page_h = 1754, 1240
@@ -726,7 +733,7 @@ def cronograma_obra_pdf(request, cronograma_id):
 
 
 def lista_faturamentos_diretos(request):
-    faturamentos = FaturamentoDireto.objects.select_related('obra').all()
+    faturamentos = FaturamentoDireto.objects.select_related('obra').filter(obra__empresa=request.empresa)
     busca = request.GET.get('busca', '').strip()
     if busca:
         faturamentos = faturamentos.filter(
@@ -747,7 +754,7 @@ def lista_faturamentos_diretos(request):
 
 def novo_faturamento_direto(request):
     if request.method == 'POST':
-        form = FaturamentoDiretoForm(request.POST)
+        form = FaturamentoDiretoForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Faturamento direto cadastrado com sucesso.')
@@ -757,7 +764,7 @@ def novo_faturamento_direto(request):
         obra_id = request.GET.get('obra')
         if obra_id:
             initial['obra'] = obra_id
-        form = FaturamentoDiretoForm(initial=initial)
+        form = FaturamentoDiretoForm(initial=initial, empresa=request.empresa)
 
     return render(
         request,
@@ -767,15 +774,15 @@ def novo_faturamento_direto(request):
 
 
 def editar_faturamento_direto(request, faturamento_id):
-    faturamento = get_object_or_404(FaturamentoDireto, id=faturamento_id)
+    faturamento = get_object_or_404(FaturamentoDireto, id=faturamento_id, obra__empresa=request.empresa)
     if request.method == 'POST':
-        form = FaturamentoDiretoForm(request.POST, instance=faturamento)
+        form = FaturamentoDiretoForm(request.POST, instance=faturamento, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Faturamento direto atualizado com sucesso.')
             return redirect('lista_faturamentos_diretos')
     else:
-        form = FaturamentoDiretoForm(instance=faturamento)
+        form = FaturamentoDiretoForm(instance=faturamento, empresa=request.empresa)
 
     return render(
         request,
@@ -785,7 +792,11 @@ def editar_faturamento_direto(request, faturamento_id):
 
 
 def excluir_faturamento_direto(request, faturamento_id):
-    faturamento = get_object_or_404(FaturamentoDireto.objects.select_related('obra'), id=faturamento_id)
+    faturamento = get_object_or_404(
+        FaturamentoDireto.objects.select_related('obra'),
+        id=faturamento_id,
+        obra__empresa=request.empresa,
+    )
 
     if request.method == 'POST':
         documento = faturamento.numero_nf or faturamento.numero_ordem_compra or faturamento.descricao
@@ -813,7 +824,7 @@ def excluir_faturamento_direto(request, faturamento_id):
 
 
 def lista_abastecimentos(request):
-    abastecimentos = RegistroAbastecimento.objects.select_related('veiculo').all()
+    abastecimentos = RegistroAbastecimento.objects.select_related('veiculo').filter(veiculo__empresa=request.empresa)
     total_abastecido = sum((registro.valor_total for registro in abastecimentos), Decimal('0'))
     return render(
         request,
@@ -827,13 +838,13 @@ def lista_abastecimentos(request):
 
 def novo_abastecimento(request):
     if request.method == 'POST':
-        form = RegistroAbastecimentoForm(request.POST)
+        form = RegistroAbastecimentoForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Abastecimento registrado com sucesso.')
             return redirect('lista_abastecimentos')
     else:
-        form = RegistroAbastecimentoForm()
+        form = RegistroAbastecimentoForm(empresa=request.empresa)
 
     return render(
         request,
@@ -843,7 +854,7 @@ def novo_abastecimento(request):
 
 
 def lista_ordens_compra_gerais(request):
-    ordens = OrdemCompraGeral.objects.select_related('obra').prefetch_related('itens')
+    ordens = OrdemCompraGeral.objects.filter(empresa=request.empresa).select_related('obra').prefetch_related('itens')
     status = request.GET.get('status', '').strip()
     obra_id = request.GET.get('obra', '').strip()
     busca = request.GET.get('busca', '').strip()
@@ -882,7 +893,7 @@ def lista_ordens_compra_gerais(request):
             'ordens': page_obj,
             'page_obj': page_obj,
             'query_string': query_string,
-            'obras': Obra.objects.order_by('nome_obra'),
+            'obras': Obra.objects.filter(empresa=request.empresa).order_by('nome_obra'),
             'status_choices': OrdemCompraGeral.STATUS_CHOICES,
             'filtros': {'status': status, 'obra': obra_id, 'busca': busca},
             'total_filtrado': total_filtrado,
@@ -893,7 +904,7 @@ def lista_ordens_compra_gerais(request):
 
 def _salvar_ordem_compra_geral(request, ordem=None):
     if request.method == 'POST':
-        form = OrdemCompraGeralForm(request.POST, instance=ordem)
+        form = OrdemCompraGeralForm(request.POST, instance=ordem, empresa=request.empresa)
         if form.is_valid():
             ordem_salva = form.save()
             formset = ItemOrdemCompraGeralFormSet(request.POST, instance=ordem_salva)
@@ -904,7 +915,7 @@ def _salvar_ordem_compra_geral(request, ordem=None):
         else:
             formset = ItemOrdemCompraGeralFormSet(request.POST, instance=ordem)
     else:
-        form = OrdemCompraGeralForm(instance=ordem)
+        form = OrdemCompraGeralForm(instance=ordem, empresa=request.empresa)
         formset = ItemOrdemCompraGeralFormSet(instance=ordem)
     return form, formset, None
 
@@ -920,7 +931,7 @@ def nova_ordem_compra_geral(request):
             'form': form,
             'formset': formset,
             'titulo': 'Nova Ordem de Compra',
-            'fornecedores_json': _fornecedores_json(),
+            'fornecedores_json': _fornecedores_json(request.empresa),
         },
     )
 
@@ -933,12 +944,13 @@ def detalhe_ordem_compra_geral(request, ordem_id):
             'notas_fiscais__conta_pagar',
         ),
         id=ordem_id,
+        empresa=request.empresa,
     )
     return render(request, 'controles/detalhe_ordem_compra_geral.html', {'ordem': ordem})
 
 
 def editar_ordem_compra_geral(request, ordem_id):
-    ordem = get_object_or_404(OrdemCompraGeral, id=ordem_id)
+    ordem = get_object_or_404(OrdemCompraGeral, id=ordem_id, empresa=request.empresa)
     form, formset, response = _salvar_ordem_compra_geral(request, ordem)
     if response:
         return response
@@ -950,19 +962,23 @@ def editar_ordem_compra_geral(request, ordem_id):
             'formset': formset,
             'titulo': 'Editar Ordem de Compra',
             'ordem': ordem,
-            'fornecedores_json': _fornecedores_json(),
+            'fornecedores_json': _fornecedores_json(request.empresa),
         },
     )
 
 
 def nova_nf_ordem_compra_geral(request, ordem_id):
-    ordem = get_object_or_404(OrdemCompraGeral, id=ordem_id)
+    ordem = get_object_or_404(OrdemCompraGeral, id=ordem_id, empresa=request.empresa)
     messages.info(request, 'Lance a conta a pagar no financeiro e selecione a OC para vincular a NF automaticamente.')
     return redirect(f'{reverse("nova_conta_pagar")}?ordem_compra={ordem.id}')
 
 
 def editar_nf_ordem_compra_geral(request, nota_id):
-    nota = get_object_or_404(NotaFiscalOrdemCompraGeral.objects.select_related('ordem'), id=nota_id)
+    nota = get_object_or_404(
+        NotaFiscalOrdemCompraGeral.objects.select_related('ordem'),
+        id=nota_id,
+        ordem__empresa=request.empresa,
+    )
     if request.method == 'POST':
         form = NotaFiscalOrdemCompraGeralForm(request.POST, instance=nota, ordem=nota.ordem)
         if form.is_valid():
@@ -982,6 +998,7 @@ def gerar_conta_pagar_nf_ordem_compra(request, nota_id):
     nota = get_object_or_404(
         NotaFiscalOrdemCompraGeral.objects.select_related('ordem', 'item', 'conta_pagar'),
         id=nota_id,
+        ordem__empresa=request.empresa,
     )
     if nota.conta_pagar_id:
         messages.info(request, 'Esta NF ja possui conta a pagar vinculada.')
@@ -990,6 +1007,7 @@ def gerar_conta_pagar_nf_ordem_compra(request, nota_id):
     from financeiro.models import ItemContaPagarOrdemCompra
 
     conta = ContaPagar.objects.create(
+        empresa=nota.ordem.empresa,
         fornecedor=nota.ordem.fornecedor,
         fornecedor_cadastro=nota.ordem.fornecedor_cadastro,
         obra=nota.ordem.obra,
@@ -1014,7 +1032,11 @@ def gerar_conta_pagar_nf_ordem_compra(request, nota_id):
 
 
 def ordem_compra_geral_pdf(request, ordem_id):
-    ordem = get_object_or_404(OrdemCompraGeral.objects.prefetch_related('itens'), id=ordem_id)
+    ordem = get_object_or_404(
+        OrdemCompraGeral.objects.prefetch_related('itens'),
+        id=ordem_id,
+        empresa=request.empresa,
+    )
     rows = [
         [
             f'{item.item:02d}',
@@ -1131,7 +1153,7 @@ def ordem_compra_geral_pdf(request, ordem_id):
 
 
 def lista_ordens_combustivel(request):
-    ordens = OrdemCompraCombustivel.objects.select_related('veiculo', 'bombona').prefetch_related('notas_fiscais')
+    ordens = OrdemCompraCombustivel.objects.filter(empresa=request.empresa).select_related('veiculo', 'bombona').prefetch_related('notas_fiscais')
 
     status = request.GET.get('status', '').strip()
     tipo_destino = request.GET.get('tipo_destino', '').strip()
@@ -1169,7 +1191,7 @@ def lista_ordens_combustivel(request):
 
 def nova_ordem_combustivel(request):
     if request.method == 'POST':
-        form = OrdemCompraCombustivelForm(request.POST)
+        form = OrdemCompraCombustivelForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             ordem = form.save()
             _registrar_historico_ordem(
@@ -1182,7 +1204,7 @@ def nova_ordem_combustivel(request):
             messages.success(request, 'Ordem de compra de combustivel criada com sucesso.')
             return redirect('detalhe_ordem_combustivel', ordem_id=ordem.id)
     else:
-        form = OrdemCompraCombustivelForm()
+        form = OrdemCompraCombustivelForm(empresa=request.empresa)
 
     return render(
         request,
@@ -1198,6 +1220,7 @@ def detalhe_ordem_combustivel(request, ordem_id):
             'historico',
         ),
         id=ordem_id,
+        empresa=request.empresa,
     )
     return render(request, 'controles/detalhe_ordem_combustivel.html', {'ordem': ordem})
 
@@ -1206,6 +1229,7 @@ def ordem_combustivel_pdf(request, ordem_id):
     ordem = get_object_or_404(
         OrdemCompraCombustivel.objects.select_related('veiculo', 'bombona'),
         id=ordem_id,
+        empresa=request.empresa,
     )
     image = _report_background()
     draw = ImageDraw.Draw(image)
@@ -1249,11 +1273,11 @@ def ordem_combustivel_pdf(request, ordem_id):
 
 
 def editar_ordem_combustivel(request, ordem_id):
-    ordem = get_object_or_404(OrdemCompraCombustivel, id=ordem_id)
+    ordem = get_object_or_404(OrdemCompraCombustivel, id=ordem_id, empresa=request.empresa)
     status_anterior = ordem.status
 
     if request.method == 'POST':
-        form = OrdemCompraCombustivelForm(request.POST, instance=ordem)
+        form = OrdemCompraCombustivelForm(request.POST, instance=ordem, empresa=request.empresa)
         if form.is_valid():
             ordem = form.save()
             if status_anterior != ordem.status:
@@ -1269,7 +1293,7 @@ def editar_ordem_combustivel(request, ordem_id):
             messages.success(request, 'Ordem de compra de combustivel atualizada com sucesso.')
             return redirect('detalhe_ordem_combustivel', ordem_id=ordem.id)
     else:
-        form = OrdemCompraCombustivelForm(instance=ordem)
+        form = OrdemCompraCombustivelForm(instance=ordem, empresa=request.empresa)
 
     return render(
         request,
@@ -1279,7 +1303,7 @@ def editar_ordem_combustivel(request, ordem_id):
 
 
 def nova_nf_combustivel(request, ordem_id):
-    ordem = get_object_or_404(OrdemCompraCombustivel, id=ordem_id)
+    ordem = get_object_or_404(OrdemCompraCombustivel, id=ordem_id, empresa=request.empresa)
 
     if request.method == 'POST':
         form = NotaFiscalCombustivelForm(request.POST)
@@ -1305,7 +1329,11 @@ def nova_nf_combustivel(request, ordem_id):
 
 
 def editar_nf_combustivel(request, nota_id):
-    nota = get_object_or_404(NotaFiscalCombustivel.objects.select_related('ordem'), id=nota_id)
+    nota = get_object_or_404(
+        NotaFiscalCombustivel.objects.select_related('ordem'),
+        id=nota_id,
+        ordem__empresa=request.empresa,
+    )
     ordem = nota.ordem
     status_anterior = nota.status
 
@@ -1330,19 +1358,19 @@ def editar_nf_combustivel(request, nota_id):
 
 
 def lista_bombonas_combustivel(request):
-    bombonas = BombonaCombustivel.objects.all()
+    bombonas = BombonaCombustivel.objects.filter(empresa=request.empresa)
     return render(request, 'controles/lista_bombonas_combustivel.html', {'bombonas': bombonas})
 
 
 def nova_bombona_combustivel(request):
     if request.method == 'POST':
-        form = BombonaCombustivelForm(request.POST)
+        form = BombonaCombustivelForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Bombona cadastrada com sucesso.')
             return redirect('lista_bombonas_combustivel')
     else:
-        form = BombonaCombustivelForm()
+        form = BombonaCombustivelForm(empresa=request.empresa)
 
     return render(
         request,
@@ -1352,16 +1380,16 @@ def nova_bombona_combustivel(request):
 
 
 def editar_bombona_combustivel(request, bombona_id):
-    bombona = get_object_or_404(BombonaCombustivel, id=bombona_id)
+    bombona = get_object_or_404(BombonaCombustivel, id=bombona_id, empresa=request.empresa)
 
     if request.method == 'POST':
-        form = BombonaCombustivelForm(request.POST, instance=bombona)
+        form = BombonaCombustivelForm(request.POST, instance=bombona, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Bombona atualizada com sucesso.')
             return redirect('lista_bombonas_combustivel')
     else:
-        form = BombonaCombustivelForm(instance=bombona)
+        form = BombonaCombustivelForm(instance=bombona, empresa=request.empresa)
 
     return render(
         request,
@@ -1371,19 +1399,19 @@ def editar_bombona_combustivel(request, bombona_id):
 
 
 def lista_veiculos(request):
-    veiculos = VeiculoMaquina.objects.all()
+    veiculos = VeiculoMaquina.objects.filter(empresa=request.empresa)
     return render(request, 'controles/lista_veiculos.html', {'veiculos': veiculos})
 
 
 def novo_veiculo(request):
     if request.method == 'POST':
-        form = VeiculoMaquinaForm(request.POST)
+        form = VeiculoMaquinaForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Veiculo/maquina cadastrado com sucesso.')
             return redirect('lista_veiculos')
     else:
-        form = VeiculoMaquinaForm()
+        form = VeiculoMaquinaForm(empresa=request.empresa)
 
     return render(
         request,
@@ -1393,16 +1421,16 @@ def novo_veiculo(request):
 
 
 def editar_veiculo(request, veiculo_id):
-    veiculo = get_object_or_404(VeiculoMaquina, id=veiculo_id)
+    veiculo = get_object_or_404(VeiculoMaquina, id=veiculo_id, empresa=request.empresa)
 
     if request.method == 'POST':
-        form = VeiculoMaquinaForm(request.POST, instance=veiculo)
+        form = VeiculoMaquinaForm(request.POST, instance=veiculo, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Veiculo/maquina atualizado com sucesso.')
             return redirect('lista_veiculos')
     else:
-        form = VeiculoMaquinaForm(instance=veiculo)
+        form = VeiculoMaquinaForm(instance=veiculo, empresa=request.empresa)
 
     return render(
         request,
@@ -1416,7 +1444,7 @@ def lista_ordens_locacao_maquinas(request):
         'obra',
         'fornecedor',
         'maquina',
-    ).prefetch_related('apontamentos', 'notas_fiscais')
+    ).filter(obra__empresa=request.empresa).prefetch_related('apontamentos', 'notas_fiscais')
 
     obra_id = request.GET.get('obra', '').strip()
     fornecedor_id = request.GET.get('fornecedor', '').strip()
@@ -1451,18 +1479,21 @@ def lista_ordens_locacao_maquinas(request):
                 'status': status,
                 'busca': busca,
             },
-            'obras_filtro': OrdemServicoLocacaoMaquina.objects.select_related('obra').values_list(
+            'obras_filtro': OrdemServicoLocacaoMaquina.objects.filter(obra__empresa=request.empresa).select_related('obra').values_list(
                 'obra_id',
                 'obra__nome_obra',
             ).distinct().order_by('obra__nome_obra'),
-            'fornecedores_filtro': FornecedorMaquinaLocacao.objects.filter(ordens__isnull=False).distinct().order_by('nome'),
+            'fornecedores_filtro': FornecedorMaquinaLocacao.objects.filter(
+                empresa=request.empresa,
+                ordens__isnull=False,
+            ).distinct().order_by('nome'),
         },
     )
 
 
 def nova_ordem_locacao_maquina(request):
     if request.method == 'POST':
-        form = OrdemServicoLocacaoMaquinaForm(request.POST)
+        form = OrdemServicoLocacaoMaquinaForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             ordem = form.save()
             _registrar_historico_maquina(
@@ -1475,7 +1506,7 @@ def nova_ordem_locacao_maquina(request):
             messages.success(request, 'OS de locacao de maquina criada com sucesso.')
             return redirect('detalhe_ordem_locacao_maquina', ordem_id=ordem.id)
     else:
-        form = OrdemServicoLocacaoMaquinaForm()
+        form = OrdemServicoLocacaoMaquinaForm(empresa=request.empresa)
 
     return render(
         request,
@@ -1492,6 +1523,7 @@ def detalhe_ordem_locacao_maquina(request, ordem_id):
             'historico',
         ),
         id=ordem_id,
+        obra__empresa=request.empresa,
     )
     return render(request, 'controles/detalhe_ordem_locacao_maquina.html', {'ordem': ordem})
 
@@ -1500,6 +1532,7 @@ def ordem_locacao_maquina_pdf(request, ordem_id):
     ordem = get_object_or_404(
         OrdemServicoLocacaoMaquina.objects.select_related('obra', 'fornecedor', 'maquina'),
         id=ordem_id,
+        obra__empresa=request.empresa,
     )
     image = _report_background()
     draw = ImageDraw.Draw(image)
@@ -1566,11 +1599,11 @@ def ordem_locacao_maquina_pdf(request, ordem_id):
 
 
 def editar_ordem_locacao_maquina(request, ordem_id):
-    ordem = get_object_or_404(OrdemServicoLocacaoMaquina, id=ordem_id)
+    ordem = get_object_or_404(OrdemServicoLocacaoMaquina, id=ordem_id, obra__empresa=request.empresa)
     status_anterior = ordem.status
 
     if request.method == 'POST':
-        form = OrdemServicoLocacaoMaquinaForm(request.POST, instance=ordem)
+        form = OrdemServicoLocacaoMaquinaForm(request.POST, instance=ordem, empresa=request.empresa)
         if form.is_valid():
             ordem = form.save()
             if status_anterior != ordem.status:
@@ -1586,7 +1619,7 @@ def editar_ordem_locacao_maquina(request, ordem_id):
             messages.success(request, 'OS de locacao de maquina atualizada com sucesso.')
             return redirect('detalhe_ordem_locacao_maquina', ordem_id=ordem.id)
     else:
-        form = OrdemServicoLocacaoMaquinaForm(instance=ordem)
+        form = OrdemServicoLocacaoMaquinaForm(instance=ordem, empresa=request.empresa)
 
     return render(
         request,
@@ -1596,7 +1629,7 @@ def editar_ordem_locacao_maquina(request, ordem_id):
 
 
 def novo_apontamento_maquina(request, ordem_id):
-    ordem = get_object_or_404(OrdemServicoLocacaoMaquina, id=ordem_id)
+    ordem = get_object_or_404(OrdemServicoLocacaoMaquina, id=ordem_id, obra__empresa=request.empresa)
 
     if request.method == 'POST':
         form = ApontamentoMaquinaLocacaoForm(request.POST)
@@ -1625,6 +1658,7 @@ def editar_apontamento_maquina(request, apontamento_id):
     apontamento = get_object_or_404(
         ApontamentoMaquinaLocacao.objects.select_related('ordem'),
         id=apontamento_id,
+        ordem__obra__empresa=request.empresa,
     )
     ordem = apontamento.ordem
 
@@ -1646,7 +1680,7 @@ def editar_apontamento_maquina(request, apontamento_id):
 
 
 def nova_nf_locacao_maquina(request, ordem_id):
-    ordem = get_object_or_404(OrdemServicoLocacaoMaquina, id=ordem_id)
+    ordem = get_object_or_404(OrdemServicoLocacaoMaquina, id=ordem_id, obra__empresa=request.empresa)
 
     if request.method == 'POST':
         form = NotaFiscalLocacaoMaquinaForm(request.POST)
@@ -1672,7 +1706,11 @@ def nova_nf_locacao_maquina(request, ordem_id):
 
 
 def editar_nf_locacao_maquina(request, nota_id):
-    nota = get_object_or_404(NotaFiscalLocacaoMaquina.objects.select_related('ordem'), id=nota_id)
+    nota = get_object_or_404(
+        NotaFiscalLocacaoMaquina.objects.select_related('ordem'),
+        id=nota_id,
+        ordem__obra__empresa=request.empresa,
+    )
     ordem = nota.ordem
     status_anterior = nota.status
 
@@ -1738,19 +1776,19 @@ def editar_maquina_locacao(request, maquina_id):
 
 
 def lista_fornecedores_maquinas(request):
-    fornecedores = FornecedorMaquinaLocacao.objects.all()
+    fornecedores = FornecedorMaquinaLocacao.objects.filter(empresa=request.empresa)
     return render(request, 'controles/lista_fornecedores_maquinas.html', {'fornecedores': fornecedores})
 
 
 def novo_fornecedor_maquina(request):
     if request.method == 'POST':
-        form = FornecedorMaquinaLocacaoForm(request.POST)
+        form = FornecedorMaquinaLocacaoForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Fornecedor de maquina cadastrado com sucesso.')
             return redirect('lista_fornecedores_maquinas')
     else:
-        form = FornecedorMaquinaLocacaoForm()
+        form = FornecedorMaquinaLocacaoForm(empresa=request.empresa)
 
     return render(
         request,
@@ -1760,16 +1798,16 @@ def novo_fornecedor_maquina(request):
 
 
 def editar_fornecedor_maquina(request, fornecedor_id):
-    fornecedor = get_object_or_404(FornecedorMaquinaLocacao, id=fornecedor_id)
+    fornecedor = get_object_or_404(FornecedorMaquinaLocacao, id=fornecedor_id, empresa=request.empresa)
 
     if request.method == 'POST':
-        form = FornecedorMaquinaLocacaoForm(request.POST, instance=fornecedor)
+        form = FornecedorMaquinaLocacaoForm(request.POST, instance=fornecedor, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Fornecedor de maquina atualizado com sucesso.')
             return redirect('lista_fornecedores_maquinas')
     else:
-        form = FornecedorMaquinaLocacaoForm(instance=fornecedor)
+        form = FornecedorMaquinaLocacaoForm(instance=fornecedor, empresa=request.empresa)
 
     return render(
         request,
@@ -1790,10 +1828,13 @@ def lista_equipamentos_locados(request):
             'locacoes_abertas': locacoes_abertas,
             'resumo_obras': resumo_obras,
             'filtros': filtros,
-            'obras_filtro': LocacaoEquipamento.objects.select_related('obra').values_list(
+            'obras_filtro': LocacaoEquipamento.objects.filter(obra__empresa=request.empresa).select_related('obra').values_list(
                 'obra_id', 'obra__nome_obra'
             ).distinct().order_by('obra__nome_obra'),
-            'locadoras_filtro': LocadoraEquipamento.objects.filter(locacoes__isnull=False).distinct().order_by('nome'),
+            'locadoras_filtro': LocadoraEquipamento.objects.filter(
+                empresa=request.empresa,
+                locacoes__isnull=False,
+            ).distinct().order_by('nome'),
             'status_choices': LocacaoEquipamento.STATUS_CHOICES,
         },
     )
@@ -1807,7 +1848,7 @@ def relatorio_locacoes_equipamentos_pdf(request):
         if obra:
             active_filters.append(f'Obra: {obra[1]}')
     if filtros['locadora'].isdigit():
-        locadora = LocadoraEquipamento.objects.filter(id=filtros['locadora']).first()
+        locadora = LocadoraEquipamento.objects.filter(id=filtros['locadora'], empresa=request.empresa).first()
         if locadora:
             active_filters.append(f'Locadora: {locadora.nome}')
     if filtros['status']:
@@ -1854,13 +1895,13 @@ def relatorio_locacoes_equipamentos_pdf(request):
 
 def nova_locacao_equipamento(request):
     if request.method == 'POST':
-        form = LocacaoEquipamentoForm(request.POST)
+        form = LocacaoEquipamentoForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Locacao de equipamento registrada com sucesso.')
             return redirect('lista_equipamentos_locados')
     else:
-        form = LocacaoEquipamentoForm()
+        form = LocacaoEquipamentoForm(empresa=request.empresa)
 
     return render(
         request,
@@ -1870,16 +1911,16 @@ def nova_locacao_equipamento(request):
 
 
 def editar_locacao_equipamento(request, locacao_id):
-    locacao = get_object_or_404(LocacaoEquipamento, id=locacao_id)
+    locacao = get_object_or_404(LocacaoEquipamento, id=locacao_id, obra__empresa=request.empresa)
 
     if request.method == 'POST':
-        form = LocacaoEquipamentoForm(request.POST, instance=locacao)
+        form = LocacaoEquipamentoForm(request.POST, instance=locacao, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Locacao de equipamento atualizada com sucesso.')
             return redirect('lista_equipamentos_locados')
     else:
-        form = LocacaoEquipamentoForm(instance=locacao)
+        form = LocacaoEquipamentoForm(instance=locacao, empresa=request.empresa)
 
     return render(
         request,
@@ -1889,7 +1930,7 @@ def editar_locacao_equipamento(request, locacao_id):
 
 
 def solicitar_retirada_equipamento(request, locacao_id):
-    locacao = get_object_or_404(LocacaoEquipamento, id=locacao_id)
+    locacao = get_object_or_404(LocacaoEquipamento, id=locacao_id, obra__empresa=request.empresa)
 
     if request.method == 'POST':
         form = SolicitarRetiradaEquipamentoForm(request.POST, instance=locacao)
@@ -1910,7 +1951,7 @@ def solicitar_retirada_equipamento(request, locacao_id):
 
 
 def baixar_locacao_equipamento(request, locacao_id):
-    locacao = get_object_or_404(LocacaoEquipamento, id=locacao_id)
+    locacao = get_object_or_404(LocacaoEquipamento, id=locacao_id, obra__empresa=request.empresa)
 
     if request.method == 'POST':
         form = BaixarLocacaoEquipamentoForm(request.POST, instance=locacao)
@@ -1957,19 +1998,19 @@ def novo_catalogo_equipamento(request):
 
 
 def lista_locadoras(request):
-    locadoras = LocadoraEquipamento.objects.all()
+    locadoras = LocadoraEquipamento.objects.filter(empresa=request.empresa)
     return render(request, 'controles/lista_locadoras.html', {'locadoras': locadoras})
 
 
 def nova_locadora(request):
     if request.method == 'POST':
-        form = LocadoraEquipamentoForm(request.POST)
+        form = LocadoraEquipamentoForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Locadora cadastrada com sucesso.')
             return redirect('lista_locadoras')
     else:
-        form = LocadoraEquipamentoForm()
+        form = LocadoraEquipamentoForm(empresa=request.empresa)
 
     return render(
         request,
@@ -1980,14 +2021,14 @@ def nova_locadora(request):
 
 def lista_radar_obras(request):
     orcamentos = _radar_obras_queryset(request)
-    ativos = OrcamentoRadarObra.objects.filter(arquivado=False)
+    ativos = OrcamentoRadarObra.objects.filter(empresa=request.empresa, arquivado=False)
     contadores = {
         'aguardando_resposta': ativos.filter(situacao='aguardando_resposta').count(),
         'em_revisao': ativos.filter(situacao='em_revisao').count(),
         'fechada': ativos.filter(situacao='fechada').count(),
         'nao_foi_para_frente': ativos.filter(situacao='nao_foi_para_frente').count(),
         'cancelada': ativos.filter(situacao='cancelada').count(),
-        'arquivados': OrcamentoRadarObra.objects.filter(arquivado=True).count(),
+        'arquivados': OrcamentoRadarObra.objects.filter(empresa=request.empresa, arquivado=True).count(),
     }
     return render(
         request,
@@ -2019,7 +2060,7 @@ def _radar_obras_filtros(request):
 
 def _radar_obras_queryset(request):
     filtros = _radar_obras_filtros(request)
-    queryset = OrcamentoRadarObra.objects.all()
+    queryset = OrcamentoRadarObra.objects.filter(empresa=request.empresa)
 
     if filtros['arquivados'] == 'arquivados':
         queryset = queryset.filter(arquivado=True)
@@ -2070,7 +2111,7 @@ def _radar_obras_queryset(request):
 
 
 def atualizar_radar_obra(request, orcamento_id):
-    orcamento = get_object_or_404(OrcamentoRadarObra, id=orcamento_id)
+    orcamento = get_object_or_404(OrcamentoRadarObra, id=orcamento_id, empresa=request.empresa)
     if request.method == 'POST':
         situacoes = {choice[0] for choice in OrcamentoRadarObra.SITUACAO_CHOICES}
         temperaturas = {str(choice[0]) for choice in OrcamentoRadarObra.TEMPERATURA_CHOICES}
@@ -2096,7 +2137,7 @@ def atualizar_radar_obras_em_lote(request):
         ids = request.POST.getlist('orcamento_id')
         atualizados = 0
 
-        for orcamento in OrcamentoRadarObra.objects.filter(id__in=ids):
+        for orcamento in OrcamentoRadarObra.objects.filter(empresa=request.empresa, id__in=ids):
             situacao = request.POST.get(f'situacao_{orcamento.id}')
             temperatura = request.POST.get(f'temperatura_{orcamento.id}')
             update_fields = []
@@ -2121,7 +2162,7 @@ def atualizar_radar_obras_em_lote(request):
 
 
 def arquivar_radar_obra(request, orcamento_id):
-    orcamento = get_object_or_404(OrcamentoRadarObra, id=orcamento_id)
+    orcamento = get_object_or_404(OrcamentoRadarObra, id=orcamento_id, empresa=request.empresa)
     if request.method == 'POST':
         orcamento.arquivado = request.POST.get('arquivar') == '1'
         orcamento.save(update_fields=['arquivado', 'updated_at'])
@@ -2217,13 +2258,13 @@ def _radar_obras_pdf(orcamentos, filtros):
 
 def novo_radar_obra(request):
     if request.method == 'POST':
-        form = OrcamentoRadarObraForm(request.POST)
+        form = OrcamentoRadarObraForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Orcamento cadastrado no radar com sucesso.')
             return redirect('lista_radar_obras')
     else:
-        form = OrcamentoRadarObraForm()
+        form = OrcamentoRadarObraForm(empresa=request.empresa)
 
     return render(
         request,
@@ -2233,16 +2274,16 @@ def novo_radar_obra(request):
 
 
 def editar_radar_obra(request, orcamento_id):
-    orcamento = get_object_or_404(OrcamentoRadarObra, id=orcamento_id)
+    orcamento = get_object_or_404(OrcamentoRadarObra, id=orcamento_id, empresa=request.empresa)
 
     if request.method == 'POST':
-        form = OrcamentoRadarObraForm(request.POST, instance=orcamento)
+        form = OrcamentoRadarObraForm(request.POST, instance=orcamento, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Orcamento atualizado com sucesso.')
             return redirect('lista_radar_obras')
     else:
-        form = OrcamentoRadarObraForm(instance=orcamento)
+        form = OrcamentoRadarObraForm(instance=orcamento, empresa=request.empresa)
 
     return render(
         request,
@@ -2252,12 +2293,14 @@ def editar_radar_obra(request, orcamento_id):
 
 
 def lista_concretagens(request):
-    contratos = ContratoConcretagem.objects.select_related('obra').prefetch_related('faturamentos').all()
+    contratos = ContratoConcretagem.objects.select_related('obra').prefetch_related('faturamentos').filter(
+        obra__empresa=request.empresa,
+    )
     return render(request, 'controles/lista_concretagens.html', {'contratos': contratos})
 
 
 def lista_solicitantes_concretagem(request):
-    solicitantes = SolicitanteConcretagem.objects.all()
+    solicitantes = SolicitanteConcretagem.objects.filter(empresa=request.empresa)
     return render(
         request,
         'controles/lista_solicitantes_concretagem.html',
@@ -2267,13 +2310,13 @@ def lista_solicitantes_concretagem(request):
 
 def novo_solicitante_concretagem(request):
     if request.method == 'POST':
-        form = SolicitanteConcretagemForm(request.POST)
+        form = SolicitanteConcretagemForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Solicitante cadastrado com sucesso.')
             return redirect('lista_solicitantes_concretagem')
     else:
-        form = SolicitanteConcretagemForm()
+        form = SolicitanteConcretagemForm(empresa=request.empresa)
 
     return render(
         request,
@@ -2283,16 +2326,16 @@ def novo_solicitante_concretagem(request):
 
 
 def editar_solicitante_concretagem(request, solicitante_id):
-    solicitante = get_object_or_404(SolicitanteConcretagem, id=solicitante_id)
+    solicitante = get_object_or_404(SolicitanteConcretagem, id=solicitante_id, empresa=request.empresa)
 
     if request.method == 'POST':
-        form = SolicitanteConcretagemForm(request.POST, instance=solicitante)
+        form = SolicitanteConcretagemForm(request.POST, instance=solicitante, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Solicitante atualizado com sucesso.')
             return redirect('lista_solicitantes_concretagem')
     else:
-        form = SolicitanteConcretagemForm(instance=solicitante)
+        form = SolicitanteConcretagemForm(instance=solicitante, empresa=request.empresa)
 
     return render(
         request,
@@ -2303,13 +2346,13 @@ def editar_solicitante_concretagem(request, solicitante_id):
 
 def novo_contrato_concretagem(request):
     if request.method == 'POST':
-        form = ContratoConcretagemForm(request.POST)
+        form = ContratoConcretagemForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             contrato = form.save()
             messages.success(request, 'Contrato de concretagem cadastrado com sucesso.')
             return redirect('detalhe_contrato_concretagem', contrato_id=contrato.id)
     else:
-        form = ContratoConcretagemForm()
+        form = ContratoConcretagemForm(empresa=request.empresa)
 
     return render(
         request,
@@ -2322,21 +2365,22 @@ def detalhe_contrato_concretagem(request, contrato_id):
     contrato = get_object_or_404(
         ContratoConcretagem.objects.select_related('obra').prefetch_related('faturamentos'),
         id=contrato_id,
+        obra__empresa=request.empresa,
     )
     return render(request, 'controles/detalhe_contrato_concretagem.html', {'contrato': contrato})
 
 
 def editar_contrato_concretagem(request, contrato_id):
-    contrato = get_object_or_404(ContratoConcretagem, id=contrato_id)
+    contrato = get_object_or_404(ContratoConcretagem, id=contrato_id, obra__empresa=request.empresa)
 
     if request.method == 'POST':
-        form = ContratoConcretagemForm(request.POST, instance=contrato)
+        form = ContratoConcretagemForm(request.POST, instance=contrato, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Contrato de concretagem atualizado com sucesso.')
             return redirect('detalhe_contrato_concretagem', contrato_id=contrato.id)
     else:
-        form = ContratoConcretagemForm(instance=contrato)
+        form = ContratoConcretagemForm(instance=contrato, empresa=request.empresa)
 
     return render(
         request,
@@ -2346,10 +2390,10 @@ def editar_contrato_concretagem(request, contrato_id):
 
 
 def novo_faturamento_concretagem(request, contrato_id):
-    contrato = get_object_or_404(ContratoConcretagem, id=contrato_id)
+    contrato = get_object_or_404(ContratoConcretagem, id=contrato_id, obra__empresa=request.empresa)
 
     if request.method == 'POST':
-        form = FaturamentoConcretagemForm(request.POST)
+        form = FaturamentoConcretagemForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             faturamento = form.save(commit=False)
             faturamento.contrato = contrato
@@ -2357,7 +2401,7 @@ def novo_faturamento_concretagem(request, contrato_id):
             messages.success(request, 'Faturamento de concretagem cadastrado com sucesso.')
             return redirect('detalhe_contrato_concretagem', contrato_id=contrato.id)
     else:
-        form = FaturamentoConcretagemForm()
+        form = FaturamentoConcretagemForm(empresa=request.empresa)
 
     return render(
         request,
@@ -2370,17 +2414,18 @@ def editar_faturamento_concretagem(request, faturamento_id):
     faturamento = get_object_or_404(
         FaturamentoConcretagem.objects.select_related('contrato'),
         id=faturamento_id,
+        contrato__obra__empresa=request.empresa,
     )
     contrato = faturamento.contrato
 
     if request.method == 'POST':
-        form = FaturamentoConcretagemForm(request.POST, instance=faturamento)
+        form = FaturamentoConcretagemForm(request.POST, instance=faturamento, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Faturamento de concretagem atualizado com sucesso.')
             return redirect('detalhe_contrato_concretagem', contrato_id=contrato.id)
     else:
-        form = FaturamentoConcretagemForm(instance=faturamento)
+        form = FaturamentoConcretagemForm(instance=faturamento, empresa=request.empresa)
 
     return render(
         request,

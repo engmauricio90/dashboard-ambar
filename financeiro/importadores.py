@@ -86,27 +86,27 @@ def decodificar_csv_upload(arquivo):
     return conteudo.decode('latin-1', errors='replace')
 
 
-def garantir_cadastros_relatorio_credores():
+def garantir_cadastros_relatorio_credores(empresa):
     resultado = ResultadoImportacaoCredores()
 
     for nome in sorted(set(OBRAS_POR_CODIGO_CENTRO.values())):
-        _, created = _get_or_create_obra_normalizada(nome)
+        _, created = _get_or_create_obra_normalizada(nome, empresa)
         if created:
             resultado.obras_criadas += 1
 
     for nome in sorted(set(CENTROS_CUSTO_POR_CODIGO.values())):
-        _, created = CentroCusto.objects.get_or_create(nome=nome)
+        _, created = CentroCusto.objects.get_or_create(empresa=empresa, nome=nome)
         if created:
             resultado.centros_criados += 1
 
     return resultado
 
 
-def importar_contas_pagar_credores_csv(conteudo):
+def importar_contas_pagar_credores_csv(conteudo, empresa):
     if _is_csv_padrao_ambar(conteudo):
-        return importar_despesas_padrao_csv(conteudo, status_padrao=ContaPagar.STATUS_ABERTO)
+        return importar_despesas_padrao_csv(conteudo, status_padrao=ContaPagar.STATUS_ABERTO, empresa=empresa)
 
-    resultado = garantir_cadastros_relatorio_credores()
+    resultado = garantir_cadastros_relatorio_credores(empresa)
     centro_atual = None
     ultima_conta = None
 
@@ -137,7 +137,7 @@ def importar_contas_pagar_credores_csv(conteudo):
             continue
 
         try:
-            ultima_conta, created = _importar_linha_conta(row, centro_atual)
+            ultima_conta, created = _importar_linha_conta(row, centro_atual, empresa)
         except (ValueError, InvalidOperation):
             resultado.ignoradas += 1
             ultima_conta = None
@@ -151,11 +151,11 @@ def importar_contas_pagar_credores_csv(conteudo):
     return resultado
 
 
-def importar_contas_pagas_credores_csv(conteudo):
+def importar_contas_pagas_credores_csv(conteudo, empresa):
     if _is_csv_padrao_ambar(conteudo):
-        return importar_despesas_padrao_csv(conteudo, status_padrao=ContaPagar.STATUS_PAGO)
+        return importar_despesas_padrao_csv(conteudo, status_padrao=ContaPagar.STATUS_PAGO, empresa=empresa)
 
-    resultado = garantir_cadastros_relatorio_credores()
+    resultado = garantir_cadastros_relatorio_credores(empresa)
     centro_atual = None
     linhas_validas = []
 
@@ -177,24 +177,26 @@ def importar_contas_pagas_credores_csv(conteudo):
             continue
 
         try:
-            linhas_validas.append(_preparar_linha_conta_paga(row, centro_atual))
+            linhas_validas.append(_preparar_linha_conta_paga(row, centro_atual, empresa))
         except (ValueError, InvalidOperation):
             resultado.ignoradas += 1
             continue
 
-    codigos_criados = _criar_contas_pagas_em_lote(linhas_validas)
+    codigos_criados = _criar_contas_pagas_em_lote(linhas_validas, empresa)
     resultado.criadas += len(codigos_criados)
 
     for codigo_externo, dados in linhas_validas:
         if codigo_externo in codigos_criados:
             continue
         updated = ContaPagar.objects.filter(
+            empresa=empresa,
             origem_importacao=ORIGEM_SIENGE_PAGOS,
             codigo_externo=codigo_externo,
         ).update(**dados)
         if not updated:
             continue
         conta = ContaPagar.objects.get(
+            empresa=empresa,
             origem_importacao=ORIGEM_SIENGE_PAGOS,
             codigo_externo=codigo_externo,
         )
@@ -204,7 +206,9 @@ def importar_contas_pagas_credores_csv(conteudo):
     return resultado
 
 
-def importar_despesas_padrao_csv(conteudo, status_padrao=ContaPagar.STATUS_ABERTO):
+def importar_despesas_padrao_csv(conteudo, status_padrao=ContaPagar.STATUS_ABERTO, empresa=None):
+    if empresa is None:
+        raise ValueError('Empresa ativa obrigatoria para importar despesas.')
     resultado = ResultadoImportacaoCredores()
     reader = csv.DictReader(StringIO(conteudo), delimiter=';')
     if not reader.fieldnames:
@@ -215,7 +219,7 @@ def importar_despesas_padrao_csv(conteudo, status_padrao=ContaPagar.STATUS_ABERT
         if not row or not any((value or '').strip() for value in row.values()):
             continue
         try:
-            conta, created = _importar_linha_padrao(row, field_map, status_padrao)
+            conta, created = _importar_linha_padrao(row, field_map, status_padrao, empresa)
         except (ValueError, InvalidOperation):
             resultado.ignoradas += 1
             continue
@@ -227,7 +231,7 @@ def importar_despesas_padrao_csv(conteudo, status_padrao=ContaPagar.STATUS_ABERT
     return resultado
 
 
-def _importar_linha_padrao(row, field_map, status_padrao):
+def _importar_linha_padrao(row, field_map, status_padrao, empresa):
     def valor(campo):
         return (row.get(field_map.get(campo, ''), '') or '').strip()
 
@@ -250,9 +254,10 @@ def _importar_linha_padrao(row, field_map, status_padrao):
         data_pagamento = data_pagamento or data_vencimento
         valor_pago = valor_pago or valor_conta
 
-    obra = _resolver_obra_por_nome(obra_nome) if obra_nome else None
-    centro_custo = CentroCusto.objects.get_or_create(nome=centro_nome)[0] if centro_nome else None
-    fornecedor_cadastro, _ = Fornecedor.objects.get_or_create(nome=fornecedor, cpf_cnpj=cpf_cnpj)
+    obra = _resolver_obra_por_nome(obra_nome, empresa) if obra_nome else None
+    centro_custo = CentroCusto.objects.get_or_create(empresa=empresa, nome=centro_nome)[0] if centro_nome else None
+    fornecedor_cadastro, _ = Fornecedor.objects.get_or_create(empresa=empresa, nome=fornecedor, cpf_cnpj=cpf_cnpj)
+    empresa = _empresa_por_destino(empresa, obra, centro_custo, fornecedor_cadastro)
     categoria = _parse_categoria_padrao(valor('categoria'))
     codigo_externo = valor('codigo_externo') or _codigo_externo_padrao(
         fornecedor,
@@ -267,6 +272,7 @@ def _importar_linha_padrao(row, field_map, status_padrao):
 
     dados = {
         'fornecedor': fornecedor,
+        'empresa': empresa,
         'fornecedor_cadastro': fornecedor_cadastro,
         'obra': obra,
         'centro_custo': centro_custo,
@@ -283,6 +289,7 @@ def _importar_linha_padrao(row, field_map, status_padrao):
     }
 
     conta, created = ContaPagar.objects.get_or_create(
+        empresa=empresa,
         origem_importacao=ORIGEM_AMBAR_DESPESAS,
         codigo_externo=codigo_externo,
         defaults=dados,
@@ -294,13 +301,14 @@ def _importar_linha_padrao(row, field_map, status_padrao):
     return conta, created
 
 
-def _criar_contas_pagas_em_lote(linhas_validas):
+def _criar_contas_pagas_em_lote(linhas_validas, empresa):
     if not linhas_validas:
-        return 0
+        return set()
 
     codigos = [codigo for codigo, _ in linhas_validas]
     existentes = set(
         ContaPagar.objects.filter(
+            empresa=empresa,
             origem_importacao=ORIGEM_SIENGE_PAGOS,
             codigo_externo__in=codigos,
         ).values_list('codigo_externo', flat=True)
@@ -344,16 +352,17 @@ def _criar_contas_pagas_em_lote(linhas_validas):
     return {codigo for codigo, _ in novas_linhas}
 
 
-def _importar_linha_conta_paga(row, centro_atual):
-    codigo_externo, dados = _preparar_linha_conta_paga(row, centro_atual)
+def _importar_linha_conta_paga(row, centro_atual, empresa):
+    codigo_externo, dados = _preparar_linha_conta_paga(row, centro_atual, empresa)
     return ContaPagar.objects.update_or_create(
+        empresa=empresa,
         origem_importacao=ORIGEM_SIENGE_PAGOS,
         codigo_externo=codigo_externo,
         defaults=dados,
     )
 
 
-def _preparar_linha_conta_paga(row, centro_atual):
+def _preparar_linha_conta_paga(row, centro_atual, empresa):
     credor = row[0].strip()
     codigo_credor = row[1].strip()
     documento = row[2].strip()
@@ -367,8 +376,9 @@ def _preparar_linha_conta_paga(row, centro_atual):
     liquido = _parse_decimal(row[10])
 
     codigo = centro_atual['codigo']
-    obra, centro_custo = _resolver_destino(codigo)
-    fornecedor_cadastro, _ = Fornecedor.objects.get_or_create(nome=credor, cpf_cnpj='')
+    obra, centro_custo = _resolver_destino(codigo, empresa)
+    fornecedor_cadastro, _ = Fornecedor.objects.get_or_create(empresa=empresa, nome=credor, cpf_cnpj='')
+    empresa = _empresa_por_destino(empresa, obra, centro_custo, fornecedor_cadastro)
     codigo_externo = f'{codigo}:{lancamento}:{sequencia}:{documento}:{data_pagamento.isoformat()}'
     descricao = _limitar_texto(f'{documento or "Documento sem numero"} - lancamento {lancamento}', 255)
     observacoes = '\n'.join(
@@ -381,6 +391,7 @@ def _preparar_linha_conta_paga(row, centro_atual):
 
     return codigo_externo, {
         'fornecedor': credor,
+        'empresa': empresa,
         'fornecedor_cadastro': fornecedor_cadastro,
         'obra': obra,
         'centro_custo': centro_custo,
@@ -397,7 +408,7 @@ def _preparar_linha_conta_paga(row, centro_atual):
     }
 
 
-def _importar_linha_conta(row, centro_atual):
+def _importar_linha_conta(row, centro_atual, empresa):
     credor = row[0].strip()
     documento = row[1].strip()
     lancamento = row[2].strip()
@@ -412,8 +423,9 @@ def _importar_linha_conta(row, centro_atual):
     total = _parse_decimal(row[11])
 
     codigo = centro_atual['codigo']
-    obra, centro_custo = _resolver_destino(codigo)
-    fornecedor_cadastro, _ = Fornecedor.objects.get_or_create(nome=credor, cpf_cnpj='')
+    obra, centro_custo = _resolver_destino(codigo, empresa)
+    fornecedor_cadastro, _ = Fornecedor.objects.get_or_create(empresa=empresa, nome=credor, cpf_cnpj='')
+    empresa = _empresa_por_destino(empresa, obra, centro_custo, fornecedor_cadastro)
     codigo_externo = f'{codigo}:{lancamento}:{documento}:{data_vencimento.isoformat()}'
     descricao = _limitar_texto(f'{documento or "Documento sem numero"} - lancamento {lancamento}', 255)
     observacoes = '\n'.join(
@@ -426,6 +438,7 @@ def _importar_linha_conta(row, centro_atual):
 
     dados = {
         'fornecedor': credor,
+        'empresa': empresa,
         'fornecedor_cadastro': fornecedor_cadastro,
         'obra': obra,
         'centro_custo': centro_custo,
@@ -439,6 +452,7 @@ def _importar_linha_conta(row, centro_atual):
     }
 
     conta, created = ContaPagar.objects.get_or_create(
+        empresa=empresa,
         origem_importacao=ORIGEM_SIENGE_CREDORES,
         codigo_externo=codigo_externo,
         defaults={**dados, 'status': ContaPagar.STATUS_ABERTO},
@@ -450,39 +464,46 @@ def _importar_linha_conta(row, centro_atual):
     return conta, created
 
 
-def _resolver_destino(codigo):
+def _resolver_destino(codigo, empresa):
     if codigo in CENTROS_CUSTO_POR_CODIGO:
-        centro, _ = CentroCusto.objects.get_or_create(nome=CENTROS_CUSTO_POR_CODIGO[codigo])
+        centro, _ = CentroCusto.objects.get_or_create(empresa=empresa, nome=CENTROS_CUSTO_POR_CODIGO[codigo])
         return None, centro
 
     nome_obra = OBRAS_POR_CODIGO_CENTRO.get(codigo)
     if not nome_obra:
         raise ValueError(f'Centro de custo nao mapeado: {codigo}')
 
-    obra, _ = _get_or_create_obra_normalizada(nome_obra)
+    obra, _ = _get_or_create_obra_normalizada(nome_obra, empresa)
     return obra, None
 
 
-def _resolver_obra_por_nome(nome):
-    obra, _ = _get_or_create_obra_normalizada(nome)
+def _empresa_por_destino(empresa, obra=None, centro_custo=None, fornecedor=None):
+    for objeto in (obra, centro_custo, fornecedor):
+        if objeto is not None and objeto.empresa_id != empresa.id:
+            raise ValueError('Registro relacionado pertence a outra empresa.')
+    return empresa
+
+
+def _resolver_obra_por_nome(nome, empresa):
+    obra, _ = _get_or_create_obra_normalizada(nome, empresa)
     return obra
 
 
-def _get_or_create_obra_normalizada(nome):
-    existente = _buscar_obra_normalizada(nome)
+def _get_or_create_obra_normalizada(nome, empresa):
+    existente = _buscar_obra_normalizada(nome, empresa)
     if existente:
         return existente, False
-    return Obra.objects.get_or_create(nome_obra=nome)
+    return Obra.objects.get_or_create(empresa=empresa, nome_obra=nome)
 
 
-def _buscar_obra_normalizada(nome):
+def _buscar_obra_normalizada(nome, empresa):
     alvo_canonico = _normalizar(nome)
-    for obra in Obra.objects.all():
+    for obra in Obra.objects.filter(empresa=empresa):
         if _normalizar(obra.nome_obra) == alvo_canonico:
             return obra
 
     alvos = {_normalizar(nome_possivel) for nome_possivel in ALIASES_OBRAS.get(nome, [])}
-    for obra in Obra.objects.all():
+    for obra in Obra.objects.filter(empresa=empresa):
         if _normalizar(obra.nome_obra) in alvos:
             obra.nome_obra = nome
             obra.save(update_fields=['nome_obra', 'updated_at'])

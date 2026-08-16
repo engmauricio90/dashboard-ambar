@@ -101,9 +101,12 @@ class DiarioObraForm(BootstrapModelForm):
             'visitante_nome': 'Nome do visitante/fiscal',
         }
 
-    def __init__(self, *args, usuario=None, pode_alterar_status=True, **kwargs):
+    def __init__(self, *args, usuario=None, pode_alterar_status=True, empresa=None, **kwargs):
+        from obras.models import Obra
+
         self.usuario = usuario
         super().__init__(*args, **kwargs)
+        self.fields['obra'].queryset = Obra.objects.filter(empresa=empresa) if empresa else Obra.objects.none()
         if not pode_alterar_status:
             self.fields['status'].disabled = True
 

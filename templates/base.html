@@ -13,15 +13,56 @@
                 margin-top: 0;
             }
         }
+        .empresa-logo {
+            max-height: 28px;
+            width: auto;
+            vertical-align: middle;
+        }
+        .empresa-selector form {
+            margin: 0;
+        }
+        .empresa-selector button.dropdown-item {
+            width: 100%;
+            text-align: left;
+        }
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark" {% if request.empresa and request.empresa.cor_primaria %}style="background-color: {{ request.empresa.cor_primaria }} !important;"{% endif %}>
         <div class="container">
-            <a class="navbar-brand" href="{% url 'home' %}">Ambar Engenharia</a>
+            {% if request.user.is_authenticated and request.usuario_multiempresa %}
+                <div class="navbar-brand dropdown empresa-selector">
+                    <button class="btn btn-link navbar-brand dropdown-toggle p-0 text-decoration-none" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        {% if request.empresa and request.empresa.logo %}
+                            <img src="{{ request.empresa.logo.url }}" alt="" class="empresa-logo me-2">
+                        {% endif %}
+                        {% if request.empresa %}{{ request.empresa.nome }}{% else %}Escolher empresa{% endif %}
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-dark">
+                        {% for empresa in request.empresas_disponiveis %}
+                            <li>
+                                <form method="post" action="{% url 'trocar_empresa' empresa.id %}">
+                                    {% csrf_token %}
+                                    <button type="submit" class="dropdown-item {% if request.empresa and empresa.id == request.empresa.id %}active{% endif %}">
+                                        {% if request.empresa and empresa.id == request.empresa.id %}&check; {% endif %}{{ empresa.nome }}
+                                    </button>
+                                </form>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% else %}
+                <a class="navbar-brand" href="{% url 'home' %}">
+                    {% if request.empresa and request.empresa.logo %}
+                        <img src="{{ request.empresa.logo.url }}" alt="" class="empresa-logo me-2">
+                    {% endif %}
+                    {% if request.empresa %}{{ request.empresa.nome }}{% else %}Dashboard de Obras{% endif %}
+                </a>
+            {% endif %}
 
             <div class="navbar-nav ms-auto align-items-center gap-2">
                 {% if request.user.is_authenticated %}
+                    {% if request.empresa %}
                     <a class="nav-link" href="{% url 'home' %}">Dashboard</a>
                     <a class="nav-link" href="{% url 'lista_obras' %}">Obras</a>
                     <div class="nav-item dropdown nav-hover">
@@ -50,6 +91,7 @@
                         </ul>
                     </div>
                     <a class="nav-link" href="{% url 'controles_home' %}">Controles</a>
+                    {% endif %}
                     <a class="nav-link" href="{% url 'minha_area' %}">Minha area</a>
                     {% if request.user.is_staff or request.user.is_superuser %}
                     <a class="nav-link" href="/admin/">Admin</a>

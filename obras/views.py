@@ -9,6 +9,7 @@ from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from empresas.decorators import empresa_required
 from medicoes.models import MedicaoConstrutora, MedicaoEmpreiteiro
 
 from .forms import (
@@ -34,15 +35,23 @@ from .models import (
 )
 
 
-def _obra_base_queryset():
-    notas_queryset = NotaFiscal.objects.prefetch_related('retencoes', 'impostos').order_by('-data_emissao', '-id')
+def _obra_base_queryset(empresa):
+    notas_queryset = (
+        NotaFiscal.objects.filter(obra__empresa=empresa)
+        .prefetch_related('retencoes', 'impostos')
+        .order_by('-data_emissao', '-id')
+    )
     return Obra.objects.prefetch_related(
         'aditivos_registrados',
         'despesas_registradas',
         'faturamentos_diretos',
         'retencoes_tecnicas_registradas',
         Prefetch('notas_fiscais', queryset=notas_queryset),
-    )
+    ).filter(empresa=empresa)
+
+
+def _get_obra(request, obra_id):
+    return get_object_or_404(_obra_base_queryset(request.empresa), id=obra_id)
 
 
 def _build_nota_formsets(data=None, instance=None):
@@ -69,16 +78,20 @@ def _save_inline_formset(formset, fk_name):
         instance.save()
 
 
+@empresa_required
 def lista_obras(request):
-    obras = _obra_base_queryset().order_by('nome_obra')
+    obras = _obra_base_queryset(request.empresa).order_by('nome_obra')
     return render(request, 'obras/lista_obras.html', {'obras': obras})
 
 
+@empresa_required
 def nova_obra(request):
     if request.method == 'POST':
         form = ObraForm(request.POST)
         if form.is_valid():
-            obra = form.save()
+            obra = form.save(commit=False)
+            obra.empresa = request.empresa
+            obra.save()
             messages.success(request, 'Obra cadastrada com sucesso.')
             return redirect('detalhe_obra', obra_id=obra.id)
     else:
@@ -87,8 +100,9 @@ def nova_obra(request):
     return render(request, 'obras/form_obra.html', {'form': form, 'titulo': 'Nova Obra'})
 
 
+@empresa_required
 def editar_obra(request, obra_id):
-    obra = get_object_or_404(Obra, id=obra_id)
+    obra = _get_obra(request, obra_id)
 
     if request.method == 'POST':
         form = ObraForm(request.POST, instance=obra)
@@ -102,8 +116,9 @@ def editar_obra(request, obra_id):
     return render(request, 'obras/form_obra.html', {'form': form, 'titulo': 'Editar Obra', 'obra': obra})
 
 
+@empresa_required
 def detalhe_obra(request, obra_id):
-    obra = get_object_or_404(_obra_base_queryset(), id=obra_id)
+    obra = _get_obra(request, obra_id)
     from diarios.models import DiarioObra
 
     timeline = defaultdict(lambda: {'faturado': 0, 'despesas': 0, 'aditivos': 0})
@@ -202,7 +217,7 @@ def detalhe_obra(request, obra_id):
 
 
 def _lista_itens_obra(request, obra_id, tipo):
-    obra = get_object_or_404(_obra_base_queryset(), id=obra_id)
+    obra = _get_obra(request, obra_id)
     configuracoes = {
         'notas': {
             'titulo': 'Notas fiscais',
@@ -240,28 +255,34 @@ def _lista_itens_obra(request, obra_id, tipo):
     return render(request, 'obras/lista_itens_obra.html', contexto)
 
 
+@empresa_required
 def lista_notas_obra(request, obra_id):
     return _lista_itens_obra(request, obra_id, 'notas')
 
 
+@empresa_required
 def lista_despesas_obra(request, obra_id):
     return _lista_itens_obra(request, obra_id, 'despesas')
 
 
+@empresa_required
 def lista_faturamentos_diretos_obra(request, obra_id):
     return _lista_itens_obra(request, obra_id, 'faturamentos-diretos')
 
 
+@empresa_required
 def lista_aditivos_obra(request, obra_id):
     return _lista_itens_obra(request, obra_id, 'aditivos')
 
 
+@empresa_required
 def lista_retencoes_tecnicas_obra(request, obra_id):
     return _lista_itens_obra(request, obra_id, 'retencoes-tecnicas')
 
 
+@empresa_required
 def relatorio_obra(request, obra_id):
-    obra = get_object_or_404(_obra_base_queryset(), id=obra_id)
+    obra = _get_obra(request, obra_id)
     filtro_form = RelatorioObraFiltroForm(request.GET or None)
 
     notas = [nota for nota in obra.notas_fiscais.all() if nota.status != NotaFiscal.STATUS_CANCELADA]
@@ -379,8 +400,9 @@ def relatorio_obra(request, obra_id):
     )
 
 
+@empresa_required
 def historico_financeiro(request, obra_id):
-    obra = get_object_or_404(_obra_base_queryset(), id=obra_id)
+    obra = _get_obra(request, obra_id)
 
     eventos_notas = [
         {
@@ -450,14 +472,16 @@ def historico_financeiro(request, obra_id):
     )
 
 
+@empresa_required
 def nova_nota_fiscal(request, obra_id):
-    obra = get_object_or_404(Obra, id=obra_id)
+    obra = _get_obra(request, obra_id)
     messages.info(request, 'As NFs da obra agora devem ser lancadas pelo Financeiro em Contas a Receber.')
     return redirect(f'{reverse("nova_conta_receber")}?obra={obra.id}')
 
 
+@empresa_required
 def editar_nota_fiscal(request, obra_id, nota_id):
-    obra = get_object_or_404(Obra, id=obra_id)
+    obra = _get_obra(request, obra_id)
     nota = get_object_or_404(NotaFiscal, id=nota_id, obra=obra)
 
     if request.method == 'POST':
@@ -488,8 +512,9 @@ def editar_nota_fiscal(request, obra_id, nota_id):
     )
 
 
+@empresa_required
 def detalhe_nota_fiscal(request, obra_id, nota_id):
-    obra = get_object_or_404(Obra, id=obra_id)
+    obra = _get_obra(request, obra_id)
     nota = get_object_or_404(
         NotaFiscal.objects.prefetch_related('retencoes', 'impostos'),
         id=nota_id,
@@ -529,14 +554,16 @@ def detalhe_nota_fiscal(request, obra_id, nota_id):
     return render(request, 'obras/detalhe_nota_fiscal.html', contexto)
 
 
+@empresa_required
 def nova_despesa(request, obra_id):
-    obra = get_object_or_404(Obra, id=obra_id)
+    obra = _get_obra(request, obra_id)
     messages.info(request, 'As despesas da obra agora devem ser lancadas pelo Financeiro em Contas a Pagar.')
     return redirect(f'{reverse("nova_conta_pagar")}?obra={obra.id}')
 
 
+@empresa_required
 def novo_aditivo(request, obra_id):
-    obra = get_object_or_404(Obra, id=obra_id)
+    obra = _get_obra(request, obra_id)
 
     if request.method == 'POST':
         form = AditivoContratoForm(request.POST)
@@ -556,8 +583,9 @@ def novo_aditivo(request, obra_id):
     )
 
 
+@empresa_required
 def nova_retencao_tecnica(request, obra_id):
-    obra = get_object_or_404(Obra, id=obra_id)
+    obra = _get_obra(request, obra_id)
 
     if request.method == 'POST':
         form = RetencaoTecnicaObraForm(request.POST)
@@ -577,8 +605,9 @@ def nova_retencao_tecnica(request, obra_id):
     )
 
 
+@empresa_required
 def devolver_retencao_tecnica(request, obra_id, retencao_id):
-    obra = get_object_or_404(Obra, id=obra_id)
+    obra = _get_obra(request, obra_id)
     retencao_original = get_object_or_404(
         RetencaoTecnicaObra,
         id=retencao_id,
@@ -619,8 +648,9 @@ def devolver_retencao_tecnica(request, obra_id, retencao_id):
     )
 
 
+@empresa_required
 def excluir_obra(request, obra_id):
-    obra = get_object_or_404(Obra, id=obra_id)
+    obra = _get_obra(request, obra_id)
 
     if request.method == 'POST':
         nome_obra = obra.nome_obra
@@ -641,8 +671,9 @@ def excluir_obra(request, obra_id):
     )
 
 
+@empresa_required
 def excluir_nota_fiscal(request, obra_id, nota_id):
-    obra = get_object_or_404(Obra, id=obra_id)
+    obra = _get_obra(request, obra_id)
     nota = get_object_or_404(NotaFiscal, id=nota_id, obra=obra)
 
     if request.method == 'POST':
@@ -664,8 +695,9 @@ def excluir_nota_fiscal(request, obra_id, nota_id):
     )
 
 
+@empresa_required
 def excluir_despesa(request, obra_id, despesa_id):
-    obra = get_object_or_404(Obra, id=obra_id)
+    obra = _get_obra(request, obra_id)
     despesa = get_object_or_404(DespesaObra, id=despesa_id, obra=obra)
 
     if request.method == 'POST':
@@ -687,8 +719,9 @@ def excluir_despesa(request, obra_id, despesa_id):
     )
 
 
+@empresa_required
 def excluir_aditivo(request, obra_id, aditivo_id):
-    obra = get_object_or_404(Obra, id=obra_id)
+    obra = _get_obra(request, obra_id)
     aditivo = get_object_or_404(AditivoContrato, id=aditivo_id, obra=obra)
 
     if request.method == 'POST':
@@ -711,8 +744,9 @@ def excluir_aditivo(request, obra_id, aditivo_id):
     )
 
 
+@empresa_required
 def excluir_retencao_tecnica(request, obra_id, retencao_id):
-    obra = get_object_or_404(Obra, id=obra_id)
+    obra = _get_obra(request, obra_id)
     retencao = get_object_or_404(RetencaoTecnicaObra, id=retencao_id, obra=obra)
 
     if request.method == 'POST':
@@ -734,8 +768,9 @@ def excluir_retencao_tecnica(request, obra_id, retencao_id):
     )
 
 
+@empresa_required
 def excluir_retencao(request, obra_id, nota_id, retencao_id):
-    obra = get_object_or_404(Obra, id=obra_id)
+    obra = _get_obra(request, obra_id)
     nota = get_object_or_404(NotaFiscal, id=nota_id, obra=obra)
     retencao = get_object_or_404(RetencaoNotaFiscal, id=retencao_id, nota_fiscal=nota)
 
@@ -758,8 +793,9 @@ def excluir_retencao(request, obra_id, nota_id, retencao_id):
     )
 
 
+@empresa_required
 def excluir_imposto(request, obra_id, nota_id, imposto_id):
-    obra = get_object_or_404(Obra, id=obra_id)
+    obra = _get_obra(request, obra_id)
     nota = get_object_or_404(NotaFiscal, id=nota_id, obra=obra)
     imposto = get_object_or_404(ImpostoNotaFiscal, id=imposto_id, nota_fiscal=nota)
 

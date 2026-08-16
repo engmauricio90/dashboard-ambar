@@ -7,6 +7,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from controles.models import EquipamentoLocadoCatalogo, LocacaoEquipamento, LocadoraEquipamento
+from empresas.models import Empresa
 from obras.models import Obra
 
 try:
@@ -118,6 +119,12 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument('arquivo', help='Caminho do arquivo .xlsx')
+        parser.add_argument(
+            '--empresa',
+            '--empresa-slug',
+            dest='empresa_slug',
+            help='Slug da empresa que recebera os lancamentos. Obrigatorio em ambiente multiempresa.',
+        )
 
     def map_headers(self, row):
         mapping = {}
@@ -135,19 +142,19 @@ class Command(BaseCommand):
                 return row_index, mapping
         return None, None
 
-    def get_obra(self, sheet_name):
+    def get_obra(self, sheet_name, empresa):
         if normalize_text(sheet_name) in IGNORED_SHEETS:
             return None
 
         target_name = canonical_obra_name(sheet_name)
         target_key = normalize_text(target_name)
 
-        for obra in Obra.objects.all():
+        for obra in Obra.objects.filter(empresa=empresa):
             obra_key = normalize_text(obra.nome_obra)
             if target_key in obra_key or obra_key in target_key:
                 return obra
 
-        return Obra.objects.create(nome_obra=target_name)
+        return Obra.objects.create(empresa=empresa, nome_obra=target_name)
 
     def row_value(self, row, mapping, key, previous=None):
         index = mapping.get(key)
@@ -158,8 +165,8 @@ class Command(BaseCommand):
             return previous
         return value
 
-    def import_sheet(self, worksheet):
-        obra = self.get_obra(worksheet.title)
+    def import_sheet(self, worksheet, empresa):
+        obra = self.get_obra(worksheet.title, empresa)
         if obra is None:
             return 0
 
@@ -197,7 +204,10 @@ class Command(BaseCommand):
 
             previous_context = context
 
-            locadora, _ = LocadoraEquipamento.objects.get_or_create(nome=str(context['locadora']).strip())
+            locadora, _ = LocadoraEquipamento.objects.get_or_create(
+                empresa=empresa,
+                nome=str(context['locadora']).strip(),
+            )
             equipamento, _ = EquipamentoLocadoCatalogo.objects.get_or_create(nome=equipment_name)
 
             observacoes = []
@@ -247,10 +257,17 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def handle(self, *args, **options):
+        empresa_slug = options.get('empresa_slug')
+        if not empresa_slug:
+            raise CommandError('Informe --empresa ou --empresa-slug para importar locacoes em ambiente multiempresa.')
+
+        empresa = Empresa.objects.filter(slug=empresa_slug).first()
+        if not empresa:
+            raise CommandError(f'Empresa "{empresa_slug}" nao encontrada.')
         workbook = load_workbook(options['arquivo'], data_only=True)
         imported = 0
 
         for worksheet in workbook.worksheets:
-            imported += self.import_sheet(worksheet)
+            imported += self.import_sheet(worksheet, empresa)
 
         self.stdout.write(self.style.SUCCESS(f'{imported} locacoes importadas/atualizadas com sucesso.'))

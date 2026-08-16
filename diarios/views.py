@@ -64,9 +64,10 @@ def _exigir_operacao(request):
     return True
 
 
-def _base_queryset():
+def _base_queryset(empresa):
     return (
         DiarioObra.objects.select_related('obra', 'created_by', 'updated_by')
+        .filter(obra__empresa=empresa)
         .prefetch_related(
             'efetivos',
             'equipamentos',
@@ -122,7 +123,7 @@ def _save_formset(formset, usuario=None, foto=False):
 
 def _filtros_diarios(request, obra=None):
     form = DiarioObraFiltroForm(request.GET or None)
-    diarios = _base_queryset()
+    diarios = _base_queryset(request.empresa)
     if obra:
         diarios = diarios.filter(obra=obra)
     if form.is_valid():
@@ -165,7 +166,7 @@ def lista_diarios(request):
 def lista_diarios_obra(request, obra_id):
     if not _exigir_visualizacao(request):
         return redirect('home')
-    obra = get_object_or_404(Obra, id=obra_id)
+    obra = get_object_or_404(Obra, id=obra_id, empresa=request.empresa)
     form, diarios = _filtros_diarios(request, obra=obra)
     return render(
         request,
@@ -201,7 +202,14 @@ def _salvar_diario(request, diario=None, obra_id=None):
         return redirect('detalhe_diario', diario_id=diario.id)
 
     if request.method == 'POST':
-        form = DiarioObraForm(request.POST, request.FILES, instance=diario, usuario=request.user, pode_alterar_status=_pode_admin(request.user))
+        form = DiarioObraForm(
+            request.POST,
+            request.FILES,
+            instance=diario,
+            usuario=request.user,
+            pode_alterar_status=_pode_admin(request.user),
+            empresa=request.empresa,
+        )
         formsets = _build_formsets(request.POST, request.FILES, instance=diario)
         formsets_validos = all(formset.is_valid() for formset in formsets.values())
         if form.is_valid() and formsets_validos:
@@ -242,7 +250,13 @@ def _salvar_diario(request, diario=None, obra_id=None):
             if request.user.is_authenticated:
                 initial['responsavel_preenchimento'] = request.user.get_full_name() or request.user.username
             initial['data'] = timezone.localdate()
-        form = DiarioObraForm(instance=diario, initial=initial, usuario=request.user, pode_alterar_status=_pode_admin(request.user))
+        form = DiarioObraForm(
+            instance=diario,
+            initial=initial,
+            usuario=request.user,
+            pode_alterar_status=_pode_admin(request.user),
+            empresa=request.empresa,
+        )
         formsets = _build_formsets(instance=diario)
 
     titulo = 'Editar diario de obra' if diario else 'Novo diario de obra'
@@ -254,19 +268,19 @@ def novo_diario(request):
 
 
 def novo_diario_obra(request, obra_id):
-    get_object_or_404(Obra, id=obra_id)
+    get_object_or_404(Obra, id=obra_id, empresa=request.empresa)
     return _salvar_diario(request, obra_id=obra_id)
 
 
 def editar_diario(request, diario_id):
-    diario = get_object_or_404(_base_queryset(), id=diario_id)
+    diario = get_object_or_404(_base_queryset(request.empresa), id=diario_id)
     return _salvar_diario(request, diario=diario)
 
 
 def detalhe_diario(request, diario_id):
     if not _exigir_visualizacao(request):
         return redirect('home')
-    diario = get_object_or_404(_base_queryset(), id=diario_id)
+    diario = get_object_or_404(_base_queryset(request.empresa), id=diario_id)
     return render(
         request,
         'diarios/detail.html',
@@ -282,7 +296,7 @@ def detalhe_diario(request, diario_id):
 def finalizar_diario(request, diario_id):
     if not _exigir_operacao(request):
         return redirect('lista_diarios')
-    diario = get_object_or_404(DiarioObra, id=diario_id)
+    diario = get_object_or_404(DiarioObra, id=diario_id, obra__empresa=request.empresa)
     try:
         diario.validar_finalizacao()
     except ValidationError as exc:
@@ -301,7 +315,7 @@ def reabrir_diario(request, diario_id):
     if not _pode_admin(request.user):
         messages.error(request, 'Apenas usuario autorizado pode reabrir diario.')
         return redirect('detalhe_diario', diario_id=diario_id)
-    diario = get_object_or_404(DiarioObra, id=diario_id)
+    diario = get_object_or_404(DiarioObra, id=diario_id, obra__empresa=request.empresa)
     diario.status = DiarioObra.STATUS_RASCUNHO
     diario.updated_by = request.user
     diario.save(update_fields=['status', 'updated_by', 'updated_at'])
@@ -315,7 +329,7 @@ def cancelar_diario(request, diario_id):
     if not _pode_admin(request.user):
         messages.error(request, 'Apenas usuario autorizado pode cancelar diario.')
         return redirect('detalhe_diario', diario_id=diario_id)
-    diario = get_object_or_404(DiarioObra, id=diario_id)
+    diario = get_object_or_404(DiarioObra, id=diario_id, obra__empresa=request.empresa)
     diario.status = DiarioObra.STATUS_CANCELADO
     diario.updated_by = request.user
     diario.save(update_fields=['status', 'updated_by', 'updated_at'])
@@ -326,7 +340,7 @@ def cancelar_diario(request, diario_id):
 
 @require_POST
 def excluir_diario(request, diario_id):
-    diario = get_object_or_404(DiarioObra, id=diario_id)
+    diario = get_object_or_404(DiarioObra, id=diario_id, obra__empresa=request.empresa)
     if not (diario.status == DiarioObra.STATUS_RASCUNHO or _pode_admin(request.user)):
         messages.error(request, 'Somente diarios em rascunho podem ser excluidos.')
         return redirect('detalhe_diario', diario_id=diario.id)
@@ -601,5 +615,5 @@ def _pdf_diario(diario):
 def diario_pdf(request, diario_id):
     if not _exigir_visualizacao(request):
         return redirect('home')
-    diario = get_object_or_404(_base_queryset(), id=diario_id)
+    diario = get_object_or_404(_base_queryset(request.empresa), id=diario_id)
     return _pdf_diario(diario)

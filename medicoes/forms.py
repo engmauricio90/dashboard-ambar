@@ -26,11 +26,19 @@ class ImportarOrcamentoForm(BootstrapForm):
     def __init__(self, *args, **kwargs):
         from obras.models import Obra
 
+        empresa = kwargs.pop('empresa', None)
         super().__init__(*args, **kwargs)
-        self.fields['obra'].queryset = Obra.objects.all()
+        self.fields['obra'].queryset = Obra.objects.filter(empresa=empresa) if empresa else Obra.objects.none()
 
 
 class OrcamentoMedicaoManualForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        from obras.models import Obra
+
+        self.empresa = kwargs.pop('empresa', None)
+        super().__init__(*args, **kwargs)
+        self.fields['obra'].queryset = Obra.objects.filter(empresa=self.empresa) if self.empresa else Obra.objects.none()
+
     class Meta:
         model = OrcamentoMedicao
         fields = ['obra', 'nome', 'tipo', 'observacoes']
@@ -40,6 +48,19 @@ class OrcamentoMedicaoManualForm(BootstrapModelForm):
 
 
 class EmpreiteiroForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        self.empresa = kwargs.pop('empresa', None)
+        super().__init__(*args, **kwargs)
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.empresa:
+            instance.empresa = self.empresa
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
+
     class Meta:
         model = Empreiteiro
         fields = ['nome', 'cpf_cnpj', 'pix', 'telefone', 'ativo', 'observacoes']
@@ -94,9 +115,12 @@ class RelatorioMedicoesForm(BootstrapForm):
     def __init__(self, *args, **kwargs):
         from obras.models import Obra
 
+        empresa = kwargs.pop('empresa', None)
         super().__init__(*args, **kwargs)
-        self.fields['obra'].queryset = Obra.objects.order_by('nome_obra')
-        self.fields['empreiteiro'].queryset = Empreiteiro.objects.order_by('nome')
+        self.fields['obra'].queryset = Obra.objects.filter(empresa=empresa).order_by('nome_obra') if empresa else Obra.objects.none()
+        self.fields['empreiteiro'].queryset = (
+            Empreiteiro.objects.filter(empresa=empresa).order_by('nome') if empresa else Empreiteiro.objects.none()
+        )
         self.fields['colunas'].initial = self.COLUNAS_PADRAO
         self.fields['colunas'].widget.attrs['class'] = 'form-check-input'
 
@@ -265,8 +289,16 @@ class ItemMedicaoConstrutoraForm(BootstrapModelForm):
 
 class MedicaoEmpreiteiroForm(BootstrapModelForm):
     def __init__(self, *args, **kwargs):
+        from obras.models import Obra
+
+        self.empresa = kwargs.pop('empresa', None)
         super().__init__(*args, **kwargs)
-        self.fields['empreiteiro_cadastro'].queryset = Empreiteiro.objects.filter(ativo=True).order_by('nome')
+        self.fields['obra'].queryset = Obra.objects.filter(empresa=self.empresa) if self.empresa else Obra.objects.none()
+        self.fields['empreiteiro_cadastro'].queryset = (
+            Empreiteiro.objects.filter(empresa=self.empresa, ativo=True).order_by('nome')
+            if self.empresa
+            else Empreiteiro.objects.none()
+        )
         self.fields['empreiteiro_cadastro'].required = True
         self.fields['empreiteiro_cadastro'].empty_label = 'Selecione um empreiteiro cadastrado'
         self.fields['empreiteiro_cadastro'].label_from_instance = (
@@ -307,6 +339,15 @@ class MedicaoEmpreiteiroForm(BootstrapModelForm):
         else:
             self.add_error('empreiteiro_cadastro', 'Selecione um empreiteiro cadastrado.')
         return cleaned_data
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.empresa:
+            instance.empresa = self.empresa
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
 
     class Meta:
         model = MedicaoEmpreiteiro

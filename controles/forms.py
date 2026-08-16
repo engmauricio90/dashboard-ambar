@@ -1,8 +1,8 @@
 from django import forms
 from django.db.models import Q
 from django.forms import inlineformset_factory
-from financeiro.models import Fornecedor
-from obras.models import DespesaObra
+from financeiro.models import CentroCusto, Fornecedor
+from obras.models import DespesaObra, Obra
 
 from .models import (
     ApontamentoMaquinaLocacao,
@@ -66,6 +66,20 @@ class BootstrapModelForm(forms.ModelForm):
 
 
 class CronogramaObraForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        self.empresa = kwargs.pop('empresa', None)
+        super().__init__(*args, **kwargs)
+        self.fields['obra'].queryset = Obra.objects.filter(empresa=self.empresa) if self.empresa else Obra.objects.none()
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.empresa:
+            instance.empresa = self.empresa
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
+
     class Meta:
         model = CronogramaObra
         fields = ['nome', 'obra', 'data_inicio', 'data_fim', 'formato', 'observacoes']
@@ -85,6 +99,19 @@ class CronogramaObraForm(BootstrapModelForm):
 
 
 class VeiculoMaquinaForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        self.empresa = kwargs.pop('empresa', None)
+        super().__init__(*args, **kwargs)
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.empresa:
+            instance.empresa = self.empresa
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
+
     class Meta:
         model = VeiculoMaquina
         fields = ['placa', 'descricao', 'tipo', 'status', 'observacoes']
@@ -94,6 +121,11 @@ class VeiculoMaquinaForm(BootstrapModelForm):
 
 
 class RegistroAbastecimentoForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        empresa = kwargs.pop('empresa', None)
+        super().__init__(*args, **kwargs)
+        self.fields['veiculo'].queryset = VeiculoMaquina.objects.filter(empresa=empresa) if empresa else VeiculoMaquina.objects.none()
+
     class Meta:
         model = RegistroAbastecimento
         fields = [
@@ -116,6 +148,11 @@ class RegistroAbastecimentoForm(BootstrapModelForm):
 
 
 class FaturamentoDiretoForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        empresa = kwargs.pop('empresa', None)
+        super().__init__(*args, **kwargs)
+        self.fields['obra'].queryset = Obra.objects.filter(empresa=empresa) if empresa else Obra.objects.none()
+
     class Meta:
         model = FaturamentoDireto
         fields = [
@@ -138,6 +175,19 @@ class FaturamentoDiretoForm(BootstrapModelForm):
 
 
 class BombonaCombustivelForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        self.empresa = kwargs.pop('empresa', None)
+        super().__init__(*args, **kwargs)
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.empresa:
+            instance.empresa = self.empresa
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
+
     class Meta:
         model = BombonaCombustivel
         fields = ['identificacao', 'capacidade_litros', 'localizacao', 'status', 'observacoes']
@@ -149,9 +199,16 @@ class BombonaCombustivelForm(BootstrapModelForm):
 
 class OrdemCompraCombustivelForm(BootstrapModelForm):
     def __init__(self, *args, **kwargs):
+        self.empresa = kwargs.pop('empresa', None)
         super().__init__(*args, **kwargs)
         self.fields['fornecedor'].required = False
-        self.fields['fornecedor_cadastro'].queryset = Fornecedor.objects.filter(ativo=True).order_by('nome')
+        self.fields['fornecedor_cadastro'].queryset = (
+            Fornecedor.objects.filter(empresa=self.empresa, ativo=True).order_by('nome')
+            if self.empresa
+            else Fornecedor.objects.none()
+        )
+        self.fields['veiculo'].queryset = VeiculoMaquina.objects.filter(empresa=self.empresa) if self.empresa else VeiculoMaquina.objects.none()
+        self.fields['bombona'].queryset = BombonaCombustivel.objects.filter(empresa=self.empresa) if self.empresa else BombonaCombustivel.objects.none()
         self.fields['fornecedor_cadastro'].label_from_instance = (
             lambda fornecedor: ' - '.join(
                 value
@@ -218,6 +275,15 @@ class OrdemCompraCombustivelForm(BootstrapModelForm):
 
         return cleaned_data
 
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.empresa:
+            instance.empresa = self.empresa
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
+
 
 class NotaFiscalCombustivelForm(BootstrapModelForm):
     def __init__(self, *args, **kwargs):
@@ -240,9 +306,18 @@ class OrdemCompraGeralForm(BootstrapModelForm):
     categoria_despesa = forms.ChoiceField(choices=DespesaObra.CATEGORIA_CHOICES)
 
     def __init__(self, *args, **kwargs):
+        self.empresa = kwargs.pop('empresa', None)
         super().__init__(*args, **kwargs)
         self.fields['fornecedor'].required = False
-        self.fields['fornecedor_cadastro'].queryset = Fornecedor.objects.filter(ativo=True).order_by('nome')
+        self.fields['fornecedor_cadastro'].queryset = (
+            Fornecedor.objects.filter(empresa=self.empresa, ativo=True).order_by('nome')
+            if self.empresa
+            else Fornecedor.objects.none()
+        )
+        self.fields['obra'].queryset = Obra.objects.filter(empresa=self.empresa) if self.empresa else Obra.objects.none()
+        self.fields['centro_custo'].queryset = (
+            CentroCusto.objects.filter(empresa=self.empresa) if self.empresa else CentroCusto.objects.none()
+        )
         self.fields['fornecedor_cadastro'].label_from_instance = (
             lambda fornecedor: ' - '.join(
                 value
@@ -302,6 +377,15 @@ class OrdemCompraGeralForm(BootstrapModelForm):
         if not cleaned_data.get('fornecedor') and not cleaned_data.get('fornecedor_cadastro'):
             self.add_error('fornecedor_cadastro', 'Informe um fornecedor do cadastro central ou digite o fornecedor.')
         return cleaned_data
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.empresa:
+            instance.empresa = self.empresa
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
 
 
 class ItemOrdemCompraGeralForm(BootstrapModelForm):
@@ -377,6 +461,19 @@ class EquipamentoLocadoCatalogoForm(BootstrapModelForm):
 
 
 class LocadoraEquipamentoForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        self.empresa = kwargs.pop('empresa', None)
+        super().__init__(*args, **kwargs)
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.empresa:
+            instance.empresa = self.empresa
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
+
     class Meta:
         model = LocadoraEquipamento
         fields = ['nome', 'contato', 'telefone', 'email', 'observacoes']
@@ -386,6 +483,14 @@ class LocadoraEquipamentoForm(BootstrapModelForm):
 
 
 class LocacaoEquipamentoForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        empresa = kwargs.pop('empresa', None)
+        super().__init__(*args, **kwargs)
+        self.fields['obra'].queryset = Obra.objects.filter(empresa=empresa) if empresa else Obra.objects.none()
+        self.fields['locadora'].queryset = (
+            LocadoraEquipamento.objects.filter(empresa=empresa) if empresa else LocadoraEquipamento.objects.none()
+        )
+
     class Meta:
         model = LocacaoEquipamento
         fields = [
@@ -443,6 +548,19 @@ class MaquinaLocacaoCatalogoForm(BootstrapModelForm):
 
 
 class FornecedorMaquinaLocacaoForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        self.empresa = kwargs.pop('empresa', None)
+        super().__init__(*args, **kwargs)
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.empresa:
+            instance.empresa = self.empresa
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
+
     class Meta:
         model = FornecedorMaquinaLocacao
         fields = ['nome', 'contato', 'telefone', 'email', 'observacoes']
@@ -453,6 +571,7 @@ class FornecedorMaquinaLocacaoForm(BootstrapModelForm):
 
 class OrdemServicoLocacaoMaquinaForm(BootstrapModelForm):
     def __init__(self, *args, **kwargs):
+        self.empresa = kwargs.pop('empresa', None)
         super().__init__(*args, **kwargs)
         for field_name in [
             'valor_hora',
@@ -465,6 +584,15 @@ class OrdemServicoLocacaoMaquinaForm(BootstrapModelForm):
         ]:
             self.fields[field_name].required = False
         self.fields['fornecedor'].required = False
+        self.fields['obra'].queryset = Obra.objects.filter(empresa=self.empresa) if self.empresa else Obra.objects.none()
+        self.fields['fornecedor'].queryset = (
+            FornecedorMaquinaLocacao.objects.filter(empresa=self.empresa) if self.empresa else FornecedorMaquinaLocacao.objects.none()
+        )
+        self.fields['fornecedor_cadastro'].queryset = (
+            Fornecedor.objects.filter(empresa=self.empresa, ativo=True).order_by('nome')
+            if self.empresa
+            else Fornecedor.objects.none()
+        )
 
     class Meta:
         model = OrdemServicoLocacaoMaquina
@@ -589,8 +717,18 @@ class NotaFiscalLocacaoMaquinaForm(BootstrapModelForm):
 
 class OrcamentoRadarObraForm(BootstrapModelForm):
     def __init__(self, *args, **kwargs):
+        self.empresa = kwargs.pop('empresa', None)
         super().__init__(*args, **kwargs)
         self.fields['temperatura'].required = False
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.empresa:
+            instance.empresa = self.empresa
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
 
     def clean_temperatura(self):
         return self.cleaned_data.get('temperatura') or 3
@@ -619,8 +757,15 @@ class OrcamentoRadarObraForm(BootstrapModelForm):
 
 class ContratoConcretagemForm(BootstrapModelForm):
     def __init__(self, *args, **kwargs):
+        self.empresa = kwargs.pop('empresa', None)
         super().__init__(*args, **kwargs)
         self.fields['fornecedor'].required = False
+        self.fields['obra'].queryset = Obra.objects.filter(empresa=self.empresa) if self.empresa else Obra.objects.none()
+        self.fields['fornecedor_cadastro'].queryset = (
+            Fornecedor.objects.filter(empresa=self.empresa, ativo=True).order_by('nome')
+            if self.empresa
+            else Fornecedor.objects.none()
+        )
 
     class Meta:
         model = ContratoConcretagem
@@ -659,6 +804,19 @@ class ContratoConcretagemForm(BootstrapModelForm):
 
 
 class SolicitanteConcretagemForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        self.empresa = kwargs.pop('empresa', None)
+        super().__init__(*args, **kwargs)
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.empresa:
+            instance.empresa = self.empresa
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
+
     class Meta:
         model = SolicitanteConcretagem
         fields = ['nome', 'ativo', 'observacoes']
@@ -669,11 +827,12 @@ class SolicitanteConcretagemForm(BootstrapModelForm):
 
 class FaturamentoConcretagemForm(BootstrapModelForm):
     def __init__(self, *args, **kwargs):
+        empresa = kwargs.pop('empresa', None)
         super().__init__(*args, **kwargs)
-        queryset = SolicitanteConcretagem.objects.filter(ativo=True)
+        queryset = SolicitanteConcretagem.objects.filter(empresa=empresa, ativo=True) if empresa else SolicitanteConcretagem.objects.none()
         if self.instance and self.instance.solicitante_id:
             queryset = SolicitanteConcretagem.objects.filter(
-                Q(ativo=True) | Q(id=self.instance.solicitante_id),
+                Q(empresa=empresa, ativo=True) | Q(empresa=empresa, id=self.instance.solicitante_id),
             )
         self.fields['solicitante'].queryset = queryset
 

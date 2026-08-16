@@ -22,6 +22,7 @@ from openpyxl.utils import get_column_letter
 from PIL import Image, ImageDraw, ImageFont
 
 from config.permissions import group_required
+from empresas.decorators import empresa_required
 
 from .forms import (
     CentroCustoForm,
@@ -57,16 +58,16 @@ def _status_visual(conta, tipo):
     return 'Em aberto'
 
 
-def _base_receber():
-    return ContaReceber.objects.select_related('obra', 'centro_custo', 'nota_fiscal')
+def _base_receber(empresa):
+    return ContaReceber.objects.filter(empresa=empresa).select_related('obra', 'centro_custo', 'nota_fiscal')
 
 
-def _base_pagar():
-    return ContaPagar.objects.select_related('obra', 'centro_custo', 'despesa_obra')
+def _base_pagar(empresa):
+    return ContaPagar.objects.filter(empresa=empresa).select_related('obra', 'centro_custo', 'despesa_obra')
 
 
-def _base_previsoes():
-    return PrevisaoFinanceira.objects.select_related('obra', 'centro_custo')
+def _base_previsoes(empresa):
+    return PrevisaoFinanceira.objects.filter(empresa=empresa).select_related('obra', 'centro_custo')
 
 
 def _paginar(request, queryset, per_page=50):
@@ -83,10 +84,10 @@ def _formset_tem_itens_oc(formset):
 
 
 def _filtrar_contas(request, data=None):
-    form = FinanceiroFiltroForm(data if data is not None else request.GET or None)
-    receber = _base_receber()
-    pagar = _base_pagar()
-    previsoes = _base_previsoes()
+    form = FinanceiroFiltroForm(data if data is not None else request.GET or None, empresa=request.empresa)
+    receber = _base_receber(request.empresa)
+    pagar = _base_pagar(request.empresa)
+    previsoes = _base_previsoes(request.empresa)
     tipo = status = ''
 
     if form.is_valid():
@@ -137,14 +138,14 @@ def _filtrar_contas(request, data=None):
             previsoes = previsoes.filter(status=PrevisaoFinanceira.STATUS_ATIVA, data_prevista__lt=hoje)
 
     if tipo == 'receber':
-        pagar = ContaPagar.objects.none()
-        previsoes = PrevisaoFinanceira.objects.none()
+        pagar = _base_pagar(request.empresa).none()
+        previsoes = _base_previsoes(request.empresa).none()
     elif tipo == 'pagar':
-        receber = ContaReceber.objects.none()
-        previsoes = PrevisaoFinanceira.objects.none()
+        receber = _base_receber(request.empresa).none()
+        previsoes = _base_previsoes(request.empresa).none()
     elif tipo == 'previsao':
-        receber = ContaReceber.objects.none()
-        pagar = ContaPagar.objects.none()
+        receber = _base_receber(request.empresa).none()
+        pagar = _base_pagar(request.empresa).none()
 
     return form, receber, pagar, previsoes
 
@@ -490,10 +491,11 @@ def _financial_report_pdf(eventos, colunas, resumo):
 
 
 @financeiro_required
+@empresa_required
 def financeiro_home(request):
-    receber = _base_receber()
-    pagar = _base_pagar()
-    previsoes = _base_previsoes()
+    receber = _base_receber(request.empresa)
+    pagar = _base_pagar(request.empresa)
+    previsoes = _base_previsoes(request.empresa)
     eventos = _eventos_fluxo(receber, pagar, previsoes)
     hoje = timezone.localdate()
     limite_fluxo = hoje + timedelta(days=90)
@@ -508,15 +510,17 @@ def financeiro_home(request):
 
 
 @financeiro_required
+@empresa_required
 def lista_contas_receber(request):
-    contas = _base_receber()
+    contas = _base_receber(request.empresa)
     page_obj = _paginar(request, contas)
     return render(request, 'financeiro/lista_contas_receber.html', {'contas': page_obj, 'page_obj': page_obj})
 
 
 @financeiro_required
+@empresa_required
 def lista_contas_pagar(request):
-    contas = _base_pagar().filter(status=ContaPagar.STATUS_ABERTO)
+    contas = _base_pagar(request.empresa).filter(status=ContaPagar.STATUS_ABERTO)
     page_obj = _paginar(request, contas)
     return render(
         request,
@@ -532,6 +536,7 @@ def lista_contas_pagar(request):
 
 
 @financeiro_required
+@empresa_required
 def importar_contas_pagar_sienge(request):
     resultado = None
     if request.method == 'POST':
@@ -540,9 +545,9 @@ def importar_contas_pagar_sienge(request):
             conteudo = decodificar_csv_upload(form.cleaned_data['arquivo'])
             try:
                 if form.cleaned_data['tipo_relatorio'] == 'pago':
-                    resultado = importar_contas_pagas_credores_csv(conteudo)
+                    resultado = importar_contas_pagas_credores_csv(conteudo, empresa=request.empresa)
                 else:
-                    resultado = importar_contas_pagar_credores_csv(conteudo)
+                    resultado = importar_contas_pagar_credores_csv(conteudo, empresa=request.empresa)
                 messages.success(
                     request,
                     f'Importacao concluida: {resultado.criadas} criada(s), '
@@ -561,8 +566,9 @@ def importar_contas_pagar_sienge(request):
 
 
 @financeiro_required
+@empresa_required
 def lista_contas_pagas(request):
-    contas = _base_pagar().filter(status=ContaPagar.STATUS_PAGO).order_by('-data_pagamento', '-id')
+    contas = _base_pagar(request.empresa).filter(status=ContaPagar.STATUS_PAGO).order_by('-data_pagamento', '-id')
     page_obj = _paginar(request, contas)
     return render(
         request,
@@ -578,8 +584,9 @@ def lista_contas_pagas(request):
 
 
 @financeiro_required
+@empresa_required
 def lista_contas_pagar_canceladas(request):
-    contas = _base_pagar().filter(status=ContaPagar.STATUS_CANCELADO).order_by('-updated_at', '-id')
+    contas = _base_pagar(request.empresa).filter(status=ContaPagar.STATUS_CANCELADO).order_by('-updated_at', '-id')
     page_obj = _paginar(request, contas)
     return render(
         request,
@@ -595,8 +602,9 @@ def lista_contas_pagar_canceladas(request):
 
 
 @financeiro_required
+@empresa_required
 def lista_previsoes_financeiras(request):
-    previsoes = _base_previsoes()
+    previsoes = _base_previsoes(request.empresa)
     status = request.GET.get('status')
     tipo = request.GET.get('tipo')
     if status:
@@ -617,39 +625,42 @@ def lista_previsoes_financeiras(request):
 
 
 @financeiro_required
+@empresa_required
 def nova_previsao_financeira(request):
     if request.method == 'POST':
-        form = PrevisaoFinanceiraForm(request.POST)
+        form = PrevisaoFinanceiraForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Previsao financeira cadastrada com sucesso.')
             return redirect('lista_previsoes_financeiras')
     else:
-        form = PrevisaoFinanceiraForm(initial={'status': PrevisaoFinanceira.STATUS_ATIVA})
+        form = PrevisaoFinanceiraForm(initial={'status': PrevisaoFinanceira.STATUS_ATIVA}, empresa=request.empresa)
     return render(request, 'financeiro/form_conta.html', {'form': form, 'titulo': 'Nova Previsao Financeira'})
 
 
 @financeiro_required
+@empresa_required
 def editar_previsao_financeira(request, previsao_id):
-    previsao = get_object_or_404(PrevisaoFinanceira, id=previsao_id)
+    previsao = get_object_or_404(PrevisaoFinanceira, id=previsao_id, empresa=request.empresa)
     if request.method == 'POST':
-        form = PrevisaoFinanceiraForm(request.POST, instance=previsao)
+        form = PrevisaoFinanceiraForm(request.POST, instance=previsao, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Previsao financeira atualizada com sucesso.')
             return redirect('lista_previsoes_financeiras')
     else:
-        form = PrevisaoFinanceiraForm(instance=previsao)
+        form = PrevisaoFinanceiraForm(instance=previsao, empresa=request.empresa)
     return render(request, 'financeiro/form_conta.html', {'form': form, 'titulo': 'Editar Previsao Financeira'})
 
 
 @financeiro_required
+@empresa_required
 @require_POST
 def acao_massa_contas_pagar(request):
     ids = request.POST.getlist('contas')
     acao = request.POST.get('acao')
     data_baixa = request.POST.get('data_baixa') or timezone.localdate()
-    contas = ContaPagar.objects.filter(id__in=ids, status=ContaPagar.STATUS_ABERTO)
+    contas = ContaPagar.objects.filter(id__in=ids, status=ContaPagar.STATUS_ABERTO, empresa=request.empresa)
 
     if not ids:
         messages.warning(request, 'Selecione ao menos uma conta.')
@@ -678,9 +689,10 @@ def acao_massa_contas_pagar(request):
 
 
 @financeiro_required
+@empresa_required
 def nova_conta_receber(request):
     if request.method == 'POST':
-        form = ContaReceberForm(request.POST)
+        form = ContaReceberForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             conta = form.save()
             messages.success(request, 'Conta a receber cadastrada com sucesso.')
@@ -690,27 +702,29 @@ def nova_conta_receber(request):
         obra_id = request.GET.get('obra')
         if obra_id:
             initial['obra'] = obra_id
-        form = ContaReceberForm(initial=initial)
+        form = ContaReceberForm(initial=initial, empresa=request.empresa)
     return render(request, 'financeiro/form_conta.html', {'form': form, 'titulo': 'Nova Conta a Receber'})
 
 
 @financeiro_required
+@empresa_required
 def editar_conta_receber(request, conta_id):
-    conta = get_object_or_404(ContaReceber, id=conta_id)
+    conta = get_object_or_404(ContaReceber, id=conta_id, empresa=request.empresa)
     if request.method == 'POST':
-        form = ContaReceberForm(request.POST, instance=conta)
+        form = ContaReceberForm(request.POST, instance=conta, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Conta a receber atualizada com sucesso.')
             return redirect('lista_contas_receber')
     else:
-        form = ContaReceberForm(instance=conta)
+        form = ContaReceberForm(instance=conta, empresa=request.empresa)
     return render(request, 'financeiro/form_conta.html', {'form': form, 'titulo': 'Editar Conta a Receber'})
 
 
 @financeiro_required
+@empresa_required
 def baixar_conta_receber(request, conta_id):
-    conta = get_object_or_404(ContaReceber, id=conta_id)
+    conta = get_object_or_404(ContaReceber, id=conta_id, empresa=request.empresa)
     if conta.status != ContaReceber.STATUS_ABERTO:
         messages.error(request, 'Somente contas a receber em aberto podem ser recebidas.')
         return redirect('lista_contas_receber')
@@ -737,9 +751,10 @@ def baixar_conta_receber(request, conta_id):
 
 
 @financeiro_required
+@empresa_required
 @require_POST
 def cancelar_conta_receber(request, conta_id):
-    conta = get_object_or_404(ContaReceber, id=conta_id)
+    conta = get_object_or_404(ContaReceber, id=conta_id, empresa=request.empresa)
     if conta.status != ContaReceber.STATUS_ABERTO:
         messages.error(request, 'Somente contas a receber em aberto podem ser canceladas.')
         return redirect('lista_contas_receber')
@@ -750,11 +765,12 @@ def cancelar_conta_receber(request, conta_id):
 
 
 @financeiro_required
+@empresa_required
 def nova_conta_pagar(request):
     if request.method == 'POST':
-        form = ContaPagarForm(request.POST)
+        form = ContaPagarForm(request.POST, empresa=request.empresa)
         ordem = form.data.get('ordem_compra') or None
-        formset = ItemContaPagarOrdemCompraFormSet(request.POST, ordem=ordem, prefix='itens_oc')
+        formset = ItemContaPagarOrdemCompraFormSet(request.POST, ordem=ordem, empresa=request.empresa, prefix='itens_oc')
         if form.is_valid() and formset.is_valid():
             if form.cleaned_data.get('ordem_compra') and not _formset_tem_itens_oc(formset):
                 form.add_error('ordem_compra', 'Informe ao menos um item da OC.')
@@ -774,8 +790,8 @@ def nova_conta_pagar(request):
         ordem_id = request.GET.get('ordem_compra')
         if ordem_id:
             initial['ordem_compra'] = ordem_id
-        form = ContaPagarForm(initial=initial)
-        formset = ItemContaPagarOrdemCompraFormSet(ordem=ordem_id, prefix='itens_oc')
+        form = ContaPagarForm(initial=initial, empresa=request.empresa)
+        formset = ItemContaPagarOrdemCompraFormSet(ordem=ordem_id, empresa=request.empresa, prefix='itens_oc')
     return render(
         request,
         'financeiro/form_conta.html',
@@ -784,12 +800,19 @@ def nova_conta_pagar(request):
 
 
 @financeiro_required
+@empresa_required
 def editar_conta_pagar(request, conta_id):
-    conta = get_object_or_404(ContaPagar, id=conta_id)
+    conta = get_object_or_404(ContaPagar, id=conta_id, empresa=request.empresa)
     if request.method == 'POST':
-        form = ContaPagarForm(request.POST, instance=conta)
+        form = ContaPagarForm(request.POST, instance=conta, empresa=request.empresa)
         ordem = form.data.get('ordem_compra') or None
-        formset = ItemContaPagarOrdemCompraFormSet(request.POST, instance=conta, ordem=ordem, prefix='itens_oc')
+        formset = ItemContaPagarOrdemCompraFormSet(
+            request.POST,
+            instance=conta,
+            ordem=ordem,
+            empresa=request.empresa,
+            prefix='itens_oc',
+        )
         if form.is_valid() and formset.is_valid():
             if form.cleaned_data.get('ordem_compra') and not _formset_tem_itens_oc(formset):
                 form.add_error('ordem_compra', 'Informe ao menos um item da OC.')
@@ -801,8 +824,13 @@ def editar_conta_pagar(request, conta_id):
                 messages.success(request, 'Conta a pagar atualizada com sucesso.')
                 return redirect('lista_contas_pagar')
     else:
-        form = ContaPagarForm(instance=conta)
-        formset = ItemContaPagarOrdemCompraFormSet(instance=conta, ordem=conta.ordem_compra, prefix='itens_oc')
+        form = ContaPagarForm(instance=conta, empresa=request.empresa)
+        formset = ItemContaPagarOrdemCompraFormSet(
+            instance=conta,
+            ordem=conta.ordem_compra,
+            empresa=request.empresa,
+            prefix='itens_oc',
+        )
     return render(
         request,
         'financeiro/form_conta.html',
@@ -811,8 +839,9 @@ def editar_conta_pagar(request, conta_id):
 
 
 @financeiro_required
+@empresa_required
 def baixar_conta_pagar(request, conta_id):
-    conta = get_object_or_404(ContaPagar, id=conta_id)
+    conta = get_object_or_404(ContaPagar, id=conta_id, empresa=request.empresa)
     if conta.status != ContaPagar.STATUS_ABERTO:
         messages.error(request, 'Somente contas a pagar em aberto podem ser pagas.')
         return redirect('lista_contas_pagar')
@@ -844,14 +873,16 @@ def baixar_conta_pagar(request, conta_id):
 
 
 @financeiro_required
+@empresa_required
 def lista_centros_custo(request):
-    centros = CentroCusto.objects.all()
+    centros = CentroCusto.objects.filter(empresa=request.empresa)
     return render(request, 'financeiro/lista_centros_custo.html', {'centros': centros})
 
 
 @financeiro_required
+@empresa_required
 def lista_fornecedores(request):
-    fornecedores = Fornecedor.objects.all()
+    fornecedores = Fornecedor.objects.filter(empresa=request.empresa)
     busca = request.GET.get('busca', '').strip()
     if busca:
         fornecedores = fornecedores.filter(
@@ -863,35 +894,38 @@ def lista_fornecedores(request):
 
 
 @financeiro_required
+@empresa_required
 def novo_fornecedor(request):
     if request.method == 'POST':
-        form = FornecedorForm(request.POST)
+        form = FornecedorForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Fornecedor cadastrado com sucesso.')
             return redirect('lista_fornecedores')
     else:
-        form = FornecedorForm()
+        form = FornecedorForm(empresa=request.empresa)
     return render(request, 'financeiro/form_conta.html', {'form': form, 'titulo': 'Novo Fornecedor'})
 
 
 @financeiro_required
+@empresa_required
 def editar_fornecedor(request, fornecedor_id):
-    fornecedor = get_object_or_404(Fornecedor, id=fornecedor_id)
+    fornecedor = get_object_or_404(Fornecedor, id=fornecedor_id, empresa=request.empresa)
     if request.method == 'POST':
-        form = FornecedorForm(request.POST, instance=fornecedor)
+        form = FornecedorForm(request.POST, instance=fornecedor, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Fornecedor atualizado com sucesso.')
             return redirect('lista_fornecedores')
     else:
-        form = FornecedorForm(instance=fornecedor)
+        form = FornecedorForm(instance=fornecedor, empresa=request.empresa)
     return render(request, 'financeiro/form_conta.html', {'form': form, 'titulo': 'Editar Fornecedor'})
 
 
 @financeiro_required
+@empresa_required
 def excluir_fornecedor(request, fornecedor_id):
-    fornecedor = get_object_or_404(Fornecedor, id=fornecedor_id)
+    fornecedor = get_object_or_404(Fornecedor, id=fornecedor_id, empresa=request.empresa)
     detalhe = (
         'Os lancamentos e ordens ja criados nao serao apagados. '
         'Eles manterao os dados copiados do fornecedor, mas perderao o vinculo com este cadastro central.'
@@ -915,33 +949,36 @@ def excluir_fornecedor(request, fornecedor_id):
 
 
 @financeiro_required
+@empresa_required
 def novo_centro_custo(request):
     if request.method == 'POST':
-        form = CentroCustoForm(request.POST)
+        form = CentroCustoForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Centro de custo cadastrado com sucesso.')
             return redirect('lista_centros_custo')
     else:
-        form = CentroCustoForm()
+        form = CentroCustoForm(empresa=request.empresa)
     return render(request, 'financeiro/form_conta.html', {'form': form, 'titulo': 'Novo Centro de Custo'})
 
 
 @financeiro_required
+@empresa_required
 def editar_centro_custo(request, centro_id):
-    centro = get_object_or_404(CentroCusto, id=centro_id)
+    centro = get_object_or_404(CentroCusto, id=centro_id, empresa=request.empresa)
     if request.method == 'POST':
-        form = CentroCustoForm(request.POST, instance=centro)
+        form = CentroCustoForm(request.POST, instance=centro, empresa=request.empresa)
         if form.is_valid():
             form.save()
             messages.success(request, 'Centro de custo atualizado com sucesso.')
             return redirect('lista_centros_custo')
     else:
-        form = CentroCustoForm(instance=centro)
+        form = CentroCustoForm(instance=centro, empresa=request.empresa)
     return render(request, 'financeiro/form_conta.html', {'form': form, 'titulo': 'Editar Centro de Custo'})
 
 
 @financeiro_required
+@empresa_required
 def relatorio_financeiro(request):
     data = request.GET.copy()
     if 'colunas' not in data:
@@ -986,6 +1023,7 @@ def relatorio_financeiro(request):
 
 
 @financeiro_required
+@empresa_required
 def relatorio_financeiro_pdf(request):
     data = request.GET.copy()
     if 'colunas' not in data:

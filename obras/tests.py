@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
+from empresas.models import Empresa, UsuarioEmpresa
 from controles.models import FaturamentoDireto
 from medicoes.models import (
     ItemMedicaoConstrutora,
@@ -22,8 +23,11 @@ class ObraFluxoFinanceiroTests(TestCase):
     def setUp(self):
         user_model = get_user_model()
         self.user = user_model.objects.create_user(username='analista', password='senha-forte-123')
+        self.empresa = Empresa.objects.get(slug='ambar')
+        UsuarioEmpresa.objects.create(usuario=self.user, empresa=self.empresa)
         self.client.force_login(self.user)
         self.obra = Obra.objects.create(
+            empresa=self.empresa,
             nome_obra='Obra Centro',
             cliente='Cliente XPTO',
             valor_contrato=Decimal('1000.00'),
@@ -243,6 +247,7 @@ class ObraFluxoFinanceiroTests(TestCase):
 
     def test_campos_legados_nao_entram_nos_totais_sem_lancamentos_novos(self):
         obra = Obra.objects.create(
+            empresa=self.empresa,
             nome_obra='Obra Legada',
             valor_contrato=Decimal('1000.00'),
             aditivos=Decimal('50.00'),
@@ -382,3 +387,98 @@ class ObraFluxoFinanceiroTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'A data inicial nao pode ser maior que a data final')
+
+    def test_listagem_nao_mostra_obras_de_outra_empresa(self):
+        outra_empresa = Empresa.objects.create(nome='Empresa Teste', slug='empresa-teste-obras')
+        Obra.objects.create(nome_obra='Obra de Outra Empresa', empresa=outra_empresa)
+
+        response = self.client.get(reverse('lista_obras'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Obra Centro')
+        self.assertNotContains(response, 'Obra de Outra Empresa')
+
+    def test_acesso_direto_a_obra_de_outra_empresa_retorna_404(self):
+        outra_empresa = Empresa.objects.create(nome='Empresa Teste', slug='empresa-teste-direto')
+        obra_outra = Obra.objects.create(nome_obra='Obra Bloqueada', empresa=outra_empresa)
+
+        response = self.client.get(reverse('detalhe_obra', args=[obra_outra.id]))
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_edicao_get_e_post_de_outra_empresa_retorna_404(self):
+        outra_empresa = Empresa.objects.create(nome='Empresa Teste', slug='empresa-teste-edicao')
+        obra_outra = Obra.objects.create(nome_obra='Obra Edicao Bloqueada', empresa=outra_empresa)
+
+        response_get = self.client.get(reverse('editar_obra', args=[obra_outra.id]))
+        response_post = self.client.post(
+            reverse('editar_obra', args=[obra_outra.id]),
+            {
+                'nome_obra': 'Tentativa',
+                'cliente': 'Cliente',
+                'status_obra': 'em_andamento',
+                'responsavel': '',
+                'data_inicio': '',
+                'observacoes': '',
+                'valor_contrato': '1.00',
+                'projecao_despesa': '0.00',
+            },
+        )
+
+        self.assertEqual(response_get.status_code, 404)
+        self.assertEqual(response_post.status_code, 404)
+        obra_outra.refresh_from_db()
+        self.assertEqual(obra_outra.nome_obra, 'Obra Edicao Bloqueada')
+
+    def test_exclusao_de_obra_de_outra_empresa_retorna_404(self):
+        outra_empresa = Empresa.objects.create(nome='Empresa Teste', slug='empresa-teste-exclusao')
+        obra_outra = Obra.objects.create(nome_obra='Obra Exclusao Bloqueada', empresa=outra_empresa)
+
+        response = self.client.post(reverse('excluir_obra', args=[obra_outra.id]))
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(Obra.objects.filter(id=obra_outra.id).exists())
+
+    def test_relatorio_de_obra_de_outra_empresa_retorna_404(self):
+        outra_empresa = Empresa.objects.create(nome='Empresa Teste', slug='empresa-teste-relatorio')
+        obra_outra = Obra.objects.create(nome_obra='Obra Relatorio Bloqueada', empresa=outra_empresa)
+
+        response = self.client.get(reverse('relatorio_obra', args=[obra_outra.id]))
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_acesso_direto_a_filho_de_outra_empresa_retorna_404(self):
+        outra_empresa = Empresa.objects.create(nome='Empresa Teste', slug='empresa-teste-filho')
+        obra_outra = Obra.objects.create(nome_obra='Obra Filho Bloqueada', empresa=outra_empresa)
+        nota_outra = NotaFiscal.objects.create(
+            obra=obra_outra,
+            numero='NF-OUTRA',
+            data_emissao=date(2026, 4, 20),
+            valor_bruto=Decimal('90.00'),
+        )
+
+        response = self.client.get(reverse('detalhe_nota_fiscal', args=[obra_outra.id, nota_outra.id]))
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_post_adulterado_na_criacao_de_obra_ignora_empresa_enviada(self):
+        outra_empresa = Empresa.objects.create(nome='Empresa Teste', slug='empresa-teste-tampering')
+
+        response = self.client.post(
+            reverse('nova_obra'),
+            {
+                'nome_obra': 'Obra Criada Segura',
+                'empresa': str(outra_empresa.id),
+                'cliente': 'Cliente',
+                'status_obra': 'em_andamento',
+                'responsavel': '',
+                'data_inicio': '',
+                'observacoes': '',
+                'valor_contrato': '123.00',
+                'projecao_despesa': '0.00',
+            },
+        )
+
+        obra = Obra.objects.get(nome_obra='Obra Criada Segura')
+        self.assertRedirects(response, reverse('detalhe_obra', args=[obra.id]))
+        self.assertEqual(obra.empresa, self.empresa)

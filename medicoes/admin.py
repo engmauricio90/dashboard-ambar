@@ -20,9 +20,9 @@ class ItemOrcamentoMedicaoInline(admin.TabularInline):
 
 @admin.register(Empreiteiro)
 class EmpreiteiroAdmin(admin.ModelAdmin):
-    list_display = ['nome', 'cpf_cnpj', 'pix', 'telefone', 'ativo']
-    search_fields = ['nome', 'cpf_cnpj', 'pix', 'telefone']
-    list_filter = ['ativo']
+    list_display = ['nome', 'empresa', 'cpf_cnpj', 'pix', 'telefone', 'ativo']
+    search_fields = ['nome', 'cpf_cnpj', 'pix', 'telefone', 'empresa__nome']
+    list_filter = ['empresa', 'ativo']
 
 
 @admin.register(OrcamentoMedicao)

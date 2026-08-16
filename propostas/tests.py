@@ -5,6 +5,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from controles.models import OrcamentoRadarObra
+from empresas.models import Empresa, UsuarioEmpresa
 
 from .models import Proposta
 
@@ -13,6 +14,8 @@ class PropostaTests(TestCase):
     def setUp(self):
         user_model = get_user_model()
         self.user = user_model.objects.create_user(username='comercial', password='senha-forte-123')
+        self.empresa = Empresa.objects.get(slug='ambar')
+        UsuarioEmpresa.objects.create(usuario=self.user, empresa=self.empresa)
         self.client.force_login(self.user)
 
     def _payload_base(self):
@@ -83,6 +86,7 @@ class PropostaTests(TestCase):
 
     def test_lista_propostas_carrega(self):
         proposta = Proposta.objects.create(
+            empresa=self.empresa,
             numero_sequencial=1,
             ano=2026,
             cliente='Cliente Teste',

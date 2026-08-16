@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from obras.models import DespesaObra, NotaFiscal, Obra, RetencaoTecnicaObra
 from controles.models import ItemOrdemCompraGeral, NotaFiscalOrdemCompraGeral, OrdemCompraGeral
+from empresas.models import Empresa, UsuarioEmpresa
 
 from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor, ItemContaPagarOrdemCompra, PrevisaoFinanceira
 
@@ -19,9 +20,95 @@ class FinanceiroIntegracaoObraTests(TestCase):
         user_model = get_user_model()
         self.user = user_model.objects.create_user(username='financeiro', password='senha-forte-123')
         self.user.groups.add(Group.objects.get_or_create(name='Financeiro')[0])
+        self.empresa, _ = Empresa.objects.get_or_create(slug='ambar', defaults={'nome': 'Ambar Engenharia'})
+        UsuarioEmpresa.objects.create(usuario=self.user, empresa=self.empresa, administrador_empresa=True)
         self.client.force_login(self.user)
-        self.obra = Obra.objects.create(nome_obra='Obra Financeira', cliente='Cliente X')
-        self.centro = CentroCusto.objects.create(nome='Obras')
+        self.obra = Obra.objects.create(empresa=self.empresa, nome_obra='Obra Financeira', cliente='Cliente X')
+        self.centro = CentroCusto.objects.create(empresa=self.empresa, nome='Obras')
+
+    def _outra_empresa_com_cadastros(self):
+        outra = Empresa.objects.create(nome='Cassoni', slug='cassoni', ativa=True)
+        obra = Obra.objects.create(empresa=outra, nome_obra='Obra Cassoni', cliente='Cliente Cassoni')
+        centro = CentroCusto.objects.create(empresa=outra, nome='Centro Cassoni')
+        fornecedor = Fornecedor.objects.create(empresa=outra, nome='Fornecedor Cassoni', cpf_cnpj='11')
+        return outra, obra, centro, fornecedor
+
+    def test_financeiro_nao_lista_contas_de_outra_empresa(self):
+        _, obra_outra, centro_outra, fornecedor_outra = self._outra_empresa_com_cadastros()
+        ContaPagar.objects.create(
+            empresa=self.empresa,
+            fornecedor='Fornecedor Ambar',
+            obra=self.obra,
+            centro_custo=self.centro,
+            categoria='material',
+            descricao='Conta Ambar',
+            data_emissao=date(2026, 4, 1),
+            data_vencimento=date(2026, 4, 10),
+            valor=Decimal('100.00'),
+        )
+        ContaPagar.objects.create(
+            empresa=obra_outra.empresa,
+            fornecedor='Fornecedor Cassoni',
+            fornecedor_cadastro=fornecedor_outra,
+            obra=obra_outra,
+            centro_custo=centro_outra,
+            categoria='material',
+            descricao='Conta Cassoni',
+            data_emissao=date(2026, 4, 1),
+            data_vencimento=date(2026, 4, 10),
+            valor=Decimal('200.00'),
+        )
+
+        response = self.client.get(reverse('lista_contas_pagar'))
+
+        self.assertContains(response, 'Fornecedor Ambar')
+        self.assertNotContains(response, 'Fornecedor Cassoni')
+
+    def test_financeiro_rejeita_post_com_vinculos_de_outra_empresa(self):
+        _, obra_outra, centro_outra, fornecedor_outra = self._outra_empresa_com_cadastros()
+
+        response = self.client.post(
+            reverse('nova_conta_pagar'),
+            {
+                'fornecedor': 'Fornecedor adulterado',
+                'fornecedor_cadastro': fornecedor_outra.id,
+                'obra': obra_outra.id,
+                'centro_custo': centro_outra.id,
+                'categoria': 'material',
+                'ordem_compra': '',
+                'numero_nf': 'NF-X',
+                'descricao': 'Conta adulterada',
+                'data_emissao': '2026-04-01',
+                'data_vencimento': '2026-04-10',
+                'valor': '100.00',
+                'observacoes': '',
+                'itens_oc-TOTAL_FORMS': '0',
+                'itens_oc-INITIAL_FORMS': '0',
+                'itens_oc-MIN_NUM_FORMS': '0',
+                'itens_oc-MAX_NUM_FORMS': '1000',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(ContaPagar.objects.filter(descricao='Conta adulterada').exists())
+
+    def test_financeiro_nao_abre_conta_de_outra_empresa_por_id(self):
+        _, obra_outra, centro_outra, _fornecedor_outra = self._outra_empresa_com_cadastros()
+        conta = ContaPagar.objects.create(
+            empresa=obra_outra.empresa,
+            fornecedor='Fornecedor Cassoni',
+            obra=obra_outra,
+            centro_custo=centro_outra,
+            categoria='material',
+            descricao='Conta fora do tenant',
+            data_emissao=date(2026, 4, 1),
+            data_vencimento=date(2026, 4, 10),
+            valor=Decimal('200.00'),
+        )
+
+        response = self.client.get(reverse('editar_conta_pagar', args=[conta.id]))
+
+        self.assertEqual(response.status_code, 404)
 
     def test_conta_receber_cria_nota_e_retencoes_na_obra(self):
         conta = ContaReceber.objects.create(
@@ -266,7 +353,11 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertContains(response, 'name="itens_oc-TOTAL_FORMS" value="0"')
 
     def test_exclui_fornecedor_sem_apagar_lancamentos(self):
-        fornecedor = Fornecedor.objects.create(nome='Fornecedor Cadastro', cpf_cnpj='00.000.000/0001-00')
+        fornecedor = Fornecedor.objects.create(
+            empresa=self.empresa,
+            nome='Fornecedor Cadastro',
+            cpf_cnpj='00.000.000/0001-00',
+        )
         conta = ContaPagar.objects.create(
             fornecedor='Fornecedor Cadastro',
             fornecedor_cadastro=fornecedor,
@@ -567,7 +658,7 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertContains(response, 'fornecedor;cpf_cnpj;obra;centro_custo')
 
     def test_importa_despesas_csv_padrao_ambar(self):
-        Obra.objects.create(nome_obra='Orla de Ipanema')
+        Obra.objects.create(empresa=self.empresa, nome_obra='Orla de Ipanema')
         csv_text = (
             'fornecedor;cpf_cnpj;obra;centro_custo;categoria;numero_nf;descricao;data_emissao;data_vencimento;valor;status;data_pagamento;valor_pago;observacoes;codigo_externo\n'
             'Fornecedor Obra;00.000.000/0001-00;Orla de Ipanema;;material;NFM. 123;Compra de tubos;01/04/2026;08/04/2026;1.005,00;aberto;;;;AMB-1\n'
@@ -596,7 +687,7 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertEqual(conta_paga.diferenca_pagamento, Decimal('15.00'))
 
     def test_importa_credores_sienge_cria_contas_e_despesas(self):
-        Obra.objects.create(nome_obra='IPANEMA')
+        Obra.objects.create(empresa=self.empresa, nome_obra='IPANEMA')
         csv_text = (
             '"";\n'
             '"Centro de Custo: ";"4 - Orla de Ipanema";\n'
@@ -773,7 +864,7 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertEqual(grafico['pagar'], [40.0, 25.0])
 
     def test_relatorio_financeiro_agrupa_por_centro_e_ordena_por_data(self):
-        centro_maquinas = CentroCusto.objects.create(nome='Maquinas')
+        centro_maquinas = CentroCusto.objects.create(empresa=self.empresa, nome='Maquinas')
         ContaPagar.objects.create(
             fornecedor='Fornecedor B',
             obra=self.obra,

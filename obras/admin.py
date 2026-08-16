@@ -30,6 +30,7 @@ class RetencaoTecnicaObraInline(admin.TabularInline):
 class ObraAdmin(admin.ModelAdmin):
     list_display = (
         'nome_obra',
+        'empresa',
         'cliente',
         'status_obra',
         'valor_contrato',
@@ -39,7 +40,7 @@ class ObraAdmin(admin.ModelAdmin):
         'resultado_real',
     )
     search_fields = ('nome_obra', 'cliente', 'responsavel')
-    list_filter = ('status_obra',)
+    list_filter = ('empresa', 'status_obra')
     inlines = [AditivoContratoInline, DespesaObraInline, RetencaoTecnicaObraInline]
 
 

@@ -2,6 +2,7 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 
+from empresas.models import Empresa
 from financeiro.importadores import importar_contas_pagar_credores_csv, importar_contas_pagas_credores_csv
 
 
@@ -15,6 +16,11 @@ class Command(BaseCommand):
             choices=['aberto', 'pago'],
             default='aberto',
             help='Tipo de relatorio: aberto ou pago.',
+        )
+        parser.add_argument(
+            '--empresa-slug',
+            required=True,
+            help='Slug da empresa que recebera os lancamentos importados.',
         )
 
     def handle(self, *args, **options):
@@ -32,8 +38,12 @@ class Command(BaseCommand):
         if conteudo is None:
             conteudo = caminho.read_text(encoding='latin-1', errors='replace')
 
+        empresa = Empresa.objects.filter(slug=options['empresa_slug']).first()
+        if not empresa:
+            raise CommandError(f'Empresa nao encontrada para slug: {options["empresa_slug"]}')
+
         importador = importar_contas_pagas_credores_csv if options['tipo'] == 'pago' else importar_contas_pagar_credores_csv
-        resultado = importador(conteudo)
+        resultado = importador(conteudo, empresa=empresa)
         self.stdout.write(
             self.style.SUCCESS(
                 f'Importacao concluida: {resultado.criadas} criada(s), '

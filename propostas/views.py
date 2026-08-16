@@ -42,7 +42,7 @@ def salvar_formset_preenchido(formset):
 
 
 def lista_propostas(request):
-    propostas = Proposta.objects.prefetch_related('itens_resumo', 'itens_planilha').all()
+    propostas = Proposta.objects.prefetch_related('itens_resumo', 'itens_planilha').filter(empresa=request.empresa)
     totais = {
         'total_propostas': propostas.count(),
         'aguardando_resposta': propostas.filter(situacao='aguardando_resposta').count(),
@@ -67,7 +67,9 @@ def nova_proposta(request):
         planilha_formset = PropostaPlanilhaItemFormSet(post_data, prefix='planilha')
 
         if form.is_valid() and resumo_formset.is_valid() and planilha_formset.is_valid():
-            proposta = form.save()
+            proposta = form.save(commit=False)
+            proposta.empresa = request.empresa
+            proposta.save()
             resumo_formset.instance = proposta
             salvar_formset_preenchido(resumo_formset)
             planilha_formset.instance = proposta
@@ -93,7 +95,7 @@ def nova_proposta(request):
 
 
 def editar_proposta(request, proposta_id):
-    proposta = get_object_or_404(Proposta, id=proposta_id)
+    proposta = get_object_or_404(Proposta, id=proposta_id, empresa=request.empresa)
 
     if request.method == 'POST':
         post_data = normalizar_post_decimais(request.POST)
@@ -102,7 +104,9 @@ def editar_proposta(request, proposta_id):
         planilha_formset = PropostaPlanilhaItemFormSet(post_data, instance=proposta, prefix='planilha')
 
         if form.is_valid() and resumo_formset.is_valid() and planilha_formset.is_valid():
-            proposta = form.save()
+            proposta = form.save(commit=False)
+            proposta.empresa = request.empresa
+            proposta.save()
             salvar_formset_preenchido(resumo_formset)
             salvar_formset_preenchido(planilha_formset)
             proposta.sincronizar_radar()
@@ -130,6 +134,7 @@ def visualizar_proposta(request, proposta_id):
     proposta = get_object_or_404(
         Proposta.objects.prefetch_related('itens_resumo', 'itens_planilha'),
         id=proposta_id,
+        empresa=request.empresa,
     )
     return render(
         request,

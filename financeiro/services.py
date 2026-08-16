@@ -159,6 +159,9 @@ def sincronizar_conta_pagar_ordem_compra(conta):
     if not conta.ordem_compra_id or not conta.numero_nf:
         conta.notas_ordem_compra.all().delete()
         return
+    if conta.ordem_compra.empresa_id != conta.empresa_id:
+        conta.notas_ordem_compra.all().delete()
+        return
 
     itens = list(conta.itens_ordem_compra.select_related('item_ordem_compra'))
     if not itens and conta.item_ordem_compra_id and conta.quantidade_oc:
@@ -175,6 +178,8 @@ def sincronizar_conta_pagar_ordem_compra(conta):
     for item_conta in itens:
         item_oc = item_conta.item_ordem_compra
         if not item_oc:
+            continue
+        if item_oc.ordem_id != conta.ordem_compra_id or item_oc.ordem.empresa_id != conta.empresa_id:
             continue
         NotaFiscalOrdemCompraGeral.objects.update_or_create(
             conta_pagar=conta,

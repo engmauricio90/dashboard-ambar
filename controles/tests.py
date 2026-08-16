@@ -5,11 +5,12 @@ from datetime import date
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.core.management import call_command
+from django.core.management import CommandError, call_command
 from django.test import TestCase
 from django.urls import reverse
 from openpyxl import Workbook
 
+from empresas.models import Empresa, UsuarioEmpresa
 from obras.models import Obra
 from financeiro.models import CentroCusto, ContaPagar, Fornecedor
 
@@ -47,7 +48,38 @@ class ControleAbastecimentoTests(TestCase):
         user_model = get_user_model()
         self.user = user_model.objects.create_user(username='operador', password='senha-forte-123')
         self.user.groups.add(Group.objects.get_or_create(name='Financeiro')[0])
+        self.empresa = Empresa.objects.get(slug='ambar')
+        UsuarioEmpresa.objects.create(usuario=self.user, empresa=self.empresa)
         self.client.force_login(self.user)
+
+    def _obra(self, **kwargs):
+        kwargs.setdefault('nome_obra', 'Obra Teste')
+        kwargs.setdefault('empresa', self.empresa)
+        return Obra.objects.create(**kwargs)
+
+    def _veiculo(self, **kwargs):
+        kwargs.setdefault('empresa', self.empresa)
+        return VeiculoMaquina.objects.create(**kwargs)
+
+    def _bombona(self, **kwargs):
+        kwargs.setdefault('empresa', self.empresa)
+        return BombonaCombustivel.objects.create(**kwargs)
+
+    def _locadora(self, **kwargs):
+        kwargs.setdefault('empresa', self.empresa)
+        return LocadoraEquipamento.objects.create(**kwargs)
+
+    def _fornecedor_maquina(self, **kwargs):
+        kwargs.setdefault('empresa', self.empresa)
+        return FornecedorMaquinaLocacao.objects.create(**kwargs)
+
+    def _radar(self, **kwargs):
+        kwargs.setdefault('empresa', self.empresa)
+        return OrcamentoRadarObra.objects.create(**kwargs)
+
+    def _solicitante_concretagem(self, **kwargs):
+        kwargs.setdefault('empresa', self.empresa)
+        return SolicitanteConcretagem.objects.create(**kwargs)
 
     def test_home_controles_carrega(self):
         response = self.client.get(reverse('controles_home'))
@@ -57,7 +89,7 @@ class ControleAbastecimentoTests(TestCase):
         self.assertContains(response, 'Controle de abastecimento')
 
     def test_cria_edita_e_gera_pdf_cronograma_obra(self):
-        obra = Obra.objects.create(nome_obra='Obra Cronograma')
+        obra = self._obra(nome_obra='Obra Cronograma')
 
         response = self.client.post(
             reverse('novo_cronograma_obra'),
@@ -109,7 +141,7 @@ class ControleAbastecimentoTests(TestCase):
         self.assertTrue(pdf.content.startswith(b'%PDF'))
 
     def test_cria_faturamento_direto_e_reduz_saldo_da_obra(self):
-        obra = Obra.objects.create(nome_obra='Obra FD', valor_contrato=Decimal('1000.00'))
+        obra = self._obra(nome_obra='Obra FD', valor_contrato=Decimal('1000.00'))
 
         response = self.client.post(
             reverse('novo_faturamento_direto'),
@@ -139,7 +171,7 @@ class ControleAbastecimentoTests(TestCase):
         self.assertContains(response_obra, 'Medicao 02')
 
     def test_exclui_faturamento_direto_e_recalcula_saldo_da_obra(self):
-        obra = Obra.objects.create(nome_obra='Obra FD Excluir', valor_contrato=Decimal('1000.00'))
+        obra = self._obra(nome_obra='Obra FD Excluir', valor_contrato=Decimal('1000.00'))
         faturamento = FaturamentoDireto.objects.create(
             obra=obra,
             data_lancamento=date(2026, 5, 14),
@@ -179,7 +211,7 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(veiculo.placa, 'ABC1234')
 
     def test_cria_registro_abastecimento(self):
-        veiculo = VeiculoMaquina.objects.create(
+        veiculo = self._veiculo(
             placa='MAQ01',
             descricao='Retroescavadeira',
             tipo='maquina',
@@ -294,6 +326,7 @@ class ControleAbastecimentoTests(TestCase):
 
     def test_nova_ordem_compra_traz_dados_ambar_e_busca_fornecedor(self):
         Fornecedor.objects.create(
+            empresa=self.empresa,
             nome='Fornecedor Teste',
             cpf_cnpj='12.345.678/0001-90',
             cidade='Campo Bom',
@@ -310,6 +343,7 @@ class ControleAbastecimentoTests(TestCase):
 
     def test_ordem_compra_preenche_endereco_do_fornecedor_central(self):
         fornecedor = Fornecedor.objects.create(
+            empresa=self.empresa,
             nome='Fornecedor Central',
             cpf_cnpj='11.111.111/0001-11',
             ie_identidade='123456',
@@ -320,9 +354,10 @@ class ControleAbastecimentoTests(TestCase):
             cep='90000-000',
             telefone='(51) 99999-9999',
         )
-        obra = Obra.objects.create(nome_obra='Obra Fornecedor')
+        obra = self._obra(nome_obra='Obra Fornecedor')
 
         ordem = OrdemCompraGeral.objects.create(
+            empresa=self.empresa,
             numero='012/2026',
             fornecedor_cadastro=fornecedor,
             obra=obra,
@@ -339,6 +374,7 @@ class ControleAbastecimentoTests(TestCase):
 
     def test_pdf_ordem_compra_geral_com_muitos_itens_quebra_paginas(self):
         ordem = OrdemCompraGeral.objects.create(
+            empresa=self.empresa,
             numero='099/2026',
             fornecedor='Fornecedor com muitos itens',
             empresa_razao_social='AMBAR ENGENHARIA',
@@ -362,10 +398,10 @@ class ControleAbastecimentoTests(TestCase):
         self.assertTrue(pdf_response.content.startswith(b'%PDF'))
 
     def test_lista_ordens_compra_filtra_e_totaliza_por_obra(self):
-        obra_a = Obra.objects.create(nome_obra='Obra A')
-        obra_b = Obra.objects.create(nome_obra='Obra B')
-        ordem_a = OrdemCompraGeral.objects.create(numero='010/2026', fornecedor='Fornecedor A', obra=obra_a)
-        ordem_b = OrdemCompraGeral.objects.create(numero='011/2026', fornecedor='Fornecedor B', obra=obra_b)
+        obra_a = self._obra(nome_obra='Obra A')
+        obra_b = self._obra(nome_obra='Obra B')
+        ordem_a = OrdemCompraGeral.objects.create(empresa=self.empresa, numero='010/2026', fornecedor='Fornecedor A', obra=obra_a)
+        ordem_b = OrdemCompraGeral.objects.create(empresa=self.empresa, numero='011/2026', fornecedor='Fornecedor B', obra=obra_b)
         ItemOrdemCompraGeral.objects.create(
             ordem=ordem_a,
             item=1,
@@ -388,9 +424,10 @@ class ControleAbastecimentoTests(TestCase):
         self.assertNotContains(response, 'Fornecedor B')
 
     def test_lista_ordens_compra_paginas_preservando_filtro(self):
-        obra = Obra.objects.create(nome_obra='Obra Paginada')
+        obra = self._obra(nome_obra='Obra Paginada')
         for index in range(25):
             ordem = OrdemCompraGeral.objects.create(
+                empresa=self.empresa,
                 numero=f'{index + 1:03d}/2026',
                 fornecedor=f'Fornecedor {index + 1:02d}',
                 obra=obra,
@@ -418,9 +455,10 @@ class ControleAbastecimentoTests(TestCase):
         self.assertContains(segunda_pagina, 'Pagina 2 de 2')
 
     def test_botao_nf_ordem_compra_direciona_para_conta_pagar(self):
-        obra = Obra.objects.create(nome_obra='Obra OC', cliente='Cliente')
-        centro = CentroCusto.objects.create(nome='Obras')
+        obra = self._obra(nome_obra='Obra OC', cliente='Cliente')
+        centro = CentroCusto.objects.create(empresa=self.empresa, nome='Obras')
         ordem = OrdemCompraGeral.objects.create(
+            empresa=self.empresa,
             fornecedor='Fornecedor OC',
             obra=obra,
             centro_custo=centro,
@@ -441,7 +479,7 @@ class ControleAbastecimentoTests(TestCase):
         self.assertRedirects(response, f'{reverse("nova_conta_pagar")}?ordem_compra={ordem.id}')
 
     def test_cria_ordem_combustivel_para_veiculo_e_nf(self):
-        veiculo = VeiculoMaquina.objects.create(
+        veiculo = self._veiculo(
             placa='oc1234',
             descricao='Caminhao tanque',
             tipo='caminhao',
@@ -500,7 +538,7 @@ class ControleAbastecimentoTests(TestCase):
         self.assertTrue(response.content.startswith(b'%PDF'))
 
     def test_cria_ordem_combustivel_para_bombona(self):
-        bombona = BombonaCombustivel.objects.create(
+        bombona = self._bombona(
             identificacao='bmb-01',
             capacidade_litros=Decimal('200.00'),
             localizacao='Almoxarifado',
@@ -532,8 +570,8 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(str(ordem.destino_display), 'BMB-01')
 
     def test_cria_ordem_locacao_maquina_com_apontamento_e_nf(self):
-        obra = Obra.objects.create(nome_obra='Obra Maquinas')
-        fornecedor = FornecedorMaquinaLocacao.objects.create(nome='Maquinas Pesadas Ltda')
+        obra = self._obra(nome_obra='Obra Maquinas')
+        fornecedor = self._fornecedor_maquina(nome='Maquinas Pesadas Ltda')
         maquina = MaquinaLocacaoCatalogo.objects.create(nome='Retroescavadeira', categoria='Linha amarela')
 
         response = self.client.post(
@@ -652,8 +690,8 @@ class ControleAbastecimentoTests(TestCase):
 
     def test_cria_locacao_equipamento(self):
         equipamento = EquipamentoLocadoCatalogo.objects.create(nome='Plataforma elevatoria')
-        locadora = LocadoraEquipamento.objects.create(nome='Locadora Sul')
-        obra = Obra.objects.create(nome_obra='Obra Teste')
+        locadora = self._locadora(nome='Locadora Sul')
+        obra = self._obra(nome_obra='Obra Teste')
 
         response = self.client.post(
             reverse('nova_locacao_equipamento'),
@@ -683,8 +721,8 @@ class ControleAbastecimentoTests(TestCase):
 
     def test_lista_locacoes_destaca_resumo_por_obra(self):
         equipamento = EquipamentoLocadoCatalogo.objects.create(nome='Gerador')
-        locadora = LocadoraEquipamento.objects.create(nome='Locadora Sul')
-        obra = Obra.objects.create(nome_obra='Condominio Rithmo', cliente='Cliente X')
+        locadora = self._locadora(nome='Locadora Sul')
+        obra = self._obra(nome_obra='Condominio Rithmo', cliente='Cliente X')
         LocacaoEquipamento.objects.create(
             equipamento=equipamento,
             locadora=locadora,
@@ -702,10 +740,10 @@ class ControleAbastecimentoTests(TestCase):
 
     def test_lista_locacoes_aplica_filtros(self):
         equipamento = EquipamentoLocadoCatalogo.objects.create(nome='Gerador')
-        locadora_a = LocadoraEquipamento.objects.create(nome='Sulmak')
-        locadora_b = LocadoraEquipamento.objects.create(nome='RM')
-        obra_a = Obra.objects.create(nome_obra='Condominio Rithmo')
-        obra_b = Obra.objects.create(nome_obra='Ipanema')
+        locadora_a = self._locadora(nome='Sulmak')
+        locadora_b = self._locadora(nome='RM')
+        obra_a = self._obra(nome_obra='Condominio Rithmo')
+        obra_b = self._obra(nome_obra='Ipanema')
         LocacaoEquipamento.objects.create(
             equipamento=equipamento,
             locadora=locadora_a,
@@ -733,8 +771,8 @@ class ControleAbastecimentoTests(TestCase):
 
     def test_relatorio_locacoes_pdf_responde_pdf(self):
         equipamento = EquipamentoLocadoCatalogo.objects.create(nome='Betoneira')
-        locadora = LocadoraEquipamento.objects.create(nome='Sulmak')
-        obra = Obra.objects.create(nome_obra='Condominio Rithmo')
+        locadora = self._locadora(nome='Sulmak')
+        obra = self._obra(nome_obra='Condominio Rithmo')
         LocacaoEquipamento.objects.create(
             equipamento=equipamento,
             locadora=locadora,
@@ -751,8 +789,8 @@ class ControleAbastecimentoTests(TestCase):
 
     def test_solicita_retirada_e_baixa_locacao(self):
         equipamento = EquipamentoLocadoCatalogo.objects.create(nome='Andaime')
-        locadora = LocadoraEquipamento.objects.create(nome='Locadora Centro')
-        obra = Obra.objects.create(nome_obra='Obra Retirada')
+        locadora = self._locadora(nome='Locadora Centro')
+        obra = self._obra(nome_obra='Obra Retirada')
         locacao = LocacaoEquipamento.objects.create(
             equipamento=equipamento,
             locadora=locadora,
@@ -789,8 +827,8 @@ class ControleAbastecimentoTests(TestCase):
 
     def test_editar_locacao_mantem_datas_no_formulario(self):
         equipamento = EquipamentoLocadoCatalogo.objects.create(nome='Betoneira')
-        locadora = LocadoraEquipamento.objects.create(nome='Locadora Centro')
-        obra = Obra.objects.create(nome_obra='Obra Datas')
+        locadora = self._locadora(nome='Locadora Centro')
+        obra = self._obra(nome_obra='Obra Datas')
         locacao = LocacaoEquipamento.objects.create(
             equipamento=equipamento,
             locadora=locadora,
@@ -828,7 +866,7 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(orcamento.situacao, 'aguardando_resposta')
 
     def test_lista_radar_exibe_contadores(self):
-        OrcamentoRadarObra.objects.create(
+        self._radar(
             numero='ORC-002',
             cliente='Cliente Fechado',
             descricao='Obra aprovada',
@@ -844,7 +882,7 @@ class ControleAbastecimentoTests(TestCase):
         self.assertContains(response, 'Cliente Fechado')
 
     def test_atualiza_radar_obras_em_lote(self):
-        primeiro = OrcamentoRadarObra.objects.create(
+        primeiro = self._radar(
             numero='ORC-003',
             cliente='Cliente Um',
             descricao='Primeira oportunidade',
@@ -853,7 +891,7 @@ class ControleAbastecimentoTests(TestCase):
             temperatura=2,
             valor_estimado=Decimal('15000.00'),
         )
-        segundo = OrcamentoRadarObra.objects.create(
+        segundo = self._radar(
             numero='ORC-004',
             cliente='Cliente Dois',
             descricao='Segunda oportunidade',
@@ -883,7 +921,7 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(segundo.temperatura, 1)
 
     def test_cria_contrato_e_faturamento_concretagem(self):
-        obra = Obra.objects.create(nome_obra='Obra Concreto')
+        obra = self._obra(nome_obra='Obra Concreto')
         contrato = ContratoConcretagem.objects.create(
             obra=obra,
             fornecedor='Concreteira Teste',
@@ -896,7 +934,7 @@ class ControleAbastecimentoTests(TestCase):
             adicional_m3_faltante=Decimal('50.00'),
             volume_minimo_m3=Decimal('8.00'),
         )
-        solicitante = SolicitanteConcretagem.objects.create(nome='Equipe obra')
+        solicitante = self._solicitante_concretagem(nome='Equipe obra')
 
         response = self.client.post(
             reverse('novo_faturamento_concretagem', args=[contrato.id]),
@@ -925,7 +963,7 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(faturamento.diferenca, Decimal('0.0000'))
 
     def test_lista_concretagens_carrega(self):
-        obra = Obra.objects.create(nome_obra='Obra Lista Concreto')
+        obra = self._obra(nome_obra='Obra Lista Concreto')
         ContratoConcretagem.objects.create(
             obra=obra,
             fornecedor='Fornecedor Concreto',
@@ -940,7 +978,7 @@ class ControleAbastecimentoTests(TestCase):
         self.assertContains(response, 'Fornecedor Concreto')
 
     def test_importa_planilha_de_locacoes_por_obra(self):
-        Obra.objects.create(nome_obra='Condominio Rithmo')
+        self._obra(nome_obra='Condominio Rithmo')
 
         workbook = Workbook()
         worksheet = workbook.active
@@ -958,7 +996,7 @@ class ControleAbastecimentoTests(TestCase):
             temp_path = temp_file.name
         try:
             workbook.save(temp_path)
-            call_command('importar_locacoes_equipamentos', temp_path)
+            call_command('importar_locacoes_equipamentos', temp_path, empresa=self.empresa.slug)
         finally:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
@@ -972,3 +1010,11 @@ class ControleAbastecimentoTests(TestCase):
 
         entrega = LocacaoEquipamento.objects.get(equipamento__nome='BOMBA MANGOTE 3"')
         self.assertEqual(entrega.status, 'aguardando_entrega')
+
+    def test_importacao_locacoes_exige_empresa_explicita(self):
+        with self.assertRaisesMessage(CommandError, 'Informe --empresa ou --empresa-slug'):
+            call_command('importar_locacoes_equipamentos', 'arquivo-inexistente.xlsx')
+
+    def test_importacao_locacoes_rejeita_empresa_inexistente(self):
+        with self.assertRaisesMessage(CommandError, 'Empresa "empresa-inexistente" nao encontrada.'):
+            call_command('importar_locacoes_equipamentos', 'arquivo-inexistente.xlsx', empresa_slug='empresa-inexistente')

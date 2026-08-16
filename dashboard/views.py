@@ -4,20 +4,25 @@ from django.db.models import Prefetch
 from django.http import HttpResponse
 from django.shortcuts import render
 
+from empresas.decorators import empresa_required
 from obras.models import NotaFiscal, Obra
 
 from .forms import DashboardFiltroForm
 
 
-def _obras_base_queryset():
-    notas_queryset = NotaFiscal.objects.prefetch_related('retencoes', 'impostos').order_by('-data_emissao', '-id')
+def _obras_base_queryset(empresa):
+    notas_queryset = (
+        NotaFiscal.objects.filter(obra__empresa=empresa)
+        .prefetch_related('retencoes', 'impostos')
+        .order_by('-data_emissao', '-id')
+    )
     return Obra.objects.prefetch_related(
         'aditivos_registrados',
         'despesas_registradas',
         'faturamentos_diretos',
         'retencoes_tecnicas_registradas',
         Prefetch('notas_fiscais', queryset=notas_queryset),
-    )
+    ).filter(empresa=empresa)
 
 
 def _build_dashboard_context(obras_resumo, obras_lista=None):
@@ -118,7 +123,7 @@ def _ordenar_obras_lista(obras, ordenacao):
 
 def _get_filtered_obras(request):
     form = DashboardFiltroForm(request.GET or None)
-    obras = _obras_base_queryset()
+    obras = _obras_base_queryset(request.empresa)
 
     if form.is_valid():
         busca = form.cleaned_data['busca']
@@ -138,13 +143,15 @@ def _get_filtered_obras(request):
     return _ordenar_obras_lista(list(obras), 'resultado_real_desc'), form
 
 
+@empresa_required
 def home(request):
     obras_lista, filtro_form = _get_filtered_obras(request)
-    contexto = _build_dashboard_context(_obras_base_queryset(), obras_lista)
+    contexto = _build_dashboard_context(_obras_base_queryset(request.empresa), obras_lista)
     contexto['filtro_form'] = filtro_form
     return render(request, 'dashboard/home.html', contexto)
 
 
+@empresa_required
 def relatorio_geral(request):
     obras_lista, filtro_form = _get_filtered_obras(request)
     contexto = _build_dashboard_context(obras_lista, obras_lista)

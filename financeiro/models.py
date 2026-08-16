@@ -1,12 +1,35 @@
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.db.models import Q
 
 from obras.models import DespesaObra, NotaFiscal, Obra, RetencaoTecnicaObra
 
 
+def _empresa_de_relacao(empresa, objeto, nome_campo):
+    if not objeto:
+        return empresa
+    objeto_empresa_id = getattr(objeto, 'empresa_id', None)
+    if not objeto_empresa_id:
+        return empresa
+    if empresa and empresa.id != objeto_empresa_id:
+        raise ValidationError({nome_campo: 'O vinculo informado pertence a outra empresa.'})
+    return objeto.empresa
+
+
+def _exigir_empresa(empresa):
+    if not empresa:
+        raise ValidationError({'empresa': 'Empresa ativa obrigatoria para este lancamento financeiro.'})
+    return empresa
+
+
 class Fornecedor(models.Model):
+    empresa = models.ForeignKey(
+        'empresas.Empresa',
+        on_delete=models.PROTECT,
+        related_name='fornecedores',
+    )
     nome = models.CharField(max_length=180)
     cpf_cnpj = models.CharField(max_length=30, blank=True)
     ie_identidade = models.CharField(max_length=40, blank=True)
@@ -26,10 +49,15 @@ class Fornecedor(models.Model):
         verbose_name_plural = 'Fornecedores'
         constraints = [
             models.UniqueConstraint(
-                fields=['nome', 'cpf_cnpj'],
-                name='unique_fornecedor_nome_documento',
+                fields=['empresa', 'nome', 'cpf_cnpj'],
+                name='unique_fornecedor_empresa_nome_documento',
             )
         ]
+
+    def save(self, *args, **kwargs):
+        if not self.empresa_id:
+            raise ValidationError({'empresa': 'Empresa ativa obrigatoria para cadastrar fornecedor.'})
+        super().save(*args, **kwargs)
 
     def __str__(self):
         if self.cpf_cnpj:
@@ -38,7 +66,12 @@ class Fornecedor(models.Model):
 
 
 class CentroCusto(models.Model):
-    nome = models.CharField(max_length=120, unique=True)
+    empresa = models.ForeignKey(
+        'empresas.Empresa',
+        on_delete=models.PROTECT,
+        related_name='centros_custo',
+    )
+    nome = models.CharField(max_length=120)
     descricao = models.TextField(blank=True)
     ativo = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -47,6 +80,14 @@ class CentroCusto(models.Model):
         ordering = ['nome']
         verbose_name = 'Centro de custo'
         verbose_name_plural = 'Centros de custo'
+        constraints = [
+            models.UniqueConstraint(fields=['empresa', 'nome'], name='unique_centro_custo_empresa_nome'),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.empresa_id:
+            raise ValidationError({'empresa': 'Empresa ativa obrigatoria para cadastrar centro de custo.'})
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.nome
@@ -70,6 +111,11 @@ class PrevisaoFinanceira(models.Model):
     ]
 
     tipo = models.CharField(max_length=20, choices=TIPO_CHOICES)
+    empresa = models.ForeignKey(
+        'empresas.Empresa',
+        on_delete=models.PROTECT,
+        related_name='previsoes_financeiras',
+    )
     descricao = models.CharField(max_length=255)
     data_prevista = models.DateField()
     valor = models.DecimalField(max_digits=14, decimal_places=2, default=0)
@@ -105,6 +151,13 @@ class PrevisaoFinanceira(models.Model):
     def __str__(self):
         return f'{self.get_tipo_display()} - {self.descricao} - R$ {self.valor}'
 
+    def save(self, *args, **kwargs):
+        empresa = self.empresa if self.empresa_id else None
+        empresa = _empresa_de_relacao(empresa, self.obra, 'obra')
+        empresa = _empresa_de_relacao(empresa, self.centro_custo, 'centro_custo')
+        self.empresa = _exigir_empresa(empresa)
+        super().save(*args, **kwargs)
+
 
 class ContaReceber(models.Model):
     STATUS_ABERTO = 'aberto'
@@ -117,6 +170,11 @@ class ContaReceber(models.Model):
     ]
 
     cliente = models.CharField(max_length=150)
+    empresa = models.ForeignKey(
+        'empresas.Empresa',
+        on_delete=models.PROTECT,
+        related_name='contas_receber',
+    )
     obra = models.ForeignKey(Obra, on_delete=models.SET_NULL, blank=True, null=True, related_name='contas_receber')
     centro_custo = models.ForeignKey(
         CentroCusto,
@@ -175,6 +233,10 @@ class ContaReceber(models.Model):
         return f'{self.descricao} - R$ {self.valor_bruto}'
 
     def save(self, *args, **kwargs):
+        empresa = self.empresa if self.empresa_id else None
+        empresa = _empresa_de_relacao(empresa, self.obra, 'obra')
+        empresa = _empresa_de_relacao(empresa, self.centro_custo, 'centro_custo')
+        self.empresa = _exigir_empresa(empresa)
         with transaction.atomic():
             super().save(*args, **kwargs)
             self.sincronizar_obra()
@@ -235,6 +297,11 @@ class ContaPagar(models.Model):
     ]
 
     fornecedor = models.CharField(max_length=150)
+    empresa = models.ForeignKey(
+        'empresas.Empresa',
+        on_delete=models.PROTECT,
+        related_name='contas_pagar',
+    )
     fornecedor_cadastro = models.ForeignKey(
         Fornecedor,
         on_delete=models.SET_NULL,
@@ -322,10 +389,18 @@ class ContaPagar(models.Model):
     def save(self, *args, **kwargs):
         if self.fornecedor_cadastro_id:
             self.fornecedor = self.fornecedor_cadastro.nome
+        empresa = self.empresa if self.empresa_id else None
         if self.ordem_compra_id:
             self.obra = self.obra or self.ordem_compra.obra
             self.centro_custo = self.centro_custo or self.ordem_compra.centro_custo
             self.categoria = self.categoria or self.ordem_compra.categoria_despesa
+            empresa = _empresa_de_relacao(empresa, self.ordem_compra, 'ordem_compra')
+        empresa = _empresa_de_relacao(empresa, self.obra, 'obra')
+        empresa = _empresa_de_relacao(empresa, self.centro_custo, 'centro_custo')
+        empresa = _empresa_de_relacao(empresa, self.fornecedor_cadastro, 'fornecedor_cadastro')
+        if self.item_ordem_compra_id:
+            empresa = _empresa_de_relacao(empresa, self.item_ordem_compra.ordem, 'item_ordem_compra')
+        self.empresa = _exigir_empresa(empresa)
         if self.quantidade_oc is None:
             self.quantidade_oc = Decimal('0')
         if self.valor_unitario_oc is None:

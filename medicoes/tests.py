@@ -8,6 +8,7 @@ from django.test import TestCase
 from django.urls import reverse
 from openpyxl import load_workbook
 
+from empresas.models import Empresa, UsuarioEmpresa
 from obras.models import Obra
 from controles.models import FaturamentoDireto
 
@@ -27,8 +28,10 @@ from .models import (
 class MedicoesTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(username='usuario', password='senha')
+        self.empresa = Empresa.objects.get(slug='ambar')
+        UsuarioEmpresa.objects.create(usuario=self.user, empresa=self.empresa)
         self.client.force_login(self.user)
-        self.obra = Obra.objects.create(nome_obra='Obra Teste', cliente='Cliente')
+        self.obra = Obra.objects.create(empresa=self.empresa, nome_obra='Obra Teste', cliente='Cliente')
 
     def _orcamento(self):
         orcamento = OrcamentoMedicao.objects.create(
@@ -373,6 +376,7 @@ class MedicoesTests(TestCase):
 
     def test_cria_planilha_manual_e_medicao_cumulativa_empreiteiro(self):
         empreiteiro = Empreiteiro.objects.create(
+            empresa=self.empresa,
             nome='Empreiteiro cadastrado',
             cpf_cnpj='11.111.111/0001-11',
             pix='pix@empreiteiro.com',
@@ -474,8 +478,9 @@ class MedicoesTests(TestCase):
             item_orcamento=item,
             quantidade_periodo=Decimal('10.0000'),
         )
-        empreiteiro = Empreiteiro.objects.create(nome='Empreiteiro Relatorio')
+        empreiteiro = Empreiteiro.objects.create(empresa=self.empresa, nome='Empreiteiro Relatorio')
         medicao_empreiteiro = MedicaoEmpreiteiro.objects.create(
+            empresa=self.empresa,
             tipo=MedicaoEmpreiteiro.TIPO_SIMPLES,
             obra=self.obra,
             empreiteiro_cadastro=empreiteiro,
@@ -494,6 +499,7 @@ class MedicoesTests(TestCase):
         )
         for index in range(16):
             extra = MedicaoEmpreiteiro.objects.create(
+                empresa=self.empresa,
                 tipo=MedicaoEmpreiteiro.TIPO_SIMPLES,
                 obra=self.obra,
                 empreiteiro_cadastro=empreiteiro,
@@ -845,6 +851,7 @@ class MedicoesTests(TestCase):
 
     def test_medicao_empreiteiro_simples_e_exportacoes(self):
         medicao = MedicaoEmpreiteiro.objects.create(
+            empresa=self.empresa,
             tipo=MedicaoEmpreiteiro.TIPO_SIMPLES,
             obra=self.obra,
             empreiteiro='Empreiteiro',
@@ -875,6 +882,7 @@ class MedicoesTests(TestCase):
 
     def test_medicao_simples_usa_cadastro_de_empreiteiro(self):
         empreiteiro = Empreiteiro.objects.create(
+            empresa=self.empresa,
             nome='Empreiteiro cadastrado',
             cpf_cnpj='11.111.111/0001-11',
             pix='pix@empreiteiro.com',
@@ -941,6 +949,7 @@ class MedicoesTests(TestCase):
 
     def test_medicao_cumulativa_reaproveita_empreiteiro_cadastrado(self):
         empreiteiro = Empreiteiro.objects.create(
+            empresa=self.empresa,
             nome='Novo Empreiteiro',
             cpf_cnpj='22.222.222/0001-22',
             pix='pix@novo.com',
@@ -950,6 +959,7 @@ class MedicoesTests(TestCase):
         orcamento.save(update_fields=['tipo'])
 
         primeira = MedicaoEmpreiteiro.objects.create(
+            empresa=self.empresa,
             tipo=MedicaoEmpreiteiro.TIPO_CUMULATIVA,
             orcamento=orcamento,
             obra=self.obra,
@@ -975,6 +985,7 @@ class MedicoesTests(TestCase):
 
     def test_exclui_medicao_empreiteiro_simples(self):
         medicao = MedicaoEmpreiteiro.objects.create(
+            empresa=self.empresa,
             tipo=MedicaoEmpreiteiro.TIPO_SIMPLES,
             obra=self.obra,
             empreiteiro='Empreiteiro',

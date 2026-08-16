@@ -9,6 +9,18 @@ class EmpresaAdmin(admin.ModelAdmin):
     list_filter = ['ativa']
     search_fields = ['nome', 'razao_social', 'nome_fantasia', 'cnpj', 'slug']
     readonly_fields = ['criado_em', 'atualizado_em']
+    fieldsets = (
+        ('Identificacao', {
+            'fields': ('nome', 'razao_social', 'nome_fantasia', 'cnpj', 'slug', 'ativa'),
+            'description': 'Evite alterar o slug de empresas em uso sem revisar vinculos, sessoes e integracoes.',
+        }),
+        ('Branding', {
+            'fields': ('logo', 'cor_primaria', 'cor_secundaria'),
+        }),
+        ('Auditoria', {
+            'fields': ('criado_em', 'atualizado_em'),
+        }),
+    )
 
 
 @admin.register(UsuarioEmpresa)
@@ -17,3 +29,4 @@ class UsuarioEmpresaAdmin(admin.ModelAdmin):
     list_filter = ['empresa', 'ativo', 'administrador_empresa']
     search_fields = ['usuario__username', 'usuario__first_name', 'usuario__last_name', 'usuario__email', 'empresa__nome']
     readonly_fields = ['criado_em']
+    autocomplete_fields = ['usuario', 'empresa']

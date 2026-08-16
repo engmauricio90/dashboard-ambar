@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -12,6 +13,11 @@ class Proposta(models.Model):
 
     numero_sequencial = models.PositiveIntegerField(editable=False)
     ano = models.PositiveIntegerField(editable=False)
+    empresa = models.ForeignKey(
+        'empresas.Empresa',
+        on_delete=models.PROTECT,
+        related_name='propostas',
+    )
     cliente = models.CharField(max_length=150)
     tipo_execucao = models.CharField(max_length=200)
     data_proposta = models.DateField(default=timezone.localdate)
@@ -42,10 +48,14 @@ class Proposta(models.Model):
         verbose_name = 'Proposta comercial'
         verbose_name_plural = 'Propostas comerciais'
         constraints = [
-            models.UniqueConstraint(fields=['numero_sequencial', 'ano'], name='unique_numero_proposta_por_ano'),
+            models.UniqueConstraint(fields=['empresa', 'numero_sequencial', 'ano'], name='unique_numero_proposta_empresa_ano'),
         ]
 
     def save(self, *args, **kwargs):
+        if not self.empresa_id:
+            raise ValidationError({'empresa': 'Empresa ativa obrigatoria para proposta.'})
+        if self.radar_id and self.radar.empresa_id != self.empresa_id:
+            raise ValidationError({'radar': 'O radar informado pertence a outra empresa.'})
         if isinstance(self.data_proposta, str):
             self.data_proposta = parse_date(self.data_proposta)
         if isinstance(self.data_encerramento, str):
@@ -54,7 +64,7 @@ class Proposta(models.Model):
         if not self.pk:
             ano = self.data_proposta.year if self.data_proposta else timezone.localdate().year
             ultimo_numero = (
-                Proposta.objects.filter(ano=ano).aggregate(models.Max('numero_sequencial'))['numero_sequencial__max']
+                Proposta.objects.filter(empresa=self.empresa, ano=ano).aggregate(models.Max('numero_sequencial'))['numero_sequencial__max']
                 or 0
             )
             self.ano = ano
@@ -96,8 +106,10 @@ class Proposta(models.Model):
             'valor_estimado': self.total_final,
             'responsavel': self.engenheiro_nome,
             'observacoes': f'Gerado automaticamente pela proposta {self.numero_formatado}.',
+            'empresa': self.empresa,
         }
         radar, _ = OrcamentoRadarObra.objects.update_or_create(
+            empresa=self.empresa,
             pk=self.radar_id,
             defaults={'numero': self.numero_formatado, **defaults},
         )

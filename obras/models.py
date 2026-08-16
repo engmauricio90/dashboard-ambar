@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Sum
 
@@ -16,6 +17,11 @@ class Obra(models.Model):
     ]
 
     nome_obra = models.CharField(max_length=150)
+    empresa = models.ForeignKey(
+        'empresas.Empresa',
+        on_delete=models.PROTECT,
+        related_name='obras',
+    )
     cliente = models.CharField(max_length=150, blank=True, null=True)
     status_obra = models.CharField(max_length=20, choices=STATUS_CHOICES, default='em_andamento')
     responsavel = models.CharField(max_length=100, blank=True, null=True)
@@ -221,6 +227,11 @@ class Obra(models.Model):
 
     def __str__(self):
         return self.nome_obra
+
+    def save(self, *args, **kwargs):
+        if not self.empresa_id:
+            raise ValidationError({'empresa': 'Empresa ativa obrigatoria para obra.'})
+        super().save(*args, **kwargs)
 
 
 class AditivoContrato(models.Model):
