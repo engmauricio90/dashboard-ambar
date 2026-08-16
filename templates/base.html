@@ -90,7 +90,10 @@
                             <li><a class="dropdown-item" href="{% url 'relatorio_medicoes' %}">Relatórios</a></li>
                         </ul>
                     </div>
-                    <a class="nav-link" href="{% url 'controles_home' %}">Controles</a>
+                        <a class="nav-link" href="{% url 'controles_home' %}">Controles</a>
+                        {% if request.usuario_admin_empresa %}
+                        <a class="nav-link" href="{% url 'identidade_visual_empresa' %}">Minha empresa</a>
+                        {% endif %}
                     {% endif %}
                     <a class="nav-link" href="{% url 'minha_area' %}">Minha area</a>
                     {% if request.user.is_staff or request.user.is_superuser %}

@@ -673,3 +673,78 @@ class Fase4TenantVisualTests(TestCase):
 
         self.assertContains(response, 'empresa-logo')
         self.assertContains(response, 'empresas/cassoni/branding/logo.png')
+
+
+class Fase5IdentidadeVisualTests(TestCase):
+    def setUp(self):
+        self.ambar = obter_ou_criar_empresa_padrao()
+        self.cassoni = Empresa.objects.create(nome='Cassoni Engenharia', slug='cassoni')
+        self.admin = User.objects.create_user(username='admin-identidade', password='senha')
+        self.comum = User.objects.create_user(username='comum-identidade', password='senha')
+        UsuarioEmpresa.objects.create(usuario=self.admin, empresa=self.ambar, administrador_empresa=True)
+        UsuarioEmpresa.objects.create(usuario=self.admin, empresa=self.cassoni, administrador_empresa=True)
+        UsuarioEmpresa.objects.create(usuario=self.comum, empresa=self.ambar, administrador_empresa=False)
+
+    def _selecionar(self, empresa):
+        session = self.client.session
+        session['empresa_id'] = empresa.id
+        session.save()
+
+    def test_admin_da_empresa_edita_identidade_da_empresa_ativa(self):
+        self.client.force_login(self.admin)
+        self._selecionar(self.cassoni)
+
+        response = self.client.post(
+            reverse('identidade_visual_empresa'),
+            {
+                'razao_social': 'Cassoni Engenharia Ltda',
+                'nome_fantasia': 'Cassoni Engenharia',
+                'cnpj': '00.000.000/0001-00',
+                'endereco': 'Rua Cassoni',
+                'cidade': 'Novo Hamburgo',
+                'estado': 'RS',
+                'cep': '',
+                'telefone': '',
+                'email': '',
+                'texto_rodape': 'RODAPE-CASSONI',
+                'cor_primaria': '#123456',
+                'cor_secundaria': '#abcdef',
+                'responsavel_tecnico': 'Eng. Cassoni',
+                'crea_responsavel': 'CREA TESTE',
+            },
+        )
+
+        self.assertRedirects(response, reverse('identidade_visual_empresa'))
+        self.cassoni.refresh_from_db()
+        self.ambar.refresh_from_db()
+        self.assertEqual(self.cassoni.texto_rodape, 'RODAPE-CASSONI')
+        self.assertNotEqual(self.ambar.texto_rodape, 'RODAPE-CASSONI')
+
+    def test_usuario_comum_nao_edita_identidade(self):
+        self.client.force_login(self.comum)
+        self._selecionar(self.ambar)
+
+        response = self.client.get(reverse('identidade_visual_empresa'))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_midia_de_branding_nao_vaza_para_outra_empresa(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            self.cassoni.cabecalho_documentos = SimpleUploadedFile(
+                'cabecalho.png',
+                b'cabecalho-cassoni',
+                content_type='image/png',
+            )
+            self.cassoni.save(update_fields=['cabecalho_documentos'])
+            url = reverse('protected_media', kwargs={'path': self.cassoni.cabecalho_documentos.name})
+
+            self.client.force_login(self.comum)
+            self._selecionar(self.ambar)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 404)
+
+            self.client.force_login(self.admin)
+            self._selecionar(self.cassoni)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            response.close()

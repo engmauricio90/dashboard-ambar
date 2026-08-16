@@ -5,7 +5,17 @@ from django.db import models
 
 def empresa_logo_upload_to(instance, filename):
     slug = instance.slug or 'sem-slug'
-    return f'empresas/{slug}/branding/{filename}'
+    return f'empresas/{slug}/branding/logo/{filename}'
+
+
+def empresa_cabecalho_upload_to(instance, filename):
+    slug = instance.slug or 'sem-slug'
+    return f'empresas/{slug}/branding/cabecalho/{filename}'
+
+
+def empresa_rodape_upload_to(instance, filename):
+    slug = instance.slug or 'sem-slug'
+    return f'empresas/{slug}/branding/rodape/{filename}'
 
 
 class Empresa(models.Model):
@@ -13,8 +23,17 @@ class Empresa(models.Model):
     razao_social = models.CharField(max_length=180, blank=True)
     nome_fantasia = models.CharField(max_length=180, blank=True)
     cnpj = models.CharField(max_length=20, blank=True)
+    endereco = models.CharField(max_length=255, blank=True)
+    cidade = models.CharField(max_length=120, blank=True)
+    estado = models.CharField(max_length=2, blank=True)
+    cep = models.CharField(max_length=20, blank=True)
+    telefone = models.CharField(max_length=40, blank=True)
+    email = models.EmailField(blank=True)
     slug = models.SlugField(max_length=80, unique=True)
     logo = models.ImageField(upload_to=empresa_logo_upload_to, blank=True, null=True)
+    cabecalho_documentos = models.ImageField(upload_to=empresa_cabecalho_upload_to, blank=True, null=True)
+    rodape_documentos = models.ImageField(upload_to=empresa_rodape_upload_to, blank=True, null=True)
+    texto_rodape = models.TextField(blank=True)
     cor_primaria = models.CharField(
         max_length=7,
         blank=True,
@@ -29,6 +48,9 @@ class Empresa(models.Model):
     criado_em = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
 
+    responsavel_tecnico = models.CharField(max_length=160, blank=True)
+    crea_responsavel = models.CharField(max_length=80, blank=True)
+
     class Meta:
         ordering = ['nome']
         verbose_name = 'Empresa'
@@ -36,6 +58,23 @@ class Empresa(models.Model):
 
     def __str__(self):
         return self.nome
+
+    @property
+    def nome_documento(self):
+        return self.razao_social or self.nome_fantasia or self.nome
+
+    @property
+    def linhas_institucionais(self):
+        linhas = []
+        if self.cnpj:
+            linhas.append(f'CNPJ: {self.cnpj}')
+        endereco = ', '.join(item for item in [self.endereco, self.cidade, self.estado, self.cep] if item)
+        if endereco:
+            linhas.append(endereco)
+        contato = ' | '.join(item for item in [self.telefone, self.email] if item)
+        if contato:
+            linhas.append(contato)
+        return linhas
 
 
 class UsuarioEmpresa(models.Model):

@@ -15,8 +15,11 @@ def _usuario_pode_acessar_media(request, path):
     if not normalized_path:
         return False
 
-    if empresa and empresa.logo and _normalized_media_path(empresa.logo.name) == normalized_path:
-        return True
+    if empresa:
+        for field_name in ['logo', 'cabecalho_documentos', 'rodape_documentos']:
+            field = getattr(empresa, field_name, None)
+            if field and _normalized_media_path(field.name) == normalized_path:
+                return True
 
     if getattr(request.user, 'is_authenticated', False):
         perfil = getattr(request.user, 'perfil', None)

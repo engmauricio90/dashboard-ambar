@@ -22,6 +22,7 @@ from PIL import Image, ImageDraw, ImageFont
 from controles.models import FaturamentoDireto
 from controles.views import _build_simple_pdf
 from empresas.decorators import empresa_required
+from empresas.documentos import draw_empresa_footer
 from obras.models import Obra
 
 from .forms import (
@@ -456,8 +457,7 @@ def _pdf_medicao_construtora(medicao):
         draw = ImageDraw.Draw(image)
         footer = f'Pagina {index} de {total_pages}'
         draw.text((margin, footer_y), date.today().strftime('%d/%m/%Y'), font=_font(15), fill=muted)
-        draw.text(((page_w - _font(15).getlength('AMBAR ENGENHARIA')) / 2, footer_y), 'AMBAR ENGENHARIA', font=_font(15, True), fill=muted)
-        draw.text((page_w - margin - _font(15).getlength(footer), footer_y), footer, font=_font(15), fill=muted)
+        draw_empresa_footer(image, draw, medicao.orcamento.obra.empresa, _font(15), _font(15, True), margin=margin, y=footer_y, page_text=footer)
 
     buffer = BytesIO()
     pages[0].save(buffer, 'PDF', save_all=True, append_images=pages[1:], resolution=150)
@@ -831,7 +831,7 @@ def _xlsx_relatorio_medicoes(linhas, colunas):
     return output.getvalue()
 
 
-def _pdf_relatorio_medicoes(linhas, colunas, totais):
+def _pdf_relatorio_medicoes(linhas, colunas, totais, empresa):
     colunas = colunas or RelatorioMedicoesForm.COLUNAS_PADRAO
     headers = [RELATORIO_MEDICOES_COLUNAS[coluna] for coluna in colunas]
     rows = [[_relatorio_linha_display(linha, coluna) for coluna in colunas] for linha in linhas]
@@ -911,8 +911,7 @@ def _pdf_relatorio_medicoes(linhas, colunas, totais):
 
         footer = f'Pagina {page_index} de {len(chunks)}'
         draw.text((margin, page_h - margin), date.today().strftime('%d/%m/%Y'), font=_font(15), fill=muted)
-        draw.text(((page_w - _font(15, True).getlength('AMBAR ENGENHARIA')) / 2, page_h - margin), 'AMBAR ENGENHARIA', font=_font(15, True), fill=muted)
-        draw.text((page_w - margin - _font(15).getlength(footer), page_h - margin), footer, font=_font(15), fill=muted)
+        draw_empresa_footer(image, draw, empresa, _font(15), _font(15, True), margin=margin, y=page_h - margin, page_text=footer)
         pages.append(image)
 
     buffer = BytesIO()
@@ -941,7 +940,7 @@ def relatorio_medicoes(request):
             response['Content-Disposition'] = 'attachment; filename="relatorio_medicoes.xlsx"'
             return response
         if export == 'pdf':
-            response = HttpResponse(_pdf_relatorio_medicoes(linhas, colunas, totais), content_type='application/pdf')
+            response = HttpResponse(_pdf_relatorio_medicoes(linhas, colunas, totais, request.empresa), content_type='application/pdf')
             response['Content-Disposition'] = 'inline; filename="relatorio_medicoes.pdf"'
             return response
 
@@ -1475,8 +1474,7 @@ def _pdf_saldo_contratual(orcamento, linhas, totais):
                 row_y += 50
 
         footer = f'Pagina {page_index + 1} de {len(chunks)}'
-        draw.text((margin, page_h - 56), 'Ambar Engenharia', font=_font(17), fill=muted)
-        draw.text((page_w - margin - _font(17).getlength(footer), page_h - 56), footer, font=_font(17), fill=muted)
+        draw_empresa_footer(image, draw, orcamento.obra.empresa, _font(17), _font(17, True), margin=margin, y=page_h - 56, page_text=footer)
         pages.append(image)
 
     buffer = BytesIO()

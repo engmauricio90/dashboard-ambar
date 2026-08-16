@@ -35,6 +35,20 @@ def usuario_tem_acesso_empresa(user, empresa):
     return empresas_do_usuario(user).filter(pk=empresa.pk).exists()
 
 
+def usuario_administra_empresa(user, empresa):
+    if getattr(user, 'is_superuser', False):
+        return True
+    if not getattr(user, 'is_authenticated', False) or empresa is None:
+        return False
+    return UsuarioEmpresa.objects.filter(
+        usuario=user,
+        empresa=empresa,
+        ativo=True,
+        administrador_empresa=True,
+        empresa__ativa=True,
+    ).exists()
+
+
 def definir_empresa_na_sessao(request, empresa):
     if not usuario_tem_acesso_empresa(request.user, empresa):
         request.session.pop('empresa_id', None)

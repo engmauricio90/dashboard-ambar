@@ -1,10 +1,12 @@
 from django.contrib.auth.decorators import login_required
-from django.http import Http404
+from django.contrib import messages
+from django.http import Http404, HttpResponseForbidden
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 
+from .forms import IdentidadeVisualEmpresaForm
 from .models import Empresa
-from .services import definir_empresa_na_sessao, empresas_do_usuario
+from .services import definir_empresa_na_sessao, empresas_do_usuario, usuario_administra_empresa
 
 
 @login_required
@@ -30,3 +32,23 @@ def trocar_empresa(request, empresa_id):
     if not definir_empresa_na_sessao(request, empresa):
         raise Http404
     return redirect('home')
+
+
+@login_required
+def identidade_visual(request):
+    empresa = getattr(request, 'empresa', None)
+    if not empresa:
+        return redirect('selecionar_empresa')
+    if not usuario_administra_empresa(request.user, empresa):
+        return HttpResponseForbidden('Voce nao tem permissao para editar a identidade visual desta empresa.')
+
+    if request.method == 'POST':
+        form = IdentidadeVisualEmpresaForm(request.POST, request.FILES, instance=empresa)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Identidade visual atualizada com sucesso.')
+            return redirect('identidade_visual_empresa')
+    else:
+        form = IdentidadeVisualEmpresaForm(instance=empresa)
+
+    return render(request, 'empresas/identidade_visual.html', {'form': form, 'empresa': empresa})

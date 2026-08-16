@@ -351,13 +351,9 @@ class OrdemCompraGeral(models.Model):
         related_name='ordens_compra_gerais',
     )
     categoria_despesa = models.CharField(max_length=30, default='material')
-    empresa_razao_social = models.CharField(max_length=180, default='AMBAR ENGENHARIA')
-    empresa_cnpj = models.CharField(max_length=30, blank=True, default='35.693.640/0001-09')
-    empresa_endereco = models.CharField(
-        max_length=255,
-        blank=True,
-        default='Avenida dos Estados, nº 1205, sala 02, centro - Campo Bom',
-    )
+    empresa_razao_social = models.CharField(max_length=180, blank=True)
+    empresa_cnpj = models.CharField(max_length=30, blank=True)
+    empresa_endereco = models.CharField(max_length=255, blank=True)
     fornecedor = models.CharField(max_length=180)
     fornecedor_cadastro = models.ForeignKey(
         'financeiro.Fornecedor',
@@ -388,12 +384,19 @@ class OrdemCompraGeral(models.Model):
         ]
 
     def save(self, *args, **kwargs):
+        is_new = self.pk is None
         empresa = self.empresa if self.empresa_id else None
         if self.obra_id:
             empresa = _empresa_de_relacao(empresa, self.obra, 'obra')
         empresa = _empresa_de_relacao(empresa, self.centro_custo, 'centro_custo')
         empresa = _empresa_de_relacao(empresa, self.fornecedor_cadastro, 'fornecedor_cadastro')
         self.empresa = _exigir_empresa(empresa)
+        if is_new or not self.empresa_razao_social:
+            self.empresa_razao_social = self.empresa.razao_social or self.empresa.nome_fantasia or self.empresa.nome
+        if is_new or not self.empresa_cnpj:
+            self.empresa_cnpj = self.empresa.cnpj
+        if is_new or not self.empresa_endereco:
+            self.empresa_endereco = ' - '.join(item for item in [self.empresa.endereco, self.empresa.cidade] if item)
         if self.fornecedor_cadastro_id:
             fornecedor = self.fornecedor_cadastro
             self.fornecedor = fornecedor.nome

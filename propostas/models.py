@@ -30,8 +30,8 @@ class Proposta(models.Model):
     bdi_percentual = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name='BDI interno (%)')
     local_fechamento = models.CharField(max_length=120, default='Campo Bom/RS')
     data_encerramento = models.DateField(blank=True, null=True)
-    engenheiro_nome = models.CharField(max_length=120, default='Eng. Civil Patrick Ruppenthal de Lima')
-    engenheiro_crea = models.CharField(max_length=80, default='CREA/RS: 198.404')
+    engenheiro_nome = models.CharField(max_length=120, blank=True)
+    engenheiro_crea = models.CharField(max_length=80, blank=True)
     situacao = models.CharField(max_length=30, choices=SITUACAO_CHOICES, default='aguardando_resposta')
     radar = models.OneToOneField(
         OrcamentoRadarObra,
@@ -74,6 +74,10 @@ class Proposta(models.Model):
 
         if not self.data_encerramento:
             self.data_encerramento = self.data_proposta
+        if not self.engenheiro_nome:
+            self.engenheiro_nome = self.empresa.responsavel_tecnico
+        if not self.engenheiro_crea:
+            self.engenheiro_crea = self.empresa.crea_responsavel
 
         super().save(*args, **kwargs)
 

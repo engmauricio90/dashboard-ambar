@@ -336,6 +336,17 @@ class OrdemCompraGeralForm(BootstrapModelForm):
                 'autocomplete': 'off',
             }
         )
+        for field_name in ['empresa_razao_social', 'empresa_cnpj', 'empresa_endereco']:
+            self.fields[field_name].disabled = True
+            self.fields[field_name].required = False
+        if self.empresa and not self.instance.pk:
+            self.initial['empresa_razao_social'] = (
+                self.empresa.razao_social or self.empresa.nome_fantasia or self.empresa.nome
+            )
+            self.initial['empresa_cnpj'] = self.empresa.cnpj
+            self.initial['empresa_endereco'] = ' - '.join(
+                value for value in [self.empresa.endereco, self.empresa.cidade] if value
+            )
 
     class Meta:
         model = OrdemCompraGeral

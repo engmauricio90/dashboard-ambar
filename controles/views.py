@@ -16,6 +16,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from PIL import Image, ImageDraw, ImageFont
 
+from empresas.documentos import draw_empresa_footer, draw_empresa_header
 from financeiro.models import ContaPagar, Fornecedor
 from obras.models import Obra
 
@@ -241,9 +242,9 @@ def _draw_notes_box(draw, title, value, x, y, w):
     return y + 176
 
 
-def _report_background():
+def _report_background(empresa=None):
     bg_path = Path(settings.BASE_DIR) / 'static' / 'propostas' / 'reference' / 'page_frame.png'
-    if bg_path.exists():
+    if getattr(empresa, 'slug', '') == 'ambar' and bg_path.exists():
         return Image.open(bg_path).convert('RGB')
     return Image.new('RGB', (1653, 2338), 'white')
 
@@ -549,20 +550,17 @@ def cronograma_obra_pdf(request, cronograma_id):
     def chunks(values, size):
         return [values[index : index + size] for index in range(0, len(values), size)] or [[]]
 
-    def draw_logo(image):
-        logo_source = Path(settings.BASE_DIR) / 'static' / 'propostas' / 'reference' / 'page_frame.png'
-        if logo_source.exists():
-            logo = Image.open(logo_source).convert('RGB').crop((500, 85, 1160, 250))
-            logo.thumbnail((430, 105))
-            image.paste(logo, ((page_w - logo.width) // 2, 8))
-            return
-        draw = ImageDraw.Draw(image)
-        fallback_font = _font(42, True)
-        draw.text(((page_w - fallback_font.getlength('AMBAR')) / 2, 28), 'AMBAR', font=fallback_font, fill=border)
-
     def draw_header(image, page_number, total_pages):
         draw = ImageDraw.Draw(image)
-        draw_logo(image)
+        draw_empresa_header(
+            image,
+            draw,
+            cronograma.empresa,
+            _font(14),
+            _font(32, True),
+            margin=(page_w - 520) // 2,
+            height=86,
+        )
         title = f'Cronograma de atividades - {cronograma.nome}'
         if cronograma.obra:
             title = f'{title} - {cronograma.obra.nome_obra}'
@@ -1054,8 +1052,9 @@ def ordem_compra_geral_pdf(request, ordem_id):
     filename = f'OC {ordem.numero}'.replace('/', '-')
 
     def draw_first_page_base():
-        image = _report_background()
+        image = _report_background(ordem.empresa)
         draw = ImageDraw.Draw(image)
+        draw_empresa_header(image, draw, ordem.empresa, _font(17), _font(24, True), margin=220, height=110)
         x, y, w = _draw_report_heading(draw, 'Ordem de compra', ordem.numero, _format_date(ordem.data_emissao))
 
         y = _draw_section_title(draw, 'Empresa compradora', x, y, w)
@@ -1098,8 +1097,9 @@ def ordem_compra_geral_pdf(request, ordem_id):
         return image, draw, x, y + 72, w
 
     def draw_summary_page():
-        image = _report_background()
+        image = _report_background(ordem.empresa)
         draw = ImageDraw.Draw(image)
+        draw_empresa_header(image, draw, ordem.empresa, _font(17), _font(24, True), margin=220, height=110)
         x, y, w = _draw_report_heading(draw, 'Ordem de compra', ordem.numero, _format_date(ordem.data_emissao))
         y = _draw_section_title(draw, 'Fechamento', x, y, w)
         draw.rounded_rectangle((x + w - 390, y, x + w, y + 58), radius=6, fill=(4, 95, 101))
@@ -1110,6 +1110,7 @@ def ordem_compra_geral_pdf(request, ordem_id):
         draw.text((x, y + 20), _clean_pdf_text(f'Comprador: {ordem.comprador or "-"}'), font=_font(17), fill=(43, 48, 51))
         draw.text((x, y + 66), '________________________________________', font=_font(17), fill=(43, 48, 51))
         draw.text((x, y + 92), _clean_pdf_text(ordem.comprador or 'Assinatura'), font=_font(15), fill=(43, 48, 51))
+        draw_empresa_footer(image, draw, ordem.empresa, _font(14), _font(14, True), margin=220, y=image.height - 130)
         return image
 
     if len(rows) <= 4:
@@ -1124,6 +1125,7 @@ def ordem_compra_geral_pdf(request, ordem_id):
         draw.text((x, y + 20), _clean_pdf_text(f'Comprador: {ordem.comprador or "-"}'), font=_font(17), fill=(43, 48, 51))
         draw.text((x, y + 66), '________________________________________', font=_font(17), fill=(43, 48, 51))
         draw.text((x, y + 92), _clean_pdf_text(ordem.comprador or 'Assinatura'), font=_font(15), fill=(43, 48, 51))
+        draw_empresa_footer(image, draw, ordem.empresa, _font(14), _font(14, True), margin=220, y=image.height - 130)
         return _report_pdf_response(image, filename)
 
     pages = []
@@ -1139,13 +1141,14 @@ def ordem_compra_geral_pdf(request, ordem_id):
         if index == 0:
             image, draw, x, y, w = draw_first_page_base()
         else:
-            image = _report_background()
+            image = _report_background(ordem.empresa)
             draw = ImageDraw.Draw(image)
+            draw_empresa_header(image, draw, ordem.empresa, _font(17), _font(24, True), margin=220, height=110)
             x, y, w = _draw_report_heading(draw, 'Ordem de compra', ordem.numero, _format_date(ordem.data_emissao))
         y = _draw_section_title(draw, 'Itens' if index == 0 else 'Itens - continuacao', x, y, w)
         _draw_table(draw, headers, chunk, x, y, widths)
         footer = f'Pagina {index + 1}'
-        draw.text((x + w - _font(14).getlength(footer), image.height - 130), footer, font=_font(14), fill=(92, 101, 105))
+        draw_empresa_footer(image, draw, ordem.empresa, _font(14), _font(14, True), margin=220, y=image.height - 130, page_text=footer)
         pages.append(image)
 
     pages.append(draw_summary_page())
@@ -1231,8 +1234,9 @@ def ordem_combustivel_pdf(request, ordem_id):
         id=ordem_id,
         empresa=request.empresa,
     )
-    image = _report_background()
+    image = _report_background(ordem.empresa)
     draw = ImageDraw.Draw(image)
+    draw_empresa_header(image, draw, ordem.empresa, _font(17), _font(24, True), margin=220, height=110)
     x, y, w = _draw_report_heading(
         draw,
         'Ordem de compra de combustivel',
@@ -1269,6 +1273,7 @@ def ordem_combustivel_pdf(request, ordem_id):
         [540, 210, 230, 233],
     )
     _draw_notes_box(draw, 'Observacoes', ordem.observacoes or '-', x, y, w)
+    draw_empresa_footer(image, draw, ordem.empresa, _font(14), _font(14, True), margin=220, y=image.height - 130)
     return _report_pdf_response(image, ordem.numero)
 
 
@@ -1534,8 +1539,9 @@ def ordem_locacao_maquina_pdf(request, ordem_id):
         id=ordem_id,
         obra__empresa=request.empresa,
     )
-    image = _report_background()
+    image = _report_background(ordem.obra.empresa)
     draw = ImageDraw.Draw(image)
+    draw_empresa_header(image, draw, ordem.obra.empresa, _font(17), _font(24, True), margin=220, height=110)
     x, y, w = _draw_report_heading(
         draw,
         'Ordem de servico de locacao de maquina',
@@ -1595,6 +1601,7 @@ def ordem_locacao_maquina_pdf(request, ordem_id):
         [310, 290, 310, 303],
     )
     _draw_notes_box(draw, 'Observacoes', ordem.observacoes or '-', x, y, w)
+    draw_empresa_footer(image, draw, ordem.obra.empresa, _font(14), _font(14, True), margin=220, y=image.height - 130)
     return _report_pdf_response(image, ordem.numero)
 
 

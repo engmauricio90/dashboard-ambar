@@ -370,15 +370,17 @@ def _garantir_espaco(pages, image, draw, y, needed=220):
     return (*_nova_pagina(), DIARIO_MARGIN)
 
 
-def _diario_footer(draw, page_number, total_pages):
+def _diario_footer(image, draw, empresa, page_number, total_pages):
     muted = (78, 84, 88)
     line = (198, 204, 208)
     today = timezone.localtime().strftime('%d/%m/%Y - %H:%M')
     draw.line((DIARIO_MARGIN, DIARIO_FOOTER_Y - 20, DIARIO_PAGE_W - DIARIO_MARGIN, DIARIO_FOOTER_Y - 20), fill=line, width=1)
     draw.text((DIARIO_MARGIN, DIARIO_FOOTER_Y), today, font=_font(15), fill=muted)
-    center = 'Ambar Engenharia'
-    center_w = draw.textlength(center, font=_font(15, True))
-    draw.text(((DIARIO_PAGE_W - center_w) / 2, DIARIO_FOOTER_Y), center, font=_font(15, True), fill=muted)
+    center = (empresa.texto_rodape or empresa.nome_documento or empresa.nome) if empresa else ''
+    if center:
+        center = _clean_pdf_text(center)
+        center_w = draw.textlength(center, font=_font(15, True))
+        draw.text(((DIARIO_PAGE_W - center_w) / 2, DIARIO_FOOTER_Y), center, font=_font(15, True), fill=muted)
     page_text = f'{page_number} de {total_pages}'
     page_w = draw.textlength(page_text, font=_font(15))
     draw.text((DIARIO_PAGE_W - DIARIO_MARGIN - page_w, DIARIO_FOOTER_Y), page_text, font=_font(15), fill=muted)
@@ -607,7 +609,7 @@ def _pdf_diario(diario):
         pages.append(image)
 
     for index, page in enumerate(pages, start=1):
-        _diario_footer(ImageDraw.Draw(page), index, len(pages))
+        _diario_footer(page, ImageDraw.Draw(page), diario.obra.empresa, index, len(pages))
 
     return _report_pdf_response_pages(pages, f'diario_obra_{diario.id}')
 

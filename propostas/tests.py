@@ -115,3 +115,25 @@ class PropostaTests(TestCase):
         proposta = Proposta.objects.latest('id')
         self.assertRedirects(response, reverse('editar_proposta', args=[proposta.id]))
         self.assertGreater(proposta.total_planilha, Decimal('0'))
+
+    def test_proposta_cassoni_nao_usa_imagens_estaticas_ambar(self):
+        cassoni = Empresa.objects.create(nome='Cassoni Engenharia', slug='cassoni')
+        UsuarioEmpresa.objects.create(usuario=self.user, empresa=cassoni)
+        session = self.client.session
+        session['empresa_id'] = cassoni.id
+        session.save()
+        proposta = Proposta.objects.create(
+            empresa=cassoni,
+            cliente='Cliente Cassoni',
+            tipo_execucao='Execucao Cassoni',
+            data_proposta='2026-04-16',
+            servico_incluso='Servico teste',
+        )
+
+        response = self.client.get(reverse('visualizar_proposta', args=[proposta.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Cassoni Engenharia')
+        self.assertNotContains(response, 'page_1_2.png')
+        self.assertNotContains(response, 'page_frame.png')
+        self.assertNotContains(response, 'Ambar Engenharia')

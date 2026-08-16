@@ -23,6 +23,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from config.permissions import group_required
 from empresas.decorators import empresa_required
+from empresas.documentos import draw_empresa_footer
 
 from .forms import (
     CentroCustoForm,
@@ -394,7 +395,7 @@ def _xlsx_relatorio_financeiro(eventos, colunas):
     return output.getvalue()
 
 
-def _financial_report_pdf(eventos, colunas, resumo):
+def _financial_report_pdf(eventos, colunas, resumo, empresa):
     colunas = colunas or FinanceiroFiltroForm.COLUNAS_PADRAO
     headers = [RELATORIO_FINANCEIRO_COLUNAS[coluna] for coluna in colunas]
     rows = [[_relatorio_financeiro_linha_display(evento, coluna) for coluna in colunas] for evento in eventos]
@@ -476,13 +477,7 @@ def _financial_report_pdf(eventos, colunas, resumo):
 
         footer = f'Pagina {page_index} de {len(chunks)}'
         draw.text((margin, page_h - margin), date.today().strftime('%d/%m/%Y'), font=footer_font, fill=muted)
-        draw.text(
-            ((page_w - footer_bold.getlength('AMBAR ENGENHARIA')) / 2, page_h - margin),
-            'AMBAR ENGENHARIA',
-            font=footer_bold,
-            fill=muted,
-        )
-        draw.text((page_w - margin - footer_font.getlength(footer), page_h - margin), footer, font=footer_font, fill=muted)
+        draw_empresa_footer(image, draw, empresa, footer_font, footer_bold, margin=margin, y=page_h - margin, page_text=footer)
         pages.append(image)
 
     buffer = BytesIO()
@@ -1001,7 +996,7 @@ def relatorio_financeiro(request):
             response['Content-Disposition'] = 'attachment; filename="relatorio_financeiro.xlsx"'
             return response
         if export == 'pdf':
-            response = HttpResponse(_financial_report_pdf(eventos, colunas, resumo), content_type='application/pdf')
+            response = HttpResponse(_financial_report_pdf(eventos, colunas, resumo, request.empresa), content_type='application/pdf')
             response['Content-Disposition'] = 'inline; filename="relatorio_financeiro.pdf"'
             return response
     query_params = request.GET.copy()
@@ -1034,7 +1029,7 @@ def relatorio_financeiro_pdf(request):
     eventos = _ordenar_eventos(_eventos_fluxo(receber, pagar, previsoes), ordenacao)
     resumo = _resumo(receber, pagar, previsoes)
     response = HttpResponse(
-        _financial_report_pdf(eventos, colunas, resumo),
+        _financial_report_pdf(eventos, colunas, resumo, request.empresa),
         content_type='application/pdf',
     )
     response['Content-Disposition'] = 'inline; filename="relatorio_financeiro.pdf"'

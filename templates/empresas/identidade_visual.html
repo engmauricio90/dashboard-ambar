@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+
+{% block title %}Identidade Visual{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <h1 class="mb-1">Identidade Visual</h1>
+        <p class="text-muted mb-0">{{ empresa.nome }}</p>
+    </div>
+    <a href="{% url 'home' %}" class="btn btn-secondary">Voltar</a>
+</div>
+
+<form method="post" enctype="multipart/form-data" class="mb-5">
+    {% csrf_token %}
+
+    <div class="card mb-4">
+        <div class="card-header fw-bold">Arquivos e cores</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Logo principal</label>
+                    {% if empresa.logo %}
+                        <div class="border rounded p-2 mb-2 bg-light"><img src="{{ empresa.logo.url }}" alt="" style="max-height: 70px; max-width: 100%;"></div>
+                    {% endif %}
+                    {{ form.logo }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Cabeçalho / Timbrado</label>
+                    {% if empresa.cabecalho_documentos %}
+                        <div class="border rounded p-2 mb-2 bg-light"><img src="{{ empresa.cabecalho_documentos.url }}" alt="" style="max-height: 70px; max-width: 100%;"></div>
+                    {% endif %}
+                    {{ form.cabecalho_documentos }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Rodapé</label>
+                    {% if empresa.rodape_documentos %}
+                        <div class="border rounded p-2 mb-2 bg-light"><img src="{{ empresa.rodape_documentos.url }}" alt="" style="max-height: 70px; max-width: 100%;"></div>
+                    {% endif %}
+                    {{ form.rodape_documentos }}
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label">Texto do rodapé</label>
+                    {{ form.texto_rodape }}
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Cor principal</label>
+                    {{ form.cor_primaria }}
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Cor secundária</label>
+                    {{ form.cor_secundaria }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header fw-bold">Dados institucionais</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6"><label class="form-label">Razão social</label>{{ form.razao_social }}</div>
+                <div class="col-md-6"><label class="form-label">Nome fantasia</label>{{ form.nome_fantasia }}</div>
+                <div class="col-md-4"><label class="form-label">CNPJ</label>{{ form.cnpj }}</div>
+                <div class="col-md-8"><label class="form-label">Endereço</label>{{ form.endereco }}</div>
+                <div class="col-md-5"><label class="form-label">Cidade</label>{{ form.cidade }}</div>
+                <div class="col-md-2"><label class="form-label">Estado</label>{{ form.estado }}</div>
+                <div class="col-md-2"><label class="form-label">CEP</label>{{ form.cep }}</div>
+                <div class="col-md-3"><label class="form-label">Telefone</label>{{ form.telefone }}</div>
+                <div class="col-md-6"><label class="form-label">E-mail</label>{{ form.email }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header fw-bold">Responsável técnico</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-8"><label class="form-label">Nome</label>{{ form.responsavel_tecnico }}</div>
+                <div class="col-md-4"><label class="form-label">CREA</label>{{ form.crea_responsavel }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header fw-bold">Preview</div>
+        <div class="card-body">
+            <div class="border rounded p-4">
+                <div class="d-flex align-items-center gap-3 border-bottom pb-3 mb-3">
+                    {% if empresa.logo %}
+                        <img src="{{ empresa.logo.url }}" alt="" style="max-height: 54px;">
+                    {% endif %}
+                    <div>
+                        <div class="fw-bold fs-5">{{ empresa.nome_documento }}</div>
+                        {% if empresa.cnpj %}<div class="text-muted">CNPJ: {{ empresa.cnpj }}</div>{% endif %}
+                    </div>
+                </div>
+                <p class="mb-5 text-muted">Conteúdo de exemplo do documento.</p>
+                <div class="border-top pt-3 text-muted small">
+                    {% if empresa.texto_rodape %}{{ empresa.texto_rodape }}{% else %}{{ empresa.linhas_institucionais|join:' • ' }}{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Salvar</button>
+</form>
+{% endblock %}
