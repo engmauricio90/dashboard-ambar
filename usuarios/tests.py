@@ -3,6 +3,7 @@ from django.contrib.auth.models import Group
 from django.test import TestCase
 from django.urls import reverse
 
+from empresas.models import Empresa, UsuarioEmpresa
 from obras.models import Obra
 
 from .models import PerfilUsuario
@@ -54,6 +55,12 @@ class UsuariosTests(TestCase):
     def test_administrador_cria_usuario_com_grupo_e_obra(self):
         administrador = Group.objects.get_or_create(name='Administrador')[0]
         financeiro = Group.objects.get_or_create(name='Financeiro')[0]
+        empresa, _created = Empresa.objects.get_or_create(slug='ambar', defaults={'nome': 'Ambar Engenharia'})
+        UsuarioEmpresa.objects.get_or_create(
+            usuario=self.user,
+            empresa=empresa,
+            defaults={'administrador_empresa': True},
+        )
         self.user.groups.add(administrador)
 
         response = self.client.post(
@@ -82,6 +89,7 @@ class UsuariosTests(TestCase):
         self.assertTrue(novo.groups.filter(name='Financeiro').exists())
         self.assertEqual(novo.perfil.cargo, 'Analista financeiro')
         self.assertTrue(novo.perfil.obras.filter(id=self.obra.id).exists())
+        self.assertTrue(UsuarioEmpresa.objects.filter(usuario=novo, empresa=empresa, ativo=True).exists())
 
     def test_usuario_edita_proprio_perfil(self):
         response = self.client.post(

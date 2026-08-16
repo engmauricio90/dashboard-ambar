@@ -4,6 +4,10 @@ from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils.crypto import get_random_string
+from django.db.utils import OperationalError, ProgrammingError
+
+from empresas.services import obter_ou_criar_empresa_padrao
+from empresas.models import UsuarioEmpresa
 
 
 class Command(BaseCommand):
@@ -48,7 +52,7 @@ class Command(BaseCommand):
             user.save(update_fields=['password'])
             self.stdout.write(self.style.SUCCESS(f'Superusuario "{username}" atualizado com sucesso.'))
         else:
-            user_model.objects.create_superuser(
+            user = user_model.objects.create_superuser(
                 username=username,
                 email=email,
                 password=password,
@@ -60,4 +64,16 @@ class Command(BaseCommand):
                 self.style.WARNING(
                     'DJANGO_SUPERUSER_PASSWORD nao definido. Uma senha aleatoria foi gerada; defina essa variavel no ambiente para acessar o sistema.'
                 )
+            )
+
+        try:
+            empresa = obter_ou_criar_empresa_padrao()
+            UsuarioEmpresa.objects.get_or_create(
+                usuario=user,
+                empresa=empresa,
+                defaults={'ativo': True, 'administrador_empresa': True},
+            )
+        except (OperationalError, ProgrammingError):
+            self.stdout.write(
+                self.style.WARNING('Tabelas de empresas ainda indisponiveis. Vinculo do superusuario nao foi criado agora.')
             )

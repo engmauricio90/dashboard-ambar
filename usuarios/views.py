@@ -7,6 +7,7 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 
 from config.permissions import user_in_groups
+from empresas.services import vincular_usuario_as_empresas_do_criador
 
 from .forms import MeuPerfilForm, PerfilUsuarioForm, UsuarioForm
 from .models import PerfilUsuario
@@ -115,6 +116,7 @@ def novo_usuario(request):
             perfil.user = user
             perfil.save()
             perfil_form.save_m2m()
+            vincular_usuario_as_empresas_do_criador(user, request.user)
             messages.success(request, 'Usuario criado com sucesso.')
             return redirect('lista_usuarios')
     else:
