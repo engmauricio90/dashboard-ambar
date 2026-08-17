@@ -63,7 +63,7 @@ class DiarioObraTests(TestCase):
         self.assertEqual(diario.historico.first().acao, HistoricoDiario.ACAO_CRIADO)
 
     def test_cria_diario_com_foto_por_upload_mime_generico(self):
-        with tempfile.TemporaryDirectory() as media_root:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as media_root:
             with override_settings(MEDIA_ROOT=media_root):
                 data = self._post_data()
                 data.update(
@@ -190,7 +190,7 @@ class DiarioObraTests(TestCase):
         self.assertTrue(response.content.startswith(b'%PDF'))
 
     def test_pdf_com_foto_anexada_responde_pdf(self):
-        with tempfile.TemporaryDirectory() as media_root:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as media_root:
             with override_settings(MEDIA_ROOT=media_root):
                 diario = DiarioObra.objects.create(
                     obra=self.obra,
@@ -214,7 +214,7 @@ class DiarioObraTests(TestCase):
                 self.assertTrue(response.content.startswith(b'%PDF'))
 
     def test_foto_do_diario_carrega_pela_url_de_media(self):
-        with tempfile.TemporaryDirectory() as media_root:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as media_root:
             with override_settings(MEDIA_ROOT=media_root):
                 diario = DiarioObra.objects.create(
                     obra=self.obra,
@@ -236,7 +236,7 @@ class DiarioObraTests(TestCase):
                 response.close()
 
     def test_edita_diario_com_foto_existente_sem_reenviar_arquivo(self):
-        with tempfile.TemporaryDirectory() as media_root:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as media_root:
             with override_settings(MEDIA_ROOT=media_root):
                 diario = DiarioObra.objects.create(
                     obra=self.obra,
@@ -286,6 +286,7 @@ class DiarioObraTests(TestCase):
                 foto.refresh_from_db()
                 self.assertEqual(foto.legenda, 'Foto mantida')
                 self.assertTrue(foto.imagem.name)
+                foto.imagem.close()
 
     def test_lista_diarios_por_obra(self):
         DiarioObra.objects.create(

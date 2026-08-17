@@ -1,5 +1,5 @@
 from decimal import Decimal
-from datetime import timedelta
+from datetime import date, timedelta
 import calendar
 from io import BytesIO
 from pathlib import Path
@@ -16,6 +16,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from PIL import Image, ImageDraw, ImageFont
 
+from documentos.formatting import format_date_br, format_money_br
+from documentos.pdf import PdfDocument, PdfTableColumn
 from empresas.documentos import draw_empresa_footer, draw_empresa_header
 from financeiro.models import ContaPagar, Fornecedor
 from obras.models import Obra
@@ -1946,39 +1948,43 @@ def relatorio_locacoes_equipamentos_pdf(request):
     if filtros['busca']:
         active_filters.append(f"Busca: {filtros['busca']}")
 
-    lines = [
-        'Relatorio de equipamentos locados',
-        'Visao operacional com os filtros aplicados na listagem.',
-        '',
-    ]
-    if active_filters:
-        lines.append(' | '.join(active_filters))
-        lines.append('')
-    lines.append('Data | Obra | Locadora | Situacao | Equipamento | Qntd | Data coleta | Observacao')
-    lines.append('-' * 120)
-
+    rows = []
     for locacao in locacoes:
-        observacao = (locacao.observacoes or '-').replace('\n', ' ')[:55]
-        lines.append(
-            ' | '.join(
-                [
-                    locacao.data_locacao.strftime('%d/%m/%Y'),
-                    locacao.obra.nome_obra[:18],
-                    str(locacao.locadora)[:12],
-                    locacao.get_status_display()[:12],
-                    str(locacao.equipamento)[:24],
-                    str(locacao.quantidade),
-                    locacao.data_retirada.strftime('%d/%m/%Y') if locacao.data_retirada else '-',
-                    observacao,
-                ]
-            )
+        rows.append(
+            {
+                'data': format_date_br(locacao.data_locacao),
+                'obra': locacao.obra.nome_obra,
+                'locadora': str(locacao.locadora),
+                'situacao': locacao.get_status_display(),
+                'equipamento': str(locacao.equipamento),
+                'quantidade': str(locacao.quantidade),
+                'coleta': format_date_br(locacao.data_retirada),
+                'observacao': (locacao.observacoes or '-').replace('\n', ' '),
+            }
         )
-
-    max_lines_per_page = 36
-    pages = [lines[index:index + max_lines_per_page] for index in range(0, len(lines), max_lines_per_page)]
-    response = HttpResponse(_build_simple_pdf(pages), content_type='application/pdf')
-    response['Content-Disposition'] = 'inline; filename="relatorio_locacoes_equipamentos.pdf"'
-    return response
+    doc = PdfDocument(
+        empresa=request.empresa,
+        title='Relatorio de equipamentos locados',
+        subtitle=f'{len(rows)} registro(s)',
+        orientation='landscape',
+        filename='relatorio_locacoes_equipamentos.pdf',
+    )
+    doc.add_title(filters=' | '.join(active_filters) if active_filters else 'Filtros: todos', emitted_on=date.today())
+    doc.add_table(
+        [
+            PdfTableColumn('data', 'Data', weight=0.8, align='center'),
+            PdfTableColumn('obra', 'Obra', weight=1.6),
+            PdfTableColumn('locadora', 'Locadora', weight=1.3),
+            PdfTableColumn('situacao', 'Situacao', weight=1.0, align='center'),
+            PdfTableColumn('equipamento', 'Equipamento', weight=1.6),
+            PdfTableColumn('quantidade', 'Qtd', weight=0.6, align='center'),
+            PdfTableColumn('coleta', 'Coleta', weight=0.8, align='center'),
+            PdfTableColumn('observacao', 'Observacao', weight=2.0),
+        ],
+        rows,
+        row_height=44,
+    )
+    return doc.response()
 
 
 def nova_locacao_equipamento(request):
@@ -2260,13 +2266,54 @@ def arquivar_radar_obra(request, orcamento_id):
 
 def radar_obras_pdf(request):
     orcamentos = list(_radar_obras_queryset(request))
-    pdf = _radar_obras_pdf(orcamentos, _radar_obras_filtros(request))
+    pdf = _radar_obras_pdf(orcamentos, _radar_obras_filtros(request), request.empresa)
     response = HttpResponse(pdf, content_type='application/pdf')
     response['Content-Disposition'] = 'inline; filename="radar_obras.pdf"'
     return response
 
 
-def _radar_obras_pdf(orcamentos, filtros):
+def _radar_obras_pdf(orcamentos, filtros, empresa=None):
+    empresa = empresa or (orcamentos[0].empresa if orcamentos else None)
+    rows = [
+        {
+            'numero': orcamento.numero,
+            'data': format_date_br(orcamento.data_orcamento),
+            'cliente': orcamento.cliente,
+            'descricao': orcamento.descricao,
+            'situacao': orcamento.get_situacao_display(),
+            'calor': orcamento.get_temperatura_display(),
+            'valor': format_money_br(orcamento.valor_estimado),
+            'responsavel': orcamento.responsavel or '-',
+        }
+        for orcamento in orcamentos
+    ]
+    doc = PdfDocument(
+        empresa=empresa,
+        title='Radar de Obras',
+        subtitle=f'{len(orcamentos)} registro(s)',
+        orientation='landscape',
+        filename='radar_obras.pdf',
+    )
+    doc.add_title(
+        filters=f"Arquivados: {filtros['arquivados']} | Ordenacao: {filtros['ordenar']}",
+        emitted_on=date.today(),
+    )
+    doc.add_table(
+        [
+            PdfTableColumn('numero', 'Nr orcamento', weight=0.9, align='center'),
+            PdfTableColumn('data', 'Data', weight=0.9, align='center'),
+            PdfTableColumn('cliente', 'Cliente', weight=1.5),
+            PdfTableColumn('descricao', 'Descricao', weight=2.7),
+            PdfTableColumn('situacao', 'Situacao', weight=1.3, align='center'),
+            PdfTableColumn('calor', 'Calor', weight=0.9, align='center'),
+            PdfTableColumn('valor', 'Valor', weight=1.2, align='right'),
+            PdfTableColumn('responsavel', 'Responsavel', weight=1.3),
+        ],
+        rows,
+        row_height=42,
+    )
+    return doc.build()
+
     page_w, page_h = 1754, 1240
     margin = 52
     row_h = 34

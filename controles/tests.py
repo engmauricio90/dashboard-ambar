@@ -994,6 +994,22 @@ class ControleAbastecimentoTests(TestCase):
         self.assertContains(response, 'Radar de Obras')
         self.assertContains(response, 'Cliente Fechado')
 
+    def test_radar_pdf_usa_design_system(self):
+        self._radar(
+            numero='ORC-005',
+            cliente='Cliente PDF',
+            descricao='Relatorio padronizado',
+            data_orcamento='2026-04-25',
+            situacao='aguardando_resposta',
+            valor_estimado=Decimal('35000.00'),
+        )
+
+        response = self.client.get(reverse('radar_obras_pdf'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertTrue(response.content.startswith(b'%PDF'))
+
     def test_atualiza_radar_obras_em_lote(self):
         primeiro = self._radar(
             numero='ORC-003',

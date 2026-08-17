@@ -184,11 +184,14 @@ class FotoDiarioForm(OptionalExtraFormMixin, BootstrapModelForm):
     def clean_imagem(self):
         imagem = self.cleaned_data.get('imagem')
         if not imagem or not hasattr(imagem, 'read'):
+            if hasattr(imagem, 'close'):
+                imagem.close()
             return imagem
 
         posicao = imagem.tell() if hasattr(imagem, 'tell') else None
         try:
-            Image.open(imagem).verify()
+            with Image.open(imagem) as image:
+                image.verify()
         except (UnidentifiedImageError, OSError, ValueError):
             raise ValidationError('Envie apenas arquivos de imagem.')
         finally:

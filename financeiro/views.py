@@ -23,6 +23,9 @@ from PIL import Image, ImageDraw, ImageFont
 
 from config.permissions import group_required
 from empresas.decorators import empresa_required
+from documentos.excel import ExcelColumn, ExcelReportBuilder
+from documentos.formatting import format_date_br, format_money_br
+from documentos.pdf import PdfDocument, PdfTableColumn
 from empresas.documentos import draw_empresa_footer
 
 from .forms import (
@@ -371,45 +374,58 @@ def _relatorio_financeiro_linha_display(linha, coluna):
     if coluna == 'data':
         return linha['data'].strftime('%d/%m/%Y') if linha.get('data') else '-'
     if coluna == 'valor':
-        return _format_currency_br(linha.get('valor'))
+        return format_money_br(linha.get('valor'))
     return str(linha.get(coluna) or '-')
 
 
-def _xlsx_relatorio_financeiro(eventos, colunas):
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'Relatorio'
-    ws.append([RELATORIO_FINANCEIRO_COLUNAS[coluna] for coluna in colunas])
-    for evento in eventos:
-        ws.append([_relatorio_financeiro_linha_display(evento, coluna) for coluna in colunas])
-    for cell in ws[1]:
-        cell.font = Font(bold=True)
-        cell.alignment = Alignment(horizontal='center')
-    for index, coluna in enumerate(colunas, start=1):
+def _relatorio_financeiro_excel_value(linha, coluna):
+    if coluna == 'data':
+        return linha.get('data')
+    if coluna == 'valor':
+        return linha.get('valor') or Decimal('0')
+    return linha.get(coluna) or '-'
+
+
+def _xlsx_relatorio_financeiro(eventos, colunas, empresa):
+    excel_columns = []
+    for coluna in colunas:
         width = 16
+        align = 'center'
+        number_format = None
+        wrap = False
         if coluna in {'descricao', 'pessoa', 'obra', 'centro_custo'}:
-            width = 32
-        ws.column_dimensions[get_column_letter(index)].width = width
-    output = BytesIO()
-    wb.save(output)
-    return output.getvalue()
+            width = 34
+            align = 'left'
+            wrap = True
+        elif coluna == 'valor':
+            width = 18
+            align = 'right'
+            number_format = ExcelReportBuilder.MONEY_FORMAT
+        elif coluna == 'data':
+            width = 15
+            number_format = ExcelReportBuilder.DATE_FORMAT
+        excel_columns.append(
+            ExcelColumn(
+                key=coluna,
+                label=RELATORIO_FINANCEIRO_COLUNAS[coluna],
+                width=width,
+                align=align,
+                number_format=number_format,
+                wrap=wrap,
+            )
+        )
+    rows = [
+        {coluna: _relatorio_financeiro_excel_value(evento, coluna) for coluna in colunas}
+        for evento in eventos
+    ]
+    builder = ExcelReportBuilder(empresa=empresa, title='Relatorio gerencial financeiro', sheet_name='Financeiro')
+    builder.add_header(emitted_on=date.today())
+    builder.add_table(excel_columns, rows)
+    return builder.build()
 
 
 def _financial_report_pdf(eventos, colunas, resumo, empresa):
     colunas = colunas or FinanceiroFiltroForm.COLUNAS_PADRAO
-    headers = [RELATORIO_FINANCEIRO_COLUNAS[coluna] for coluna in colunas]
-    rows = [[_relatorio_financeiro_linha_display(evento, coluna) for coluna in colunas] for evento in eventos]
-    # Mantem a mesma escala visual do relatorio de medicoes. A paginacao curta
-    # evita gerar paginas densas demais e reduz o pico de memoria no Render.
-    page_w, page_h = 2339, 1654
-    margin = 70
-    title_h = 132
-    footer_h = 70
-    row_h = 46
-    header_h = 54
-    table_w = page_w - (margin * 2)
-    content_bottom = page_h - margin - footer_h
-    max_rows = min(max((content_bottom - margin - title_h - header_h - 130) // row_h, 1), 18)
     weights = {
         'tipo': 1.1,
         'data': 0.9,
@@ -420,69 +436,44 @@ def _financial_report_pdf(eventos, colunas, resumo, empresa):
         'status': 1.0,
         'valor': 1.1,
     }
-    total_weight = sum(weights.get(coluna, 1) for coluna in colunas) or 1
-    widths = [int(table_w * weights.get(coluna, 1) / total_weight) for coluna in colunas]
-    widths[-1] += table_w - sum(widths)
-    chunks = [rows[i : i + max_rows] for i in range(0, len(rows), max_rows)] or [[]]
-    pages = []
-    dark = (17, 24, 39)
-    muted = (75, 85, 99)
-    border = (203, 213, 225)
-    header_bg = (229, 236, 240)
-    zebra = (248, 250, 252)
-    title_font = _pdf_font(32, True)
-    small_font = _pdf_font(18)
-    summary_font = _pdf_font(18)
-    header_font = _pdf_font(17, True)
-    cell_font = _pdf_font(16)
-    footer_font = _pdf_font(15)
-    footer_bold = _pdf_font(15, True)
-
-    for page_index, chunk in enumerate(chunks, start=1):
-        image = Image.new('RGB', (page_w, page_h), 'white')
-        draw = ImageDraw.Draw(image)
-        y = margin
-        draw.text((margin, y), 'Relatorio gerencial financeiro', font=title_font, fill=dark)
-        y += 48
-        draw.text((margin, y), f'Emitido em {date.today().strftime("%d/%m/%Y")}', font=small_font, fill=muted)
-        registros = f'{len(eventos)} registro(s)'
-        draw.text((page_w - margin - _pdf_font(18, True).getlength(registros), y), registros, font=_pdf_font(18, True), fill=dark)
-        y += 52
-        resumo_texto = (
-            f'A receber aberto: {_format_currency_br(resumo["total_receber_aberto"])}    '
-            f'A pagar aberto: {_format_currency_br(resumo["total_pagar_aberto"])}    '
-            f'Saldo previsto: {_format_currency_br(resumo["saldo_com_previsoes"])}    '
-            f'Saldo realizado: {_format_currency_br(resumo["saldo_realizado"])}'
+    pdf_columns = []
+    for coluna in colunas:
+        align = 'center'
+        if coluna in {'descricao', 'pessoa', 'obra', 'centro_custo'}:
+            align = 'left'
+        elif coluna == 'valor':
+            align = 'right'
+        pdf_columns.append(
+            PdfTableColumn(
+                key=coluna,
+                label=RELATORIO_FINANCEIRO_COLUNAS[coluna],
+                weight=weights.get(coluna, 1),
+                align=align,
+            )
         )
-        draw.rounded_rectangle((margin, y, page_w - margin, y + 44), radius=8, fill=(245, 247, 250), outline=border, width=1)
-        draw.text((margin + 18, y + 12), _clean_pdf_text(resumo_texto), font=summary_font, fill=dark)
-        y += 70
-
-        cursor = margin
-        for header, width in zip(headers, widths):
-            _draw_report_cell(draw, header, cursor, y, width, header_h, header_font, bg=header_bg, align='center', width=2)
-            cursor += width
-        y += header_h
-
-        for row_index, row in enumerate(chunk):
-            cursor = margin
-            bg = zebra if row_index % 2 else (255, 255, 255)
-            for value, width, coluna in zip(row, widths, colunas):
-                align = 'right' if coluna == 'valor' else 'center'
-                if coluna in {'descricao', 'pessoa', 'obra', 'centro_custo'}:
-                    align = 'left'
-                _draw_report_cell(draw, value, cursor, y, width, row_h, cell_font, bg=bg, align=align)
-                cursor += width
-            y += row_h
-
-        footer = f'Pagina {page_index} de {len(chunks)}'
-        draw.text((margin, page_h - margin), date.today().strftime('%d/%m/%Y'), font=footer_font, fill=muted)
-        draw_empresa_footer(image, draw, empresa, footer_font, footer_bold, margin=margin, y=page_h - margin, page_text=footer)
-        pages.append(image)
-
-    buffer = BytesIO()
-    pages[0].save(buffer, 'PDF', resolution=150, save_all=True, append_images=pages[1:])
-    return buffer.getvalue()
+    rows = [
+        {coluna: _relatorio_financeiro_linha_display(evento, coluna) for coluna in colunas}
+        for evento in eventos
+    ]
+    doc = PdfDocument(
+        empresa=empresa,
+        title='Relatorio gerencial financeiro',
+        subtitle=f'{len(eventos)} registro(s)',
+        orientation='landscape',
+        filename='relatorio_financeiro.pdf',
+    )
+    doc.add_title(emitted_on=date.today())
+    doc.add_info_grid(
+        [
+            ('A receber aberto', format_money_br(resumo['total_receber_aberto'])),
+            ('A pagar aberto', format_money_br(resumo['total_pagar_aberto'])),
+            ('Saldo previsto', format_money_br(resumo['saldo_com_previsoes'])),
+            ('Saldo realizado', format_money_br(resumo['saldo_realizado'])),
+        ],
+        columns=4,
+    )
+    doc.add_table(pdf_columns, rows, row_height=44)
+    return doc.build()
 
 
 @financeiro_required
@@ -990,7 +981,7 @@ def relatorio_financeiro(request):
         export = request.GET.get('export')
         if export == 'excel':
             response = HttpResponse(
-                _xlsx_relatorio_financeiro(eventos, colunas),
+                _xlsx_relatorio_financeiro(eventos, colunas, request.empresa),
                 content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             )
             response['Content-Disposition'] = 'attachment; filename="relatorio_financeiro.xlsx"'

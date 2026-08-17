@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 from decimal import Decimal
+from io import BytesIO
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
@@ -7,7 +8,10 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from openpyxl import load_workbook
 
+from documentos.formatting import format_date_br, format_money_br, format_percent_br
+from documentos.theme import DocumentTheme
 from obras.models import DespesaObra, NotaFiscal, Obra, RetencaoTecnicaObra
 from controles.models import ItemOrdemCompraGeral, NotaFiscalOrdemCompraGeral, OrdemCompraGeral
 from empresas.models import Empresa, UsuarioEmpresa
@@ -25,6 +29,21 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.client.force_login(self.user)
         self.obra = Obra.objects.create(empresa=self.empresa, nome_obra='Obra Financeira', cliente='Cliente X')
         self.centro = CentroCusto.objects.create(empresa=self.empresa, nome='Obras')
+
+    def test_document_design_system_formatacao_basica(self):
+        self.assertEqual(format_money_br(Decimal('1234.56')), 'R$ 1.234,56')
+        self.assertEqual(format_money_br(Decimal('0')), 'R$ 0,00')
+        self.assertEqual(format_money_br(Decimal('-1234.56')), '-R$ 1.234,56')
+        self.assertEqual(format_percent_br(Decimal('12.35')), '12,35%')
+        self.assertEqual(format_date_br(date(2026, 8, 17)), '17/08/2026')
+
+    def test_document_theme_funciona_com_empresa_incompleta(self):
+        empresa = Empresa.objects.create(nome='Empresa Sem Logo', slug='empresa-sem-logo')
+        theme = DocumentTheme(empresa, orientation='landscape')
+
+        self.assertEqual(theme.company_name, 'Empresa Sem Logo')
+        self.assertEqual(theme.geometry.width, DocumentTheme.A4_LANDSCAPE[0])
+        self.assertIsNotNone(theme.font('body'))
 
     def _outra_empresa_com_cadastros(self):
         outra = Empresa.objects.create(nome='Cassoni', slug='cassoni', ativa=True)
@@ -945,3 +964,36 @@ class FinanceiroIntegracaoObraTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn('spreadsheetml', response['Content-Type'])
+
+    def test_relatorio_financeiro_excel_usa_design_system(self):
+        ContaPagar.objects.create(
+            empresa=self.empresa,
+            fornecedor='Fornecedor Excel',
+            obra=self.obra,
+            centro_custo=self.centro,
+            categoria='material',
+            descricao='Conta para Excel',
+            data_emissao=date(2026, 4, 1),
+            data_vencimento=date(2026, 4, 10),
+            valor=Decimal('100.00'),
+        )
+        response = self.client.get(
+            reverse('relatorio_financeiro'),
+            {
+                'tipo': 'pagar',
+                'ordenacao': 'data_asc',
+                'colunas': ['tipo', 'data', 'descricao', 'valor'],
+                'export': 'excel',
+            },
+        )
+
+        wb = load_workbook(BytesIO(response.content))
+        ws = wb.active
+        self.assertEqual(ws.title, 'Financeiro')
+        self.assertEqual(ws['A1'].value, 'Relatorio gerencial financeiro')
+        self.assertIn('AMBAR', ws['A2'].value)
+        self.assertEqual(ws.freeze_panes, 'A5')
+        self.assertEqual(ws.auto_filter.ref, f'A4:D{ws.max_row}')
+        self.assertEqual(ws.page_setup.orientation, 'landscape')
+        self.assertEqual(ws.page_setup.fitToWidth, 1)
+        self.assertEqual(ws['D5'].number_format, '"R$" #,##0.00')
