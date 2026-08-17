@@ -242,9 +242,14 @@ def _draw_notes_box(draw, title, value, x, y, w):
     return y + 176
 
 
+def _usa_timbrado_ambar(empresa=None):
+    bg_path = Path(settings.BASE_DIR) / 'static' / 'propostas' / 'reference' / 'page_frame.png'
+    return getattr(empresa, 'slug', '') == 'ambar' and bg_path.exists()
+
+
 def _report_background(empresa=None):
     bg_path = Path(settings.BASE_DIR) / 'static' / 'propostas' / 'reference' / 'page_frame.png'
-    if getattr(empresa, 'slug', '') == 'ambar' and bg_path.exists():
+    if _usa_timbrado_ambar(empresa):
         return Image.open(bg_path).convert('RGB')
     return Image.new('RGB', (1653, 2338), 'white')
 
@@ -265,15 +270,22 @@ def _report_pdf_response_pages(images, filename):
     return response
 
 
-def _draw_report_heading(draw, title, number, date_text):
+def _draw_report_heading(draw, title, number, date_text, y=405):
     x = 220
     w = 1213
-    y = 405
     draw.rounded_rectangle((x, y, x + w, y + 92), radius=10, fill=(250, 251, 251), outline=(207, 216, 220), width=2)
     draw.text((x + 24, y + 18), _clean_pdf_text(title).upper(), font=_font(28, True), fill=(41, 46, 48))
     draw.text((x + 24, y + 56), f'Numero: {_clean_pdf_text(number)}', font=_font(17), fill=(92, 101, 105))
     draw.text((x + w - 260, y + 56), f'Data: {_clean_pdf_text(date_text)}', font=_font(17), fill=(92, 101, 105))
     return x, y + 132, w
+
+
+def _draw_oc_brand_header(image, draw, empresa):
+    if _usa_timbrado_ambar(empresa):
+        return 405
+    draw_empresa_header(image, draw, empresa, _font(17), _font(24, True), margin=220, height=132)
+    draw.line((220, 210, image.width - 220, 210), fill=(214, 221, 225), width=2)
+    return 255
 
 
 def _queryset_locacoes_filtradas(request):
@@ -1094,8 +1106,8 @@ def ordem_compra_geral_pdf(request, ordem_id):
     def draw_first_page_base():
         image = _report_background(ordem.empresa)
         draw = ImageDraw.Draw(image)
-        draw_empresa_header(image, draw, ordem.empresa, _font(17), _font(24, True), margin=220, height=110)
-        x, y, w = _draw_report_heading(draw, 'Ordem de compra', ordem.numero, _format_date(ordem.data_emissao))
+        heading_y = _draw_oc_brand_header(image, draw, ordem.empresa)
+        x, y, w = _draw_report_heading(draw, 'Ordem de compra', ordem.numero, _format_date(ordem.data_emissao), y=heading_y)
 
         y = _draw_section_title(draw, 'Empresa compradora', x, y, w)
         y = _draw_key_value_grid(
@@ -1139,8 +1151,8 @@ def ordem_compra_geral_pdf(request, ordem_id):
     def draw_summary_page():
         image = _report_background(ordem.empresa)
         draw = ImageDraw.Draw(image)
-        draw_empresa_header(image, draw, ordem.empresa, _font(17), _font(24, True), margin=220, height=110)
-        x, y, w = _draw_report_heading(draw, 'Ordem de compra', ordem.numero, _format_date(ordem.data_emissao))
+        heading_y = _draw_oc_brand_header(image, draw, ordem.empresa)
+        x, y, w = _draw_report_heading(draw, 'Ordem de compra', ordem.numero, _format_date(ordem.data_emissao), y=heading_y)
         y = _draw_section_title(draw, 'Fechamento', x, y, w)
         draw.rounded_rectangle((x + w - 390, y, x + w, y + 58), radius=6, fill=(4, 95, 101))
         draw.text((x + w - 360, y + 16), f'TOTAL: {_format_money(ordem.total)}', font=_font(22, True), fill=(255, 255, 255))
@@ -1183,8 +1195,8 @@ def ordem_compra_geral_pdf(request, ordem_id):
         else:
             image = _report_background(ordem.empresa)
             draw = ImageDraw.Draw(image)
-            draw_empresa_header(image, draw, ordem.empresa, _font(17), _font(24, True), margin=220, height=110)
-            x, y, w = _draw_report_heading(draw, 'Ordem de compra', ordem.numero, _format_date(ordem.data_emissao))
+            heading_y = _draw_oc_brand_header(image, draw, ordem.empresa)
+            x, y, w = _draw_report_heading(draw, 'Ordem de compra', ordem.numero, _format_date(ordem.data_emissao), y=heading_y)
         y = _draw_section_title(draw, 'Itens' if index == 0 else 'Itens - continuacao', x, y, w)
         _draw_table(draw, headers, chunk, x, y, widths)
         footer = f'Pagina {index + 1}'
