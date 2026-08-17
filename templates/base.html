@@ -92,7 +92,15 @@
                     </div>
                         <a class="nav-link" href="{% url 'controles_home' %}">Controles</a>
                         {% if request.usuario_admin_empresa %}
-                        <a class="nav-link" href="{% url 'identidade_visual_empresa' %}">Minha empresa</a>
+                        <div class="nav-item dropdown nav-hover">
+                            <a class="nav-link dropdown-toggle" href="{% url 'identidade_visual_empresa' %}" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                Minha empresa
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-dark">
+                                <li><a class="dropdown-item" href="{% url 'identidade_visual_empresa' %}">Dados / Identidade Visual</a></li>
+                                <li><a class="dropdown-item" href="{% url 'usuarios_empresa' %}">Usuarios</a></li>
+                            </ul>
+                        </div>
                         {% endif %}
                     {% endif %}
                     <a class="nav-link" href="{% url 'minha_area' %}">Minha area</a>

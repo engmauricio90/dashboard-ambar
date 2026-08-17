@@ -31,8 +31,9 @@ class EmpresaAdmin(admin.ModelAdmin):
 
 @admin.register(UsuarioEmpresa)
 class UsuarioEmpresaAdmin(admin.ModelAdmin):
-    list_display = ['usuario', 'empresa', 'ativo', 'administrador_empresa', 'criado_em']
-    list_filter = ['empresa', 'ativo', 'administrador_empresa']
+    list_display = ['usuario', 'empresa', 'grupo', 'ativo', 'administrador_empresa', 'criado_em']
+    list_filter = ['empresa', 'grupo', 'ativo', 'administrador_empresa']
     search_fields = ['usuario__username', 'usuario__first_name', 'usuario__last_name', 'usuario__email', 'empresa__nome']
     readonly_fields = ['criado_em']
     autocomplete_fields = ['usuario', 'empresa']
+    filter_horizontal = ['obras_permitidas']

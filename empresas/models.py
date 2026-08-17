@@ -80,6 +80,18 @@ class Empresa(models.Model):
 class UsuarioEmpresa(models.Model):
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='empresas_vinculadas')
     empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, related_name='usuarios_vinculados')
+    grupo = models.ForeignKey(
+        'auth.Group',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='vinculos_empresas',
+    )
+    obras_permitidas = models.ManyToManyField(
+        'obras.Obra',
+        blank=True,
+        related_name='usuarios_empresas_permitidos',
+    )
     ativo = models.BooleanField(default=True)
     administrador_empresa = models.BooleanField(default=False)
     criado_em = models.DateTimeField(auto_now_add=True)

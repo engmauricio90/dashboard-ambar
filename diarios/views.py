@@ -7,7 +7,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 from PIL import Image, ImageDraw
 
-from config.permissions import user_in_groups
+from config.permissions import user_in_groups_for_empresa
 from controles.views import (
     _clean_pdf_text,
     _draw_wrapped,
@@ -38,27 +38,27 @@ GRUPOS_OPERACAO = ('Diretoria', 'Engenharia')
 GRUPOS_VISUALIZACAO = ('Diretoria', 'Engenharia', 'Administrativo', 'Financeiro')
 
 
-def _pode_visualizar(user):
-    return user_in_groups(user, GRUPOS_VISUALIZACAO)
+def _pode_visualizar(request):
+    return user_in_groups_for_empresa(request.user, GRUPOS_VISUALIZACAO, getattr(request, 'empresa', None))
 
 
-def _pode_operar(user):
-    return user_in_groups(user, GRUPOS_OPERACAO)
+def _pode_operar(request):
+    return user_in_groups_for_empresa(request.user, GRUPOS_OPERACAO, getattr(request, 'empresa', None))
 
 
-def _pode_admin(user):
-    return user.is_superuser or user_in_groups(user, ('Diretoria',))
+def _pode_admin(request):
+    return user_in_groups_for_empresa(request.user, ('Diretoria',), getattr(request, 'empresa', None))
 
 
 def _exigir_visualizacao(request):
-    if not _pode_visualizar(request.user):
+    if not _pode_visualizar(request):
         messages.error(request, 'Voce nao tem permissao para acessar os diarios de obra.')
         return False
     return True
 
 
 def _exigir_operacao(request):
-    if not _pode_operar(request.user):
+    if not _pode_operar(request):
         messages.error(request, 'Voce nao tem permissao para alterar diarios de obra.')
         return False
     return True
@@ -158,7 +158,7 @@ def lista_diarios(request):
             'form': form,
             'diarios': diarios[:200],
             'obra': None,
-            'pode_operar': _pode_operar(request.user),
+            'pode_operar': _pode_operar(request),
         },
     )
 
@@ -175,7 +175,7 @@ def lista_diarios_obra(request, obra_id):
             'form': form,
             'diarios': diarios[:200],
             'obra': obra,
-            'pode_operar': _pode_operar(request.user),
+            'pode_operar': _pode_operar(request),
         },
     )
 
@@ -197,7 +197,7 @@ def _render_form(request, form, formsets, titulo, diario=None):
 def _salvar_diario(request, diario=None, obra_id=None):
     if not _exigir_operacao(request):
         return redirect('lista_diarios')
-    if diario and not diario.pode_editar and not _pode_admin(request.user):
+    if diario and not diario.pode_editar and not _pode_admin(request):
         messages.error(request, 'Diario finalizado/revisado nao permite edicao direta. Reabra antes de editar.')
         return redirect('detalhe_diario', diario_id=diario.id)
 
@@ -207,7 +207,7 @@ def _salvar_diario(request, diario=None, obra_id=None):
             request.FILES,
             instance=diario,
             usuario=request.user,
-            pode_alterar_status=_pode_admin(request.user),
+            pode_alterar_status=_pode_admin(request),
             empresa=request.empresa,
         )
         formsets = _build_formsets(request.POST, request.FILES, instance=diario)
@@ -219,7 +219,7 @@ def _salvar_diario(request, diario=None, obra_id=None):
                     if not diario_salvo.pk:
                         diario_salvo.created_by = request.user
                     diario_salvo.updated_by = request.user
-                    if not _pode_admin(request.user) and diario:
+                    if not _pode_admin(request) and diario:
                         diario_salvo.status = diario.status
                     diario_salvo.save()
                     for nome, formset in formsets.items():
@@ -254,7 +254,7 @@ def _salvar_diario(request, diario=None, obra_id=None):
             instance=diario,
             initial=initial,
             usuario=request.user,
-            pode_alterar_status=_pode_admin(request.user),
+            pode_alterar_status=_pode_admin(request),
             empresa=request.empresa,
         )
         formsets = _build_formsets(instance=diario)
@@ -286,8 +286,8 @@ def detalhe_diario(request, diario_id):
         'diarios/detail.html',
         {
             'diario': diario,
-            'pode_operar': _pode_operar(request.user),
-            'pode_admin': _pode_admin(request.user),
+            'pode_operar': _pode_operar(request),
+            'pode_admin': _pode_admin(request),
         },
     )
 
@@ -312,7 +312,7 @@ def finalizar_diario(request, diario_id):
 
 @require_POST
 def reabrir_diario(request, diario_id):
-    if not _pode_admin(request.user):
+    if not _pode_admin(request):
         messages.error(request, 'Apenas usuario autorizado pode reabrir diario.')
         return redirect('detalhe_diario', diario_id=diario_id)
     diario = get_object_or_404(DiarioObra, id=diario_id, obra__empresa=request.empresa)
@@ -326,7 +326,7 @@ def reabrir_diario(request, diario_id):
 
 @require_POST
 def cancelar_diario(request, diario_id):
-    if not _pode_admin(request.user):
+    if not _pode_admin(request):
         messages.error(request, 'Apenas usuario autorizado pode cancelar diario.')
         return redirect('detalhe_diario', diario_id=diario_id)
     diario = get_object_or_404(DiarioObra, id=diario_id, obra__empresa=request.empresa)
@@ -341,7 +341,7 @@ def cancelar_diario(request, diario_id):
 @require_POST
 def excluir_diario(request, diario_id):
     diario = get_object_or_404(DiarioObra, id=diario_id, obra__empresa=request.empresa)
-    if not (diario.status == DiarioObra.STATUS_RASCUNHO or _pode_admin(request.user)):
+    if not (diario.status == DiarioObra.STATUS_RASCUNHO or _pode_admin(request)):
         messages.error(request, 'Somente diarios em rascunho podem ser excluidos.')
         return redirect('detalhe_diario', diario_id=diario.id)
     obra_id = diario.obra_id

@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+
+{% block title %}Usuarios da empresa{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Usuarios - {{ empresa.nome }}</h1>
+        <p class="text-muted mb-0">Vinculos, funcoes e acesso somente desta empresa.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'identidade_visual_empresa' %}" class="btn btn-outline-secondary">Identidade visual</a>
+        <a href="{% url 'novo_usuario_empresa' %}" class="btn btn-primary">Novo usuario</a>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-striped align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Usuario</th>
+                    <th>Nome</th>
+                    <th>E-mail</th>
+                    <th>Grupo/Função</th>
+                    <th>Admin empresa</th>
+                    <th>Status</th>
+                    <th>Obras</th>
+                    <th class="text-end">Acoes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for vinculo in vinculos %}
+                <tr>
+                    <td>{{ vinculo.usuario.username }}</td>
+                    <td>{{ vinculo.usuario.get_full_name|default:'-' }}</td>
+                    <td>{{ vinculo.usuario.email|default:'-' }}</td>
+                    <td>{% if vinculo.grupo %}{{ vinculo.grupo.name }}{% else %}-{% endif %}</td>
+                    <td>{% if vinculo.administrador_empresa %}Sim{% else %}Nao{% endif %}</td>
+                    <td>
+                        {% if vinculo.ativo %}
+                            <span class="badge text-bg-success">Ativo</span>
+                        {% else %}
+                            <span class="badge text-bg-secondary">Inativo</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if vinculo.obras_permitidas.count %}
+                            {{ vinculo.obras_permitidas.count }}
+                        {% else %}
+                            Todas
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        <div class="d-inline-flex gap-2">
+                            <a href="{% url 'editar_usuario_empresa' vinculo.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                            <form method="post" action="{% url 'alternar_status_usuario_empresa' vinculo.id %}" class="m-0">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                    {% if vinculo.ativo %}Desativar{% else %}Ativar{% endif %}
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="8" class="text-center text-muted py-4">Nenhum usuario vinculado a esta empresa.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

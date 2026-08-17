@@ -748,3 +748,186 @@ class Fase5IdentidadeVisualTests(TestCase):
             response = self.client.get(url)
             self.assertEqual(response.status_code, 200)
             response.close()
+
+
+class Fase6PilotoCassoniUsuariosTests(TestCase):
+    def setUp(self):
+        self.ambar = obter_ou_criar_empresa_padrao()
+        self.cassoni = Empresa.objects.create(nome='Cassoni Engenharia', slug='cassoni')
+        self.grupo_financeiro = Group.objects.get_or_create(name='Financeiro')[0]
+        self.grupo_diretoria = Group.objects.get_or_create(name='Diretoria')[0]
+        self.grupo_consulta = Group.objects.get_or_create(name='Consulta')[0]
+        self.admin_cassoni = User.objects.create_user(username='admin-cassoni', password='senha')
+        self.comum_cassoni = User.objects.create_user(username='comum-cassoni', password='senha')
+        self.usuario_ambar = User.objects.create_user(username='usuario-ambar-fase6', password='senha')
+        self.vinculo_admin = UsuarioEmpresa.objects.create(
+            usuario=self.admin_cassoni,
+            empresa=self.cassoni,
+            grupo=self.grupo_diretoria,
+            administrador_empresa=True,
+        )
+        self.vinculo_comum = UsuarioEmpresa.objects.create(
+            usuario=self.comum_cassoni,
+            empresa=self.cassoni,
+            grupo=self.grupo_consulta,
+            administrador_empresa=False,
+        )
+        self.vinculo_ambar = UsuarioEmpresa.objects.create(
+            usuario=self.usuario_ambar,
+            empresa=self.ambar,
+            grupo=self.grupo_diretoria,
+            administrador_empresa=True,
+        )
+        self.obra_cassoni = Obra.objects.create(empresa=self.cassoni, nome_obra='Obra Cassoni Fase 6')
+        self.obra_ambar = Obra.objects.create(empresa=self.ambar, nome_obra='Obra Ambar Fase 6')
+
+    def _selecionar(self, empresa):
+        session = self.client.session
+        session['empresa_id'] = empresa.id
+        session.save()
+
+    def test_usuario_somente_cassoni_entra_na_cassoni_sem_dropdown(self):
+        self.client.force_login(self.comum_cassoni)
+
+        response = self.client.get(reverse('home'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.session['empresa_id'], self.cassoni.id)
+        self.assertContains(response, 'Cassoni Engenharia')
+        self.assertNotContains(response, 'Escolher empresa')
+        self.assertNotContains(response, 'Obra Ambar Fase 6')
+
+    def test_usuario_cassoni_nao_consegue_trocar_para_ambar(self):
+        self.client.force_login(self.comum_cassoni)
+        self.client.get(reverse('home'))
+
+        response = self.client.post(reverse('trocar_empresa', args=[self.ambar.id]))
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(self.client.session['empresa_id'], self.cassoni.id)
+
+    def test_admin_cassoni_lista_apenas_vinculos_da_cassoni(self):
+        self.client.force_login(self.admin_cassoni)
+        self._selecionar(self.cassoni)
+
+        response = self.client.get(reverse('usuarios_empresa'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'admin-cassoni')
+        self.assertContains(response, 'comum-cassoni')
+        self.assertNotContains(response, 'usuario-ambar-fase6')
+
+    def test_usuario_comum_nao_acessa_usuarios_da_empresa(self):
+        self.client.force_login(self.comum_cassoni)
+        self._selecionar(self.cassoni)
+
+        response = self.client.get(reverse('usuarios_empresa'))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_admin_cria_usuario_vinculado_somente_a_empresa_ativa(self):
+        self.client.force_login(self.admin_cassoni)
+        self._selecionar(self.cassoni)
+
+        response = self.client.post(
+            reverse('novo_usuario_empresa'),
+            {
+                'username': 'piloto-cassoni',
+                'first_name': 'Piloto',
+                'last_name': 'Cassoni',
+                'email': 'piloto@example.com',
+                'password': 'senha-temporaria-segura',
+                'grupo': str(self.grupo_financeiro.id),
+                'administrador_empresa': 'on',
+                'obras_permitidas': [str(self.obra_cassoni.id)],
+            },
+        )
+
+        self.assertRedirects(response, reverse('usuarios_empresa'))
+        usuario = User.objects.get(username='piloto-cassoni')
+        self.assertTrue(usuario.check_password('senha-temporaria-segura'))
+        self.assertFalse(usuario.is_staff)
+        self.assertFalse(usuario.is_superuser)
+        self.assertFalse(usuario.groups.exists())
+        vinculo = UsuarioEmpresa.objects.get(usuario=usuario)
+        self.assertEqual(vinculo.empresa, self.cassoni)
+        self.assertEqual(vinculo.grupo, self.grupo_financeiro)
+        self.assertTrue(vinculo.administrador_empresa)
+        self.assertTrue(vinculo.obras_permitidas.filter(pk=self.obra_cassoni.pk).exists())
+        self.assertFalse(UsuarioEmpresa.objects.filter(usuario=usuario, empresa=self.ambar).exists())
+
+    def test_post_adulterado_nao_aceita_obra_de_outra_empresa(self):
+        self.client.force_login(self.admin_cassoni)
+        self._selecionar(self.cassoni)
+
+        response = self.client.post(
+            reverse('novo_usuario_empresa'),
+            {
+                'username': 'tamper-obra',
+                'password': 'senha-temporaria-segura',
+                'grupo': str(self.grupo_financeiro.id),
+                'obras_permitidas': [str(self.obra_ambar.id)],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(User.objects.filter(username='tamper-obra').exists())
+
+    def test_post_adulterado_nao_edita_vinculo_de_outro_tenant(self):
+        self.client.force_login(self.admin_cassoni)
+        self._selecionar(self.cassoni)
+
+        response = self.client.post(
+            reverse('editar_usuario_empresa', args=[self.vinculo_ambar.id]),
+            {
+                'first_name': 'Alterado',
+                'grupo': str(self.grupo_financeiro.id),
+                'administrador_empresa': 'on',
+                'ativo': 'on',
+            },
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.usuario_ambar.refresh_from_db()
+        self.assertNotEqual(self.usuario_ambar.first_name, 'Alterado')
+
+    def test_nao_remove_ultimo_administrador_ativo(self):
+        self.vinculo_comum.delete()
+        self.client.force_login(self.admin_cassoni)
+        self._selecionar(self.cassoni)
+
+        response = self.client.post(
+            reverse('editar_usuario_empresa', args=[self.vinculo_admin.id]),
+            {
+                'first_name': '',
+                'last_name': '',
+                'email': '',
+                'grupo': str(self.grupo_diretoria.id),
+                'ativo': 'on',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.vinculo_admin.refresh_from_db()
+        self.assertTrue(self.vinculo_admin.administrador_empresa)
+
+    def test_nao_desativa_ultimo_administrador_ativo(self):
+        self.vinculo_comum.delete()
+        self.client.force_login(self.admin_cassoni)
+        self._selecionar(self.cassoni)
+
+        response = self.client.post(reverse('alternar_status_usuario_empresa', args=[self.vinculo_admin.id]))
+
+        self.assertRedirects(response, reverse('usuarios_empresa'))
+        self.vinculo_admin.refresh_from_db()
+        self.assertTrue(self.vinculo_admin.ativo)
+
+    def test_grupo_do_vinculo_ativo_libera_financeiro_sem_user_groups(self):
+        usuario = User.objects.create_user(username='financeiro-cassoni-vinculo', password='senha')
+        UsuarioEmpresa.objects.create(usuario=usuario, empresa=self.cassoni, grupo=self.grupo_financeiro)
+        self.client.force_login(usuario)
+
+        response = self.client.get(reverse('financeiro_home'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(usuario.groups.exists())

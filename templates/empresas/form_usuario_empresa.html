@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        <p class="text-muted mb-0">{{ empresa.nome }}</p>
+    </div>
+    <a href="{% url 'usuarios_empresa' %}" class="btn btn-secondary">Voltar</a>
+</div>
+
+<form method="post" class="mb-5">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+        <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header fw-bold">Dados do usuario</div>
+        <div class="card-body">
+            {% if modo == 'editar' %}
+                <div class="alert alert-light border mb-3">
+                    <strong>Usuario:</strong> {{ vinculo.usuario.username }}
+                    {% if vinculo.usuario.is_staff %}<span class="badge text-bg-warning ms-2">Staff</span>{% endif %}
+                    {% if vinculo.usuario.is_superuser %}<span class="badge text-bg-dark ms-2">Superuser</span>{% endif %}
+                </div>
+            {% endif %}
+            <div class="row g-3">
+                {% if modo == 'novo' %}
+                    <div class="col-md-4">
+                        <label class="form-label">{{ form.username.label }}</label>
+                        {{ form.username }}
+                        {{ form.username.errors }}
+                    </div>
+                {% endif %}
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.first_name.label }}</label>
+                    {{ form.first_name }}
+                    {{ form.first_name.errors }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.last_name.label }}</label>
+                    {{ form.last_name }}
+                    {{ form.last_name.errors }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.email.label }}</label>
+                    {{ form.email }}
+                    {{ form.email.errors }}
+                </div>
+                {% if modo == 'novo' %}
+                    <div class="col-md-4">
+                        <label class="form-label">{{ form.password.label }}</label>
+                        {{ form.password }}
+                        <div class="form-text">{{ form.password.help_text }}</div>
+                        {{ form.password.errors }}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header fw-bold">Vinculo na empresa</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.grupo.label }}</label>
+                    {{ form.grupo }}
+                    {{ form.grupo.errors }}
+                </div>
+                <div class="col-md-4 d-flex align-items-center pt-4">
+                    <div class="form-check">
+                        {{ form.administrador_empresa }}
+                        <label class="form-check-label">{{ form.administrador_empresa.label }}</label>
+                    </div>
+                </div>
+                {% if modo == 'editar' %}
+                <div class="col-md-4 d-flex align-items-center pt-4">
+                    <div class="form-check">
+                        {{ form.ativo }}
+                        <label class="form-check-label">{{ form.ativo.label }}</label>
+                    </div>
+                </div>
+                {% endif %}
+                <div class="col-12">
+                    <label class="form-label">{{ form.obras_permitidas.label }}</label>
+                    {{ form.obras_permitidas }}
+                    {% if form.obras_permitidas.help_text %}<div class="form-text">{{ form.obras_permitidas.help_text }}</div>{% endif %}
+                    {{ form.obras_permitidas.errors }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Salvar</button>
+</form>
+{% endblock %}
