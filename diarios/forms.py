@@ -1,6 +1,7 @@
 from django import forms
 from django.core.exceptions import ValidationError
 from django.forms import inlineformset_factory
+from PIL import Image, UnidentifiedImageError
 
 from obras.forms import BootstrapForm, BootstrapModelForm
 
@@ -182,9 +183,17 @@ class FotoDiarioForm(OptionalExtraFormMixin, BootstrapModelForm):
 
     def clean_imagem(self):
         imagem = self.cleaned_data.get('imagem')
-        content_type = getattr(imagem, 'content_type', '')
-        if imagem and content_type and not content_type.startswith('image/'):
+        if not imagem or not hasattr(imagem, 'read'):
+            return imagem
+
+        posicao = imagem.tell() if hasattr(imagem, 'tell') else None
+        try:
+            Image.open(imagem).verify()
+        except (UnidentifiedImageError, OSError, ValueError):
             raise ValidationError('Envie apenas arquivos de imagem.')
+        finally:
+            if hasattr(imagem, 'seek') and posicao is not None:
+                imagem.seek(posicao)
         return imagem
 
 

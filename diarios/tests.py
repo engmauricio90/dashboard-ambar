@@ -11,7 +11,7 @@ from django.urls import reverse
 from empresas.models import Empresa, UsuarioEmpresa
 from obras.models import Obra
 
-from .models import DiarioObra, EfetivoDiario, HistoricoDiario
+from .models import DiarioObra, EfetivoDiario, FotoDiario, HistoricoDiario
 
 
 class DiarioObraTests(TestCase):
@@ -61,6 +61,38 @@ class DiarioObraTests(TestCase):
         self.assertRedirects(response, reverse('detalhe_diario', args=[diario.id]))
         self.assertEqual(diario.status, DiarioObra.STATUS_RASCUNHO)
         self.assertEqual(diario.historico.first().acao, HistoricoDiario.ACAO_CRIADO)
+
+    def test_cria_diario_com_foto_por_upload_mime_generico(self):
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                data = self._post_data()
+                data.update(
+                    {
+                        'fotos-TOTAL_FORMS': '1',
+                        'fotos-0-legenda': 'Foto enviada pelo formulario',
+                        'fotos-0-imagem': SimpleUploadedFile(
+                            'foto-whatsapp.jpg',
+                            (
+                                b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00\x01\x00\x01\x00\x00'
+                                b'\xff\xdb\x00C\x00' + (b'\x08' * 64) +
+                                b'\xff\xc0\x00\x11\x08\x00\x01\x00\x01\x03\x01\x11\x00\x02\x11\x01\x03\x11\x01'
+                                b'\xff\xc4\x00\x14\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x07'
+                                b'\xff\xc4\x00\x14\x10\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                                b'\xff\xda\x00\x0c\x03\x01\x00\x02\x11\x03\x11\x00?\x00\xbf\xff\xd9'
+                            ),
+                            content_type='application/octet-stream',
+                        ),
+                    }
+                )
+
+                response = self.client.post(reverse('novo_diario'), data)
+
+                diario = DiarioObra.objects.get()
+                self.assertRedirects(response, reverse('detalhe_diario', args=[diario.id]))
+                foto = FotoDiario.objects.get(diario=diario)
+                self.assertEqual(foto.legenda, 'Foto enviada pelo formulario')
+                self.assertEqual(foto.uploaded_by, self.user)
+                self.assertTrue(foto.imagem.name.endswith('.jpg'))
 
     def test_linha_vazia_de_ocorrencia_nao_bloqueia_salvamento(self):
         data = self._post_data()
