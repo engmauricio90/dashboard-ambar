@@ -86,7 +86,12 @@
                         <td>{{ ordem.total_horas_apontadas|floatformat:2 }}</td>
                         <td>{{ ordem.total_horas_faturadas|floatformat:2 }}</td>
                         <td>R$ {{ ordem.total_faturado|floatformat:2 }}</td>
-                        <td class="text-end"><a href="{% url 'detalhe_ordem_locacao_maquina' ordem.id %}" class="btn btn-sm btn-outline-dark">Detalhar</a></td>
+                        <td class="text-end">
+                            <div class="d-inline-flex gap-2">
+                                <a href="{% url 'detalhe_ordem_locacao_maquina' ordem.id %}" class="btn btn-sm btn-outline-dark">Detalhar</a>
+                                <a href="{% url 'excluir_ordem_locacao_maquina' ordem.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
+                            </div>
+                        </td>
                     </tr>
                     {% empty %}
                     <tr>

@@ -965,6 +965,46 @@ def editar_ordem_compra_geral(request, ordem_id):
     )
 
 
+def excluir_ordem_compra_geral(request, ordem_id):
+    ordem = get_object_or_404(
+        OrdemCompraGeral.objects.prefetch_related('itens', 'notas_fiscais').select_related('obra'),
+        id=ordem_id,
+        empresa=request.empresa,
+    )
+
+    if request.method == 'POST':
+        from financeiro.models import ItemContaPagarOrdemCompra
+
+        numero = ordem.numero
+        with transaction.atomic():
+            ItemContaPagarOrdemCompra.objects.filter(item_ordem_compra__ordem=ordem).delete()
+            ContaPagar.objects.filter(ordem_compra=ordem, empresa=request.empresa).update(
+                ordem_compra=None,
+                item_ordem_compra=None,
+                quantidade_oc=Decimal('0'),
+                valor_unitario_oc=Decimal('0'),
+            )
+            ordem.notas_fiscais.all().delete()
+            ordem.delete()
+        messages.success(request, f'OC "{numero}" excluida com sucesso. Contas a pagar vinculadas foram preservadas.')
+        return redirect('lista_ordens_compra_gerais')
+
+    return render(
+        request,
+        'obras/confirmar_exclusao.html',
+        {
+            'titulo': 'Excluir ordem de compra',
+            'mensagem': f'Voce esta prestes a excluir a OC "{ordem.numero}".',
+            'detalhe': (
+                'Itens e notas vinculadas a esta OC serao excluidos. Contas a pagar ja lancadas no financeiro '
+                'serao preservadas, mas ficarao sem vinculo com esta OC.'
+            ),
+            'confirmar_label': 'Excluir OC',
+            'cancelar_href': reverse('detalhe_ordem_compra_geral', args=[ordem.id]),
+        },
+    )
+
+
 def nova_nf_ordem_compra_geral(request, ordem_id):
     ordem = get_object_or_404(OrdemCompraGeral, id=ordem_id, empresa=request.empresa)
     messages.info(request, 'Lance a conta a pagar no financeiro e selecione a OC para vincular a NF automaticamente.')
@@ -1632,6 +1672,35 @@ def editar_ordem_locacao_maquina(request, ordem_id):
         request,
         'controles/form_ordem_locacao_maquina.html',
         {'form': form, 'titulo': 'Editar OS de Locacao de Maquina', 'ordem': ordem},
+    )
+
+
+def excluir_ordem_locacao_maquina(request, ordem_id):
+    ordem = get_object_or_404(
+        OrdemServicoLocacaoMaquina.objects.select_related('obra', 'fornecedor', 'maquina'),
+        id=ordem_id,
+        obra__empresa=request.empresa,
+    )
+
+    if request.method == 'POST':
+        numero = ordem.numero
+        ordem.delete()
+        messages.success(request, f'OS de locacao de maquina "{numero}" excluida com sucesso.')
+        return redirect('lista_ordens_locacao_maquinas')
+
+    return render(
+        request,
+        'obras/confirmar_exclusao.html',
+        {
+            'titulo': 'Excluir OS de locacao de maquina',
+            'mensagem': f'Voce esta prestes a excluir a OS "{ordem.numero}".',
+            'detalhe': (
+                'Os apontamentos, notas fiscais e historico vinculados a esta OS tambem serao excluidos. '
+                'Essa acao nao altera o cadastro da obra, maquina ou fornecedor.'
+            ),
+            'confirmar_label': 'Excluir OS',
+            'cancelar_href': reverse('detalhe_ordem_locacao_maquina', args=[ordem.id]),
+        },
     )
 
 

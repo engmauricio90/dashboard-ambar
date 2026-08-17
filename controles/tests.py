@@ -12,7 +12,7 @@ from openpyxl import Workbook
 
 from empresas.models import Empresa, UsuarioEmpresa
 from obras.models import Obra
-from financeiro.models import CentroCusto, ContaPagar, Fornecedor
+from financeiro.models import CentroCusto, ContaPagar, Fornecedor, ItemContaPagarOrdemCompra
 
 from .models import (
     ApontamentoMaquinaLocacao,
@@ -323,6 +323,65 @@ class ControleAbastecimentoTests(TestCase):
         pdf_response = self.client.get(reverse('ordem_compra_geral_pdf', args=[ordem.id]))
         self.assertEqual(pdf_response['Content-Type'], 'application/pdf')
         self.assertTrue(pdf_response.content.startswith(b'%PDF'))
+
+    def test_exclui_ordem_compra_geral_preservando_conta_pagar(self):
+        ordem = OrdemCompraGeral.objects.create(
+            empresa=self.empresa,
+            numero='099/2026',
+            fornecedor='Fornecedor OC Excluir',
+        )
+        item = ItemOrdemCompraGeral.objects.create(
+            ordem=ordem,
+            item=1,
+            descricao='Po de brita',
+            quantidade=Decimal('10.0000'),
+            valor_unitario=Decimal('100.0000'),
+        )
+        conta = ContaPagar.objects.create(
+            empresa=self.empresa,
+            fornecedor='Fornecedor OC Excluir',
+            ordem_compra=ordem,
+            item_ordem_compra=item,
+            numero_nf='NF-099',
+            quantidade_oc=Decimal('10.00'),
+            valor_unitario_oc=Decimal('100.00'),
+            descricao='Conta vinculada a OC',
+            data_emissao=date(2026, 5, 1),
+            data_vencimento=date(2026, 5, 10),
+            valor=Decimal('1000.00'),
+        )
+        ItemContaPagarOrdemCompra.objects.create(conta=conta, item_ordem_compra=item, quantidade=Decimal('10.00'))
+        conta.sincronizar_ordem_compra()
+        self.assertEqual(NotaFiscalOrdemCompraGeral.objects.filter(ordem=ordem).count(), 1)
+
+        response_get = self.client.get(reverse('excluir_ordem_compra_geral', args=[ordem.id]))
+        self.assertEqual(response_get.status_code, 200)
+        self.assertContains(response_get, 'Excluir OC')
+
+        response_post = self.client.post(reverse('excluir_ordem_compra_geral', args=[ordem.id]))
+
+        self.assertRedirects(response_post, reverse('lista_ordens_compra_gerais'))
+        self.assertFalse(OrdemCompraGeral.objects.filter(id=ordem.id).exists())
+        self.assertEqual(ItemOrdemCompraGeral.objects.count(), 0)
+        self.assertEqual(NotaFiscalOrdemCompraGeral.objects.count(), 0)
+        self.assertEqual(ItemContaPagarOrdemCompra.objects.count(), 0)
+        conta.refresh_from_db()
+        self.assertIsNone(conta.ordem_compra_id)
+        self.assertIsNone(conta.item_ordem_compra_id)
+        self.assertEqual(conta.valor, Decimal('1000.00'))
+
+    def test_nao_exclui_ordem_compra_geral_de_outra_empresa(self):
+        outra_empresa = Empresa.objects.create(nome='Outra Empresa OC', slug='outra-oc')
+        ordem = OrdemCompraGeral.objects.create(
+            empresa=outra_empresa,
+            numero='100/2026',
+            fornecedor='Fornecedor Outra OC',
+        )
+
+        response = self.client.post(reverse('excluir_ordem_compra_geral', args=[ordem.id]))
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(OrdemCompraGeral.objects.filter(id=ordem.id).exists())
 
     def test_nova_ordem_compra_traz_dados_ambar_e_busca_fornecedor(self):
         Fornecedor.objects.create(
@@ -659,6 +718,60 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'application/pdf')
         self.assertTrue(response.content.startswith(b'%PDF'))
+
+    def test_exclui_ordem_locacao_maquina_com_vinculos_por_post(self):
+        obra = self._obra(nome_obra='Obra Excluir OS')
+        fornecedor = self._fornecedor_maquina(nome='Fornecedor Excluir OS')
+        maquina = MaquinaLocacaoCatalogo.objects.create(nome='Escavadeira', categoria='Linha amarela')
+        ordem = OrdemServicoLocacaoMaquina.objects.create(
+            obra=obra,
+            fornecedor=fornecedor,
+            maquina=maquina,
+            numero='OS-EXCLUIR-001',
+        )
+        ApontamentoMaquinaLocacao.objects.create(
+            ordem=ordem,
+            data=date(2026, 5, 1),
+            horas_trabalhadas=Decimal('2.00'),
+        )
+        NotaFiscalLocacaoMaquina.objects.create(
+            ordem=ordem,
+            numero='NF-EXCLUIR-001',
+            data_emissao=date(2026, 5, 2),
+            valor_maquina=Decimal('100.00'),
+        )
+        HistoricoLocacaoMaquina.objects.create(ordem=ordem, evento='Criada', descricao='Teste')
+
+        response_get = self.client.get(reverse('excluir_ordem_locacao_maquina', args=[ordem.id]))
+        self.assertEqual(response_get.status_code, 200)
+        self.assertContains(response_get, 'Excluir OS')
+
+        response_post = self.client.post(reverse('excluir_ordem_locacao_maquina', args=[ordem.id]))
+
+        self.assertRedirects(response_post, reverse('lista_ordens_locacao_maquinas'))
+        self.assertFalse(OrdemServicoLocacaoMaquina.objects.filter(id=ordem.id).exists())
+        self.assertEqual(ApontamentoMaquinaLocacao.objects.count(), 0)
+        self.assertEqual(NotaFiscalLocacaoMaquina.objects.count(), 0)
+        self.assertEqual(HistoricoLocacaoMaquina.objects.count(), 0)
+        self.assertTrue(Obra.objects.filter(id=obra.id).exists())
+        self.assertTrue(MaquinaLocacaoCatalogo.objects.filter(id=maquina.id).exists())
+
+    def test_nao_exclui_ordem_locacao_maquina_de_outra_empresa(self):
+        outra_empresa = Empresa.objects.create(nome='Outra Empresa', slug='outra-os')
+        obra = Obra.objects.create(empresa=outra_empresa, nome_obra='Obra Outra Empresa')
+        fornecedor = FornecedorMaquinaLocacao.objects.create(empresa=outra_empresa, nome='Fornecedor Outra Empresa')
+        maquina = MaquinaLocacaoCatalogo.objects.create(nome='Rolo compactador', categoria='Linha amarela')
+        ordem = OrdemServicoLocacaoMaquina.objects.create(
+            obra=obra,
+            fornecedor=fornecedor,
+            maquina=maquina,
+            numero='OS-OUTRA-001',
+        )
+
+        response = self.client.post(reverse('excluir_ordem_locacao_maquina', args=[ordem.id]))
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(OrdemServicoLocacaoMaquina.objects.filter(id=ordem.id).exists())
 
     def test_cadastros_locacao_maquina_carregam(self):
         response = self.client.post(

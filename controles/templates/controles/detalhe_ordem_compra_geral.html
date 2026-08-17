@@ -12,6 +12,7 @@
         <a href="{% url 'nova_nf_ordem_compra_geral' ordem.id %}" class="btn btn-success">Lancar conta a pagar</a>
         <a href="{% url 'ordem_compra_geral_pdf' ordem.id %}" class="btn btn-outline-dark">Gerar PDF</a>
         <a href="{% url 'editar_ordem_compra_geral' ordem.id %}" class="btn btn-primary">Editar OC</a>
+        <a href="{% url 'excluir_ordem_compra_geral' ordem.id %}" class="btn btn-outline-danger">Excluir OC</a>
         <a href="{% url 'lista_ordens_compra_gerais' %}" class="btn btn-secondary">Voltar</a>
     </div>
 </div>

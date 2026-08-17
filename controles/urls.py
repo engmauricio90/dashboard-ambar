@@ -38,6 +38,11 @@ urlpatterns = [
         name='editar_ordem_compra_geral',
     ),
     path(
+        'ordens-compra/<int:ordem_id>/excluir/',
+        empresa_required(views.excluir_ordem_compra_geral),
+        name='excluir_ordem_compra_geral',
+    ),
+    path(
         'ordens-compra/<int:ordem_id>/pdf/',
         empresa_required(views.ordem_compra_geral_pdf),
         name='ordem_compra_geral_pdf',
@@ -110,6 +115,11 @@ urlpatterns = [
         'maquinas-locadas/<int:ordem_id>/editar/',
         empresa_required(views.editar_ordem_locacao_maquina),
         name='editar_ordem_locacao_maquina',
+    ),
+    path(
+        'maquinas-locadas/<int:ordem_id>/excluir/',
+        empresa_required(views.excluir_ordem_locacao_maquina),
+        name='excluir_ordem_locacao_maquina',
     ),
     path(
         'maquinas-locadas/<int:ordem_id>/apontamentos/novo/',

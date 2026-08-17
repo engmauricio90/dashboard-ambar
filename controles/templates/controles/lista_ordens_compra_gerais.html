@@ -114,7 +114,10 @@
                         <td>{{ ordem.get_status_display }}</td>
                         <td>R$ {{ ordem.total|floatformat:2 }}</td>
                         <td class="text-end">
-                            <a href="{% url 'detalhe_ordem_compra_geral' ordem.id %}" class="btn btn-sm btn-outline-dark">Detalhar</a>
+                            <div class="d-inline-flex gap-2">
+                                <a href="{% url 'detalhe_ordem_compra_geral' ordem.id %}" class="btn btn-sm btn-outline-dark">Detalhar</a>
+                                <a href="{% url 'excluir_ordem_compra_geral' ordem.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
+                            </div>
                         </td>
                     </tr>
                     {% empty %}

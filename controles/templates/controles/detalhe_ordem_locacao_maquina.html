@@ -13,6 +13,7 @@
         <a href="{% url 'novo_apontamento_maquina' ordem.id %}" class="btn btn-success">Novo apontamento</a>
         <a href="{% url 'nova_nf_locacao_maquina' ordem.id %}" class="btn btn-outline-success">Adicionar NF</a>
         <a href="{% url 'editar_ordem_locacao_maquina' ordem.id %}" class="btn btn-primary">Editar OS</a>
+        <a href="{% url 'excluir_ordem_locacao_maquina' ordem.id %}" class="btn btn-outline-danger">Excluir OS</a>
         <a href="{% url 'lista_ordens_locacao_maquinas' %}" class="btn btn-secondary">Voltar</a>
     </div>
 </div>
