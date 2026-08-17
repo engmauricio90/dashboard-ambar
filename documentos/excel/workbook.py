@@ -26,6 +26,15 @@ class ExcelReportBuilder:
     DECIMAL_FORMAT = '#,##0.00'
     PERCENT_FORMAT = '0.00%'
 
+    FILLS = {
+        'header': 'E8EEF3',
+        'zebra': 'FAFBFD',
+        'surface': 'F3F4F6',
+        'contract': 'E8EEF7',
+        'measured': 'DCF5E5',
+        'receivable': 'FEE2E2',
+    }
+
     def __init__(self, empresa=None, title='', subtitle='', sheet_name='Relatorio', orientation='landscape'):
         self.theme = DocumentTheme(empresa, orientation=orientation)
         self.empresa = empresa
@@ -69,12 +78,15 @@ class ExcelReportBuilder:
             self.current_row += 1
         self.current_row += 1
 
+    def _fill(self, color):
+        return PatternFill('solid', fgColor=self.FILLS.get(color, color))
+
     def add_table(self, columns, rows):
         header_row = self.current_row
         thin = Side(style='thin', color='CBD5E1')
         border = Border(left=thin, right=thin, top=thin, bottom=thin)
-        header_fill = PatternFill('solid', fgColor='E8EEF3')
-        zebra_fill = PatternFill('solid', fgColor='FAFBFD')
+        header_fill = self._fill('header')
+        zebra_fill = self._fill('zebra')
         for col_index, column in enumerate(columns, start=1):
             cell = self.ws.cell(header_row, col_index, column.label)
             cell.font = Font(bold=True, color='111827')
@@ -84,12 +96,39 @@ class ExcelReportBuilder:
             self.ws.column_dimensions[get_column_letter(col_index)].width = column.width
         for row in rows:
             self.current_row += 1
+            if row.get('__merge_label__'):
+                end_col = len(columns)
+                self.ws.merge_cells(
+                    start_row=self.current_row,
+                    start_column=1,
+                    end_row=self.current_row,
+                    end_column=end_col,
+                )
+                cell = self.ws.cell(self.current_row, 1, row.get('__merge_label__'))
+                cell.fill = self._fill(row.get('__bg') or 'surface')
+                cell.font = Font(bold=True, color='111827')
+                cell.border = border
+                cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
+                for col_index in range(2, end_col + 1):
+                    extra = self.ws.cell(self.current_row, col_index)
+                    extra.fill = self._fill(row.get('__bg') or 'surface')
+                    extra.border = border
+                continue
             is_zebra = (self.current_row - header_row) % 2 == 0
+            row_fill = self._fill(row.get('__bg')) if row.get('__bg') else None
+            row_font = Font(bold=bool(row.get('__bold')), color='111827')
+            cell_bgs = row.get('__cell_bgs') if isinstance(row.get('__cell_bgs'), dict) else {}
             for col_index, column in enumerate(columns, start=1):
                 cell = self.ws.cell(self.current_row, col_index, row.get(column.key))
                 cell.border = border
-                if is_zebra:
+                if column.key in cell_bgs:
+                    cell.fill = self._fill(cell_bgs[column.key])
+                elif row_fill:
+                    cell.fill = row_fill
+                elif is_zebra:
                     cell.fill = zebra_fill
+                if row.get('__bold'):
+                    cell.font = row_font
                 cell.alignment = Alignment(horizontal=column.align, vertical='center', wrap_text=column.wrap)
                 if column.number_format:
                     cell.number_format = column.number_format

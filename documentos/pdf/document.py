@@ -17,6 +17,15 @@ class PdfTableColumn:
     width: int | None = None
     weight: float = 1
     align: str = 'left'
+    bg: tuple | str | None = None
+
+
+@dataclass(frozen=True)
+class PdfTableGroup:
+    label: str
+    start: int
+    end: int
+    bg: tuple | str | None = None
 
 
 def _clean_text(value):
@@ -52,7 +61,7 @@ class PdfDocument:
             self.theme.font('small'),
             self.theme.font('section_title', True),
             margin=self.g.margin_left,
-            height=84,
+            height=108,
         )
         self.y = self.g.content_top
 
@@ -145,9 +154,53 @@ class PdfDocument:
                 self.draw.line((x + 16, y - row_h + 4, x + width - 16, y - row_h + 4), fill=self.theme.border, width=1)
         self.y += h + 24
 
-    def add_table(self, columns, rows, row_height=42):
-        if not rows:
-            rows = []
+    def add_totals_columns(self, blocks, gap=34):
+        if not blocks:
+            return
+        row_h = 40
+        max_rows = max(len(block.get('rows', [])) for block in blocks)
+        h = 42 + (row_h * max_rows) + 14
+        self._ensure_space(h + 20)
+        total_gap = gap * (len(blocks) - 1)
+        block_w = int((self.g.content_width - total_gap) / len(blocks))
+        x = self.g.content_left
+        for block in blocks:
+            title = block.get('title', '')
+            self.draw.rounded_rectangle((x, self.y, x + block_w, self.y + h), radius=8, fill=self.theme.surface, outline=self.theme.border, width=2)
+            self.draw.rectangle((x, self.y, x + block_w, self.y + 42), fill=self.theme.header_fill, outline=self.theme.border, width=1)
+            self._draw_wrapped(title, x, self.y, block_w, 42, self.theme.font('subsection_title', True), align='center')
+            row_y = self.y + 48
+            for label, value, is_total in block.get('rows', []):
+                font = self.theme.font('total' if is_total else 'body', is_total)
+                if is_total:
+                    self.draw.line((x + 12, row_y - 4, x + block_w - 12, row_y - 4), fill=self.theme.border, width=1)
+                self._draw_wrapped(label, x + 12, row_y, int(block_w * 0.58), row_h, font)
+                self._draw_wrapped(value, x + int(block_w * 0.58), row_y, int(block_w * 0.42) - 12, row_h, font, align='right')
+                row_y += row_h
+            x += block_w + gap
+        self.y += h + 24
+
+    def add_section_header(self, title, bg=None):
+        self._ensure_space(46)
+        bg = bg or self.theme.primary
+        brightness = (bg[0] * 299 + bg[1] * 587 + bg[2] * 114) / 1000 if isinstance(bg, tuple) else 0
+        text_fill = self.theme.text if brightness > 170 else 'white'
+        self.draw.rounded_rectangle(
+            (self.g.content_left, self.y, self.g.content_right, self.y + 34),
+            radius=6,
+            fill=bg,
+            outline=bg,
+            width=1,
+        )
+        self.draw.text(
+            (self.g.content_left + 14, self.y + 8),
+            _clean_text(title).upper(),
+            font=self.theme.font('subsection_title', True),
+            fill=text_fill,
+        )
+        self.y += 48
+
+    def _table_widths(self, columns):
         table_w = self.g.content_width
         fixed = sum(col.width or 0 for col in columns)
         flexible = [col for col in columns if col.width is None]
@@ -157,13 +210,48 @@ class PdfDocument:
         for col in columns:
             widths.append(col.width if col.width is not None else int(remaining * col.weight / total_weight))
         widths[-1] += table_w - sum(widths)
+        return widths
+
+    def add_table(self, columns, rows, row_height=42, groups=None, header_fill=None, table_body_level='table_body'):
+        if not rows:
+            rows = []
+        widths = self._table_widths(columns)
+        groups = groups or []
+        header_fill = header_fill or self.theme.primary
+        header_total_h = row_height * (2 if groups else 1)
 
         def draw_header():
-            self._ensure_space(row_height * 2)
+            self._ensure_space(header_total_h + row_height)
+            if groups:
+                x = self.g.content_left
+                for group in groups:
+                    before = sum(widths[: group.start])
+                    group_w = sum(widths[group.start : group.end])
+                    fill = group.bg or self.theme.header_fill
+                    self.draw.rectangle(
+                        (self.g.content_left + before, self.y, self.g.content_left + before + group_w, self.y + row_height),
+                        fill=fill,
+                        outline=self.theme.border,
+                        width=2,
+                    )
+                    self._draw_wrapped(
+                        group.label,
+                        self.g.content_left + before,
+                        self.y,
+                        group_w,
+                        row_height,
+                        self.theme.font('table_header', True),
+                        fill=self.theme.text,
+                        align='center',
+                    )
+                    x += group_w
+                self.y += row_height
             x = self.g.content_left
             for col, width in zip(columns, widths):
-                self.draw.rectangle((x, self.y, x + width, self.y + row_height), fill=self.theme.primary, outline=self.theme.primary, width=1)
-                self._draw_wrapped(col.label, x, self.y, width, row_height, self.theme.font('table_header', True), fill='white', align='center')
+                fill = col.bg or header_fill
+                text_fill = self.theme.text if fill != self.theme.primary else 'white'
+                self.draw.rectangle((x, self.y, x + width, self.y + row_height), fill=fill, outline=self.theme.border, width=1)
+                self._draw_wrapped(col.label, x, self.y, width, row_height, self.theme.font('table_header', True), fill=text_fill, align='center')
                 x += width
             self.y += row_height
 
@@ -173,10 +261,12 @@ class PdfDocument:
             if self.y == self.g.content_top:
                 draw_header()
             x = self.g.content_left
-            bg = self.theme.zebra if row_index % 2 else (255, 255, 255)
+            bg = row.get('__bg') or (self.theme.zebra if row_index % 2 else (255, 255, 255))
+            font = self.theme.font(table_body_level, bool(row.get('__bold')))
             for col, width in zip(columns, widths):
-                self.draw.rectangle((x, self.y, x + width, self.y + row_height), fill=bg, outline=self.theme.border, width=1)
-                self._draw_wrapped(row.get(col.key, '-'), x, self.y, width, row_height, self.theme.font('table_body'), align=col.align)
+                cell_bg = row.get('__cell_bgs', {}).get(col.key) if isinstance(row.get('__cell_bgs'), dict) else None
+                self.draw.rectangle((x, self.y, x + width, self.y + row_height), fill=cell_bg or bg, outline=self.theme.border, width=1)
+                self._draw_wrapped(row.get(col.key, '-'), x, self.y, width, row_height, font, align=col.align)
                 x += width
             self.y += row_height
         self.y += 22

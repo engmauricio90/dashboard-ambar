@@ -546,8 +546,13 @@ class MedicoesTests(TestCase):
         self.assertIn('spreadsheetml', excel['Content-Type'])
         wb = load_workbook(BytesIO(excel.content))
         ws = wb.active
-        self.assertEqual(ws['A1'].value, 'Tipo')
-        self.assertEqual(ws['B2'].value, 'Empreiteiro Relatorio')
+        self.assertEqual(ws['A1'].value, 'Relatorio gerencial de medicoes')
+        header_row = next(row for row in ws.iter_rows(values_only=True) if row and row[0] == 'Tipo')
+        self.assertEqual(header_row[:4], ('Tipo', 'Empreiteiro', 'Data da medicao', 'Valor medido'))
+        empreiteiro_row = next(row for row in ws.iter_rows(values_only=True) if row and row[1] == 'Empreiteiro Relatorio')
+        self.assertEqual(empreiteiro_row[1], 'Empreiteiro Relatorio')
+        self.assertTrue(ws.auto_filter.ref)
+        self.assertTrue(ws.freeze_panes)
 
         pdf = self.client.get(
             reverse('relatorio_medicoes'),
@@ -630,12 +635,14 @@ class MedicoesTests(TestCase):
 
         excel = self.client.get(reverse('medicao_construtora_excel', args=[segunda.id]))
         wb = load_workbook(BytesIO(excel.content))
-        headers = [cell.value for cell in wb.active[5]]
-        self.assertIn('Unitario material', headers)
-        self.assertIn('Unitario mao de obra', headers)
-        self.assertIn('Valor material', headers)
-        self.assertIn('Valor mao de obra', headers)
-        self.assertIn('Valor equipamentos', headers)
+        rows = list(wb.active.iter_rows(values_only=True))
+        self.assertTrue(any(row and row[0] == 'Itens contratuais' for row in rows))
+        headers = next(row for row in rows if row and row[0] == 'Item')
+        self.assertIn('Unit. material', headers)
+        self.assertIn('Unit. mao obra', headers)
+        self.assertIn('Material', headers)
+        self.assertIn('Mao de obra', headers)
+        self.assertIn('Equip.', headers)
 
     def test_medicao_construtora_salva_mesmo_com_grupo_antigo_na_medicao(self):
         orcamento, item = self._orcamento()

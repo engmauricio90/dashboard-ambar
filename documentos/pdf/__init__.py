@@ -1,3 +1,3 @@
-from .document import PdfDocument, PdfTableColumn
+from .document import PdfDocument, PdfTableColumn, PdfTableGroup
 
-__all__ = ['PdfDocument', 'PdfTableColumn']
+__all__ = ['PdfDocument', 'PdfTableColumn', 'PdfTableGroup']

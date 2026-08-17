@@ -15,12 +15,15 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from PIL import Image, ImageDraw, ImageFont
 
 from controles.models import FaturamentoDireto
 from controles.views import _build_simple_pdf
+from documentos.excel import ExcelColumn, ExcelReportBuilder
+from documentos.formatting import format_date_br, format_decimal_br, format_money_br, format_percent_br
+from documentos.pdf import PdfDocument, PdfTableColumn, PdfTableGroup
 from empresas.decorators import empresa_required
 from empresas.documentos import draw_empresa_footer
 from obras.models import Obra
@@ -67,8 +70,7 @@ def _medicoes_empreiteiro_empresa(empresa):
 
 
 def _money(value):
-    value = value or Decimal('0')
-    return f'R$ {value:,.2f}'.replace(',', 'X').replace('.', ',').replace('X', '.')
+    return format_money_br(value)
 
 
 def _clean_text(value):
@@ -200,268 +202,173 @@ def _percent_from_item(item):
 
 def _pdf_medicao_construtora(medicao):
     itens = _itens_medicao_construtora_com_grupos(medicao)
-    page_w, page_h = 2339, 1654
-    margin = 60
-    table_w = page_w - (margin * 2)
-    widths = [60, 634, 55, 80, 135, 135, 130, 135, 100, 100, 80, 145, 145, 140, 145]
-    row_h = 40
-    header_h = 42
-    footer_y = page_h - 44
-    content_bottom = page_h - 98
-    rows_per_page = 18
-    chunks = [itens[i : i + rows_per_page] for i in range(0, len(itens), rows_per_page)] or [[]]
-    pages = []
-
-    title_font = _font(28, True)
-    label_font = _font(17, True)
-    small_font = _font(17)
-    table_font = _font(13)
-    table_bold = _font(13, True)
-    header_bg = (229, 231, 235)
+    empresa = medicao.orcamento.obra.empresa
+    doc = PdfDocument(
+        empresa=empresa,
+        title='Boletim de Medicoes',
+        subtitle=f'Medicao no {medicao.numero}',
+        orientation='landscape',
+        filename=f'medicao_construtora_{medicao.numero}.pdf',
+    )
     contract_bg = (232, 238, 247)
     measured_bg = (220, 245, 229)
     receivable_bg = (254, 226, 226)
-    section_bg = (243, 244, 246)
-    dark = (17, 24, 39)
-    muted = (75, 85, 99)
-    border = (156, 163, 175)
-
-    def new_page():
-        page = Image.new('RGB', (page_w, page_h), 'white')
-        page_draw = ImageDraw.Draw(page)
-        y_start = 34
-        page_draw.text(
-            ((page_w - title_font.getlength('Boletim de Medicoes')) / 2, y_start),
-            'Boletim de Medicoes',
-            font=title_font,
-            fill=dark,
-        )
-        return page, page_draw, y_start + 82
-
-    def ensure_space(image, draw, y, needed):
-        if y + needed <= content_bottom:
-            return image, draw, y, False
-        pages.append(image)
-        new_image, new_draw, new_y = new_page()
-        return new_image, new_draw, new_y, True
-
-    def draw_faturamento_header(draw, y):
-        _draw_report_cell(
-            draw,
-            'Faturamentos diretos descontados',
-            margin,
-            y,
-            table_w,
-            block_h,
-            label_font,
-            bg=header_bg,
-            align='left',
-        )
-        return y + block_h
-
-    for page_index, chunk in enumerate(chunks):
-        image = Image.new('RGB', (page_w, page_h), 'white')
-        draw = ImageDraw.Draw(image)
-
-        y = 34
-        draw.text(((page_w - title_font.getlength('Boletim de Medicoes')) / 2, y), 'Boletim de Medicoes', font=title_font, fill=dark)
-        y += 62
-
-        left_x = margin
-        right_x = page_w - margin - 690
-        info_h = 34
-        left_info = [
+    doc.add_title(emitted_on=date.today())
+    doc.add_info_grid(
+        [
             ('Contrato', getattr(medicao.orcamento, 'nome', '-')),
             ('Obra', medicao.orcamento.obra.nome_obra),
-            ('Unidade construtiva', medicao.orcamento.nome),
+            ('Planilha', medicao.orcamento.nome),
+            ('Cliente', medicao.orcamento.obra.cliente or '-'),
             ('Numero da medicao', medicao.numero),
-            ('Periodo', f'{medicao.periodo_inicio:%d/%m/%Y} a {medicao.periodo_fim:%d/%m/%Y}'),
-        ]
-        right_info = [
+            ('Periodo', f'{format_date_br(medicao.periodo_inicio)} a {format_date_br(medicao.periodo_fim)}'),
+            ('Data da medicao', format_date_br(medicao.data_medicao)),
             ('Total do contrato', _money(medicao.orcamento.total_orcamento)),
             ('Total da obra', _money(medicao.orcamento.obra.contrato_atualizado)),
-            ('Cliente', medicao.orcamento.obra.cliente or '-'),
-            ('Data da medicao', f'{medicao.data_medicao:%d/%m/%Y}'),
+            ('Base da NF', _money(medicao.base_impostos)),
             ('Base INSS', _money(medicao.base_inss)),
-        ]
-        for index, (label, value) in enumerate(left_info):
-            row_y = y + index * info_h
-            _draw_report_cell(draw, label, left_x, row_y, 210, info_h, label_font, bg=header_bg, align='left')
-            _draw_report_cell(draw, value, left_x + 210, row_y, 720, info_h, small_font, align='left')
-        for index, (label, value) in enumerate(right_info):
-            row_y = y + index * info_h
-            _draw_report_cell(draw, label, right_x, row_y, 230, info_h, label_font, bg=header_bg, align='left')
-            _draw_report_cell(draw, value, right_x + 230, row_y, 460, info_h, small_font, align='left')
-
-        y += (len(left_info) * info_h) + 28
-        headers = [
-            'Ref.',
-            'Descricao',
-            'Un.',
-            'Qtde',
-            'Unit. material',
-            'Unit. mao obra',
-            'Unit. equip.',
-            'Preco unit.',
-            'Acum. anterior',
-            'Medida',
-            '%Exe.',
-            'Material',
-            'Mao de obra',
-            'Equip.',
-            'Valor medicao',
-        ]
-        group_headers = [
-            ('Itens contratuais', 0, 8, contract_bg),
-            ('Itens medidos', 8, 11, measured_bg),
-            ('Valor a receber', 11, 15, receivable_bg),
-        ]
-        cursor = margin
-        for label, start, end, bg in group_headers:
-            group_w = sum(widths[start:end])
-            _draw_report_cell(draw, label, cursor, y, group_w, header_h, table_bold, bg=bg, align='center', width=2)
-            cursor += group_w
-        y += header_h
-        cursor = margin
-        for index, (header, width) in enumerate(zip(headers, widths)):
-            if index < 8:
-                bg = contract_bg
-            elif index < 11:
-                bg = measured_bg
-            else:
-                bg = receivable_bg
-            _draw_report_cell(draw, header, cursor, y, width, header_h, table_bold, bg=bg, align='center', width=2)
-            cursor += width
-        y += header_h
-
-        measured_cell_bgs = [None] * len(widths)
-        for measured_index in range(8, 11):
-            measured_cell_bgs[measured_index] = measured_bg
-
-        for item in chunk:
-            if isinstance(item, ItemOrcamentoMedicao) and item.eh_grupo:
-                row = [''] * len(widths)
-                row[0] = item.item
-                row[1] = item.descricao
-                y = _draw_report_row(draw, row, margin, y, widths, row_h, table_bold, bg=section_bg)
-                continue
-            base = item.item_orcamento
-            row = [
-                base.item,
-                base.descricao,
-                base.unidade or '',
-                _fmt_qty(base.quantidade),
-                _money(base.preco_unitario_material),
-                _money(base.preco_unitario_mao_obra),
-                _money(base.preco_unitario_equipamentos),
-                _money(base.preco_unitario_total),
-                _fmt_qty(item.quantidade_acumulada_anterior),
-                _fmt_qty(item.quantidade_periodo),
-                f'{_fmt_qty(_percent_from_item(item))}%',
-                _money(item.valor_material_periodo),
-                _money(item.valor_mao_obra_periodo),
-                _money(item.valor_equipamentos_periodo),
-                _money(item.valor_periodo),
-            ]
-            y = _draw_report_row(draw, row, margin, y, widths, row_h, table_font, cell_bgs=measured_cell_bgs)
-
-        if page_index == len(chunks) - 1:
-            totalizer_rows = [
-                ('Total material', medicao.total_material_periodo, 11),
-                ('Total mao de obra', medicao.total_mao_obra_periodo, 12),
-                ('Total equipamentos', medicao.total_equipamentos_periodo, 13),
-            ]
-            for label, value, component_index in totalizer_rows:
-                row = [''] * len(widths)
-                row[1] = label
-                row[component_index] = _money(value)
-                row[-1] = _money(value)
-                y = _draw_report_row(draw, row, margin, y, widths, row_h, table_bold, bg=section_bg)
-
-            y += 28
-            summary_left = margin
-            summary_mid = margin + 650
-            summary_right = page_w - margin - 660
-            block_h = 34
-
-            _draw_report_cell(draw, 'Total da medicao', summary_left, y, 560, block_h, label_font, bg=header_bg, align='center')
-            y_left = y + block_h
-            desconto_adicional_nf = (
-                medicao.desconto_adicional_calculado
-                if medicao.desconto_adicional_reduz_base_nf
-                else Decimal('0')
+            ('Total liquido', _money(medicao.total_liquido)),
+        ],
+        columns=4,
+    )
+    columns = [
+        PdfTableColumn('ref', 'Ref.', width=58, align='center', bg=contract_bg),
+        PdfTableColumn('descricao', 'Descricao', width=654, bg=contract_bg),
+        PdfTableColumn('unidade', 'Un.', width=52, align='center', bg=contract_bg),
+        PdfTableColumn('quantidade', 'Qtde', width=74, align='center', bg=contract_bg),
+        PdfTableColumn('unit_material', 'Unit. material', width=125, align='right', bg=contract_bg),
+        PdfTableColumn('unit_mao_obra', 'Unit. mao obra', width=125, align='right', bg=contract_bg),
+        PdfTableColumn('unit_equip', 'Unit. equip.', width=118, align='right', bg=contract_bg),
+        PdfTableColumn('preco_unit', 'Preco unit.', width=125, align='right', bg=contract_bg),
+        PdfTableColumn('acumulado_anterior', 'Acum. anterior', width=94, align='center', bg=measured_bg),
+        PdfTableColumn('medida', 'Medida', width=94, align='center', bg=measured_bg),
+        PdfTableColumn('percentual', '%Exe.', width=76, align='center', bg=measured_bg),
+        PdfTableColumn('material', 'Material', width=130, align='right', bg=receivable_bg),
+        PdfTableColumn('mao_obra', 'Mao de obra', width=130, align='right', bg=receivable_bg),
+        PdfTableColumn('equip', 'Equip.', width=124, align='right', bg=receivable_bg),
+        PdfTableColumn('valor', 'Valor medicao', width=140, align='right', bg=receivable_bg),
+    ]
+    groups = [
+        PdfTableGroup('Itens contratuais', 0, 8, contract_bg),
+        PdfTableGroup('Itens medidos', 8, 11, measured_bg),
+        PdfTableGroup('Valor a receber', 11, 15, receivable_bg),
+    ]
+    measured_cells = {'acumulado_anterior': measured_bg, 'medida': measured_bg, 'percentual': measured_bg}
+    rows = []
+    for item in itens:
+        if isinstance(item, ItemOrcamentoMedicao) and item.eh_grupo:
+            rows.append(
+                {
+                    'ref': item.item,
+                    'descricao': item.descricao,
+                    '__bg': doc.theme.surface,
+                    '__bold': True,
+                }
             )
-            totals = [
-                ('Total medicao', medicao.subtotal_periodo),
-                ('Desconto faturamento direto', -medicao.total_faturamento_direto),
-                ('Desconto adicional NF', -desconto_adicional_nf),
-                ('Total a faturar', medicao.base_impostos),
-            ]
-            for label, value in totals:
-                _draw_report_cell(draw, label, summary_left, y_left, 330, block_h, small_font, align='left')
-                amount = _money(abs(value))
-                if value < 0:
-                    amount = f'- {amount}'
-                _draw_report_cell(draw, amount, summary_left + 330, y_left, 230, block_h, small_font, align='right')
-                y_left += block_h
+            continue
+        base = item.item_orcamento
+        rows.append(
+            {
+                'ref': base.item,
+                'descricao': base.descricao,
+                'unidade': base.unidade or '-',
+                'quantidade': _fmt_qty(base.quantidade),
+                'unit_material': _money(base.preco_unitario_material),
+                'unit_mao_obra': _money(base.preco_unitario_mao_obra),
+                'unit_equip': _money(base.preco_unitario_equipamentos),
+                'preco_unit': _money(base.preco_unitario_total),
+                'acumulado_anterior': _fmt_qty(item.quantidade_acumulada_anterior),
+                'medida': _fmt_qty(item.quantidade_periodo),
+                'percentual': f'{_fmt_qty(_percent_from_item(item))}%',
+                'material': _money(item.valor_material_periodo),
+                'mao_obra': _money(item.valor_mao_obra_periodo),
+                'equip': _money(item.valor_equipamentos_periodo),
+                'valor': _money(item.valor_periodo),
+                '__cell_bgs': measured_cells,
+            }
+        )
+    for label, value, key in [
+        ('Total material', medicao.total_material_periodo, 'material'),
+        ('Total mao de obra', medicao.total_mao_obra_periodo, 'mao_obra'),
+        ('Total equipamentos', medicao.total_equipamentos_periodo, 'equip'),
+    ]:
+        rows.append(
+            {
+                'descricao': label,
+                key: _money(value),
+                'valor': _money(value),
+                '__bg': doc.theme.surface,
+                '__bold': True,
+            }
+        )
+    doc.add_table(columns, rows, row_height=38, groups=groups, table_body_level='small')
 
-            _draw_report_cell(draw, 'Retencoes e impostos', summary_mid, y, 560, block_h, label_font, bg=header_bg, align='center')
-            y_mid = y + block_h
-            taxes = [
-                ('Retencao tecnica', medicao.retencao_tecnica_calculada),
-                ('INSS', medicao.inss_calculado),
-                ('ISSQN', medicao.issqn_calculado),
-                ('Total retido', medicao.retencao_tecnica_calculada + medicao.inss_calculado + medicao.issqn_calculado),
-            ]
-            for label, value in taxes:
-                _draw_report_cell(draw, label, summary_mid, y_mid, 330, block_h, small_font, align='left')
-                _draw_report_cell(draw, _money(value), summary_mid + 330, y_mid, 230, block_h, small_font, align='right')
-                y_mid += block_h
+    desconto_adicional_nf = (
+        medicao.desconto_adicional_calculado
+        if medicao.desconto_adicional_reduz_base_nf
+        else Decimal('0')
+    )
+    doc.add_totals_columns(
+        [
+            {
+                'title': 'Total da medicao',
+                'rows': [
+                    ('Total medicao', _money(medicao.subtotal_periodo), False),
+                    ('Desconto faturamento direto', f'- {_money(medicao.total_faturamento_direto)}', False),
+                    ('Desconto adicional NF', f'- {_money(desconto_adicional_nf)}', False),
+                    ('Total a faturar', _money(medicao.base_impostos), True),
+                ],
+            },
+            {
+                'title': 'Retencoes e impostos',
+                'rows': [
+                    ('Retencao tecnica', _money(medicao.retencao_tecnica_calculada), False),
+                    ('INSS', _money(medicao.inss_calculado), False),
+                    ('ISSQN', _money(medicao.issqn_calculado), False),
+                    ('Total retido', _money(medicao.retencao_tecnica_calculada + medicao.inss_calculado + medicao.issqn_calculado), True),
+                ],
+            },
+            {
+                'title': 'Fechamento',
+                'rows': [
+                    ('Subtotal', _money(medicao.subtotal_periodo), False),
+                    ('Base da NF', _money(medicao.base_impostos), False),
+                    ('Material NF', _money(medicao.valor_material_nf), False),
+                    ('Mao de obra NF', _money(medicao.valor_mao_obra_nf), False),
+                    ('Equipamentos NF', _money(medicao.valor_equipamentos_nf), False),
+                    ('Base INSS', _money(medicao.base_inss), False),
+                    ('Descontos', _money(medicao.total_descontos), False),
+                    ('Total liquido', _money(medicao.total_liquido), True),
+                ],
+            },
+        ]
+    )
 
-            _draw_report_cell(draw, 'Fechamento', summary_right, y, 660, block_h, label_font, bg=header_bg, align='center')
-            y_right = y + block_h
-            closing = [
-                ('Subtotal', medicao.subtotal_periodo),
-                ('Base da NF', medicao.base_impostos),
-                ('Material NF', medicao.valor_material_nf),
-                ('Mao de obra NF', medicao.valor_mao_obra_nf),
-                ('Equipamentos NF', medicao.valor_equipamentos_nf),
-                ('Base INSS', medicao.base_inss),
-                ('Descontos', medicao.total_descontos),
-                ('Total liquido', medicao.total_liquido),
-            ]
-            for label, value in closing:
-                is_total = label == 'Total liquido'
-                _draw_report_cell(draw, label, summary_right, y_right, 390, block_h, label_font if is_total else small_font, align='left')
-                _draw_report_cell(draw, _money(value), summary_right + 390, y_right, 270, block_h, label_font if is_total else small_font, align='right')
-                y_right += block_h
-
-            if medicao.faturamentos_diretos.exists():
-                notes_y = max(y_left, y_mid, y_right) + 24
-                image, draw, notes_y, _new_page = ensure_space(image, draw, notes_y, block_h * 2)
-                notes_y = draw_faturamento_header(draw, notes_y)
-                for vinculo in medicao.faturamentos_diretos.select_related('faturamento_direto'):
-                    image, draw, notes_y, new_page_started = ensure_space(image, draw, notes_y, block_h)
-                    if new_page_started:
-                        notes_y = draw_faturamento_header(draw, notes_y)
-                    fd = vinculo.faturamento_direto
-                    texto = f'{fd.numero_nf or fd.numero_ordem_compra or "-"} - {fd.empresa_comprou} - {fd.descricao} ({vinculo.percentual_descontado:.2f}%)'
-                    _draw_report_cell(draw, texto, margin, notes_y, table_w - 220, block_h, small_font, align='left')
-                    _draw_report_cell(draw, _money(vinculo.valor_descontado), margin + table_w - 220, notes_y, 220, block_h, small_font, align='right')
-                    notes_y += block_h
-
-        pages.append(image)
-
-    total_pages = len(pages)
-    for index, image in enumerate(pages, start=1):
-        draw = ImageDraw.Draw(image)
-        footer = f'Pagina {index} de {total_pages}'
-        draw.text((margin, footer_y), date.today().strftime('%d/%m/%Y'), font=_font(15), fill=muted)
-        draw_empresa_footer(image, draw, medicao.orcamento.obra.empresa, _font(15), _font(15, True), margin=margin, y=footer_y, page_text=footer)
-
-    buffer = BytesIO()
-    pages[0].save(buffer, 'PDF', save_all=True, append_images=pages[1:], resolution=150)
-    return buffer.getvalue()
+    faturamentos = medicao.faturamentos_diretos.select_related('faturamento_direto')
+    if faturamentos.exists():
+        doc.add_section_header('Faturamentos diretos descontados', bg=doc.theme.header_fill)
+        doc.add_table(
+            [
+                PdfTableColumn('numero', 'NF / OC', weight=0.8, align='center'),
+                PdfTableColumn('empresa', 'Empresa que comprou', weight=1.4),
+                PdfTableColumn('descricao', 'Descricao', weight=2.4),
+                PdfTableColumn('percentual', '% descontado', weight=0.8, align='center'),
+                PdfTableColumn('valor', 'Valor', weight=0.9, align='right'),
+            ],
+            [
+                {
+                    'numero': fd.faturamento_direto.numero_nf or fd.faturamento_direto.numero_ordem_compra or '-',
+                    'empresa': fd.faturamento_direto.empresa_comprou,
+                    'descricao': fd.faturamento_direto.descricao,
+                    'percentual': format_percent_br(fd.percentual_descontado / Decimal('100')),
+                    'valor': _money(fd.valor_descontado),
+                }
+                for fd in faturamentos
+            ],
+            row_height=42,
+            table_body_level='small',
+        )
+    return doc.build()
 
 
 def _decimal(value):
@@ -811,40 +718,61 @@ def _totais_relatorio_medicoes(linhas):
     }
 
 
-def _xlsx_relatorio_medicoes(linhas, colunas):
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'Relatorio'
-    ws.append([RELATORIO_MEDICOES_COLUNAS[coluna] for coluna in colunas])
-    for linha in linhas:
-        ws.append([_relatorio_linha_display(linha, coluna) for coluna in colunas])
-    for cell in ws[1]:
-        cell.font = Font(bold=True)
-        cell.alignment = Alignment(horizontal='center')
-    for index, coluna in enumerate(colunas, start=1):
+def _xlsx_relatorio_medicoes(linhas, colunas, empresa):
+    excel_columns = []
+    for coluna in colunas:
         width = 16
+        align = 'center'
+        number_format = None
+        wrap = False
         if coluna in {'obra', 'planilha', 'empreiteiro'}:
-            width = 32
-        ws.column_dimensions[get_column_letter(index)].width = width
-    output = BytesIO()
-    wb.save(output)
-    return output.getvalue()
+            width = 34
+            align = 'left'
+            wrap = True
+        elif coluna in {'medido', 'descontos', 'liquido'}:
+            width = 18
+            align = 'right'
+            number_format = ExcelReportBuilder.MONEY_FORMAT
+        elif coluna == 'data_medicao':
+            width = 15
+            number_format = ExcelReportBuilder.DATE_FORMAT
+        elif coluna == 'percentual':
+            width = 14
+            align = 'right'
+            number_format = ExcelReportBuilder.PERCENT_FORMAT
+        excel_columns.append(
+            ExcelColumn(
+                key=coluna,
+                label=RELATORIO_MEDICOES_COLUNAS[coluna],
+                width=width,
+                align=align,
+                number_format=number_format,
+                wrap=wrap,
+            )
+        )
+    rows = []
+    for linha in linhas:
+        row = {}
+        for coluna in colunas:
+            if coluna in {'medido', 'descontos', 'liquido'}:
+                row[coluna] = linha[coluna]
+            elif coluna == 'data_medicao':
+                row[coluna] = linha[coluna]
+            elif coluna == 'percentual':
+                row[coluna] = (linha[coluna] or Decimal('0')) / Decimal('100')
+            elif coluna == 'periodo':
+                row[coluna] = _format_periodo(linha['periodo_inicio'], linha['periodo_fim'])
+            else:
+                row[coluna] = linha.get(coluna) or '-'
+        rows.append(row)
+    builder = ExcelReportBuilder(empresa=empresa, title='Relatorio gerencial de medicoes', sheet_name='Medicoes')
+    builder.add_header(emitted_on=date.today())
+    builder.add_table(excel_columns, rows)
+    return builder.build()
 
 
 def _pdf_relatorio_medicoes(linhas, colunas, totais, empresa):
     colunas = colunas or RelatorioMedicoesForm.COLUNAS_PADRAO
-    headers = [RELATORIO_MEDICOES_COLUNAS[coluna] for coluna in colunas]
-    rows = [[_relatorio_linha_display(linha, coluna) for coluna in colunas] for linha in linhas]
-    page_w, page_h = 2339, 1654
-    margin = 70
-    title_h = 132
-    footer_h = 70
-    row_h = 46
-    header_h = 54
-    table_w = page_w - (margin * 2)
-    content_bottom = page_h - margin - footer_h
-    max_rows = max((content_bottom - margin - title_h - header_h - 130) // row_h, 1)
-
     weights = {
         'tipo': 1.2,
         'obra': 1.8,
@@ -858,65 +786,36 @@ def _pdf_relatorio_medicoes(linhas, colunas, totais, empresa):
         'liquido': 1.05,
         'percentual': 0.9,
     }
-    total_weight = sum(weights.get(coluna, 1) for coluna in colunas) or 1
-    widths = [int(table_w * weights.get(coluna, 1) / total_weight) for coluna in colunas]
-    widths[-1] += table_w - sum(widths)
-    chunks = [rows[i : i + max_rows] for i in range(0, len(rows), max_rows)] or [[]]
-
-    pages = []
-    dark = (17, 24, 39)
-    muted = (75, 85, 99)
-    border = (203, 213, 225)
-    header_bg = (229, 236, 240)
-    zebra = (248, 250, 252)
-    title_font = _font(32, True)
-    small_font = _font(18)
-    header_font = _font(17, True)
-    cell_font = _font(16)
-
-    for page_index, chunk in enumerate(chunks, start=1):
-        image = Image.new('RGB', (page_w, page_h), 'white')
-        draw = ImageDraw.Draw(image)
-        y = margin
-        draw.text((margin, y), 'Relatorio gerencial de medicoes', font=title_font, fill=dark)
-        y += 48
-        draw.text((margin, y), f'Emitido em {date.today().strftime("%d/%m/%Y")}', font=small_font, fill=muted)
-        draw.text((page_w - margin - _font(18, True).getlength(f'{len(linhas)} registro(s)'), y), f'{len(linhas)} registro(s)', font=_font(18, True), fill=dark)
-        y += 52
-        resumo = (
-            f'Total medido: {_money(totais["medido"])}    '
-            f'Descontos: {_money(totais["descontos"])}    '
-            f'Total liquido: {_money(totais["liquido"])}'
-        )
-        draw.rounded_rectangle((margin, y, page_w - margin, y + 44), radius=8, fill=(245, 247, 250), outline=border, width=1)
-        draw.text((margin + 18, y + 12), _clean_text(resumo), font=small_font, fill=dark)
-        y += 70
-
-        cursor = margin
-        for header, width in zip(headers, widths):
-            _draw_report_cell(draw, header, cursor, y, width, header_h, header_font, bg=header_bg, align='center', width=2)
-            cursor += width
-        y += header_h
-
-        for row_index, row in enumerate(chunk):
-            cursor = margin
-            bg = zebra if row_index % 2 else (255, 255, 255)
-            for value, width, coluna in zip(row, widths, colunas):
-                align = 'right' if coluna in {'medido', 'descontos', 'liquido'} else 'center'
-                if coluna in {'obra', 'planilha', 'empreiteiro'}:
-                    align = 'left'
-                _draw_report_cell(draw, value, cursor, y, width, row_h, cell_font, bg=bg, align=align)
-                cursor += width
-            y += row_h
-
-        footer = f'Pagina {page_index} de {len(chunks)}'
-        draw.text((margin, page_h - margin), date.today().strftime('%d/%m/%Y'), font=_font(15), fill=muted)
-        draw_empresa_footer(image, draw, empresa, _font(15), _font(15, True), margin=margin, y=page_h - margin, page_text=footer)
-        pages.append(image)
-
-    buffer = BytesIO()
-    pages[0].save(buffer, 'PDF', save_all=True, append_images=pages[1:], resolution=150)
-    return buffer.getvalue()
+    pdf_columns = []
+    for coluna in colunas:
+        align = 'center'
+        if coluna in {'obra', 'planilha', 'empreiteiro'}:
+            align = 'left'
+        elif coluna in {'medido', 'descontos', 'liquido', 'percentual'}:
+            align = 'right'
+        pdf_columns.append(PdfTableColumn(coluna, RELATORIO_MEDICOES_COLUNAS[coluna], weight=weights.get(coluna, 1), align=align))
+    rows = [
+        {coluna: _relatorio_linha_display(linha, coluna) for coluna in colunas}
+        for linha in linhas
+    ]
+    doc = PdfDocument(
+        empresa=empresa,
+        title='Relatorio gerencial de medicoes',
+        subtitle=f'{len(linhas)} registro(s)',
+        orientation='landscape',
+        filename='relatorio_medicoes.pdf',
+    )
+    doc.add_title(emitted_on=date.today())
+    doc.add_info_grid(
+        [
+            ('Total medido', _money(totais['medido'])),
+            ('Descontos', _money(totais['descontos'])),
+            ('Total liquido', _money(totais['liquido'])),
+        ],
+        columns=3,
+    )
+    doc.add_table(pdf_columns, rows, row_height=44)
+    return doc.build()
 
 
 def relatorio_medicoes(request):
@@ -934,7 +833,7 @@ def relatorio_medicoes(request):
         export = request.GET.get('export')
         if export == 'excel':
             response = HttpResponse(
-                _xlsx_relatorio_medicoes(linhas, colunas),
+                _xlsx_relatorio_medicoes(linhas, colunas, request.empresa),
                 content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             )
             response['Content-Disposition'] = 'attachment; filename="relatorio_medicoes.xlsx"'
@@ -1306,180 +1205,133 @@ def _normalizar_ordem_itens_orcamento(orcamento):
 
 
 def _xlsx_saldo_contratual(orcamento, linhas, totais):
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'Saldo contratual'
-    ws.append(['Saldo contratual da construtora'])
-    ws.append(['Obra', str(orcamento.obra)])
-    ws.append(['Planilha', orcamento.nome])
-    ws.append(['Emitido em', date.today().strftime('%d/%m/%Y')])
-    ws.append([])
-    ws.append(
-        [
-            'Ref.',
-            'Descricao',
-            'Un.',
-            'Qtde contrato',
-            'Acum. medido',
-            'Saldo',
-            'Unit. material',
-            'Unit. mao obra',
-            'Unit. equip.',
-            'Material saldo',
-            'Mao obra saldo',
-            'Equip. saldo',
-            'Total saldo',
-        ]
-    )
-
-    widths = [10, 58, 8, 14, 14, 14, 16, 16, 16, 16, 16, 16, 17]
-    for col_index, width in enumerate(widths, start=1):
-        ws.column_dimensions[get_column_letter(col_index)].width = width
-
-    header_fill = PatternFill('solid', fgColor='E8EEF7')
-    saldo_fill = PatternFill('solid', fgColor='DCF5E5')
-    total_fill = PatternFill('solid', fgColor='F3F4F6')
-    header_font = Font(bold=True)
-
-    for cell in ws[1]:
-        cell.font = Font(bold=True, size=14)
-    for cell in ws[6]:
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-
+    columns = [
+        ExcelColumn('ref', 'Ref.', width=10, align='center'),
+        ExcelColumn('descricao', 'Descricao', width=58, align='left', wrap=True),
+        ExcelColumn('unidade', 'Un.', width=8, align='center'),
+        ExcelColumn('quantidade', 'Qtde contrato', width=14, align='right', number_format=ExcelReportBuilder.DECIMAL_FORMAT),
+        ExcelColumn('medido', 'Acum. medido', width=14, align='right', number_format=ExcelReportBuilder.DECIMAL_FORMAT),
+        ExcelColumn('saldo_quantidade', 'Saldo', width=14, align='right', number_format=ExcelReportBuilder.DECIMAL_FORMAT),
+        ExcelColumn('unit_material', 'Unit. material', width=16, align='right', number_format=ExcelReportBuilder.MONEY_FORMAT),
+        ExcelColumn('unit_mao_obra', 'Unit. mao obra', width=16, align='right', number_format=ExcelReportBuilder.MONEY_FORMAT),
+        ExcelColumn('unit_equip', 'Unit. equip.', width=16, align='right', number_format=ExcelReportBuilder.MONEY_FORMAT),
+        ExcelColumn('saldo_material', 'Material saldo', width=16, align='right', number_format=ExcelReportBuilder.MONEY_FORMAT),
+        ExcelColumn('saldo_mao_obra', 'Mao obra saldo', width=16, align='right', number_format=ExcelReportBuilder.MONEY_FORMAT),
+        ExcelColumn('saldo_equip', 'Equip. saldo', width=16, align='right', number_format=ExcelReportBuilder.MONEY_FORMAT),
+        ExcelColumn('saldo_total', 'Total saldo', width=17, align='right', number_format=ExcelReportBuilder.MONEY_FORMAT),
+    ]
+    rows = []
     for linha in linhas:
         item = linha['item']
-        ws.append(
-            [
-                item.item,
-                item.descricao,
-                item.unidade,
-                float(item.quantidade),
-                float(linha['quantidade_medida']),
-                float(linha['saldo_quantidade']),
-                float(item.preco_unitario_material),
-                float(item.preco_unitario_mao_obra),
-                float(item.preco_unitario_equipamentos),
-                float(linha['saldo_material']),
-                float(linha['saldo_mao_obra']),
-                float(linha['saldo_equipamentos']),
-                float(linha['saldo_total']),
-            ]
+        rows.append(
+            {
+                'ref': item.item,
+                'descricao': item.descricao,
+                'unidade': item.unidade,
+                'quantidade': item.quantidade,
+                'medido': linha['quantidade_medida'],
+                'saldo_quantidade': linha['saldo_quantidade'],
+                'unit_material': item.preco_unitario_material,
+                'unit_mao_obra': item.preco_unitario_mao_obra,
+                'unit_equip': item.preco_unitario_equipamentos,
+                'saldo_material': linha['saldo_material'],
+                'saldo_mao_obra': linha['saldo_mao_obra'],
+                'saldo_equip': linha['saldo_equipamentos'],
+                'saldo_total': linha['saldo_total'],
+            }
         )
-        row_number = ws.max_row
-        for col in range(1, 14):
-            ws.cell(row=row_number, column=col).alignment = Alignment(
-                horizontal='left' if col == 2 else 'center',
-                vertical='center',
-                wrap_text=True,
-            )
-        for col in range(10, 14):
-            ws.cell(row=row_number, column=col).fill = saldo_fill
-
-    ws.append([])
-    ws.append(['', '', '', '', '', '', '', '', 'Totais', float(totais['material']), float(totais['mao_obra']), float(totais['equipamentos']), float(totais['total'])])
+    builder = ExcelReportBuilder(
+        empresa=orcamento.obra.empresa,
+        title='Saldo contratual da construtora',
+        subtitle=f'Obra: {orcamento.obra} | Planilha: {orcamento.nome}',
+        sheet_name='Saldo contratual',
+    )
+    builder.add_header(emitted_on=date.today())
+    builder.add_table(columns, rows)
+    ws = builder.ws
+    total_row = builder.current_row
+    ws.cell(total_row, 9, 'Totais')
+    total_values = [totais['material'], totais['mao_obra'], totais['equipamentos'], totais['total']]
+    for offset, value in enumerate(total_values, start=10):
+        cell = ws.cell(total_row, offset, value)
+        cell.number_format = ExcelReportBuilder.MONEY_FORMAT
+        cell.alignment = Alignment(horizontal='right', vertical='center')
     for col in range(9, 14):
-        cell = ws.cell(row=ws.max_row, column=col)
-        cell.font = header_font
-        cell.fill = total_fill
-        cell.alignment = Alignment(horizontal='center', vertical='center')
-
-    output = BytesIO()
-    wb.save(output)
-    return output.getvalue()
+        cell = ws.cell(total_row, col)
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill('solid', fgColor='F3F4F6')
+        cell.border = Border(
+            left=Side(style='thin', color='CBD5E1'),
+            right=Side(style='thin', color='CBD5E1'),
+            top=Side(style='thin', color='CBD5E1'),
+            bottom=Side(style='thin', color='CBD5E1'),
+        )
+    return builder.build()
 
 
 def _pdf_saldo_contratual(orcamento, linhas, totais):
-    page_w, page_h = 2339, 1654
-    margin = 70
-    table_w = page_w - (margin * 2)
-    rows_per_page = 22
-    chunks = [linhas[i : i + rows_per_page] for i in range(0, len(linhas), rows_per_page)] or [[]]
-    pages = []
-
-    for page_index, chunk in enumerate(chunks):
-        image = Image.new('RGB', (page_w, page_h), 'white')
-        draw = ImageDraw.Draw(image)
-        navy = (15, 23, 42)
-        muted = (100, 116, 139)
-        border = (203, 213, 225)
-        soft = (248, 250, 252)
-
-        draw.rectangle((0, 0, page_w, 118), fill=navy)
-        draw.text((margin, 34), 'SALDO CONTRATUAL DA CONSTRUTORA', font=_font(32, True), fill='white')
-        draw.text((page_w - margin - 360, 42), f'Emitido em {date.today():%d/%m/%Y}', font=_font(21, True), fill=(226, 232, 240))
-
-        y = 150
-        draw.rounded_rectangle((margin, y, page_w - margin, y + 118), radius=8, fill=soft, outline=border, width=2)
-        draw.text((margin + 22, y + 18), 'Obra', font=_font(18, True), fill=muted)
-        _draw_wrapped_cell(draw, orcamento.obra, margin + 12, y + 42, int(table_w * 0.45), 56, _font(22), fill=navy)
-        draw.text((margin + int(table_w * 0.48), y + 18), 'Planilha', font=_font(18, True), fill=muted)
-        _draw_wrapped_cell(
-            draw,
-            orcamento.nome,
-            margin + int(table_w * 0.48) - 8,
-            y + 42,
-            int(table_w * 0.5),
-            56,
-            _font(22),
-            fill=navy,
+    doc = PdfDocument(
+        empresa=orcamento.obra.empresa,
+        title='Saldo contratual da construtora',
+        subtitle=f'Obra: {orcamento.obra} | Planilha: {orcamento.nome}',
+        orientation='landscape',
+        filename=f'saldo_contratual_{orcamento.id}.pdf',
+    )
+    doc.add_title(emitted_on=date.today())
+    doc.add_info_grid(
+        [
+            ('Obra', orcamento.obra),
+            ('Planilha', orcamento.nome),
+            ('Total contrato', _money(orcamento.total_orcamento)),
+            ('Emitido em', format_date_br(date.today())),
+        ],
+        columns=4,
+    )
+    rows = []
+    for linha in linhas:
+        item = linha['item']
+        rows.append(
+            {
+                'ref': item.item,
+                'descricao': item.descricao,
+                'unidade': item.unidade or '-',
+                'quantidade': format_decimal_br(item.quantidade, 4),
+                'medido': format_decimal_br(linha['quantidade_medida'], 4),
+                'saldo': format_decimal_br(linha['saldo_quantidade'], 4),
+                'unit_total': _money(item.preco_unitario_total),
+                'material': _money(linha['saldo_material']),
+                'mao_obra': _money(linha['saldo_mao_obra']),
+                'equip': _money(linha['saldo_equipamentos']),
+                'total': _money(linha['saldo_total']),
+            }
         )
-
-        y += 152
-        headers = ['Ref.', 'Descricao', 'Un.', 'Contrato', 'Medido', 'Saldo', 'Unit. total', 'Material', 'Mao obra', 'Equip.', 'Total saldo']
-        widths = [92, 610, 80, 145, 145, 145, 175, 195, 195, 195, 250]
-        rows = []
-        for linha in chunk:
-            item = linha['item']
-            rows.append(
-                [
-                    item.item,
-                    item.descricao,
-                    item.unidade or '-',
-                    f'{item.quantidade:.4f}',
-                    f'{linha["quantidade_medida"]:.4f}',
-                    f'{linha["saldo_quantidade"]:.4f}',
-                    _money(item.preco_unitario_total),
-                    _money(linha['saldo_material']),
-                    _money(linha['saldo_mao_obra']),
-                    _money(linha['saldo_equipamentos']),
-                    _money(linha['saldo_total']),
-                ]
-            )
-        y = _draw_pdf_table(draw, headers, rows, margin, y, widths, row_h=52)
-
-        if page_index == len(chunks) - 1:
-            y += 32
-            summary_w = 780
-            summary_x = page_w - margin - summary_w
-            summary_rows = [
-                ('Material a medir', totais['material']),
-                ('Mao de obra a medir', totais['mao_obra']),
-                ('Equipamentos a medir', totais['equipamentos']),
-                ('Total ainda em contrato', totais['total']),
-            ]
-            draw.rounded_rectangle((summary_x, y, summary_x + summary_w, y + 230), radius=8, fill=soft, outline=border, width=2)
-            row_y = y + 18
-            for label, value in summary_rows:
-                is_total = label.startswith('Total')
-                draw.text((summary_x + 24, row_y), label, font=_font(22, is_total), fill=navy)
-                amount = _money(value)
-                draw.text(
-                    (summary_x + summary_w - 28 - _font(22, is_total).getlength(amount), row_y),
-                    amount,
-                    font=_font(22, is_total),
-                    fill=navy,
-                )
-                row_y += 50
-
-        footer = f'Pagina {page_index + 1} de {len(chunks)}'
-        draw_empresa_footer(image, draw, orcamento.obra.empresa, _font(17), _font(17, True), margin=margin, y=page_h - 56, page_text=footer)
-        pages.append(image)
-
-    buffer = BytesIO()
-    pages[0].save(buffer, 'PDF', save_all=True, append_images=pages[1:], resolution=150)
-    return buffer.getvalue()
+    doc.add_table(
+        [
+            PdfTableColumn('ref', 'Ref.', weight=0.6, align='center'),
+            PdfTableColumn('descricao', 'Descricao', weight=3.7),
+            PdfTableColumn('unidade', 'Un.', weight=0.55, align='center'),
+            PdfTableColumn('quantidade', 'Contrato', weight=0.9, align='right'),
+            PdfTableColumn('medido', 'Medido', weight=0.9, align='right'),
+            PdfTableColumn('saldo', 'Saldo', weight=0.9, align='right'),
+            PdfTableColumn('unit_total', 'Unit. total', weight=1.1, align='right'),
+            PdfTableColumn('material', 'Material', weight=1.2, align='right'),
+            PdfTableColumn('mao_obra', 'Mao obra', weight=1.2, align='right'),
+            PdfTableColumn('equip', 'Equip.', weight=1.1, align='right'),
+            PdfTableColumn('total', 'Total saldo', weight=1.45, align='right'),
+        ],
+        rows,
+        row_height=44,
+    )
+    doc.add_totals_box(
+        [
+            ('Material a medir', _money(totais['material']), False),
+            ('Mao de obra a medir', _money(totais['mao_obra']), False),
+            ('Equipamentos a medir', _money(totais['equipamentos']), False),
+            ('Total ainda em contrato', _money(totais['total']), True),
+        ],
+        width=760,
+    )
+    return doc.build()
 
 
 def editar_itens_orcamento(request, orcamento_id):
@@ -1857,281 +1709,232 @@ def medicao_empreiteiro_pdf(request, medicao_id):
 
 def _pdf_medicao_empreiteiro(medicao):
     itens = list(medicao.itens.select_related('item_orcamento'))
-    page_w, page_h = 1654, 2339
-    margin = 92
-    table_w = page_w - (margin * 2)
-    rows_per_page = 25 if medicao.tipo == MedicaoEmpreiteiro.TIPO_SIMPLES else 22
-    chunks = [itens[i : i + rows_per_page] for i in range(0, len(itens), rows_per_page)] or [[]]
-    pages = []
-
-    for page_index, chunk in enumerate(chunks):
-        image = Image.new('RGB', (page_w, page_h), 'white')
-        draw = ImageDraw.Draw(image)
-        navy = (15, 23, 42)
-        muted = (100, 116, 139)
-        border = (203, 213, 225)
-        soft = (248, 250, 252)
-
-        draw.rectangle((0, 0, page_w, 130), fill=navy)
-        draw.text((margin, 42), 'BOLETIM DE MEDICAO DE EMPREITEIRO', font=_font(34, True), fill='white')
-        draw.text(
-            (page_w - margin - 330, 50),
-            f'Medicao no {medicao.numero}',
-            font=_font(24, True),
-            fill=(226, 232, 240),
-        )
-
-        y = 170
-        draw.rounded_rectangle((margin, y, page_w - margin, y + 235), radius=10, fill=soft, outline=border, width=2)
-        info = [
+    doc = PdfDocument(
+        empresa=medicao.empresa,
+        title='Boletim de medicao de empreiteiro',
+        subtitle=f'Medicao no {medicao.numero}',
+        orientation='portrait',
+        filename=f'medicao_empreiteiro_{medicao.numero}.pdf',
+    )
+    doc.add_title(emitted_on=date.today())
+    doc.add_info_grid(
+        [
             ('Empreiteiro', medicao.empreiteiro),
             ('CPF/CNPJ', medicao.cpf_cnpj or '-'),
             ('PIX', medicao.pix or '-'),
             ('Obra', medicao.obra or getattr(medicao.orcamento, 'obra', '-') or '-'),
-            ('Periodo', f'{medicao.periodo_inicio:%d/%m/%Y} a {medicao.periodo_fim:%d/%m/%Y}'),
-            ('Data da medicao', f'{medicao.data_medicao:%d/%m/%Y}'),
+            ('Periodo', f'{format_date_br(medicao.periodo_inicio)} a {format_date_br(medicao.periodo_fim)}'),
+            ('Data da medicao', format_date_br(medicao.data_medicao)),
+        ],
+        columns=3,
+    )
+    if medicao.tipo == MedicaoEmpreiteiro.TIPO_SIMPLES:
+        columns = [
+            PdfTableColumn('item', 'Item', weight=0.8, align='center'),
+            PdfTableColumn('descricao', 'Descricao', weight=3.9),
+            PdfTableColumn('unidade', 'Und', weight=0.75, align='center'),
+            PdfTableColumn('quantidade', 'Qtd', weight=0.9, align='right'),
+            PdfTableColumn('valor_unitario', 'Valor unit.', weight=1.2, align='right'),
+            PdfTableColumn('total', 'Total', weight=1.25, align='right'),
         ]
-        col_w = table_w / 3
-        row_h = 105
-        for index, (label, value) in enumerate(info):
-            col = index % 3
-            row = index // 3
-            x0 = int(margin + col * col_w)
-            y0 = y + 18 + row * row_h
-            draw.text((x0 + 18, y0), label.upper(), font=_font(17, True), fill=muted)
-            _draw_wrapped_cell(draw, value, x0 + 8, y0 + 26, int(col_w - 16), 60, _font(21), fill=navy)
-
-        y += 285
-        if medicao.tipo == MedicaoEmpreiteiro.TIPO_SIMPLES:
-            headers = ['Item', 'Descricao', 'Und', 'Qtd', 'Valor unit.', 'Total']
-            widths = [110, 610, 105, 150, 245, 250]
-            rows = [
-                [
-                    item.item or '-',
-                    item.descricao,
-                    item.unidade or '-',
-                    f'{item.quantidade_periodo:.4f}',
-                    _money(item.valor_unitario),
-                    _money(item.valor_periodo),
-                ]
-                for item in chunk
-            ]
-        else:
-            headers = ['Item', 'Descricao', 'Und', 'Anterior', 'Periodo', 'Atual', 'Saldo', 'Total']
-            widths = [95, 500, 85, 135, 135, 135, 135, 250]
-            rows = [
-                [
-                    item.item or '-',
-                    item.descricao,
-                    item.unidade or '-',
-                    f'{item.quantidade_acumulada_anterior:.4f}',
-                    f'{item.quantidade_periodo:.4f}',
-                    f'{item.quantidade_acumulada_atual:.4f}',
-                    f'{item.saldo_quantidade:.4f}',
-                    _money(item.valor_periodo),
-                ]
-                for item in chunk
-            ]
-
-        y = _draw_pdf_table(draw, headers, rows, margin, y, widths)
-
-        if page_index == len(chunks) - 1:
-            y += 35
-            summary_x = page_w - margin - 540
-            summary_w = 540
-            summary_rows = [
-                ('Subtotal medido', medicao.subtotal_periodo),
-                ('Retencao tecnica', -medicao.retencao_tecnica),
-                ('Desconto adicional', -medicao.desconto_adicional),
-                ('Total liquido', medicao.total_liquido),
-            ]
-            draw.rounded_rectangle((summary_x, y, summary_x + summary_w, y + 240), radius=8, fill=soft, outline=border, width=2)
-            row_y = y + 18
-            for label, value in summary_rows:
-                is_total = label == 'Total liquido'
-                draw.text((summary_x + 24, row_y), label, font=_font(21, is_total), fill=navy)
-                amount = _money(abs(value))
-                if value < 0:
-                    amount = f'- {amount}'
-                draw.text(
-                    (summary_x + summary_w - 28 - _font(21, is_total).getlength(amount), row_y),
-                    amount,
-                    font=_font(21, is_total),
-                    fill=navy,
-                )
-                row_y += 52
-
-            if medicao.observacoes:
-                notes_y = min(y, page_h - 300)
-                draw.text((margin, notes_y), 'Observacoes', font=_font(20, True), fill=navy)
-                _draw_wrapped_cell(
-                    draw,
-                    medicao.observacoes,
-                    margin - 8,
-                    notes_y + 34,
-                    table_w - summary_w - 40,
-                    160,
-                    _font(19),
-                    fill=(51, 65, 85),
-                )
-
-        footer = f'Pagina {page_index + 1} de {len(chunks)}'
-        draw.text((page_w - margin - _font(17).getlength(footer), page_h - 60), footer, font=_font(17), fill=muted)
-        pages.append(image)
-
-    buffer = BytesIO()
-    pages[0].save(buffer, 'PDF', save_all=True, append_images=pages[1:], resolution=150)
-    return buffer.getvalue()
+        rows = [
+            {
+                'item': item.item or '-',
+                'descricao': item.descricao,
+                'unidade': item.unidade or '-',
+                'quantidade': format_decimal_br(item.quantidade_periodo, 4),
+                'valor_unitario': _money(item.valor_unitario),
+                'total': _money(item.valor_periodo),
+            }
+            for item in itens
+        ]
+    else:
+        columns = [
+            PdfTableColumn('item', 'Item', weight=0.7, align='center'),
+            PdfTableColumn('descricao', 'Descricao', weight=3.5),
+            PdfTableColumn('unidade', 'Und', weight=0.65, align='center'),
+            PdfTableColumn('anterior', 'Anterior', weight=0.95, align='right'),
+            PdfTableColumn('periodo', 'Periodo', weight=0.95, align='right'),
+            PdfTableColumn('atual', 'Atual', weight=0.95, align='right'),
+            PdfTableColumn('saldo', 'Saldo', weight=0.95, align='right'),
+            PdfTableColumn('total', 'Total', weight=1.25, align='right'),
+        ]
+        rows = [
+            {
+                'item': item.item or '-',
+                'descricao': item.descricao,
+                'unidade': item.unidade or '-',
+                'anterior': format_decimal_br(item.quantidade_acumulada_anterior, 4),
+                'periodo': format_decimal_br(item.quantidade_periodo, 4),
+                'atual': format_decimal_br(item.quantidade_acumulada_atual, 4),
+                'saldo': format_decimal_br(item.saldo_quantidade, 4),
+                'total': _money(item.valor_periodo),
+            }
+            for item in itens
+        ]
+    doc.add_table(columns, rows, row_height=44)
+    doc.add_totals_box(
+        [
+            ('Subtotal medido', _money(medicao.subtotal_periodo), False),
+            ('Retencao tecnica', f'- {_money(medicao.retencao_tecnica)}', False),
+            ('Desconto adicional', f'- {_money(medicao.desconto_adicional)}', False),
+            ('Total liquido', _money(medicao.total_liquido), True),
+        ],
+        width=620,
+    )
+    if medicao.observacoes:
+        doc.add_section_header('Observacoes')
+        doc.add_info_grid([('Observacoes', medicao.observacoes)], columns=1)
+    return doc.build()
 
 
 def _xlsx_medicao(medicao, itens):
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'Medicao'
-    ws.append(['Medicao', medicao.numero])
-    ws.append(['Periodo', f'{medicao.periodo_inicio:%d/%m/%Y} a {medicao.periodo_fim:%d/%m/%Y}'])
-    ws.append([])
-    contract_fill = PatternFill('solid', fgColor='E8EEF7')
-    measured_fill = PatternFill('solid', fgColor='DCF5E5')
-    receivable_fill = PatternFill('solid', fgColor='FEE2E2')
-    header_font = Font(bold=True)
+    empresa = medicao.orcamento.obra.empresa if isinstance(medicao, MedicaoConstrutora) else medicao.empresa
+    builder = ExcelReportBuilder(
+        empresa=empresa,
+        title='Boletim de medicao',
+        subtitle=f'Medicao no {medicao.numero} | Periodo {format_date_br(medicao.periodo_inicio)} a {format_date_br(medicao.periodo_fim)}',
+        sheet_name='Medicao',
+        orientation='landscape',
+    )
+    builder.add_header(emitted_on=date.today())
+
     if isinstance(medicao, MedicaoConstrutora):
-        column_widths = [8, 62, 8, 10, 16, 16, 16, 16, 14, 12, 10, 16, 16, 16, 17]
-        for col_index, width in enumerate(column_widths, start=1):
-            ws.column_dimensions[get_column_letter(col_index)].width = width
-        ws.append(
-            [
-                'Itens contratuais',
-                '',
-                '',
-                '',
-                '',
-                '',
-                '',
-                '',
-                'Itens medidos',
-                '',
-                '',
-                'Valor a receber',
-                '',
-                '',
-                '',
-            ]
-        )
-        ws.append(
-            [
-                'Item',
-                'Descricao',
-                'Unidade',
-                'Qtde',
-                'Unitario material',
-                'Unitario mao de obra',
-                'Unitario equipamentos',
-                'Unitario total',
-                'Acumulado anterior',
-                'Periodo',
-                '% executado',
-                'Valor material',
-                'Valor mao de obra',
-                'Valor equipamentos',
-                'Valor total',
-            ]
-        )
-        ws.merge_cells(start_row=4, start_column=1, end_row=4, end_column=8)
-        ws.merge_cells(start_row=4, start_column=9, end_row=4, end_column=11)
-        ws.merge_cells(start_row=4, start_column=12, end_row=4, end_column=15)
-        for row in (4, 5):
-            for col in range(1, 16):
-                if col <= 8:
-                    fill = contract_fill
-                elif col <= 11:
-                    fill = measured_fill
-                else:
-                    fill = receivable_fill
-                cell = ws.cell(row=row, column=col)
-                cell.fill = fill
-                cell.font = header_font
-                cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        columns = [
+            ExcelColumn('item', 'Item', width=8, align='center'),
+            ExcelColumn('descricao', 'Descricao', width=56, wrap=True),
+            ExcelColumn('unidade', 'Unidade', width=9, align='center'),
+            ExcelColumn('quantidade', 'Qtde', width=11, align='center', number_format=ExcelReportBuilder.DECIMAL_FORMAT),
+            ExcelColumn('unit_material', 'Unit. material', width=16, align='right', number_format=ExcelReportBuilder.MONEY_FORMAT),
+            ExcelColumn('unit_mao_obra', 'Unit. mao obra', width=16, align='right', number_format=ExcelReportBuilder.MONEY_FORMAT),
+            ExcelColumn('unit_equip', 'Unit. equip.', width=16, align='right', number_format=ExcelReportBuilder.MONEY_FORMAT),
+            ExcelColumn('preco_unit', 'Unit. total', width=16, align='right', number_format=ExcelReportBuilder.MONEY_FORMAT),
+            ExcelColumn('anterior', 'Acum. anterior', width=14, align='center', number_format=ExcelReportBuilder.DECIMAL_FORMAT),
+            ExcelColumn('periodo', 'Periodo', width=12, align='center', number_format=ExcelReportBuilder.DECIMAL_FORMAT),
+            ExcelColumn('percentual', '% executado', width=12, align='center', number_format=ExcelReportBuilder.PERCENT_FORMAT),
+            ExcelColumn('material', 'Material', width=16, align='right', number_format=ExcelReportBuilder.MONEY_FORMAT),
+            ExcelColumn('mao_obra', 'Mao de obra', width=16, align='right', number_format=ExcelReportBuilder.MONEY_FORMAT),
+            ExcelColumn('equip', 'Equip.', width=16, align='right', number_format=ExcelReportBuilder.MONEY_FORMAT),
+            ExcelColumn('valor', 'Valor total', width=17, align='right', number_format=ExcelReportBuilder.MONEY_FORMAT),
+        ]
+        thin = Side(style='thin', color='CBD5E1')
+        border = Border(left=thin, right=thin, top=thin, bottom=thin)
+        group_row = builder.current_row
+        for start, end, label, fill in [
+            (1, 8, 'Itens contratuais', 'contract'),
+            (9, 11, 'Itens medidos', 'measured'),
+            (12, 15, 'Valor a receber', 'receivable'),
+        ]:
+            builder.ws.merge_cells(start_row=group_row, start_column=start, end_row=group_row, end_column=end)
+            cell = builder.ws.cell(group_row, start, label)
+            cell.fill = builder._fill(fill)
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+            for col in range(start, end + 1):
+                current = builder.ws.cell(group_row, col)
+                current.fill = builder._fill(fill)
+                current.border = border
+        builder.current_row += 1
     else:
-        ws.append(['Item', 'Descricao', 'Unidade', 'Contrato', 'Acumulado anterior', 'Periodo', 'Acumulado atual', 'Saldo', 'Valor'])
+        columns = [
+            ExcelColumn('item', 'Item', width=10, align='center'),
+            ExcelColumn('descricao', 'Descricao', width=58, wrap=True),
+            ExcelColumn('unidade', 'Unidade', width=12, align='center'),
+            ExcelColumn('contrato', 'Contrato', width=14, align='center', number_format=ExcelReportBuilder.DECIMAL_FORMAT),
+            ExcelColumn('anterior', 'Acum. anterior', width=16, align='center', number_format=ExcelReportBuilder.DECIMAL_FORMAT),
+            ExcelColumn('periodo', 'Periodo', width=14, align='center', number_format=ExcelReportBuilder.DECIMAL_FORMAT),
+            ExcelColumn('atual', 'Acum. atual', width=14, align='center', number_format=ExcelReportBuilder.DECIMAL_FORMAT),
+            ExcelColumn('saldo', 'Saldo', width=14, align='center', number_format=ExcelReportBuilder.DECIMAL_FORMAT),
+            ExcelColumn('valor', 'Valor', width=17, align='right', number_format=ExcelReportBuilder.MONEY_FORMAT),
+        ]
+    rows = []
     for item in itens:
         if isinstance(item, ItemOrcamentoMedicao) and item.eh_grupo:
-            ws.append([item.item, item.descricao])
-            row_number = ws.max_row
-            max_column = 15 if isinstance(medicao, MedicaoConstrutora) else 9
-            ws.merge_cells(start_row=row_number, start_column=2, end_row=row_number, end_column=max_column)
-            for col in range(1, max_column + 1):
-                cell = ws.cell(row=row_number, column=col)
-                cell.fill = PatternFill('solid', fgColor='F3F4F6')
-                cell.font = Font(bold=True)
-                cell.alignment = Alignment(horizontal='left' if col == 2 else 'center', vertical='center')
+            rows.append({'__merge_label__': f'{item.item} - {item.descricao}', '__bg': 'surface'})
             continue
         contrato = getattr(getattr(item, 'item_orcamento', None), 'quantidade', Decimal('0'))
         base = getattr(item, 'item_orcamento', None)
-        row = [
-            getattr(base, 'item', '') or getattr(item, 'item', ''),
-            item.descricao if hasattr(item, 'descricao') else base.descricao,
-            item.unidade if hasattr(item, 'unidade') else base.unidade,
-            float(contrato),
-        ]
         if isinstance(medicao, MedicaoConstrutora):
-            row.extend(
-                [
-                    float(base.preco_unitario_material),
-                    float(base.preco_unitario_mao_obra),
-                    float(base.preco_unitario_equipamentos),
-                    float(base.preco_unitario_total),
-                    float(item.quantidade_acumulada_anterior),
-                    float(item.quantidade_periodo),
-                    float(_percent_from_item(item)),
-                    float(item.valor_material_periodo),
-                    float(item.valor_mao_obra_periodo),
-                    float(item.valor_equipamentos_periodo),
-                    float(item.valor_periodo),
-                ]
+            rows.append(
+                {
+                    'item': base.item,
+                    'descricao': base.descricao,
+                    'unidade': base.unidade or '-',
+                    'quantidade': base.quantidade,
+                    'unit_material': base.preco_unitario_material,
+                    'unit_mao_obra': base.preco_unitario_mao_obra,
+                    'unit_equip': base.preco_unitario_equipamentos,
+                    'preco_unit': base.preco_unitario_total,
+                    'anterior': item.quantidade_acumulada_anterior,
+                    'periodo': item.quantidade_periodo,
+                    'percentual': _percent_from_item(item) / Decimal('100'),
+                    'material': item.valor_material_periodo,
+                    'mao_obra': item.valor_mao_obra_periodo,
+                    'equip': item.valor_equipamentos_periodo,
+                    'valor': item.valor_periodo,
+                    '__cell_bgs': {'anterior': 'measured', 'periodo': 'measured', 'percentual': 'measured'},
+                }
             )
         else:
-            row.extend(
-                [
-                    float(item.quantidade_acumulada_anterior),
-                    float(item.quantidade_periodo),
-                    float(item.quantidade_acumulada_atual),
-                    float(item.saldo_quantidade),
-                ]
+            rows.append(
+                {
+                    'item': getattr(base, 'item', '') or getattr(item, 'item', ''),
+                    'descricao': item.descricao if hasattr(item, 'descricao') else base.descricao,
+                    'unidade': item.unidade if hasattr(item, 'unidade') else base.unidade,
+                    'contrato': contrato,
+                    'anterior': item.quantidade_acumulada_anterior,
+                    'periodo': item.quantidade_periodo,
+                    'atual': item.quantidade_acumulada_atual,
+                    'saldo': item.saldo_quantidade,
+                    'valor': item.valor_periodo,
+                }
             )
-            row.append(float(item.valor_periodo))
-        ws.append(row)
-        if isinstance(medicao, MedicaoConstrutora):
-            for col in range(1, 16):
-                horizontal = 'left' if col == 2 else 'center'
-                ws.cell(row=ws.max_row, column=col).alignment = Alignment(
-                    horizontal=horizontal,
-                    vertical='center',
-                    wrap_text=True,
-                )
-            for col in range(9, 12):
-                ws.cell(row=ws.max_row, column=col).fill = measured_fill
-    ws.append([])
-    ws.append(['Valor bruto', float(medicao.total_bruto if isinstance(medicao, MedicaoConstrutora) else medicao.subtotal_periodo)])
     if isinstance(medicao, MedicaoConstrutora):
-        ws.append(['Total material medido', float(medicao.total_material_periodo)])
-        ws.append(['Total mao de obra medida', float(medicao.total_mao_obra_periodo)])
-        ws.append(['Total equipamentos medido', float(medicao.total_equipamentos_periodo)])
-    ws.append(['Retencao tecnica', float(medicao.retencao_tecnica_calculada if isinstance(medicao, MedicaoConstrutora) else medicao.retencao_tecnica)])
+        rows.extend(
+            [
+                {'descricao': 'Total material', 'material': medicao.total_material_periodo, 'valor': medicao.total_material_periodo, '__bg': 'surface', '__bold': True},
+                {'descricao': 'Total mao de obra', 'mao_obra': medicao.total_mao_obra_periodo, 'valor': medicao.total_mao_obra_periodo, '__bg': 'surface', '__bold': True},
+                {'descricao': 'Total equipamentos', 'equip': medicao.total_equipamentos_periodo, 'valor': medicao.total_equipamentos_periodo, '__bg': 'surface', '__bold': True},
+            ]
+        )
+    table_header_row = builder.current_row
+    builder.add_table(columns, rows)
     if isinstance(medicao, MedicaoConstrutora):
-        ws.append(['ISSQN', float(medicao.issqn_calculado)])
-        ws.append(['INSS', float(medicao.inss_calculado)])
-        ws.append(['Faturamento direto descontado', float(medicao.total_faturamento_direto)])
-        ws.append(['Base de impostos', float(medicao.base_impostos)])
-        ws.append(['Material para NF', float(medicao.valor_material_nf)])
-        ws.append(['Mao de obra para NF', float(medicao.valor_mao_obra_nf)])
-        ws.append(['Equipamentos para NF', float(medicao.valor_equipamentos_nf)])
-        ws.append(['Base INSS', float(medicao.base_inss)])
-    ws.append(['Desconto adicional', float(medicao.desconto_adicional_calculado if isinstance(medicao, MedicaoConstrutora) else medicao.desconto_adicional)])
-    ws.append(['Total liquido', float(medicao.total_liquido)])
-    output = BytesIO()
-    wb.save(output)
-    return output.getvalue()
+        for col in range(1, 16):
+            if col <= 8:
+                fill = 'contract'
+            elif col <= 11:
+                fill = 'measured'
+            else:
+                fill = 'receivable'
+            builder.ws.cell(table_header_row, col).fill = builder._fill(fill)
+
+    ws = builder.ws
+    summary_start = ws.max_row + 1
+    ws.append(['Resumo'])
+    ws.cell(ws.max_row, 1).font = Font(bold=True, size=12)
+    ws.append(['Valor bruto', medicao.total_bruto if isinstance(medicao, MedicaoConstrutora) else medicao.subtotal_periodo])
+    if isinstance(medicao, MedicaoConstrutora):
+        ws.append(['Total material medido', medicao.total_material_periodo])
+        ws.append(['Total mao de obra medida', medicao.total_mao_obra_periodo])
+        ws.append(['Total equipamentos medido', medicao.total_equipamentos_periodo])
+    ws.append(['Retencao tecnica', medicao.retencao_tecnica_calculada if isinstance(medicao, MedicaoConstrutora) else medicao.retencao_tecnica])
+    if isinstance(medicao, MedicaoConstrutora):
+        ws.append(['ISSQN', medicao.issqn_calculado])
+        ws.append(['INSS', medicao.inss_calculado])
+        ws.append(['Faturamento direto descontado', medicao.total_faturamento_direto])
+        ws.append(['Base de impostos', medicao.base_impostos])
+        ws.append(['Material para NF', medicao.valor_material_nf])
+        ws.append(['Mao de obra para NF', medicao.valor_mao_obra_nf])
+        ws.append(['Equipamentos para NF', medicao.valor_equipamentos_nf])
+        ws.append(['Base INSS', medicao.base_inss])
+    ws.append(['Desconto adicional', medicao.desconto_adicional_calculado if isinstance(medicao, MedicaoConstrutora) else medicao.desconto_adicional])
+    ws.append(['Total liquido', medicao.total_liquido])
+    for row in ws.iter_rows(min_row=summary_start + 1, max_row=ws.max_row, min_col=1, max_col=2):
+        row[0].font = Font(bold=row[0].value == 'Total liquido')
+        row[1].number_format = ExcelReportBuilder.MONEY_FORMAT
+        row[1].font = Font(bold=row[0].value == 'Total liquido')
+    return builder.build()
 
 
 def medicao_construtora_excel(request, medicao_id):
