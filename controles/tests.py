@@ -148,6 +148,32 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(pdf['Content-Type'], 'application/pdf')
         self.assertTrue(pdf.content.startswith(b'%PDF'))
 
+    def test_pdf_cronograma_obra_extenso_quebra_paginas(self):
+        obra = self._obra(nome_obra='Obra Cronograma Extenso')
+        cronograma = CronogramaObra.objects.create(
+            empresa=self.empresa,
+            obra=obra,
+            nome='Cronograma operacional extenso',
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 8, 31),
+            formato=CronogramaObra.FORMATO_SEMANA,
+        )
+        for index in range(45):
+            LinhaCronogramaObra.objects.create(
+                cronograma=cronograma,
+                tipo=LinhaCronogramaObra.TIPO_GERAL if index % 9 == 0 else LinhaCronogramaObra.TIPO_SERVICO,
+                servico=(
+                    f'Execucao de servico operacional de demonstracao {index + 1} '
+                    'com descricao extensa para validar quebra de texto'
+                ),
+                periodos=[str(index % 20), str((index + 1) % 20)],
+                ordem=index,
+            )
+
+        response = self.client.get(reverse('cronograma_obra_pdf', args=[cronograma.id]))
+
+        self._assert_pdf_pages(response, minimum_pages=3)
+
     def test_cria_faturamento_direto_e_reduz_saldo_da_obra(self):
         obra = self._obra(nome_obra='Obra FD', valor_contrato=Decimal('1000.00'))
 

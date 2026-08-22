@@ -283,6 +283,145 @@ class PdfDocument:
             if col == columns - 1 or index == len(photos) - 1:
                 self.y = row_y + item_h
 
+    def add_timeline_grid(
+        self,
+        periods,
+        rows,
+        service_label='Serviço',
+        service_width=520,
+        min_period_width=68,
+        ideal_period_width=96,
+        row_height=50,
+    ):
+        periods = list(periods or [])
+        rows = list(rows or [])
+        if not periods:
+            periods = [{'key': '', 'label': '-', 'group': '-'}]
+        if not rows:
+            rows = [{'label': '-', 'active_keys': set(), 'is_group': False}]
+
+        available_w = self.g.content_width
+        service_w = min(service_width, int(available_w * 0.48))
+        period_w = min(
+            ideal_period_width,
+            max(min_period_width, int((available_w - service_w) / max(len(periods), 1))),
+        )
+        max_periods = max(int((available_w - service_w) / period_w), 1)
+        period_chunks = [periods[index : index + max_periods] for index in range(0, len(periods), max_periods)]
+        header_h = 78
+        block_gap = 28
+        border = self.theme.text
+        active_fill = self.theme.secondary
+        active_outline = tuple(max(channel - 35, 0) for channel in active_fill)
+        label_font = self.theme.font('table_body')
+        label_bold_font = self.theme.font('table_body', True)
+        header_font = self.theme.font('table_header', True)
+        small_font = self.theme.font('small', True)
+
+        def grouped_periods(period_chunk):
+            groups = []
+            for period in period_chunk:
+                label = period.get('group') or ''
+                if not groups or groups[-1]['label'] != label:
+                    groups.append({'label': label, 'colspan': 0})
+                groups[-1]['colspan'] += 1
+            return groups
+
+        def period_widths(period_chunk):
+            count = max(len(period_chunk), 1)
+            width = int((available_w - service_w) / count)
+            remainder = available_w - service_w - (width * count)
+            return [width + (1 if index < remainder else 0) for index in range(count)]
+
+        def row_h(row):
+            font = label_bold_font if row.get('is_group') else label_font
+            line_h = font.getbbox('Ag')[3] - font.getbbox('Ag')[1] + 4
+            lines = self._wrap_lines(row.get('label', '-'), service_w - 8, font)
+            return max(row_height, min(118, line_h * len(lines) + 16))
+
+        def draw_activity_bar(x, y, w, h):
+            pad_x = max(int(w * 0.14), 6)
+            bar_h = max(int(h * 0.36), 10)
+            y0 = y + int((h - bar_h) / 2)
+            self.draw.rounded_rectangle(
+                (x + pad_x, y0, x + w - pad_x, y0 + bar_h),
+                radius=4,
+                fill=active_fill,
+                outline=active_outline,
+                width=1,
+            )
+
+        for period_chunk in period_chunks:
+            widths = period_widths(period_chunk)
+            row_index = 0
+            while row_index < len(rows):
+                if self.y + header_h + row_height > self.g.content_bottom:
+                    self._new_page()
+                available_h = self.g.content_bottom - self.y - header_h
+                row_chunk = []
+                row_heights = []
+                used_rows_h = 0
+                while row_index < len(rows):
+                    current_h = row_h(rows[row_index])
+                    if row_chunk and used_rows_h + current_h > available_h:
+                        break
+                    row_chunk.append(rows[row_index])
+                    row_heights.append(current_h)
+                    used_rows_h += current_h
+                    row_index += 1
+                    if used_rows_h >= available_h:
+                        break
+                if not row_chunk:
+                    self._new_page()
+                    continue
+                block_h = header_h + used_rows_h
+                self._ensure_space(block_h)
+                if self.y + block_h > self.g.content_bottom:
+                    self._new_page()
+                x = self.g.content_left
+                y = self.y
+
+                self.draw.rectangle((x, y, x + service_w, y + header_h), fill=self.theme.header_fill, outline=border, width=2)
+                self._draw_wrapped(service_label.upper(), x, y, service_w, header_h, header_font, fill=self.theme.text, align='center')
+
+                cursor = x + service_w
+                width_offset = 0
+                for group in grouped_periods(period_chunk):
+                    group_w = sum(widths[width_offset : width_offset + group['colspan']])
+                    self.draw.rectangle((cursor, y, cursor + group_w, y + 34), fill=self.theme.header_fill, outline=border, width=2)
+                    self._draw_wrapped(group['label'], cursor, y, group_w, 34, header_font, fill=self.theme.text, align='center')
+                    cursor += group_w
+                    width_offset += group['colspan']
+
+                cursor = x + service_w
+                for period, width in zip(period_chunk, widths):
+                    self.draw.rectangle((cursor, y + 34, cursor + width, y + header_h), fill='white', outline=border, width=1)
+                    self._draw_wrapped(period.get('label', '-'), cursor, y + 34, width, header_h - 34, small_font, fill=self.theme.text, align='center')
+                    cursor += width
+
+                row_y = y + header_h
+                for row, current_row_h in zip(row_chunk, row_heights):
+                    is_group = bool(row.get('is_group'))
+                    row_fill = self.theme.header_fill if is_group else 'white'
+                    font = label_bold_font if is_group else label_font
+                    self.draw.rectangle((x, row_y, x + service_w, row_y + current_row_h), fill=row_fill, outline=border, width=1)
+                    self._draw_wrapped(row.get('label', '-'), x + 2, row_y, service_w - 4, current_row_h, font, fill=self.theme.text)
+                    cursor = x + service_w
+                    active_keys = set(str(key) for key in row.get('active_keys', set()))
+                    for period, width in zip(period_chunk, widths):
+                        self.draw.rectangle((cursor, row_y, cursor + width, row_y + current_row_h), fill=row_fill, outline=border, width=1)
+                        if period.get('key') in active_keys and not is_group:
+                            draw_activity_bar(cursor, row_y, width, current_row_h)
+                        cursor += width
+                    row_y += current_row_h
+
+                table_right = x + service_w + sum(widths)
+                self.draw.rectangle((x, y, table_right, row_y), outline=border, width=4)
+                self.draw.line((x + service_w, y, x + service_w, row_y), fill=border, width=4)
+                self.draw.line((x + service_w, y + 34, table_right, y + 34), fill=border, width=3)
+                self.draw.line((x, y + header_h, table_right, y + header_h), fill=border, width=3)
+                self.y = row_y + block_gap
+
     def _table_widths(self, columns):
         table_w = self.g.content_width
         fixed = sum(col.width or 0 for col in columns)

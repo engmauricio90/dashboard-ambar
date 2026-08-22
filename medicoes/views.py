@@ -20,7 +20,6 @@ from openpyxl.utils import get_column_letter
 from PIL import Image, ImageDraw, ImageFont
 
 from controles.models import FaturamentoDireto
-from controles.views import _build_simple_pdf
 from documentos.excel import ExcelColumn, ExcelReportBuilder
 from documentos.formatting import format_date_br, format_decimal_br, format_money_br, format_percent_br
 from documentos.pdf import PdfDocument, PdfTableColumn, PdfTableGroup
@@ -1631,55 +1630,6 @@ def excluir_medicao_empreiteiro(request, medicao_id):
             'voltar_arg': medicao.id,
         },
     )
-
-
-def _linhas_pdf_medicao(medicao, itens, titulo):
-    lines = [
-        titulo.upper(),
-        f'Emitido em {date.today().strftime("%d/%m/%Y")}',
-        f'Obra: {getattr(getattr(medicao, "orcamento", None), "obra", None) or medicao.obra or "-"}',
-        f'Medicao: {medicao.numero} | Periodo: {medicao.periodo_inicio:%d/%m/%Y} a {medicao.periodo_fim:%d/%m/%Y}',
-        '',
-        'ITEM | DESCRICAO | UND | CONTRATO | ANT. | PERIODO | ATUAL | SALDO | VALOR',
-    ]
-    for item in itens:
-        contrato = getattr(getattr(item, 'item_orcamento', None), 'quantidade', Decimal('0'))
-        lines.append(
-            ' | '.join(
-                [
-                    (getattr(getattr(item, 'item_orcamento', None), 'item', '') or item.item)[:8],
-                    item.descricao[:24] if hasattr(item, 'descricao') else item.item_orcamento.descricao[:24],
-                    (item.unidade if hasattr(item, 'unidade') else item.item_orcamento.unidade)[:5],
-                    f'{contrato:.4f}',
-                    f'{item.quantidade_acumulada_anterior:.4f}',
-                    f'{item.quantidade_periodo:.4f}',
-                    f'{item.quantidade_acumulada_atual:.4f}',
-                    f'{item.saldo_quantidade:.4f}',
-                    _money(item.valor_periodo),
-                ]
-            )
-        )
-    lines.extend(
-        [
-            '',
-            f'Subtotal do periodo: {_money(medicao.subtotal_periodo)}',
-            f'Retencao tecnica: {_money(medicao.retencao_tecnica_calculada if isinstance(medicao, MedicaoConstrutora) else medicao.retencao_tecnica)}',
-        ]
-    )
-    if isinstance(medicao, MedicaoConstrutora):
-        lines.extend(
-            [
-                f'ISSQN: {_money(medicao.issqn_calculado)}',
-                f'INSS: {_money(medicao.inss_calculado)}',
-                f'Faturamento direto descontado: {_money(medicao.total_faturamento_direto)}',
-                f'Base de impostos: {_money(medicao.base_impostos)}',
-                f'Base INSS: {_money(medicao.base_inss)}',
-            ]
-        )
-    desconto = medicao.desconto_adicional_calculado if isinstance(medicao, MedicaoConstrutora) else medicao.desconto_adicional
-    lines.extend([f'Desconto adicional: {_money(desconto)}', f'Total liquido: {_money(medicao.total_liquido)}'])
-    pages = [lines[i : i + 30] for i in range(0, len(lines), 30)] or [[]]
-    return _build_simple_pdf(pages)
 
 
 def medicao_construtora_pdf(request, medicao_id):

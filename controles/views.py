@@ -1,12 +1,6 @@
 from decimal import Decimal
 from datetime import date, timedelta
 import calendar
-from io import BytesIO
-from pathlib import Path
-import textwrap
-import unicodedata
-
-from django.conf import settings
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db import transaction
@@ -14,11 +8,9 @@ from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
-from PIL import Image, ImageDraw, ImageFont
 
 from documentos.formatting import format_date_br, format_money_br
 from documentos.pdf import PdfDocument, PdfTableColumn
-from empresas.documentos import draw_empresa_footer, draw_empresa_header
 from financeiro.models import ContaPagar, Fornecedor
 from obras.models import Obra
 
@@ -72,78 +64,6 @@ from .models import (
     SolicitanteConcretagem,
     VeiculoMaquina,
 )
-def _pdf_escape(value):
-    text = unicodedata.normalize('NFKD', str(value)).encode('ascii', 'ignore').decode('ascii')
-    return text.replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)')
-
-
-def _build_simple_pdf(lines_by_page):
-    objects = []
-
-    def add_object(content):
-        objects.append(content)
-        return len(objects)
-
-    font_id = add_object('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>')
-
-    page_ids = []
-    content_ids = []
-    pages_id_placeholder = None
-
-    for lines in lines_by_page:
-        content_stream = ['BT', '/F1 10 Tf', '40 555 Td', '14 TL']
-        for index, line in enumerate(lines):
-            if index == 0:
-                content_stream.append(f'({_pdf_escape(line)}) Tj')
-            else:
-                content_stream.append(f'T* ({_pdf_escape(line)}) Tj')
-        content_stream.append('ET')
-        stream = '\n'.join(content_stream)
-        content_id = add_object(f'<< /Length {len(stream.encode("latin-1"))} >>\nstream\n{stream}\nendstream')
-        content_ids.append(content_id)
-        page_ids.append(
-            add_object(
-                '<< /Type /Page /Parent {pages} 0 R /MediaBox [0 0 842 595] '
-                f'/Resources << /Font << /F1 {font_id} 0 R >> >> /Contents {content_id} 0 R >>'
-            )
-        )
-
-    kids = ' '.join(f'{page_id} 0 R' for page_id in page_ids)
-    pages_id = add_object(f'<< /Type /Pages /Kids [{kids}] /Count {len(page_ids)} >>')
-
-    for page_id in page_ids:
-        objects[page_id - 1] = objects[page_id - 1].replace('{pages}', str(pages_id))
-
-    catalog_id = add_object(f'<< /Type /Catalog /Pages {pages_id} 0 R >>')
-
-    buffer = BytesIO()
-    buffer.write(b'%PDF-1.4\n%\xe2\xe3\xcf\xd3\n')
-    offsets = [0]
-    for index, content in enumerate(objects, start=1):
-        offsets.append(buffer.tell())
-        buffer.write(f'{index} 0 obj\n{content}\nendobj\n'.encode('latin-1'))
-    xref_position = buffer.tell()
-    buffer.write(f'xref\n0 {len(objects) + 1}\n'.encode('latin-1'))
-    buffer.write(b'0000000000 65535 f \n')
-    for offset in offsets[1:]:
-        buffer.write(f'{offset:010d} 00000 n \n'.encode('latin-1'))
-    buffer.write(
-        (
-            f'trailer\n<< /Size {len(objects) + 1} /Root {catalog_id} 0 R >>\n'
-            f'startxref\n{xref_position}\n%%EOF'
-        ).encode('latin-1')
-    )
-    return buffer.getvalue()
-
-
-def _format_date(value):
-    if not value:
-        return '-'
-    return value.strftime('%d/%m/%Y')
-
-
-def _format_money(value):
-    return f'R$ {value:.2f}'
 
 
 def _format_decimal4(value):
@@ -164,45 +84,6 @@ def _format_decimal4_br(value):
     if value is None:
         return '-'
     return f'{value:.4f}'.replace('.', ',')
-
-
-def _font(size, bold=False):
-    candidates = [
-        Path(settings.BASE_DIR) / 'static' / 'fonts' / ('Arial Bold.ttf' if bold else 'Arial.ttf'),
-        Path('C:/Windows/Fonts') / ('arialbd.ttf' if bold else 'arial.ttf'),
-        Path('/usr/share/fonts/truetype/dejavu') / ('DejaVuSans-Bold.ttf' if bold else 'DejaVuSans.ttf'),
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            return ImageFont.truetype(str(candidate), size)
-    return ImageFont.load_default()
-
-
-def _clean_pdf_text(value):
-    return unicodedata.normalize('NFKD', str(value)).encode('ascii', 'ignore').decode('ascii')
-
-
-def _draw_wrapped(draw, text, xy, font, fill, width, line_spacing=8):
-    x, y = xy
-    text = _clean_pdf_text(text or '-')
-    avg_char_width = max(font.getlength('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz') / 52, 1)
-    max_chars = max(int(width / avg_char_width), 12)
-    lines = []
-    for paragraph in text.splitlines() or ['-']:
-        lines.extend(textwrap.wrap(paragraph, width=max_chars) or [''])
-    line_height = font.getbbox('Ag')[3] - font.getbbox('Ag')[1] + line_spacing
-    for line in lines:
-        draw.text((x, y), line, font=font, fill=fill)
-        y += line_height
-    return y
-
-
-def _report_pdf_response_pages(images, filename):
-    buffer = BytesIO()
-    images[0].save(buffer, 'PDF', save_all=True, append_images=images[1:], resolution=150)
-    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
-    response['Content-Disposition'] = f'inline; filename="{filename}.pdf"'
-    return response
 
 
 def _queryset_locacoes_filtradas(request):
@@ -460,203 +341,43 @@ def cronograma_obra_pdf(request, cronograma_id):
     )
     periodos = _periodos_cronograma(cronograma)
     linhas = list(cronograma.linhas.all())
-    page_w, page_h = 1754, 1240
-    margin = 62
-    header_h = 176
-    footer_h = 34
-    available_w = page_w - (margin * 2)
-    available_h = page_h - header_h - footer_h - margin
-    border = (0, 0, 0)
-    fill_active = (166, 166, 166)
-    fill_header = (247, 247, 247)
-    title_font = _font(23, True)
-    header_font = _font(17, True)
-    cell_font = _font(16)
-    small_font = _font(12)
-    small_bold_font = _font(12, True)
-    footer_font = _font(12)
-
-    def chunks(values, size):
-        return [values[index : index + size] for index in range(0, len(values), size)] or [[]]
-
-    def draw_header(image, page_number, total_pages):
-        draw = ImageDraw.Draw(image)
-        draw_empresa_header(
-            image,
-            draw,
-            cronograma.empresa,
-            _font(14),
-            _font(32, True),
-            margin=(page_w - 520) // 2,
-            height=86,
-        )
-        title = f'Cronograma de atividades - {cronograma.nome}'
-        if cronograma.obra:
-            title = f'{title} - {cronograma.obra.nome_obra}'
-        clean_title = _clean_pdf_text(title)
-        fitted_title_font = title_font
-        for size in range(23, 13, -1):
-            candidate = _font(size, True)
-            if candidate.getlength(clean_title) <= available_w - 24:
-                fitted_title_font = candidate
-                break
-        title_y = 124
-        draw.rectangle((margin, title_y, page_w - margin, title_y + 34), outline=border, width=2)
-        draw.text(((page_w - fitted_title_font.getlength(clean_title)) / 2, title_y + 7), clean_title, font=fitted_title_font, fill=border)
-        footer = f'Pagina {page_number} de {total_pages}'
-        draw.text((page_w - margin - footer_font.getlength(footer), page_h - 34), footer, font=footer_font, fill=(80, 80, 80))
-
-    def split_grupos(period_chunk):
-        grupos = []
-        for periodo in period_chunk:
-            if not grupos or grupos[-1]['label'] != periodo['grupo']:
-                grupos.append({'label': periodo['grupo'], 'colspan': 0})
-            grupos[-1]['colspan'] += 1
-        return grupos
-
-    def draw_centered_wrapped(draw, value, x, y, w, h, font):
-        text = _clean_pdf_text(value)
-        avg_char_width = max(font.getlength('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz') / 52, 1)
-        max_chars = max(int((w - 8) / avg_char_width), 4)
-        lines = textwrap.wrap(text, width=max_chars) or ['']
-        line_height = font.getbbox('Ag')[3] - font.getbbox('Ag')[1] + 2
-        visible_lines = lines[: max(int((h - 6) / line_height), 1)]
-        text_h = line_height * len(visible_lines)
-        y_text = y + max((h - text_h) // 2, 3)
-        for line in visible_lines:
-            draw.text((x + (w - font.getlength(line)) / 2, y_text), line, font=font, fill=border)
-            y_text += line_height
-
-    def draw_wrapped_in_cell(draw, value, x, y, w, h, font, bold=False):
-        text = _clean_pdf_text(value)
-        avg_char_width = max(font.getlength('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz') / 52, 1)
-        max_chars = max(int((w - 16) / avg_char_width), 8)
-        lines = textwrap.wrap(text, width=max_chars) or ['']
-        line_height = font.getbbox('Ag')[3] - font.getbbox('Ag')[1] + 3
-        max_lines = max(int((h - 8) / line_height), 1)
-        visible_lines = lines[:max_lines]
-        if len(lines) > max_lines and visible_lines:
-            visible_lines[-1] = f'{visible_lines[-1][: max(len(visible_lines[-1]) - 3, 1)]}...'
-        text_h = line_height * len(visible_lines)
-        y_text = y + max((h - text_h) // 2, 4)
-        for line in visible_lines:
-            draw.text((x + 8, y_text), line, font=font, fill=border)
-            y_text += line_height
-
-    def draw_activity_bar(draw, x, y, w, h):
-        pad_x = max(int(w * 0.14), 6)
-        bar_h = max(int(h * 0.36), 10)
-        y0 = y + int((h - bar_h) / 2)
-        draw.rounded_rectangle(
-            (x + pad_x, y0, x + w - pad_x, y0 + bar_h),
-            radius=3,
-            fill=(105, 132, 128),
-            outline=(70, 96, 92),
-            width=1,
-        )
-
-    total_periodos = max(len(periodos), 1)
-    service_w = 480 if total_periodos <= 12 else 430
-    min_period_w = 45 if cronograma.formato == CronogramaObra.FORMATO_DIA else 62
-    ideal_period_w = 88 if cronograma.formato == CronogramaObra.FORMATO_SEMANA else 72
-    period_w = min(ideal_period_w, max(min_period_w, int((available_w - service_w) / total_periodos)))
-    max_periodos_por_bloco = max(int((available_w - service_w) / period_w), 1)
-    col_chunks = chunks(periodos, max_periodos_por_bloco)
-
-    row_h = 50
-    table_header_h = 72
-    block_gap = 28
-    max_rows_first_try = max(int((available_h - table_header_h) / row_h), 1)
-    row_chunks = chunks(linhas, max_rows_first_try)
-
-    blocks = []
-    for row_chunk in row_chunks:
-        for col_chunk in col_chunks:
-            blocks.append((row_chunk, col_chunk))
-
-    pages_blocks = []
-    current_page = []
-    used_h = 0
-    for row_chunk, col_chunk in blocks:
-        block_h = table_header_h + (max(len(row_chunk), 1) * row_h)
-        if current_page and used_h + block_gap + block_h > available_h:
-            pages_blocks.append(current_page)
-            current_page = []
-            used_h = 0
-        current_page.append((row_chunk, col_chunk, block_h))
-        used_h += block_h + (block_gap if used_h else 0)
-    if current_page:
-        pages_blocks.append(current_page)
-
-    pages = []
-    for page_index, page_blocks in enumerate(pages_blocks or [[(linhas, periodos, table_header_h + (max(len(linhas), 1) * row_h))]]):
-        image = Image.new('RGB', (page_w, page_h), 'white')
-        draw_header(image, page_index + 1, len(pages_blocks) or 1)
-        draw = ImageDraw.Draw(image)
-        y = header_h
-
-        for row_chunk, col_chunk, block_h in page_blocks:
-            x = margin
-            dynamic_period_w = int((available_w - service_w) / max(len(col_chunk), 1))
-            remainder = available_w - service_w - (dynamic_period_w * max(len(col_chunk), 1))
-            period_widths = [
-                dynamic_period_w + (1 if index < remainder else 0)
-                for index in range(max(len(col_chunk), 1))
-            ]
-            draw.rectangle((x, y, x + service_w, y + table_header_h), fill=fill_header, outline=border, width=2)
-            draw.text((x + (service_w - header_font.getlength('SERVICO')) / 2, y + 28), 'SERVICO', font=header_font, fill=border)
-            cursor = x + service_w
-            for grupo in split_grupos(col_chunk):
-                width = sum(period_widths[: grupo['colspan']])
-                draw.rectangle((cursor, y, cursor + width, y + 34), fill=fill_header, outline=border, width=2)
-                draw.text((cursor + (width - header_font.getlength(grupo['label'])) / 2, y + 8), grupo['label'], font=header_font, fill=border)
-                cursor += width
-                period_widths = period_widths[grupo['colspan'] :]
-            period_widths = [
-                dynamic_period_w + (1 if index < remainder else 0)
-                for index in range(max(len(col_chunk), 1))
-            ]
-            cursor = x + service_w
-            for periodo, width in zip(col_chunk, period_widths):
-                draw.rectangle((cursor, y + 34, cursor + width, y + table_header_h), outline=border, width=1)
-                label_font = small_bold_font if cronograma.formato == CronogramaObra.FORMATO_SEMANA else header_font
-                draw_centered_wrapped(draw, periodo['label'], cursor, y + 34, width, table_header_h - 34, label_font)
-                cursor += width
-
-            row_y = y + table_header_h
-            for linha in row_chunk:
-                is_geral = linha.tipo == LinhaCronogramaObra.TIPO_GERAL
-                row_fill = fill_header if is_geral else 'white'
-                font = header_font if is_geral else cell_font
-                draw.rectangle((x, row_y, x + service_w, row_y + row_h), fill=row_fill, outline=border, width=1)
-                draw_wrapped_in_cell(draw, linha.servico, x, row_y, service_w, row_h, font)
-                cursor = x + service_w
-                periodos_marcados = set(str(periodo) for periodo in linha.periodos)
-                for periodo, width in zip(col_chunk, period_widths):
-                    active = periodo['key'] in periodos_marcados
-                    draw.rectangle(
-                        (cursor, row_y, cursor + width, row_y + row_h),
-                        fill=fill_header if is_geral else 'white',
-                        outline=border,
-                        width=1,
-                    )
-                    if active and not is_geral:
-                        draw_activity_bar(draw, cursor, row_y, width, row_h)
-                    cursor += width
-                row_y += row_h
-            table_right = x + service_w + sum(period_widths)
-            draw.rectangle((x, y, table_right, row_y), outline=border, width=4)
-            draw.line((x + service_w, y, x + service_w, row_y), fill=border, width=4)
-            draw.line((x + service_w, y + 34, table_right, y + 34), fill=border, width=3)
-            draw.line((x, y + table_header_h, table_right, y + table_header_h), fill=border, width=3)
-            y = row_y + block_gap
-        pages.append(image)
-
-    buffer = BytesIO()
-    pages[0].save(buffer, 'PDF', save_all=True, append_images=pages[1:], resolution=150)
-    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
-    response['Content-Disposition'] = f'inline; filename="cronograma-{cronograma.id}.pdf"'
-    return response
+    obra_nome = cronograma.obra.nome_obra if cronograma.obra else 'Sem obra vinculada'
+    doc = PdfDocument(
+        cronograma.empresa,
+        title='Cronograma de atividades',
+        subtitle=f'{cronograma.nome} - {obra_nome}',
+        orientation='landscape',
+        filename=f'cronograma-{cronograma.id}.pdf',
+    )
+    doc.add_title(emitted_on=date.today())
+    doc.add_info_grid(
+        [
+            ('Obra', obra_nome),
+            ('Formato', cronograma.get_formato_display()),
+            ('Início', format_date_br(cronograma.data_inicio)),
+            ('Término', format_date_br(cronograma.data_fim)),
+        ],
+        columns=4,
+    )
+    doc.add_timeline_grid(
+        [
+            {'key': periodo['key'], 'label': periodo['label'], 'group': periodo['grupo']}
+            for periodo in periodos
+        ],
+        [
+            {
+                'label': linha.servico,
+                'active_keys': set(str(periodo) for periodo in linha.periodos),
+                'is_group': linha.tipo == LinhaCronogramaObra.TIPO_GERAL,
+            }
+            for linha in linhas
+        ],
+        service_label='Serviço',
+        service_width=520 if len(periodos) <= 12 else 460,
+        min_period_width=64 if cronograma.formato == CronogramaObra.FORMATO_DIA else 96,
+        ideal_period_width=112 if cronograma.formato == CronogramaObra.FORMATO_SEMANA else 84,
+    )
+    return doc.response()
 
 
 def lista_faturamentos_diretos(request):
@@ -1012,7 +733,7 @@ def ordem_compra_geral_pdf(request, ordem_id):
             'unidade': item.unidade,
             'valor_unitario': format_money_br(item.valor_unitario),
             'valor_total': format_money_br(item.valor_total),
-            'entrega': _format_date(item.data_entrega),
+            'entrega': format_date_br(item.data_entrega),
         }
         for item in ordem.itens.all()
     ]
@@ -1028,7 +749,7 @@ def ordem_compra_geral_pdf(request, ordem_id):
     pdf.add_info_grid(
         [
             ('Número', ordem.numero),
-            ('Data', _format_date(ordem.data_emissao)),
+            ('Data', format_date_br(ordem.data_emissao)),
             ('Status', ordem.get_status_display()),
             ('Comprador', ordem.comprador or '-'),
             ('Obra', ordem.obra or '-'),
@@ -1178,7 +899,7 @@ def ordem_combustivel_pdf(request, ordem_id):
     pdf.add_info_grid(
         [
             ('Número', ordem.numero),
-            ('Data', _format_date(ordem.data_ordem)),
+            ('Data', format_date_br(ordem.data_ordem)),
             ('Fornecedor/Posto', ordem.fornecedor),
             ('Solicitante', ordem.solicitante or '-'),
             ('Status', ordem.get_status_display()),
@@ -1484,12 +1205,12 @@ def ordem_locacao_maquina_pdf(request, ordem_id):
     )
     periodo_previsto = '-'
     if ordem.data_prevista_inicio or ordem.data_prevista_fim:
-        periodo_previsto = f'{_format_date(ordem.data_prevista_inicio)} a {_format_date(ordem.data_prevista_fim)}'
+        periodo_previsto = f'{format_date_br(ordem.data_prevista_inicio)} a {format_date_br(ordem.data_prevista_fim)}'
     pdf.add_title(emitted_on=ordem.data_solicitacao)
     pdf.add_info_grid(
         [
             ('Número', ordem.numero),
-            ('Data', _format_date(ordem.data_solicitacao)),
+            ('Data', format_date_br(ordem.data_solicitacao)),
             ('Obra', ordem.obra),
             ('Fornecedor', ordem.fornecedor),
             ('Máquina', ordem.maquina),
@@ -1514,9 +1235,9 @@ def ordem_locacao_maquina_pdf(request, ordem_id):
         [
             {
                 'periodo': periodo_previsto,
-                'mobilizacao': _format_date(ordem.data_mobilizacao),
-                'inicio': _format_date(ordem.data_inicio_operacao),
-                'desmobilizacao': _format_date(ordem.data_desmobilizacao),
+                'mobilizacao': format_date_br(ordem.data_mobilizacao),
+                'inicio': format_date_br(ordem.data_inicio_operacao),
+                'desmobilizacao': format_date_br(ordem.data_desmobilizacao),
             }
         ],
         row_height=52,
@@ -2207,82 +1928,6 @@ def _radar_obras_pdf(orcamentos, filtros, empresa=None):
         row_height=42,
     )
     return doc.build()
-
-    page_w, page_h = 1754, 1240
-    margin = 52
-    row_h = 34
-    header_h = 38
-    rows_per_page = 25
-    widths = [125, 120, 200, 385, 180, 110, 155, 180]
-    chunks = [orcamentos[i : i + rows_per_page] for i in range(0, len(orcamentos), rows_per_page)] or [[]]
-    pages = []
-    title_font = _font(28, True)
-    header_font = _font(18, True)
-    cell_font = _font(16)
-    small_font = _font(14)
-    dark = (17, 24, 39)
-    muted = (75, 85, 99)
-    border = (190, 197, 208)
-    header_bg = (229, 231, 235)
-
-    def draw_cell(draw, text, x, y, w, h, font, fill=dark, bg=None, align='left', bold_border=1):
-        if bg:
-            draw.rectangle((x, y, x + w, y + h), fill=bg, outline=border, width=bold_border)
-        else:
-            draw.rectangle((x, y, x + w, y + h), outline=border, width=bold_border)
-        clean = str(text or '-')
-        avg = max(font.getlength('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz') / 52, 1)
-        lines = textwrap.wrap(clean, width=max(int((w - 10) / avg), 6)) or ['']
-        line_h = font.getbbox('Ag')[3] - font.getbbox('Ag')[1] + 4
-        y_text = y + max((h - min(len(lines), 2) * line_h) // 2, 3)
-        for line in lines[:2]:
-            if align == 'right':
-                x_text = x + w - font.getlength(line) - 6
-            elif align == 'center':
-                x_text = x + (w - font.getlength(line)) / 2
-            else:
-                x_text = x + 6
-            draw.text((x_text, y_text), line, font=font, fill=fill)
-            y_text += line_h
-
-    for page_index, chunk in enumerate(chunks, start=1):
-        image = Image.new('RGB', (page_w, page_h), 'white')
-        draw = ImageDraw.Draw(image)
-        y = 36
-        draw.text((margin, y), 'Radar de Obras', font=title_font, fill=dark)
-        draw.text((page_w - margin - 210, y + 8), f'Página {page_index} de {len(chunks)}', font=small_font, fill=muted)
-        y += 46
-        resumo = f"Filtros: {filtros['arquivados']} | Ordenação: {filtros['ordenar']} | Registros: {len(orcamentos)}"
-        draw.text((margin, y), resumo, font=small_font, fill=muted)
-        y += 28
-        headers = ['Nr orçamento', 'Data', 'Cliente', 'Descrição', 'Situação', 'Calor', 'Valor', 'Responsável']
-        x = margin
-        for header, width in zip(headers, widths):
-            draw_cell(draw, header, x, y, width, header_h, header_font, bg=header_bg, align='center', bold_border=2)
-            x += width
-        y += header_h
-        for orcamento in chunk:
-            x = margin
-            row = [
-                orcamento.numero,
-                orcamento.data_orcamento.strftime('%d/%m/%Y'),
-                orcamento.cliente,
-                orcamento.descricao,
-                orcamento.get_situacao_display(),
-                orcamento.get_temperatura_display(),
-                _format_money(orcamento.valor_estimado),
-                orcamento.responsavel or '-',
-            ]
-            for index, (value, width) in enumerate(zip(row, widths)):
-                align = 'right' if index == 6 else 'center' if index in {0, 1, 4, 5} else 'left'
-                draw_cell(draw, value, x, y, width, row_h, cell_font, align=align)
-                x += width
-            y += row_h
-        pages.append(image)
-
-    buffer = BytesIO()
-    pages[0].save(buffer, 'PDF', save_all=True, append_images=pages[1:], resolution=150)
-    return buffer.getvalue()
 
 
 def novo_radar_obra(request):
