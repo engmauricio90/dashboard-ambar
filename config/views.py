@@ -30,12 +30,8 @@ def _usuario_pode_acessar_media(request, path):
         return False
 
     from diarios.models import FotoDiario
-    from propostas.models import Proposta
 
     if FotoDiario.objects.filter(imagem=normalized_path, diario__obra__empresa=empresa).exists():
-        return True
-
-    if Proposta.objects.filter(planilha_imagem=normalized_path, empresa=empresa).exists():
         return True
 
     return False

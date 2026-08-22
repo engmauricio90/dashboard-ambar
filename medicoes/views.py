@@ -81,7 +81,6 @@ def _font(size, bold=False):
         settings.BASE_DIR / 'static' / 'fonts' / ('Arial Bold.ttf' if bold else 'Arial.ttf'),
         settings.BASE_DIR / 'static' / 'fonts' / ('arialbd.ttf' if bold else 'arial.ttf'),
         settings.BASE_DIR / 'static' / 'fonts' / ('DejaVuSans-Bold.ttf' if bold else 'DejaVuSans.ttf'),
-        settings.BASE_DIR / 'static' / 'propostas' / 'fonts' / ('Arial Bold.ttf' if bold else 'Arial.ttf'),
         Path('C:/Windows/Fonts') / ('arialbd.ttf' if bold else 'arial.ttf'),
         Path('/usr/share/fonts/truetype/dejavu') / ('DejaVuSans-Bold.ttf' if bold else 'DejaVuSans.ttf'),
     ]

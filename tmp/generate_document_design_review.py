@@ -280,7 +280,7 @@ def create_radar(empresa):
                 empresa=empresa,
                 numero=f'{i + 1:03d}/2026',
                 cliente=f'Cliente Demonstracao {i + 1}',
-                descricao='Proposta com descricao longa para validar wrap e relatório gerencial em A4.',
+                descricao='Orcamento com descricao longa para validar wrap e relatório gerencial em A4.',
                 data_orcamento=date(2026, 1, 1) + timedelta(days=i),
                 situacao=['aguardando_resposta', 'em_revisao', 'fechada', 'nao_foi_para_frente'][i % 4],
                 temperatura=(i % 5) + 1,

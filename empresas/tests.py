@@ -16,7 +16,6 @@ from diarios.models import DiarioObra, FotoDiario
 from financeiro.models import CentroCusto, ContaPagar, ContaReceber, Fornecedor, PrevisaoFinanceira
 from medicoes.models import Empreiteiro
 from obras.models import Obra
-from propostas.models import Proposta
 from .middleware import EmpresaAtivaMiddleware
 from .models import Empresa, UsuarioEmpresa
 from .services import (
@@ -286,7 +285,7 @@ class PropriedadeDadosFase2Tests(TestCase):
         self.assertEqual(previsao.empresa, self.cassoni)
         self.assertEqual(cronograma.empresa, self.cassoni)
 
-    def test_radar_cronograma_e_proposta_exigem_empresa_explicita(self):
+    def test_radar_e_cronograma_exigem_empresa_explicita(self):
         with self.assertRaises(ValidationError):
             OrcamentoRadarObra.objects.create(
                 numero='RAD-F2',
@@ -300,13 +299,6 @@ class PropriedadeDadosFase2Tests(TestCase):
                 data_inicio=timezone.localdate(),
                 data_fim=timezone.localdate(),
             )
-        with self.assertRaises(ValidationError):
-            Proposta.objects.create(
-                cliente='Cliente Proposta',
-                tipo_execucao='Servico',
-                servico_incluso='Servico incluso',
-            )
-
         radar = OrcamentoRadarObra.objects.create(
             empresa=self.ambar,
             numero='RAD-F2',
@@ -320,18 +312,9 @@ class PropriedadeDadosFase2Tests(TestCase):
             data_inicio=timezone.localdate(),
             data_fim=timezone.localdate(),
         )
-        proposta = Proposta.objects.create(
-            empresa=self.ambar,
-            cliente='Cliente Proposta',
-            tipo_execucao='Servico',
-            servico_incluso='Servico incluso',
-        )
-        proposta.sincronizar_radar()
 
         self.assertEqual(radar.empresa, self.ambar)
         self.assertEqual(cronograma.empresa, self.ambar)
-        self.assertEqual(proposta.empresa, self.ambar)
-        self.assertEqual(proposta.radar.empresa, self.ambar)
 
     def test_usuario_de_outra_empresa_nao_acessa_operacional_por_id(self):
         usuario = User.objects.create_user(username='cassoni-user', password='senha')
@@ -406,24 +389,8 @@ class PropriedadeDadosFase2Tests(TestCase):
             descricao='Radar B',
             data_orcamento=timezone.localdate(),
         )
-        proposta_ambar = Proposta.objects.create(
-            empresa=self.ambar,
-            cliente='Cliente A',
-            tipo_execucao='Servico',
-            servico_incluso='Servico incluso',
-            data_proposta=timezone.localdate(),
-        )
-        proposta_cassoni = Proposta.objects.create(
-            empresa=self.cassoni,
-            cliente='Cliente B',
-            tipo_execucao='Servico',
-            servico_incluso='Servico incluso',
-            data_proposta=timezone.localdate(),
-        )
-
         self.assertEqual(OrdemCompraGeral.objects.filter(numero='001/2026').count(), 2)
         self.assertEqual(OrcamentoRadarObra.objects.filter(numero='RAD-001').count(), 2)
-        self.assertEqual(proposta_ambar.numero_sequencial, proposta_cassoni.numero_sequencial)
 
 
 class MidiaMultiempresaTests(TestCase):
@@ -478,13 +445,17 @@ class IsolamentoListagensMultiempresaTests(TestCase):
             'financeiro_home',
             'lista_contas_pagar',
             'lista_contas_receber',
-            'lista_propostas',
             'lista_diarios',
             'lista_radar_obras',
         ]:
             with self.subTest(url_name=url_name):
                 response = self.client.get(reverse(url_name))
                 self.assertEqual(response.status_code, 200)
+
+    def test_rota_antiga_de_propostas_nao_existe(self):
+        response = self.client.get('/propostas/')
+
+        self.assertEqual(response.status_code, 404)
 
     def test_listagens_nao_exibem_sentinetas_de_outra_empresa(self):
         Obra.objects.create(empresa=self.ambar, nome_obra='SENTINELA-AMBAR-OBRA')
@@ -497,12 +468,6 @@ class IsolamentoListagensMultiempresaTests(TestCase):
             data_vencimento=timezone.localdate(),
             valor='123.45',
         )
-        Proposta.objects.create(
-            empresa=self.ambar,
-            cliente='SENTINELA-AMBAR-PROPOSTA',
-            tipo_execucao='Servico',
-            servico_incluso='Servico incluso',
-        )
         OrcamentoRadarObra.objects.create(
             empresa=self.ambar,
             numero='SENTINELA-AMBAR-RADAR',
@@ -511,7 +476,7 @@ class IsolamentoListagensMultiempresaTests(TestCase):
             data_orcamento=timezone.localdate(),
         )
 
-        for url_name in ['lista_obras', 'lista_contas_pagar', 'lista_fornecedores', 'lista_propostas', 'lista_radar_obras']:
+        for url_name in ['lista_obras', 'lista_contas_pagar', 'lista_fornecedores', 'lista_radar_obras']:
             with self.subTest(url_name=url_name):
                 response = self.client.get(reverse(url_name))
                 self.assertEqual(response.status_code, 200)

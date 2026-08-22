@@ -14,7 +14,6 @@ urlpatterns = [
     path('', include('dashboard.urls')),
     path('obras/', include('obras.urls')),
     path('controles/', include('controles.urls')),
-    path('propostas/', include('propostas.urls')),
     path('financeiro/', include('financeiro.urls')),
     path('medicoes/', include('medicoes.urls')),
     path('diarios/', include('diarios.urls')),
