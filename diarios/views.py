@@ -3,17 +3,11 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Exists, OuterRef
 from django.shortcuts import get_object_or_404, redirect, render
-from django.utils import timezone
 from django.views.decorators.http import require_POST
-from PIL import Image, ImageDraw
 
 from config.permissions import user_in_groups_for_empresa
-from controles.views import (
-    _clean_pdf_text,
-    _draw_wrapped,
-    _font,
-    _report_pdf_response_pages,
-)
+from documentos.formatting import format_date_br, format_decimal_br
+from documentos.pdf import PdfDocument, PdfTableColumn
 from obras.models import Obra
 
 from .forms import (
@@ -350,268 +344,178 @@ def excluir_diario(request, diario_id):
     return redirect('lista_diarios_obra', obra_id=obra_id)
 
 
-DIARIO_PAGE_W = 1653
-DIARIO_PAGE_H = 2338
-DIARIO_MARGIN = 110
-DIARIO_CONTENT_W = DIARIO_PAGE_W - (DIARIO_MARGIN * 2)
-DIARIO_FOOTER_Y = DIARIO_PAGE_H - 95
-
-
-def _nova_pagina():
-    image = Image.new('RGB', (DIARIO_PAGE_W, DIARIO_PAGE_H), 'white')
-    draw = ImageDraw.Draw(image)
-    return image, draw
-
-
-def _garantir_espaco(pages, image, draw, y, needed=220):
-    if y + needed < DIARIO_FOOTER_Y - 30:
-        return image, draw, y
-    pages.append(image)
-    return (*_nova_pagina(), DIARIO_MARGIN)
-
-
-def _diario_footer(image, draw, empresa, page_number, total_pages):
-    muted = (78, 84, 88)
-    line = (198, 204, 208)
-    today = timezone.localtime().strftime('%d/%m/%Y - %H:%M')
-    draw.line((DIARIO_MARGIN, DIARIO_FOOTER_Y - 20, DIARIO_PAGE_W - DIARIO_MARGIN, DIARIO_FOOTER_Y - 20), fill=line, width=1)
-    draw.text((DIARIO_MARGIN, DIARIO_FOOTER_Y), today, font=_font(15), fill=muted)
-    center = (empresa.texto_rodape or empresa.nome_documento or empresa.nome) if empresa else ''
-    if center:
-        center = _clean_pdf_text(center)
-        center_w = draw.textlength(center, font=_font(15, True))
-        draw.text(((DIARIO_PAGE_W - center_w) / 2, DIARIO_FOOTER_Y), center, font=_font(15, True), fill=muted)
-    page_text = f'{page_number} de {total_pages}'
-    page_w = draw.textlength(page_text, font=_font(15))
-    draw.text((DIARIO_PAGE_W - DIARIO_MARGIN - page_w, DIARIO_FOOTER_Y), page_text, font=_font(15), fill=muted)
-
-
-def _diario_section(draw, title, x, y, w):
-    dark = (27, 32, 35)
-    border = (44, 49, 52)
-    draw.rectangle((x, y, x + w, y + 42), outline=border, width=2)
-    text_w = draw.textlength(_clean_pdf_text(title), font=_font(18, True))
-    draw.text((x + (w - text_w) / 2, y + 10), _clean_pdf_text(title), font=_font(18, True), fill=dark)
-    return y + 42
-
-
-def _diario_info_grid(draw, rows, x, y, w, columns=2):
-    border = (67, 72, 76)
-    label_font = _font(15, True)
-    value_font = _font(16)
-    row_h = 64
-    col_w = w / columns
-    for index, (label, value) in enumerate(rows):
-        col = index % columns
-        row = index // columns
-        x0 = int(x + col * col_w)
-        y0 = int(y + row * row_h)
-        x1 = int(x0 + col_w)
-        y1 = y0 + row_h
-        draw.rectangle((x0, y0, x1, y1), outline=border, width=1)
-        draw.text((x0 + 12, y0 + 9), _clean_pdf_text(label), font=label_font, fill=(29, 34, 37))
-        _draw_wrapped(draw, value or '-', (x0 + 12, y0 + 32), value_font, (45, 50, 53), int(col_w - 24), line_spacing=3)
-    return y + (((len(rows) + columns - 1) // columns) * row_h)
-
-
-def _diario_table(draw, headers, rows, x, y, widths, row_h=52):
-    border = (67, 72, 76)
-    header_fill = (238, 240, 241)
-    header_font = _font(15, True)
-    cell_font = _font(15)
-    x_cursor = x
-    for header, width in zip(headers, widths):
-        draw.rectangle((x_cursor, y, x_cursor + width, y + row_h), fill=header_fill, outline=border, width=1)
-        _draw_wrapped(draw, header, (x_cursor + 8, y + 14), header_font, (25, 30, 33), width - 16, line_spacing=2)
-        x_cursor += width
-    y += row_h
-    for row in rows:
-        x_cursor = x
-        for value, width in zip(row, widths):
-            draw.rectangle((x_cursor, y, x_cursor + width, y + row_h), outline=border, width=1)
-            _draw_wrapped(draw, value, (x_cursor + 8, y + 13), cell_font, (39, 44, 47), width - 16, line_spacing=2)
-            x_cursor += width
-        y += row_h
-    return y
-
-
-def _diario_text_box(draw, text, x, y, w, min_h=96):
-    border = (67, 72, 76)
-    y_text_end = _draw_wrapped(draw, text or '-', (x + 12, y + 12), _font(16), (39, 44, 47), w - 24, line_spacing=6)
-    box_h = max(min_h, y_text_end - y + 14)
-    draw.rectangle((x, y, x + w, y + box_h), outline=border, width=1)
-    return y + box_h
-
-
-def _linhas_tabela(queryset, fields, empty='Sem registros.'):
+def _rows_from(queryset, columns):
     rows = []
     for item in queryset:
-        rows.append([getter(item) if callable(getter) else getattr(item, getter, '') for getter in fields])
-    return rows or [[empty]]
+        row = {}
+        for key, getter in columns:
+            row[key] = getter(item) if callable(getter) else getattr(item, getter, '')
+        rows.append(row)
+    return rows
+
+
+def _add_table_if_any(pdf, title, columns, rows, row_height='auto'):
+    if not rows:
+        return
+    pdf.add_section_header(title)
+    pdf.add_table(columns, rows, row_height=row_height, header_fill=pdf.theme.header_fill)
 
 
 def _pdf_diario(diario):
-    pages = []
-    image, draw = _nova_pagina()
-    x, y, w = DIARIO_MARGIN, DIARIO_MARGIN, DIARIO_CONTENT_W
-    title_font = _font(30, True)
-    subtitle_font = _font(18)
-    dark = (24, 29, 32)
-    border = (44, 49, 52)
-
-    draw.rectangle((x, y, x + w, y + 92), outline=border, width=2)
-    title = 'Diario de Obra'
-    title_w = draw.textlength(title, font=title_font)
-    draw.text((x + (w - title_w) / 2, y + 14), title, font=title_font, fill=dark)
-    obra_text = _clean_pdf_text(diario.obra.nome_obra)
-    obra_w = draw.textlength(obra_text, font=subtitle_font)
-    draw.text((x + (w - obra_w) / 2, y + 55), obra_text, font=subtitle_font, fill=(70, 76, 80))
-    y += 112
-
-    weekdays = ['segunda-feira', 'terca-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sabado', 'domingo']
-    y = _diario_info_grid(
-        draw,
+    empresa = diario.obra.empresa
+    weekdays = ['segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado', 'domingo']
+    pdf = PdfDocument(
+        empresa,
+        title='Diário de Obra',
+        subtitle=f'{diario.obra.nome_obra} | {format_date_br(diario.data)}',
+        orientation='portrait',
+        filename=f'diario_obra_{diario.id}.pdf',
+    )
+    pdf.add_title(emitted_on=diario.data)
+    pdf.add_info_grid(
         [
             ('Obra', diario.obra.nome_obra),
             ('Cliente', diario.obra.cliente or '-'),
-            ('Data', diario.data.strftime('%d/%m/%Y')),
+            ('Data', format_date_br(diario.data)),
             ('Dia da semana', weekdays[diario.data.weekday()]),
-            ('Responsavel', diario.responsavel_preenchimento),
-            ('Responsavel tecnico', diario.responsavel_tecnico or '-'),
+            ('Responsável', diario.responsavel_preenchimento),
+            ('Responsável técnico', diario.responsavel_tecnico or '-'),
+            ('Turno', diario.get_turno_display()),
+            ('Status', diario.get_status_display()),
         ],
-        x,
-        y,
-        w,
-        columns=2,
+        columns=4,
     )
-    y += 26
-
-    y = _diario_section(draw, 'Turno / Tempo', x, y, w)
-    y = _diario_table(
-        draw,
-        ['Turno', 'Tempo', 'Situacao da obra', 'Status'],
-        [[diario.get_turno_display(), diario.get_condicao_climatica_display() or '-', diario.get_situacao_obra_display() or '-', diario.get_status_display()]],
-        x,
-        y,
-        [280, 360, 470, 323],
-        row_h=58,
+    pdf.add_section_header('Condições do dia')
+    pdf.add_table(
+        [
+            PdfTableColumn('turno', 'Turno', weight=1),
+            PdfTableColumn('clima', 'Tempo', weight=1.2),
+            PdfTableColumn('situacao', 'Situação da obra', weight=1.5),
+            PdfTableColumn('visita', 'Visita', weight=1.3),
+        ],
+        [
+            {
+                'turno': diario.get_turno_display(),
+                'clima': diario.get_condicao_climatica_display() or '-',
+                'situacao': diario.get_situacao_obra_display() or '-',
+                'visita': diario.visitante_nome if diario.houve_visita else 'Não houve',
+            }
+        ],
+        row_height=50,
     )
-    y += 24
+    pdf.add_section_header('Serviços executados')
+    pdf.add_text_block('Descrição geral', diario.descricao_servicos or '-', min_height=118)
+    if diario.observacoes:
+        pdf.add_text_block('Observações', diario.observacoes, min_height=96)
 
-    y = _diario_section(draw, 'Tarefas realizadas', x, y, w)
-    y = _diario_table(
-        draw,
-        ['Descricao', 'Observacoes'],
-        [[diario.descricao_servicos or '-', diario.observacoes or '-']],
-        x,
-        y,
-        [930, 503],
-        row_h=118,
+    efetivo_rows = _rows_from(
+        diario.efetivos.all(),
+        [
+            ('funcao', lambda i: i.get_funcao_display()),
+            ('quantidade', lambda i: str(i.quantidade)),
+            ('observacoes', 'observacoes'),
+        ],
     )
-    y += 24
+    _add_table_if_any(
+        pdf,
+        'Efetivo',
+        [
+            PdfTableColumn('funcao', 'Função', weight=2),
+            PdfTableColumn('quantidade', 'Quantidade', width=180, align='center'),
+            PdfTableColumn('observacoes', 'Observações', weight=2),
+        ],
+        efetivo_rows,
+    )
 
-    efetivo_rows = _linhas_tabela(diario.efetivos.all(), [lambda i: i.get_funcao_display(), 'quantidade'])
-    image, draw, y = _garantir_espaco(pages, image, draw, y, 120 + 52 * len(efetivo_rows))
-    y = _diario_section(draw, 'Equipe envolvida', x, y, w)
-    y = _diario_table(draw, ['Descricao', 'Qtde. utilizada'], efetivo_rows, x, y, [1080, 353])
-    y += 24
-
-    equipamento_rows = _linhas_tabela(
+    equipamento_rows = _rows_from(
         diario.equipamentos.all(),
-        [lambda i: i.get_tipo_display(), 'quantidade', lambda i: i.get_situacao_display()],
+        [
+            ('tipo', lambda i: i.get_tipo_display()),
+            ('quantidade', lambda i: str(i.quantidade)),
+            ('situacao', lambda i: i.get_situacao_display()),
+            ('horas', lambda i: format_decimal_br(i.total_horas) if i.total_horas else '-'),
+            ('observacoes', 'observacoes'),
+        ],
     )
-    image, draw, y = _garantir_espaco(pages, image, draw, y, 120 + 52 * len(equipamento_rows))
-    y = _diario_section(draw, 'Equipamentos', x, y, w)
-    y = _diario_table(draw, ['Tipo', 'Qtde.', 'Situacao'], equipamento_rows, x, y, [840, 220, 373])
-    y += 24
+    _add_table_if_any(
+        pdf,
+        'Equipamentos',
+        [
+            PdfTableColumn('tipo', 'Tipo', weight=2),
+            PdfTableColumn('quantidade', 'Qtd.', width=120, align='center'),
+            PdfTableColumn('situacao', 'Situação', width=210, align='center'),
+            PdfTableColumn('horas', 'Horas', width=130, align='right'),
+            PdfTableColumn('observacoes', 'Observações', weight=2),
+        ],
+        equipamento_rows,
+    )
 
-    ocorrencia_rows = _linhas_tabela(
+    if diario.ocorrencias_interferencias:
+        pdf.add_section_header('Ocorrências e interferências')
+        pdf.add_text_block('Descrição', diario.ocorrencias_interferencias, min_height=110)
+
+    ocorrencia_rows = _rows_from(
         diario.ocorrencias.all(),
         [
-            lambda i: i.get_tipo_display(),
-            'descricao',
-            lambda i: i.get_impacto_prazo_display(),
-            lambda i: i.get_status_display(),
+            ('tipo', lambda i: i.get_tipo_display()),
+            ('descricao', 'descricao'),
+            ('impacto_prazo', lambda i: i.get_impacto_prazo_display()),
+            ('status', lambda i: i.get_status_display()),
         ],
     )
-    if ocorrencia_rows != [['Sem registros.']] or diario.ocorrencias_interferencias:
-        image, draw, y = _garantir_espaco(pages, image, draw, y, 170 + 52 * len(ocorrencia_rows))
-        y = _diario_section(draw, 'Ocorrencias', x, y, w)
-        if diario.ocorrencias_interferencias:
-            y = _diario_text_box(draw, diario.ocorrencias_interferencias, x, y, w, min_h=86)
-        y = _diario_table(draw, ['Tipo', 'Descricao', 'Impacto prazo', 'Status'], ocorrencia_rows, x, y, [300, 703, 230, 200])
-        y += 24
+    _add_table_if_any(
+        pdf,
+        'Ocorrências registradas',
+        [
+            PdfTableColumn('tipo', 'Tipo', width=260),
+            PdfTableColumn('descricao', 'Descrição', weight=3),
+            PdfTableColumn('impacto_prazo', 'Impacto prazo', width=190, align='center'),
+            PdfTableColumn('status', 'Status', width=170, align='center'),
+        ],
+        ocorrencia_rows,
+    )
 
     for titulo, texto in [
-        ('Pendencias', diario.pendencias),
-        ('Orientacoes', diario.orientacoes),
+        ('Pendências', diario.pendencias),
+        ('Orientações', diario.orientacoes),
     ]:
         if texto:
-            image, draw, y = _garantir_espaco(pages, image, draw, y, 150)
-            y = _diario_section(draw, titulo, x, y, w)
-            y = _diario_text_box(draw, texto, x, y, w)
-            y += 24
+            pdf.add_text_block(titulo, texto, min_height=96)
 
-    checklist_rows = _linhas_tabela(
+    checklist_rows = _rows_from(
         diario.checklist.all(),
-        [lambda i: i.get_item_display(), lambda i: i.get_resultado_display(), 'observacoes'],
+        [
+            ('item', lambda i: i.get_item_display()),
+            ('resultado', lambda i: i.get_resultado_display()),
+            ('observacoes', 'observacoes'),
+        ],
     )
-    if checklist_rows != [['Sem registros.']]:
-        image, draw, y = _garantir_espaco(pages, image, draw, y, 120 + 52 * len(checklist_rows))
-        y = _diario_section(draw, 'Checklist', x, y, w)
-        y = _diario_table(draw, ['Item', 'Resultado', 'Observacoes'], checklist_rows, x, y, [720, 250, 463])
-        y += 24
+    _add_table_if_any(
+        pdf,
+        'Checklist',
+        [
+            PdfTableColumn('item', 'Item', weight=2),
+            PdfTableColumn('resultado', 'Resultado', width=210, align='center'),
+            PdfTableColumn('observacoes', 'Observações', weight=2),
+        ],
+        checklist_rows,
+    )
 
     fotos = list(diario.fotos.all())
     if fotos:
-        image, draw, y = _garantir_espaco(pages, image, draw, y, 80)
-        draw.text((x, y), 'Relatorio fotografico no Anexo I.', font=_font(16, True), fill=(39, 44, 47))
-        y += 46
+        pdf.add_section_header('Registro fotográfico')
+        pdf.add_photo_grid(
+            [{'image': foto.imagem, 'caption': foto.legenda} for foto in fotos],
+            columns=2,
+            image_height=430,
+            caption_height=70,
+        )
 
-    pages.append(image)
-
-    if fotos:
-        image, draw = _nova_pagina()
-        y = DIARIO_MARGIN
-        title = 'Diario de Obra - Anexo I'
-        draw.text((x, y), title, font=_font(28, True), fill=dark)
-        draw.text((x, y + 40), _clean_pdf_text(diario.obra.nome_obra), font=_font(18), fill=(70, 76, 80))
-        y += 95
-        col_w = 690
-        photo_h = 430
-        gap_x = 50
-        gap_y = 80
-        for index, foto in enumerate(fotos):
-            col = index % 2
-            if col == 0 and index > 0:
-                y += photo_h + gap_y
-            if y + photo_h + 80 > DIARIO_FOOTER_Y:
-                pages.append(image)
-                image, draw = _nova_pagina()
-                y = DIARIO_MARGIN
-            fx = x + col * (col_w + gap_x)
-            try:
-                foto.imagem.open('rb')
-                thumb = Image.open(foto.imagem).convert('RGB')
-                thumb.thumbnail((col_w, photo_h))
-                draw.rectangle((fx, y, fx + col_w, y + photo_h), outline=(112, 119, 124), width=1)
-                image.paste(thumb, (fx + (col_w - thumb.width) // 2, y + (photo_h - thumb.height) // 2))
-                foto.imagem.close()
-            except (OSError, ValueError):
-                draw.rectangle((fx, y, fx + col_w, y + photo_h), outline=(112, 119, 124), width=1)
-                draw.text((fx + 18, y + 190), 'Imagem indisponivel', font=_font(16), fill=(88, 98, 102))
-                try:
-                    foto.imagem.close()
-                except ValueError:
-                    pass
-            if foto.legenda:
-                _draw_wrapped(draw, foto.legenda, (fx, y + photo_h + 10), _font(14), (50, 56, 58), col_w, line_spacing=4)
-        pages.append(image)
-
-    for index, page in enumerate(pages, start=1):
-        _diario_footer(page, ImageDraw.Draw(page), diario.obra.empresa, index, len(pages))
-
-    return _report_pdf_response_pages(pages, f'diario_obra_{diario.id}')
+    signatures = [diario.responsavel_preenchimento]
+    if diario.responsavel_tecnico:
+        signatures.append(diario.responsavel_tecnico)
+    pdf.add_signature_block(signatures)
+    return pdf.response()
 
 
 def diario_pdf(request, diario_id):

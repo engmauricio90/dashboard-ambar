@@ -241,6 +241,48 @@ class PdfDocument:
             x += block_w + gap
         self.y += h + 18
 
+    def add_photo_grid(self, photos, columns=2, image_height=430, gap=36, caption_height=58):
+        photos = list(photos or [])
+        if not photos:
+            return
+        columns = max(1, min(columns, 3))
+        total_gap = gap * (columns - 1)
+        box_w = int((self.g.content_width - total_gap) / columns)
+        item_h = image_height + caption_height + 18
+        border = self.theme.border
+        caption_font = self.theme.font('small')
+
+        for index, photo in enumerate(photos):
+            col = index % columns
+            if col == 0:
+                self._ensure_space(item_h)
+                row_y = self.y
+            x = self.g.content_left + col * (box_w + gap)
+            self.draw.rectangle((x, row_y, x + box_w, row_y + image_height), outline=border, width=2)
+
+            image_file = photo.get('image') if isinstance(photo, dict) else getattr(photo, 'image', None)
+            caption = photo.get('caption') if isinstance(photo, dict) else getattr(photo, 'caption', '')
+            try:
+                if hasattr(image_file, 'open'):
+                    image_file.open('rb')
+                img = Image.open(image_file).convert('RGB')
+                img.thumbnail((box_w - 8, image_height - 8))
+                self.image.paste(img, (int(x + (box_w - img.width) / 2), int(row_y + (image_height - img.height) / 2)))
+            except (FileNotFoundError, OSError, ValueError):
+                message = 'Imagem indisponível'
+                self.draw.text((x + 18, row_y + image_height / 2 - 12), message, font=caption_font, fill=self.theme.muted)
+            finally:
+                try:
+                    if hasattr(image_file, 'close'):
+                        image_file.close()
+                except ValueError:
+                    pass
+
+            if caption:
+                self._draw_wrapped(caption, x, row_y + image_height + 8, box_w, caption_height, caption_font, fill=self.theme.muted)
+            if col == columns - 1 or index == len(photos) - 1:
+                self.y = row_y + item_h
+
     def _table_widths(self, columns):
         table_w = self.g.content_width
         fixed = sum(col.width or 0 for col in columns)

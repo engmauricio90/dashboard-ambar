@@ -1,5 +1,6 @@
 import tempfile
 from datetime import date
+from io import BytesIO
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
@@ -7,11 +8,13 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.test.utils import override_settings
 from django.urls import reverse
+from PIL import Image
+from pypdf import PdfReader
 
 from empresas.models import Empresa, UsuarioEmpresa
 from obras.models import Obra
 
-from .models import DiarioObra, EfetivoDiario, FotoDiario, HistoricoDiario
+from .models import DiarioObra, EfetivoDiario, EquipamentoDiario, FotoDiario, HistoricoDiario, OcorrenciaDiario
 
 
 class DiarioObraTests(TestCase):
@@ -53,6 +56,17 @@ class DiarioObraTests(TestCase):
         for prefix in ['efetivos', 'equipamentos', 'ocorrencias', 'checklist', 'fotos']:
             data.update(self._management(prefix))
         return data
+
+    def _image_upload(self, name='foto.jpg', size=(640, 420), color=(40, 90, 120)):
+        buffer = BytesIO()
+        Image.new('RGB', size, color).save(buffer, format='JPEG')
+        return SimpleUploadedFile(name, buffer.getvalue(), content_type='image/jpeg')
+
+    def _assert_pdf_pages(self, response, minimum_pages=1):
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertTrue(response.content.startswith(b'%PDF'))
+        self.assertGreaterEqual(len(PdfReader(BytesIO(response.content)).pages), minimum_pages)
 
     def test_cria_diario_rapido(self):
         response = self.client.post(reverse('novo_diario'), self._post_data())
@@ -185,9 +199,7 @@ class DiarioObraTests(TestCase):
 
         response = self.client.get(reverse('diario_pdf', args=[diario.id]))
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response['Content-Type'], 'application/pdf')
-        self.assertTrue(response.content.startswith(b'%PDF'))
+        self._assert_pdf_pages(response)
 
     def test_pdf_com_foto_anexada_responde_pdf(self):
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as media_root:
@@ -209,9 +221,58 @@ class DiarioObraTests(TestCase):
 
                 response = self.client.get(reverse('diario_pdf', args=[diario.id]))
 
-                self.assertEqual(response.status_code, 200)
-                self.assertEqual(response['Content-Type'], 'application/pdf')
-                self.assertTrue(response.content.startswith(b'%PDF'))
+                self._assert_pdf_pages(response)
+
+    def test_pdf_diario_completo_com_fotos_quebra_paginas(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                texto_longo = (
+                    'Execução de serviços de demonstração no setor norte da obra, contemplando preparação da área, '
+                    'conferência de níveis, posicionamento dos elementos e acompanhamento das atividades executadas durante o período. '
+                ) * 4
+                diario = DiarioObra.objects.create(
+                    obra=self.obra,
+                    data=date(2026, 5, 28),
+                    responsavel_preenchimento='Eng. Responsável',
+                    responsavel_tecnico='Responsável técnico',
+                    condicao_climatica=DiarioObra.CLIMA_ENSOLARADO,
+                    situacao_obra=DiarioObra.SITUACAO_ANDAMENTO,
+                    descricao_servicos=texto_longo,
+                    observacoes='Observações com Construção, Medição, Execução, Tubulação e São José.',
+                    ocorrencias_interferencias=texto_longo,
+                    pendencias=texto_longo,
+                    orientacoes=texto_longo,
+                )
+                EfetivoDiario.objects.create(diario=diario, funcao='servente', quantidade=8)
+                EquipamentoDiario.objects.create(diario=diario, tipo='escavadeira_hidraulica', quantidade=1)
+                OcorrenciaDiario.objects.create(diario=diario, tipo='chuva', descricao=texto_longo, impacto_prazo='parcial')
+                sizes = [(900, 520), (520, 900), (700, 700), (1000, 480), (480, 1000), (640, 640), (820, 520), (520, 820)]
+                for index, size in enumerate(sizes, start=1):
+                    diario.fotos.create(
+                        imagem=self._image_upload(f'foto-{index}.jpg', size=size, color=(20 + index * 18, 80, 130)),
+                        legenda=f'Foto {index} - legenda longa com execução, construção e medição no setor norte da obra.',
+                        uploaded_by=self.user,
+                    )
+
+                response = self.client.get(reverse('diario_pdf', args=[diario.id]))
+
+                self._assert_pdf_pages(response, minimum_pages=3)
+                diario.refresh_from_db()
+                self.assertEqual(diario.fotos.count(), 8)
+
+    def test_pdf_diario_de_outra_empresa_nao_acessa(self):
+        outra_empresa = Empresa.objects.create(nome='Empresa Diario B', slug='empresa-diario-b')
+        outra_obra = Obra.objects.create(empresa=outra_empresa, nome_obra='Obra Diario B')
+        diario = DiarioObra.objects.create(
+            obra=outra_obra,
+            data=date(2026, 5, 28),
+            responsavel_preenchimento='Outro responsavel',
+            descricao_servicos='Servico de outra empresa',
+        )
+
+        response = self.client.get(reverse('diario_pdf', args=[diario.id]))
+
+        self.assertEqual(response.status_code, 404)
 
     def test_foto_do_diario_carrega_pela_url_de_media(self):
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as media_root:
