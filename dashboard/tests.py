@@ -194,7 +194,10 @@ class DashboardHomeTests(TestCase):
         response = self.client.get(reverse('relatorio_geral'), {'cliente': 'Cliente A'})
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Relatorio Geral')
+        self.assertContains(response, 'Relatório Geral')
+        self.assertContains(response, 'document-report-body')
+        self.assertContains(response, 'document-company-header')
+        self.assertContains(response, self.empresa.nome_documento)
         self.assertContains(response, 'Obra Cliente A')
         self.assertNotContains(response, 'Obra Cliente B')
 
@@ -203,6 +206,33 @@ class DashboardHomeTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'invalido')
+
+    def test_relatorio_geral_usa_identidade_da_empresa_ativa(self):
+        user_model = get_user_model()
+        usuario = user_model.objects.create_user(username='usuario-empresa-b', password='senha-forte-123')
+        empresa_b = Empresa.objects.create(
+            nome='Empresa Demonstracao Engenharia',
+            slug='empresa-demonstracao-relatorio-html',
+            razao_social='EMPRESA DEMONSTRACAO',
+            cor_primaria='#22577a',
+            cor_secundaria='#38a3a5',
+        )
+        UsuarioEmpresa.objects.create(usuario=usuario, empresa=empresa_b)
+        Obra.objects.create(
+            empresa=empresa_b,
+            nome_obra='Obra Demonstracao',
+            cliente='Cliente Demonstracao',
+            valor_contrato=Decimal('1234.56'),
+        )
+
+        self.client.force_login(usuario)
+        response = self.client.get(reverse('relatorio_geral'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'EMPRESA DEMONSTRACAO')
+        self.assertContains(response, '#22577a')
+        self.assertContains(response, 'Obra Demonstracao')
+        self.assertNotContains(response, 'AMBAR ENGENHARIA')
 
     def test_dashboard_redireciona_para_login_sem_autenticacao(self):
         self.client.logout()

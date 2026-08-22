@@ -396,6 +396,9 @@ def relatorio_obra(request, obra_id):
             'total_retencoes': total_retencoes,
             'total_liquido': total_liquido,
             'resultado_periodo': resultado_periodo,
+            'report_empresa': obra.empresa,
+            'report_emitted_on': timezone.localdate(),
+            'report_orientation': 'landscape',
         },
     )
 

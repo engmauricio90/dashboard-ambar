@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import date
 
 from django.db.models import Prefetch
 from django.http import HttpResponse
@@ -156,6 +157,9 @@ def relatorio_geral(request):
     obras_lista, filtro_form = _get_filtered_obras(request)
     contexto = _build_dashboard_context(obras_lista, obras_lista)
     contexto['filtro_form'] = filtro_form
+    contexto['report_empresa'] = request.empresa
+    contexto['report_emitted_on'] = date.today()
+    contexto['report_orientation'] = 'landscape'
     return render(request, 'dashboard/relatorio_geral.html', contexto)
 
 

@@ -1,311 +1,301 @@
-{% extends 'base.html' %}
+{% extends 'documentos/base_report.html' %}
 
-{% block title %}Relatorio da Obra{% endblock %}
+{% block title %}Relatório da Obra - {{ obra.nome_obra }}{% endblock %}
 
-{% block content %}
-<style>
-@media print {
-    .no-print { display: none !important; }
-    .card { border: 1px solid #ddd !important; box-shadow: none !important; }
-}
-</style>
+{% block actions %}
+<button type="button" class="btn btn-dark" onclick="window.print()">Imprimir / Salvar PDF</button>
+<a href="{% url 'detalhe_obra' obra.id %}" class="btn btn-secondary">Voltar</a>
+{% endblock %}
 
-<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3 no-print">
-    <div>
-        <h1 class="mb-1">Relatorio da Obra</h1>
-        <p class="text-muted mb-0">{{ obra.nome_obra }} | detalhamento financeiro imprimivel</p>
+{% block report_title %}Relatório da Obra{% endblock %}
+{% block report_subtitle %}{{ obra.nome_obra }} | detalhamento financeiro{% endblock %}
+
+{% block filters %}
+<section class="document-filter-panel no-print">
+    <form method="get" class="row g-3">
+        <div class="col-md-4">
+            <label class="form-label">Data inicial</label>
+            {{ filtro_form.data_inicial }}
+            {% if filtro_form.data_inicial.errors %}<div class="text-danger small mt-1">{{ filtro_form.data_inicial.errors|join:', ' }}</div>{% endif %}
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Data final</label>
+            {{ filtro_form.data_final }}
+            {% if filtro_form.data_final.errors %}<div class="text-danger small mt-1">{{ filtro_form.data_final.errors|join:', ' }}</div>{% endif %}
+        </div>
+        {% if filtro_form.non_field_errors %}
+        <div class="col-12">
+            <div class="alert alert-danger mb-0">{{ filtro_form.non_field_errors }}</div>
+        </div>
+        {% endif %}
+        <div class="col-12 d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Aplicar período</button>
+            <a href="{% url 'relatorio_obra' obra.id %}" class="btn btn-outline-secondary">Limpar</a>
+        </div>
+    </form>
+</section>
+{% endblock %}
+
+{% block report_content %}
+<section class="document-info-grid">
+    <div class="document-info-item">
+        <div class="document-info-label">Obra</div>
+        <div class="document-info-value">{{ obra.nome_obra }}</div>
     </div>
-    <div class="d-flex gap-2 flex-wrap">
-        <button type="button" class="btn btn-dark" onclick="window.print()">Imprimir / Salvar PDF</button>
-        <a href="{% url 'detalhe_obra' obra.id %}" class="btn btn-secondary">Voltar</a>
+    <div class="document-info-item">
+        <div class="document-info-label">Cliente</div>
+        <div class="document-info-value">{{ obra.cliente|default:'-' }}</div>
     </div>
-</div>
-
-<div class="card shadow-sm mb-4 no-print">
-    <div class="card-body">
-        <form method="get" class="row g-3">
-            <div class="col-md-4">
-                <label class="form-label">Data inicial</label>
-                {{ filtro_form.data_inicial }}
-                {% if filtro_form.data_inicial.errors %}<div class="text-danger small mt-1">{{ filtro_form.data_inicial.errors|join:', ' }}</div>{% endif %}
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">Data final</label>
-                {{ filtro_form.data_final }}
-                {% if filtro_form.data_final.errors %}<div class="text-danger small mt-1">{{ filtro_form.data_final.errors|join:', ' }}</div>{% endif %}
-            </div>
-            {% if filtro_form.non_field_errors %}
-            <div class="col-12">
-                <div class="alert alert-danger mb-0">{{ filtro_form.non_field_errors }}</div>
-            </div>
+    <div class="document-info-item">
+        <div class="document-info-label">Status</div>
+        <div class="document-info-value">{{ obra.get_status_obra_display }}</div>
+    </div>
+    <div class="document-info-item">
+        <div class="document-info-label">Saldo contratual</div>
+        <div class="document-info-value">R$ {{ obra.saldo_contratual|floatformat:2 }}</div>
+    </div>
+    <div class="document-info-item">
+        <div class="document-info-label">Valor do contrato</div>
+        <div class="document-info-value">R$ {{ obra.valor_contrato|floatformat:2 }}</div>
+    </div>
+    <div class="document-info-item">
+        <div class="document-info-label">Contrato atualizado</div>
+        <div class="document-info-value">R$ {{ obra.contrato_atualizado|floatformat:2 }}</div>
+    </div>
+    <div class="document-info-item">
+        <div class="document-info-label">Projeção de despesa</div>
+        <div class="document-info-value">R$ {{ obra.projecao_despesa|floatformat:2 }}</div>
+    </div>
+    <div class="document-info-item">
+        <div class="document-info-label">Período</div>
+        <div class="document-info-value">
+            {% if filtro_form.cleaned_data.data_inicial or filtro_form.cleaned_data.data_final %}
+                {{ filtro_form.cleaned_data.data_inicial|date:'d/m/Y'|default:'início' }}
+                a
+                {{ filtro_form.cleaned_data.data_final|date:'d/m/Y'|default:'fim' }}
+            {% else %}
+                Todo o histórico
             {% endif %}
-            <div class="col-12 d-flex gap-2">
-                <button type="submit" class="btn btn-primary">Aplicar periodo</button>
-                <a href="{% url 'relatorio_obra' obra.id %}" class="btn btn-outline-secondary">Limpar</a>
-            </div>
-        </form>
+        </div>
     </div>
-</div>
+</section>
 
-<div class="card shadow-sm mb-4">
-    <div class="card-body">
-        <div class="row">
-            <div class="col-md-4"><strong>Obra:</strong> {{ obra.nome_obra }}</div>
-            <div class="col-md-4"><strong>Cliente:</strong> {{ obra.cliente|default:'-' }}</div>
-            <div class="col-md-4"><strong>Status:</strong> {{ obra.get_status_obra_display }}</div>
-        </div>
-        <div class="row mt-3">
-            <div class="col-md-4"><strong>Valor do contrato:</strong> R$ {{ obra.valor_contrato|floatformat:2 }}</div>
-            <div class="col-md-4"><strong>Contrato atualizado:</strong> R$ {{ obra.contrato_atualizado|floatformat:2 }}</div>
-            <div class="col-md-4"><strong>Projecao de despesa:</strong> R$ {{ obra.projecao_despesa|floatformat:2 }}</div>
-        </div>
+<section class="document-kpi-grid">
+    <div class="document-kpi">
+        <div class="document-kpi-label">Total faturado</div>
+        <div class="document-kpi-value">R$ {{ total_faturado|floatformat:2 }}</div>
+        <div class="document-kpi-note">Notas fiscais no período</div>
     </div>
-</div>
+    <div class="document-kpi">
+        <div class="document-kpi-label">Total de despesas</div>
+        <div class="document-kpi-value">R$ {{ total_despesas|floatformat:2 }}</div>
+        <div class="document-kpi-note">Custos lançados no período</div>
+    </div>
+    <div class="document-kpi">
+        <div class="document-kpi-label">Total líquido</div>
+        <div class="document-kpi-value">R$ {{ total_liquido|floatformat:2 }}</div>
+        <div class="document-kpi-note">Recebimento líquido apurado</div>
+    </div>
+    <div class="document-kpi">
+        <div class="document-kpi-label">Resultado do período</div>
+        <div class="document-kpi-value {% if resultado_periodo < 0 %}document-negative{% else %}document-positive{% endif %}">
+            R$ {{ resultado_periodo|floatformat:2 }}
+        </div>
+        <div class="document-kpi-note">Faturado menos despesas e retenções</div>
+    </div>
+</section>
 
-<div class="row g-3 mb-4">
-    <div class="col-md-3">
-        <div class="card shadow-sm h-100">
-            <div class="card-body">
-                <h6>Total faturado</h6>
-                <h4>R$ {{ total_faturado|floatformat:2 }}</h4>
-            </div>
+<section class="document-section">
+    <h2 class="document-section-title">Resumo do período</h2>
+    <div class="document-info-grid">
+        <div class="document-info-item">
+            <div class="document-info-label">Aditivos</div>
+            <div class="document-info-value">R$ {{ total_aditivos|floatformat:2 }}</div>
+        </div>
+        <div class="document-info-item">
+            <div class="document-info-label">Supressões</div>
+            <div class="document-info-value">R$ {{ total_supressoes|floatformat:2 }}</div>
+        </div>
+        <div class="document-info-item">
+            <div class="document-info-label">Impostos</div>
+            <div class="document-info-value">R$ {{ total_impostos|floatformat:2 }}</div>
+        </div>
+        <div class="document-info-item">
+            <div class="document-info-label">INSS retido</div>
+            <div class="document-info-value">R$ {{ total_retencoes_inss|floatformat:2 }}</div>
+        </div>
+        <div class="document-info-item">
+            <div class="document-info-label">Outras retenções NF</div>
+            <div class="document-info-value">R$ {{ total_retencoes_nf_sem_inss|floatformat:2 }}</div>
+        </div>
+        <div class="document-info-item">
+            <div class="document-info-label">Retenções técnicas</div>
+            <div class="document-info-value">R$ {{ total_retencoes_tecnicas|floatformat:2 }}</div>
+        </div>
+        <div class="document-info-item">
+            <div class="document-info-label">Total de retenções</div>
+            <div class="document-info-value">R$ {{ total_retencoes|floatformat:2 }}</div>
+        </div>
+        <div class="document-info-item">
+            <div class="document-info-label">Contrato atualizado</div>
+            <div class="document-info-value">R$ {{ obra.contrato_atualizado|floatformat:2 }}</div>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card shadow-sm h-100">
-            <div class="card-body">
-                <h6>Total de despesas</h6>
-                <h4>R$ {{ total_despesas|floatformat:2 }}</h4>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card shadow-sm h-100">
-            <div class="card-body">
-                <h6>Total liquido</h6>
-                <h4>R$ {{ total_liquido|floatformat:2 }}</h4>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card shadow-sm h-100">
-            <div class="card-body">
-                <h6>Resultado do periodo</h6>
-                <h4 class="{% if resultado_periodo < 0 %}text-danger{% else %}text-success{% endif %}">R$ {{ resultado_periodo|floatformat:2 }}</h4>
-            </div>
-        </div>
-    </div>
-</div>
+</section>
 
-<div class="card shadow-sm mb-4">
-    <div class="card-body">
-        <h5 class="mb-3">Resumo do periodo</h5>
-        <div class="table-responsive">
-            <table class="table table-bordered align-middle mb-0">
-                <tbody>
-                    <tr>
-                        <th>Total de aditivos</th>
-                        <td>R$ {{ total_aditivos|floatformat:2 }}</td>
-                        <th>Total de supressoes</th>
-                        <td>R$ {{ total_supressoes|floatformat:2 }}</td>
-                    </tr>
-                    <tr>
-                        <th>Total de impostos</th>
-                        <td>R$ {{ total_impostos|floatformat:2 }}</td>
-                        <th>INSS retido</th>
-                        <td>R$ {{ total_retencoes_inss|floatformat:2 }}</td>
-                    </tr>
-                    <tr>
-                        <th>Outras retencoes de NF</th>
-                        <td>R$ {{ total_retencoes_nf_sem_inss|floatformat:2 }}</td>
-                        <th>Retencoes tecnicas</th>
-                        <td>R$ {{ total_retencoes_tecnicas|floatformat:2 }}</td>
-                    </tr>
-                    <tr>
-                        <th>Total de retencoes</th>
-                        <td>R$ {{ total_retencoes|floatformat:2 }}</td>
-                        <th>Saldo contratual atual</th>
-                        <td>R$ {{ obra.saldo_contratual|floatformat:2 }}</td>
-                    </tr>
-                    <tr>
-                        <th>Contrato atualizado</th>
-                        <td>R$ {{ obra.contrato_atualizado|floatformat:2 }}</td>
-                        <th></th>
-                        <td></td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
+<section class="document-section">
+    <h2 class="document-section-title">Extrato financeiro</h2>
+    <div class="document-table-wrap">
+        <table class="document-table">
+            <thead>
+                <tr>
+                    <th>Data</th>
+                    <th>Tipo</th>
+                    <th>Descrição</th>
+                    <th>Valor</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for evento in eventos %}
+                <tr>
+                    <td class="center">{{ evento.data|date:'d/m/Y' }}</td>
+                    <td class="center">{{ evento.tipo }}</td>
+                    <td>{{ evento.descricao }}</td>
+                    <td class="number">R$ {{ evento.valor|floatformat:2 }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="4">Nenhum lançamento encontrado para o período informado.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
-</div>
+</section>
 
-<div class="card shadow-sm mb-4">
-    <div class="card-body">
-        <h5 class="mb-3">Extrato financeiro</h5>
-        <div class="table-responsive">
-            <table class="table table-bordered table-striped align-middle mb-0">
-                <thead>
-                    <tr>
-                        <th>Data</th>
-                        <th>Tipo</th>
-                        <th>Descrição</th>
-                        <th>Valor</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for evento in eventos %}
-                    <tr>
-                        <td>{{ evento.data }}</td>
-                        <td>{{ evento.tipo }}</td>
-                        <td>{{ evento.descricao }}</td>
-                        <td>R$ {{ evento.valor|floatformat:2 }}</td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="4">Nenhum lancamento encontrado para o periodo informado.</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+<section class="document-section">
+    <h2 class="document-section-title">Notas fiscais</h2>
+    <div class="document-table-wrap">
+        <table class="document-table document-table-compact">
+            <thead>
+                <tr>
+                    <th>NF</th>
+                    <th>Data</th>
+                    <th>Valor bruto</th>
+                    <th>Valor líquido</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for nota in notas %}
+                <tr>
+                    <td class="center">{{ nota.numero }}</td>
+                    <td class="center">{{ nota.data_emissao|date:'d/m/Y' }}</td>
+                    <td class="number">R$ {{ nota.valor_bruto|floatformat:2 }}</td>
+                    <td class="number">R$ {{ nota.valor_liquido|floatformat:2 }}</td>
+                    <td class="center">{{ nota.get_status_display }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5">Sem notas no período.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
-</div>
+</section>
 
-<div class="row g-4">
-    <div class="col-lg-4">
-        <div class="card shadow-sm h-100">
-            <div class="card-body">
-                <h5 class="mb-3">Notas fiscais</h5>
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>NF</th>
-                                <th>Data</th>
-                                <th>Valor</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for nota in notas %}
-                            <tr>
-                                <td>{{ nota.numero }}</td>
-                                <td>{{ nota.data_emissao }}</td>
-                                <td>R$ {{ nota.valor_bruto|floatformat:2 }}</td>
-                            </tr>
-                            {% empty %}
-                            <tr>
-                                <td colspan="3">Sem notas no periodo.</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
+<section class="document-section">
+    <h2 class="document-section-title">Despesas</h2>
+    <div class="document-table-wrap">
+        <table class="document-table document-table-compact">
+            <thead>
+                <tr>
+                    <th>Data</th>
+                    <th>Descrição</th>
+                    <th>Fornecedor</th>
+                    <th>Valor</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for despesa in despesas %}
+                <tr>
+                    <td class="center">{{ despesa.data_referencia|date:'d/m/Y' }}</td>
+                    <td>{{ despesa.descricao }}</td>
+                    <td>{{ despesa.fornecedor|default:'-' }}</td>
+                    <td class="number">R$ {{ despesa.valor|floatformat:2 }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="4">Sem despesas no período.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
+</section>
 
-    <div class="col-lg-4">
-        <div class="card shadow-sm h-100">
-            <div class="card-body">
-                <h5 class="mb-3">Despesas</h5>
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>Data</th>
-                                <th>Descrição</th>
-                                <th>Valor</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for despesa in despesas %}
-                            <tr>
-                                <td>{{ despesa.data_referencia }}</td>
-                                <td>{{ despesa.descricao }}</td>
-                                <td>R$ {{ despesa.valor|floatformat:2 }}</td>
-                            </tr>
-                            {% empty %}
-                            <tr>
-                                <td colspan="3">Sem despesas no periodo.</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
+<section class="document-section">
+    <h2 class="document-section-title">Movimentações contratuais</h2>
+    <div class="document-table-wrap">
+        <table class="document-table document-table-compact">
+            <thead>
+                <tr>
+                    <th>Data</th>
+                    <th>Tipo</th>
+                    <th>Descrição</th>
+                    <th>Valor</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for aditivo in aditivos %}
+                <tr>
+                    <td class="center">{{ aditivo.data_referencia|date:'d/m/Y' }}</td>
+                    <td class="center">{{ aditivo.get_tipo_display }}</td>
+                    <td>{{ aditivo.descricao }}</td>
+                    <td class="number">{% if aditivo.tipo == 'supressao' %}-{% endif %}R$ {{ aditivo.valor|floatformat:2 }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="4">Sem movimentações contratuais no período.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
+</section>
 
-    <div class="col-lg-4">
-        <div class="card shadow-sm h-100">
-            <div class="card-body">
-                <h5 class="mb-3">Movimentacoes contratuais</h5>
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>Data</th>
-                                <th>Tipo</th>
-                                <th>Descrição</th>
-                                <th>Valor</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for aditivo in aditivos %}
-                            <tr>
-                                <td>{{ aditivo.data_referencia }}</td>
-                                <td>{{ aditivo.get_tipo_display }}</td>
-                                <td>{{ aditivo.descricao }}</td>
-                                <td>{% if aditivo.tipo == 'supressao' %}-{% endif %}R$ {{ aditivo.valor|floatformat:2 }}</td>
-                            </tr>
-                            {% empty %}
-                            <tr>
-                                <td colspan="4">Sem movimentacoes contratuais no periodo.</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
+<section class="document-section">
+    <h2 class="document-section-title">Retenções técnicas</h2>
+    <div class="document-table-wrap">
+        <table class="document-table document-table-compact">
+            <thead>
+                <tr>
+                    <th>Data</th>
+                    <th>Tipo</th>
+                    <th>Descrição</th>
+                    <th>Previsão devolução</th>
+                    <th>Data devolução</th>
+                    <th>Valor</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for retencao in retencoes_tecnicas %}
+                <tr>
+                    <td class="center">{{ retencao.data_referencia|date:'d/m/Y' }}</td>
+                    <td class="center">{{ retencao.get_tipo_display }}</td>
+                    <td>{{ retencao.descricao }}</td>
+                    <td class="center">{{ retencao.data_prevista_devolucao|date:'d/m/Y'|default:'-' }}</td>
+                    <td class="center">{{ retencao.data_devolucao|date:'d/m/Y'|default:'-' }}</td>
+                    <td class="number">R$ {{ retencao.valor|floatformat:2 }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6">Sem retenções técnicas no período.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
-
-    <div class="col-lg-4">
-        <div class="card shadow-sm h-100">
-            <div class="card-body">
-                <h5 class="mb-3">Retencoes tecnicas</h5>
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>Data</th>
-                                <th>Tipo</th>
-                                <th>Descrição</th>
-                                <th>Previsao devolucao</th>
-                                <th>Data devolucao</th>
-                                <th>Valor</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for retencao in retencoes_tecnicas %}
-                            <tr>
-                                <td>{{ retencao.data_referencia }}</td>
-                                <td>{{ retencao.get_tipo_display }}</td>
-                                <td>{{ retencao.descricao }}</td>
-                                <td>{{ retencao.data_prevista_devolucao|default:'-' }}</td>
-                                <td>{{ retencao.data_devolucao|default:'-' }}</td>
-                                <td>R$ {{ retencao.valor|floatformat:2 }}</td>
-                            </tr>
-                            {% empty %}
-                            <tr>
-                                <td colspan="6">Sem retencoes tecnicas no periodo.</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+</section>
 {% endblock %}

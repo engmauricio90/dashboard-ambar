@@ -375,7 +375,11 @@ class ObraFluxoFinanceiroTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Relatorio da Obra')
+        self.assertContains(response, 'Relatório da Obra')
+        self.assertContains(response, 'document-report-body')
+        self.assertContains(response, 'document-company-header')
+        self.assertContains(response, 'document-table')
+        self.assertContains(response, self.empresa.nome_documento)
         self.assertContains(response, 'NF-RECENTE')
         self.assertNotContains(response, 'NF-ANTIGA')
 
