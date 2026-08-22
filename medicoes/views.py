@@ -10,6 +10,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.db import transaction
 from django.db.models import Q, Sum
+from django.core.paginator import Paginator
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -245,21 +246,21 @@ def _pdf_medicao_construtora(medicao):
         columns=4,
     )
     columns = [
-        PdfTableColumn('ref', 'Ref.', width=58, align='center', bg=contract_bg),
-        PdfTableColumn('descricao', 'Descricao', width=654, bg=contract_bg),
-        PdfTableColumn('unidade', 'Un.', width=52, align='center', bg=contract_bg),
-        PdfTableColumn('quantidade', 'Qtde', width=74, align='center', bg=contract_bg),
-        PdfTableColumn('unit_material', 'Unit. material', width=125, align='right', bg=contract_bg),
-        PdfTableColumn('unit_mao_obra', 'Unit. mao obra', width=125, align='right', bg=contract_bg),
-        PdfTableColumn('unit_equip', 'Unit. equip.', width=118, align='right', bg=contract_bg),
-        PdfTableColumn('preco_unit', 'Preco unit.', width=125, align='right', bg=contract_bg),
-        PdfTableColumn('acumulado_anterior', 'Acum. anterior', width=94, align='center', bg=measured_bg),
-        PdfTableColumn('medida', 'Medida', width=94, align='center', bg=measured_bg),
-        PdfTableColumn('percentual', '%Exe.', width=76, align='center', bg=measured_bg),
-        PdfTableColumn('material', 'Material', width=130, align='right', bg=receivable_bg),
-        PdfTableColumn('mao_obra', 'Mao de obra', width=130, align='right', bg=receivable_bg),
-        PdfTableColumn('equip', 'Equip.', width=124, align='right', bg=receivable_bg),
-        PdfTableColumn('valor', 'Valor medicao', width=140, align='right', bg=receivable_bg),
+        PdfTableColumn('ref', 'Ref.', width=48, align='center', bg=contract_bg),
+        PdfTableColumn('descricao', 'Descricao', width=760, bg=contract_bg),
+        PdfTableColumn('unidade', 'Un.', width=44, align='center', bg=contract_bg),
+        PdfTableColumn('quantidade', 'Qtde', width=66, align='center', bg=contract_bg),
+        PdfTableColumn('unit_material', 'Unit. mat.', width=108, align='right', bg=contract_bg),
+        PdfTableColumn('unit_mao_obra', 'Unit. M.O.', width=108, align='right', bg=contract_bg),
+        PdfTableColumn('unit_equip', 'Unit. equip.', width=102, align='right', bg=contract_bg),
+        PdfTableColumn('preco_unit', 'Preco unit.', width=112, align='right', bg=contract_bg),
+        PdfTableColumn('acumulado_anterior', 'Acum.', width=78, align='center', bg=measured_bg),
+        PdfTableColumn('medida', 'Medido', width=78, align='center', bg=measured_bg),
+        PdfTableColumn('percentual', '% Exec.', width=68, align='center', bg=measured_bg),
+        PdfTableColumn('material', 'Material', width=114, align='right', bg=receivable_bg),
+        PdfTableColumn('mao_obra', 'Mao obra', width=114, align='right', bg=receivable_bg),
+        PdfTableColumn('equip', 'Equip.', width=106, align='right', bg=receivable_bg),
+        PdfTableColumn('valor', 'Valor medicao', width=124, align='right', bg=receivable_bg),
     ]
     groups = [
         PdfTableGroup('Itens contratuais', 0, 8, contract_bg),
@@ -314,7 +315,7 @@ def _pdf_medicao_construtora(medicao):
                 '__bold': True,
             }
         )
-    doc.add_table(columns, rows, row_height=38, groups=groups, table_body_level='small')
+    doc.add_table(columns, rows, row_height='auto', groups=groups, table_body_level='small', overflow='wrap')
 
     desconto_adicional_nf = (
         resumo.desconto_adicional_calculado
@@ -377,8 +378,9 @@ def _pdf_medicao_construtora(medicao):
                 }
                 for fd in faturamentos
             ],
-            row_height=42,
+            row_height='auto',
             table_body_level='small',
+            overflow='wrap',
         )
     return doc.build()
 
@@ -602,7 +604,13 @@ def _read_csv(file):
 
 
 def medicoes_home(request):
-    return redirect('medicoes_construtora_home')
+    contexto = {
+        'obras': _obras_empresa(request.empresa).filter(orcamentos_medicao__isnull=False).distinct().order_by('nome_obra')[:12],
+        'orcamentos': _orcamentos_empresa(request.empresa).select_related('obra').order_by('-id')[:8],
+        'medicoes_construtora': _medicoes_construtora_empresa(request.empresa).select_related('orcamento', 'orcamento__obra')[:8],
+        'medicoes_empreiteiro': _medicoes_empreiteiro_empresa(request.empresa).select_related('obra', 'orcamento')[:8],
+    }
+    return render(request, 'medicoes/home.html', contexto)
 
 
 RELATORIO_MEDICOES_COLUNAS = dict(RelatorioMedicoesForm.COLUNAS_CHOICES)
@@ -708,7 +716,7 @@ def _linhas_relatorio_medicoes(filtros, empresa):
             resumo = calcular_resumo_empreiteiro(medicao, itens=list(medicao.itens.all()))
             linhas.append(
                 {
-                    'tipo': f'Empreiteiro {medicao.get_tipo_display()}',
+                    'tipo': f'Contratado {medicao.get_tipo_display()}',
                     'obra': str(medicao.obra or getattr(orcamento, 'obra', '-') or '-'),
                     'planilha': getattr(orcamento, 'nome', '-') or '-',
                     'empreiteiro': medicao.empreiteiro,
@@ -831,7 +839,7 @@ def _pdf_relatorio_medicoes(linhas, colunas, totais, empresa):
         ],
         columns=3,
     )
-    doc.add_table(pdf_columns, rows, row_height=44)
+    doc.add_table(pdf_columns, rows, row_height='auto', overflow='wrap')
     return doc.build()
 
 
@@ -926,11 +934,11 @@ def novo_empreiteiro(request):
         form = EmpreiteiroForm(request.POST, empresa=request.empresa)
         if form.is_valid():
             form.save()
-            messages.success(request, 'Empreiteiro cadastrado com sucesso.')
+            messages.success(request, 'Contratado cadastrado com sucesso.')
             return redirect('lista_empreiteiros_medicao')
     else:
         form = EmpreiteiroForm(empresa=request.empresa)
-    return render(request, 'medicoes/form_empreiteiro.html', {'form': form, 'titulo': 'Novo empreiteiro'})
+    return render(request, 'medicoes/form_empreiteiro.html', {'form': form, 'titulo': 'Novo contratado'})
 
 
 def editar_empreiteiro(request, empreiteiro_id):
@@ -939,20 +947,22 @@ def editar_empreiteiro(request, empreiteiro_id):
         form = EmpreiteiroForm(request.POST, instance=empreiteiro, empresa=request.empresa)
         if form.is_valid():
             form.save()
-            messages.success(request, 'Empreiteiro atualizado com sucesso.')
+            messages.success(request, 'Contratado atualizado com sucesso.')
             return redirect('lista_empreiteiros_medicao')
     else:
         form = EmpreiteiroForm(instance=empreiteiro, empresa=request.empresa)
     return render(
         request,
         'medicoes/form_empreiteiro.html',
-        {'form': form, 'titulo': 'Editar empreiteiro', 'empreiteiro': empreiteiro},
+        {'form': form, 'titulo': 'Editar contratado', 'empreiteiro': empreiteiro},
     )
 
 
 def medicoes_obra(request, obra_id):
     obra = get_object_or_404(Obra, id=obra_id, empresa=request.empresa)
     planilhas = obra.orcamentos_medicao.prefetch_related('itens', 'medicoes_construtora', 'medicoes_empreiteiro')
+    planilhas_construtora = [planilha for planilha in planilhas if planilha.tipo == OrcamentoMedicao.TIPO_CONSTRUTORA]
+    planilhas_empreiteiro = [planilha for planilha in planilhas if planilha.tipo == OrcamentoMedicao.TIPO_EMPREITEIRO]
     medicoes_construtora = MedicaoConstrutora.objects.filter(orcamento__obra=obra).select_related('orcamento')
     medicoes_empreiteiro = _medicoes_empreiteiro_empresa(request.empresa).filter(obra=obra).select_related('orcamento')
     return render(
@@ -961,6 +971,8 @@ def medicoes_obra(request, obra_id):
         {
             'obra': obra,
             'planilhas': planilhas,
+            'planilhas_construtora': planilhas_construtora,
+            'planilhas_empreiteiro': planilhas_empreiteiro,
             'medicoes_construtora': medicoes_construtora,
             'medicoes_empreiteiro': medicoes_empreiteiro,
         },
@@ -1135,7 +1147,163 @@ def _linhas_medicao_construtora_formset(medicao, formset):
         if item.eh_grupo:
             linhas.append({'tipo': 'grupo', 'item': item})
         elif item.id in forms_by_item:
-            linhas.append({'tipo': 'item', 'form': forms_by_item[item.id]})
+                linhas.append({'tipo': 'item', 'form': forms_by_item[item.id]})
+    return linhas
+
+
+ITENS_MEDICAO_POR_PAGINA = 50
+ITENS_MEDICAO_LIMITE_TODOS = 40
+
+
+def _query_preservando_escopo(request, active_tab='itens'):
+    params = request.GET.copy()
+    if not params and active_tab == 'itens':
+        return ''
+    params['tab'] = active_tab
+    return params.urlencode()
+
+
+def _grupos_orcamento(orcamento):
+    itens = list(orcamento.itens.all())
+    grupos = []
+    grupo_atual = None
+    sem_grupo = []
+    for item in itens:
+        if item.eh_grupo:
+            grupo_atual = {'key': str(item.id), 'item': item, 'itens': []}
+            grupos.append(grupo_atual)
+            continue
+        if grupo_atual:
+            grupo_atual['itens'].append(item)
+        else:
+            sem_grupo.append(item)
+    if sem_grupo and grupos:
+        grupos.insert(
+            0,
+            {
+                'key': 'sem-grupo',
+                'item': None,
+                'label': 'Sem grupo',
+                'itens': sem_grupo,
+            },
+        )
+    for grupo in grupos:
+        if 'label' not in grupo:
+            grupo['label'] = f"{grupo['item'].item} - {grupo['item'].descricao}"
+        grupo['total_itens'] = len(grupo['itens'])
+    return grupos
+
+
+def _escopo_itens_orcamento(request, orcamento):
+    grupos = _grupos_orcamento(orcamento)
+    itens_mediveis = [item for item in orcamento.itens.all() if item.eh_item_medivel]
+    busca = request.GET.get('q', '').strip()
+    pagina_numero = request.GET.get('page') or 1
+    grupo_key = request.GET.get('grupo') or ''
+
+    if busca:
+        termo = busca.lower()
+        itens_filtrados = [
+            item for item in itens_mediveis
+            if termo in (item.item or '').lower() or termo in (item.descricao or '').lower()
+        ]
+        paginator = Paginator(itens_filtrados, ITENS_MEDICAO_POR_PAGINA)
+        pagina = paginator.get_page(pagina_numero)
+        return {
+            'modo': 'busca',
+            'busca': busca,
+            'grupo_key': '',
+            'grupos': grupos,
+            'itens': list(pagina.object_list),
+            'pagina': pagina,
+            'total_itens': len(itens_mediveis),
+            'total_renderizado': len(pagina.object_list),
+            'usa_subset': len(itens_filtrados) > ITENS_MEDICAO_LIMITE_TODOS,
+            'titulo': f'Busca: {busca}',
+        }
+
+    if grupos:
+        if not grupo_key or not any(grupo['key'] == grupo_key for grupo in grupos):
+            grupo_key = grupos[0]['key']
+        grupo = next(grupo for grupo in grupos if grupo['key'] == grupo_key)
+        return {
+            'modo': 'grupo',
+            'busca': '',
+            'grupo_key': grupo_key,
+            'grupos': grupos,
+            'itens': grupo['itens'],
+            'pagina': None,
+            'total_itens': len(itens_mediveis),
+            'total_renderizado': len(grupo['itens']),
+            'usa_subset': len(grupos) > 1 or len(itens_mediveis) > ITENS_MEDICAO_LIMITE_TODOS,
+            'titulo': grupo['label'],
+        }
+
+    if len(itens_mediveis) <= ITENS_MEDICAO_LIMITE_TODOS:
+        return {
+            'modo': 'todos',
+            'busca': '',
+            'grupo_key': '',
+            'grupos': [],
+            'itens': itens_mediveis,
+            'pagina': None,
+            'total_itens': len(itens_mediveis),
+            'total_renderizado': len(itens_mediveis),
+            'usa_subset': False,
+            'titulo': 'Todos os itens',
+        }
+
+    paginator = Paginator(itens_mediveis, ITENS_MEDICAO_POR_PAGINA)
+    pagina = paginator.get_page(pagina_numero)
+    return {
+        'modo': 'pagina',
+        'busca': '',
+        'grupo_key': '',
+        'grupos': [],
+        'itens': list(pagina.object_list),
+        'pagina': pagina,
+        'total_itens': len(itens_mediveis),
+        'total_renderizado': len(pagina.object_list),
+        'usa_subset': True,
+        'titulo': f'Pagina {pagina.number}',
+    }
+
+
+def _queryset_itens_construtora_escopo(medicao, escopo):
+    item_ids = [item.id for item in escopo['itens']]
+    return medicao.itens.select_related('item_orcamento').filter(item_orcamento_id__in=item_ids)
+
+
+def _queryset_itens_empreiteiro_escopo(medicao, escopo):
+    item_ids = [item.id for item in escopo['itens']]
+    return medicao.itens.select_related('item_orcamento').filter(item_orcamento_id__in=item_ids)
+
+
+def _linhas_medicao_construtora_escopo(escopo, formset):
+    forms_by_item = {form.instance.item_orcamento_id: form for form in formset.forms}
+    linhas = []
+    if escopo['modo'] == 'grupo' and escopo['grupo_key'] != 'sem-grupo':
+        grupo = next((grupo for grupo in escopo['grupos'] if grupo['key'] == escopo['grupo_key']), None)
+        if grupo and grupo['item']:
+            linhas.append({'tipo': 'grupo', 'item': grupo['item']})
+    for item in escopo['itens']:
+        form = forms_by_item.get(item.id)
+        if form:
+            linhas.append({'tipo': 'item', 'form': form})
+    return linhas
+
+
+def _linhas_medicao_empreiteiro_escopo(escopo, formset):
+    forms_by_item = {form.instance.item_orcamento_id: form for form in formset.forms}
+    linhas = []
+    if escopo['modo'] == 'grupo' and escopo['grupo_key'] != 'sem-grupo':
+        grupo = next((grupo for grupo in escopo['grupos'] if grupo['key'] == escopo['grupo_key']), None)
+        if grupo and grupo['item']:
+            linhas.append({'tipo': 'grupo', 'item': grupo['item']})
+    for item in escopo['itens']:
+        form = forms_by_item.get(item.id)
+        if form:
+            linhas.append({'tipo': 'item', 'form': form})
     return linhas
 
 
@@ -1328,7 +1496,8 @@ def _pdf_saldo_contratual(orcamento, linhas, totais):
             PdfTableColumn('total', 'Total saldo', weight=1.45, align='right'),
         ],
         rows,
-        row_height=44,
+        row_height='auto',
+        overflow='wrap',
     )
     doc.add_totals_box(
         [
@@ -1423,13 +1592,15 @@ def editar_medicao_construtora(request, medicao_id):
     )
     _sincronizar_itens_medicao_construtora(medicao)
     acumulados = acumulados_construtora(medicao)
+    escopo = _escopo_itens_orcamento(request, medicao.orcamento)
+    itens_queryset = _queryset_itens_construtora_escopo(medicao, escopo)
     if request.method == 'POST':
         form = MedicaoConstrutoraForm(request.POST, instance=medicao)
         formset = ItemMedicaoConstrutoraFormSet(
             request.POST,
             instance=medicao,
             acumulados_anteriores=acumulados,
-            queryset=medicao.itens.select_related('item_orcamento'),
+            queryset=itens_queryset,
         )
         if form.is_valid() and formset.is_valid():
             with transaction.atomic():
@@ -1438,19 +1609,23 @@ def editar_medicao_construtora(request, medicao_id):
                 _sync_faturamentos_diretos(medicao, request.POST)
                 _aplicar_percentuais_construtora(medicao)
             messages.success(request, 'Medicao da construtora atualizada com sucesso.')
-            return redirect('editar_medicao_construtora', medicao_id=medicao.id)
+            url = reverse('editar_medicao_construtora', args=[medicao.id])
+            query = _query_preservando_escopo(request, request.POST.get('active_tab') or 'itens')
+            return redirect(f'{url}?{query}' if query else url)
     else:
         form = MedicaoConstrutoraForm(instance=medicao)
         formset = ItemMedicaoConstrutoraFormSet(
             instance=medicao,
             acumulados_anteriores=acumulados,
-            queryset=medicao.itens.select_related('item_orcamento'),
+            queryset=itens_queryset,
         )
-    itens_forms = [form_item.instance for form_item in formset.forms]
-    aplicar_acumulados_itens(itens_forms, acumulados)
-    calcular_resumo_construtora(
+    itens_visiveis = [form_item.instance for form_item in formset.forms]
+    aplicar_acumulados_itens(itens_visiveis, acumulados)
+    todos_itens = list(medicao.itens.select_related('item_orcamento'))
+    aplicar_acumulados_itens(todos_itens, acumulados)
+    resumo_medicao = calcular_resumo_construtora(
         medicao,
-        itens=itens_forms,
+        itens=todos_itens,
         faturamentos=faturamentos_vinculados(medicao),
     )
     faturamentos_ja_descontados = FaturamentoDireto.objects.filter(
@@ -1466,7 +1641,16 @@ def editar_medicao_construtora(request, medicao_id):
             'medicao': medicao,
             'form': form,
             'formset': formset,
-            'linhas_medicao': _linhas_medicao_construtora_formset(medicao, formset),
+            'resumo_medicao': resumo_medicao,
+            'total_retido_medicao': (
+                resumo_medicao.retencao_tecnica_calculada
+                + resumo_medicao.inss_calculado
+                + resumo_medicao.issqn_calculado
+            ),
+            'linhas_medicao': _linhas_medicao_construtora_escopo(escopo, formset),
+            'escopo_itens': escopo,
+            'query_escopo': _query_preservando_escopo(request),
+            'active_tab': request.POST.get('active_tab') or request.GET.get('tab') or 'itens',
             'faturamentos_diretos_linhas': _faturamentos_diretos_context(medicao),
             'faturamentos_ja_descontados': faturamentos_ja_descontados,
         },
@@ -1509,7 +1693,7 @@ def nova_medicao_empreiteiro_simples(request):
             formset = ItemMedicaoEmpreiteiroFormSet(request.POST, instance=medicao)
             if formset.is_valid():
                 formset.save()
-                messages.success(request, 'Medicao simples de empreiteiro criada.')
+                messages.success(request, 'Medicao simples de contratado criada.')
                 return redirect('editar_medicao_empreiteiro', medicao_id=medicao.id)
             medicao.delete()
     else:
@@ -1529,7 +1713,7 @@ def nova_medicao_empreiteiro_simples(request):
         {
             'form': form,
             'formset': formset,
-            'titulo': 'Nova medicao simples de empreiteiro',
+            'titulo': 'Nova medicao simples de contratado',
             'empreiteiros_json': _empreiteiros_json(request.empresa),
         },
     )
@@ -1591,7 +1775,7 @@ def nova_medicao_empreiteiro_cumulativa(request, orcamento_id):
         'medicoes/form_medicao.html',
         {
             'form': form,
-            'titulo': 'Nova medicao cumulativa de empreiteiro',
+            'titulo': 'Nova medicao cumulativa de contratado',
             'empreiteiros_json': _empreiteiros_json(request.empresa),
         },
     )
@@ -1603,13 +1787,24 @@ def editar_medicao_empreiteiro(request, medicao_id):
         id=medicao_id,
         empresa=request.empresa,
     )
+    escopo = None
+    itens_queryset = medicao.itens.select_related('item_orcamento')
+    if medicao.tipo == MedicaoEmpreiteiro.TIPO_CUMULATIVA and medicao.orcamento_id:
+        medicao.orcamento = (
+            OrcamentoMedicao.objects.filter(id=medicao.orcamento_id, obra__empresa=request.empresa)
+            .prefetch_related('itens')
+            .select_related('obra')
+            .get()
+        )
+        escopo = _escopo_itens_orcamento(request, medicao.orcamento)
+        itens_queryset = _queryset_itens_empreiteiro_escopo(medicao, escopo)
     if request.method == 'POST':
         form = MedicaoEmpreiteiroForm(request.POST, instance=medicao, empresa=request.empresa)
         formset = ItemMedicaoEmpreiteiroFormSet(
             request.POST,
             instance=medicao,
             orcamento=medicao.orcamento,
-            queryset=medicao.itens.select_related('item_orcamento'),
+            queryset=itens_queryset,
         )
         if form.is_valid() and formset.is_valid():
             with transaction.atomic():
@@ -1617,18 +1812,32 @@ def editar_medicao_empreiteiro(request, medicao_id):
                 _sync_empreiteiro_medicao(medicao)
                 formset.save()
                 _aplicar_percentuais_empreiteiro(medicao)
-            messages.success(request, 'Medicao de empreiteiro atualizada com sucesso.')
-            return redirect('editar_medicao_empreiteiro', medicao_id=medicao.id)
+            messages.success(request, 'Medicao de contratado atualizada com sucesso.')
+            url = reverse('editar_medicao_empreiteiro', args=[medicao.id])
+            query = _query_preservando_escopo(request, request.POST.get('active_tab') or 'itens')
+            return redirect(f'{url}?{query}' if query else url)
     else:
         form = MedicaoEmpreiteiroForm(instance=medicao, empresa=request.empresa)
         formset = ItemMedicaoEmpreiteiroFormSet(
             instance=medicao,
             orcamento=medicao.orcamento,
-            queryset=medicao.itens.select_related('item_orcamento'),
+            queryset=itens_queryset,
         )
-    itens = [form_item.instance for form_item in formset.forms]
-    aplicar_acumulados_itens(itens, acumulados_empreiteiro(medicao))
-    calcular_resumo_empreiteiro(medicao, itens=itens)
+    acumulados = acumulados_empreiteiro(medicao)
+    itens_visiveis = [form_item.instance for form_item in formset.forms]
+    aplicar_acumulados_itens(itens_visiveis, acumulados)
+    todos_itens = list(medicao.itens.select_related('item_orcamento'))
+    aplicar_acumulados_itens(todos_itens, acumulados)
+    calcular_resumo_empreiteiro(medicao, itens=todos_itens)
+    historico_medicoes = []
+    if medicao.tipo == MedicaoEmpreiteiro.TIPO_CUMULATIVA and medicao.orcamento_id:
+        historico_medicoes = list(
+            medicao.orcamento.medicoes_empreiteiro.select_related('obra', 'empreiteiro_cadastro')
+            .prefetch_related('itens__item_orcamento')
+            .order_by('-numero', '-id')
+        )
+        for historico in historico_medicoes:
+            calcular_resumo_empreiteiro(historico, itens=list(historico.itens.all()))
     template = (
         'medicoes/editar_medicao_empreiteiro_simples.html'
         if medicao.tipo == MedicaoEmpreiteiro.TIPO_SIMPLES
@@ -1641,7 +1850,12 @@ def editar_medicao_empreiteiro(request, medicao_id):
             'medicao': medicao,
             'form': form,
             'formset': formset,
-            'titulo': 'Medicao de empreiteiro',
+            'linhas_medicao': _linhas_medicao_empreiteiro_escopo(escopo, formset) if escopo else [],
+            'escopo_itens': escopo,
+            'query_escopo': _query_preservando_escopo(request),
+            'active_tab': request.POST.get('active_tab') or request.GET.get('tab') or 'itens',
+            'historico_medicoes': historico_medicoes,
+            'titulo': 'Medicao de contratado',
             'empreiteiros_json': _empreiteiros_json(request.empresa),
         },
     )
@@ -1656,7 +1870,7 @@ def excluir_medicao_empreiteiro(request, medicao_id):
     orcamento_id = medicao.orcamento_id
     if request.method == 'POST':
         medicao.delete()
-        messages.success(request, 'Medicao de empreiteiro excluida com sucesso.')
+        messages.success(request, 'Medicao de contratado excluida com sucesso.')
         if orcamento_id:
             return redirect('detalhe_orcamento_medicao', orcamento_id=orcamento_id)
         return redirect('medicoes_empreiteiros_home')
@@ -1664,7 +1878,7 @@ def excluir_medicao_empreiteiro(request, medicao_id):
         request,
         'medicoes/confirmar_exclusao_medicao.html',
         {
-            'titulo': 'Excluir medicao de empreiteiro',
+            'titulo': 'Excluir medicao de contratado',
             'descricao': f'Medicao {medicao.numero} - {medicao.empreiteiro}',
             'voltar_url': 'editar_medicao_empreiteiro',
             'voltar_arg': medicao.id,
@@ -1702,7 +1916,7 @@ def _pdf_medicao_empreiteiro(medicao):
     resumo = calcular_resumo_empreiteiro(medicao, itens=itens)
     doc = PdfDocument(
         empresa=medicao.empresa,
-        title='Boletim de medicao de empreiteiro',
+        title='Boletim de medicao de contratado',
         subtitle=f'Medicao no {medicao.numero}',
         orientation='portrait',
         filename=f'medicao_empreiteiro_{medicao.numero}.pdf',
@@ -1710,7 +1924,7 @@ def _pdf_medicao_empreiteiro(medicao):
     doc.add_title(emitted_on=date.today())
     doc.add_info_grid(
         [
-            ('Empreiteiro', medicao.empreiteiro),
+            ('Contratado', medicao.empreiteiro),
             ('CPF/CNPJ', medicao.cpf_cnpj or '-'),
             ('PIX', medicao.pix or '-'),
             ('Obra', medicao.obra or getattr(medicao.orcamento, 'obra', '-') or '-'),
@@ -1763,7 +1977,7 @@ def _pdf_medicao_empreiteiro(medicao):
             }
             for item in itens
         ]
-    doc.add_table(columns, rows, row_height=44)
+    doc.add_table(columns, rows, row_height='auto', overflow='wrap')
     doc.add_totals_box(
         [
             ('Subtotal medido', _money(medicao.subtotal_periodo), False),
@@ -1775,7 +1989,7 @@ def _pdf_medicao_empreiteiro(medicao):
     )
     if medicao.observacoes:
         doc.add_section_header('Observacoes')
-        doc.add_info_grid([('Observacoes', medicao.observacoes)], columns=1)
+        doc.add_text_block('Observacoes', medicao.observacoes)
     return doc.build()
 
 

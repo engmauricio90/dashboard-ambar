@@ -1,168 +1,340 @@
 {% extends 'base.html' %}
 
-{% block title %}{{ titulo }}{% endblock %}
+{% block title %}Medicao de contratado{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-3">
     <div>
-        <h1 class="mb-1">{{ titulo }}</h1>
-        {% if medicao %}<p class="text-muted mb-0">{{ medicao.empreiteiro }} - {{ medicao.get_tipo_display }}</p>{% endif %}
+        <h1 class="mb-1">Medicao {{ medicao.numero }} - Contratado</h1>
+        <p class="text-muted mb-0">
+            {{ medicao.empreiteiro }} |
+            {% if medicao.obra %}{{ medicao.obra }}{% else %}{{ medicao.orcamento.obra }}{% endif %} |
+            {{ medicao.periodo_inicio|date:'d/m/Y' }} a {{ medicao.periodo_fim|date:'d/m/Y' }}
+        </p>
     </div>
-    <div class="d-flex gap-2 flex-wrap">
-        {% if medicao %}
-        <a class="btn btn-outline-danger" href="{% url 'medicao_empreiteiro_pdf' medicao.id %}" target="_blank">PDF</a>
-        <a class="btn btn-outline-success" href="{% url 'medicao_empreiteiro_excel' medicao.id %}">Excel</a>
-        <a class="btn btn-outline-danger" href="{% url 'excluir_medicao_empreiteiro' medicao.id %}">Excluir</a>
-        {% endif %}
-        <a class="btn btn-secondary" href="{% url 'medicoes_home' %}">Voltar</a>
+    <a class="btn btn-secondary" href="{% url 'medicoes_empreiteiros_home' %}">Voltar</a>
+</div>
+
+<div class="medicao-summary shadow-sm mb-4">
+    <div>
+        <span>Contratado</span>
+        <strong>R$ {{ medicao.orcamento.total_orcamento|floatformat:2 }}</strong>
+    </div>
+    <div>
+        <span>Medido acumulado</span>
+        <strong>R$ {{ medicao.orcamento.total_medido_empreiteiro|floatformat:2 }}</strong>
+    </div>
+    <div>
+        <span>% concluida</span>
+        <strong>{{ medicao.orcamento.percentual_medido_empreiteiro|floatformat:2 }}%</strong>
+    </div>
+    <div>
+        <span>Saldo</span>
+        <strong>R$ {{ medicao.orcamento.saldo_medir_empreiteiro|floatformat:2 }}</strong>
+    </div>
+    <div>
+        <span>Liquido desta medicao</span>
+        <strong class="text-success">R$ {{ medicao.total_liquido|floatformat:2 }}</strong>
     </div>
 </div>
 
-{% if medicao and medicao.tipo == 'cumulativa' and medicao.orcamento %}
-<div class="row g-3 mb-4">
-    <div class="col-md-3">
-        <div class="card shadow-sm h-100"><div class="card-body">
-            <h6>Contratado</h6>
-            <h4>R$ {{ medicao.orcamento.total_orcamento|floatformat:2 }}</h4>
-        </div></div>
-    </div>
-    <div class="col-md-3">
-        <div class="card shadow-sm h-100"><div class="card-body">
-            <h6>Medido acumulado</h6>
-            <h4>R$ {{ medicao.orcamento.total_medido_empreiteiro|floatformat:2 }}</h4>
-            <small class="text-muted">{{ medicao.orcamento.percentual_medido_empreiteiro|floatformat:2 }}% concluida</small>
-        </div></div>
-    </div>
-    <div class="col-md-3">
-        <div class="card shadow-sm h-100"><div class="card-body">
-            <h6>Pago/Liquido</h6>
-            <h4>R$ {{ medicao.orcamento.total_liquido_empreiteiro|floatformat:2 }}</h4>
-            <small class="text-muted">Total liquido das medicoes</small>
-        </div></div>
-    </div>
-    <div class="col-md-3">
-        <div class="card shadow-sm h-100"><div class="card-body">
-            <h6>Saldo contratual</h6>
-            <h4>R$ {{ medicao.orcamento.saldo_medir_empreiteiro|floatformat:2 }}</h4>
-            <small class="text-muted">{{ medicao.orcamento.percentual_saldo_empreiteiro|floatformat:2 }}% a medir</small>
-        </div></div>
-    </div>
-</div>
-{% endif %}
-
-<form method="post">
+<form method="post" id="medicao-form">
     {% csrf_token %}
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <div class="row g-3">
-                {% for field in form %}
-                {% if field.name == 'empreiteiro' %}
-                    {{ field }}
-                {% elif field.name == 'obra' or field.name == 'empreiteiro_cadastro' or field.name == 'cpf_cnpj' or field.name == 'pix' or field.name == 'numero' or field.name == 'periodo_inicio' or field.name == 'periodo_fim' or field.name == 'data_medicao' or field.name == 'observacoes' %}
-                <div class="{% if field.name == 'observacoes' %}col-12{% else %}col-md-3{% endif %}">
-                    <label class="form-label">{{ field.label }}</label>
-                    {% if field.name == 'empreiteiro_cadastro' %}
-                    <input type="search" class="form-control form-control-sm mb-2 js-empreiteiro-search" placeholder="Buscar por nome, CPF/CNPJ ou PIX">
+    <input type="hidden" name="active_tab" id="active-tab-input" value="{{ active_tab }}">
+
+    <ul class="nav nav-tabs mb-3" id="medicao-tabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if active_tab == 'itens' %}active{% endif %}" id="itens-tab" data-bs-toggle="tab" data-bs-target="#itens-pane" type="button" role="tab">Itens</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if active_tab == 'financeiro' %}active{% endif %}" id="financeiro-tab" data-bs-toggle="tab" data-bs-target="#financeiro-pane" type="button" role="tab">Financeiro</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if active_tab == 'historico' %}active{% endif %}" id="historico-tab" data-bs-toggle="tab" data-bs-target="#historico-pane" type="button" role="tab">Historico</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if active_tab == 'relatorios' %}active{% endif %}" id="relatorios-tab" data-bs-toggle="tab" data-bs-target="#relatorios-pane" type="button" role="tab">Relatorios</button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <div class="tab-pane fade {% if active_tab == 'itens' %}show active{% endif %}" id="itens-pane" role="tabpanel" aria-labelledby="itens-tab">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-3">
+                        <div>
+                            <h5 class="mb-1">Itens medidos</h5>
+                            <p class="text-muted small mb-0">
+                                Exibindo {{ escopo_itens.total_renderizado }} de {{ escopo_itens.total_itens }} item(ns). Salvar aqui altera somente os itens visiveis.
+                            </p>
+                        </div>
+                        <button class="btn btn-primary" type="submit">Salvar itens</button>
+                    </div>
+
+                    <div class="row g-2 align-items-end mb-3">
+                        {% if escopo_itens.grupos %}
+                        <div class="col-lg-5">
+                            <label class="form-label small text-muted">Grupo</label>
+                            <select class="form-select form-select-sm js-scope-select">
+                                {% for grupo in escopo_itens.grupos %}
+                                <option value="?grupo={{ grupo.key }}&tab=itens" {% if escopo_itens.grupo_key == grupo.key %}selected{% endif %}>
+                                    {{ grupo.label }} ({{ grupo.total_itens }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% endif %}
+                        <div class="col-lg-5">
+                            <label class="form-label small text-muted">Buscar item</label>
+                            <div class="input-group input-group-sm">
+                                <input class="form-control" type="search" id="item-search-field" value="{{ escopo_itens.busca }}" placeholder="Referencia ou descricao">
+                                <button class="btn btn-outline-secondary" type="button" id="item-search-button">Buscar</button>
+                                {% if escopo_itens.busca %}
+                                <a class="btn btn-outline-secondary" href="?tab=itens">Limpar</a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    {{ formset.management_form }}
+                    <div class="table-responsive medicao-edit-table">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Ref.</th>
+                                    <th scope="col">Descricao</th>
+                                    <th scope="col">Un.</th>
+                                    <th scope="col">Contratada</th>
+                                    <th scope="col">Anterior</th>
+                                    <th scope="col">Saldo</th>
+                                    <th scope="col" style="width: 150px;">Qtd. periodo</th>
+                                    <th scope="col">Valor unit.</th>
+                                    <th scope="col">Valor</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for linha in linhas_medicao %}
+                                {% if linha.tipo == 'grupo' %}
+                                <tr class="table-secondary fw-semibold">
+                                    <td>{{ linha.item.item }}</td>
+                                    <td colspan="8">{{ linha.item.descricao }}</td>
+                                </tr>
+                                {% else %}
+                                {% with item_form=linha.form %}
+                                <tr>
+                                    <td class="text-center text-nowrap">{{ item_form.instance.item_orcamento.item }}{{ item_form.id }}</td>
+                                    <td class="medicao-description">{{ item_form.instance.descricao }}</td>
+                                    <td class="text-center">{{ item_form.instance.unidade }}</td>
+                                    <td class="text-center">{{ item_form.instance.item_orcamento.quantidade|floatformat:4 }}</td>
+                                    <td class="text-center">{{ item_form.instance.quantidade_acumulada_anterior|floatformat:4 }}</td>
+                                    <td class="text-center">{{ item_form.instance.saldo_quantidade|floatformat:4 }}</td>
+                                    <td>{{ item_form.quantidade_periodo }}</td>
+                                    <td>{{ item_form.valor_unitario }}</td>
+                                    <td>R$ {{ item_form.instance.valor_periodo|floatformat:2 }}</td>
+                                </tr>
+                                {% if item_form.errors %}
+                                <tr><td colspan="9" class="text-danger small">{{ item_form.errors }}</td></tr>
+                                {% endif %}
+                                {% endwith %}
+                                {% endif %}
+                                {% empty %}
+                                <tr><td colspan="9" class="text-muted">Nenhum item encontrado neste escopo.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {% if escopo_itens.pagina %}
+                    <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
+                        <span class="text-muted small">Pagina {{ escopo_itens.pagina.number }} de {{ escopo_itens.pagina.paginator.num_pages }}</span>
+                        <div class="btn-group btn-group-sm">
+                            {% if escopo_itens.pagina.has_previous %}
+                            <a class="btn btn-outline-secondary js-scope-link" href="?page={{ escopo_itens.pagina.previous_page_number }}{% if escopo_itens.busca %}&q={{ escopo_itens.busca }}{% endif %}&tab=itens">Anterior</a>
+                            {% endif %}
+                            {% if escopo_itens.pagina.has_next %}
+                            <a class="btn btn-outline-secondary js-scope-link" href="?page={{ escopo_itens.pagina.next_page_number }}{% if escopo_itens.busca %}&q={{ escopo_itens.busca }}{% endif %}&tab=itens">Proxima</a>
+                            {% endif %}
+                        </div>
+                    </div>
                     {% endif %}
-                    {{ field }}
-                    {% if field.errors %}<div class="text-danger small">{{ field.errors|join:', ' }}</div>{% endif %}
                 </div>
-                {% endif %}
-                {% endfor %}
             </div>
         </div>
-    </div>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-                <h5 class="mb-0">Itens</h5>
-                <button type="button" class="btn btn-sm btn-outline-primary" id="adicionar-item-medicao">Adicionar item</button>
-            </div>
-            {{ formset.management_form }}
-            <div class="table-responsive">
-                <table class="table table-sm align-middle">
-                    <thead>
-                        <tr><th>Base</th><th>Item</th><th>Descrição</th><th>Und</th><th>Anterior</th><th>Qtd periodo</th><th>Valor unit.</th><th>Valor</th><th>Excluir</th></tr>
-                    </thead>
-                    <tbody id="itens-medicao-body">
-                        {% for item_form in formset %}
-                        <tr>
-                            <td style="min-width: 150px;">{{ item_form.item_orcamento }}{{ item_form.id }}</td>
-                            <td style="min-width: 90px;">{{ item_form.item }}</td>
-                            <td style="min-width: 260px;">{{ item_form.descricao }}</td>
-                            <td style="min-width: 80px;">{{ item_form.unidade }}</td>
-                            <td class="text-center fw-semibold" style="min-width: 110px;">{{ item_form.instance.quantidade_acumulada_anterior|floatformat:4 }}</td>
-                            <td style="min-width: 130px;">{{ item_form.quantidade_periodo }}</td>
-                            <td style="min-width: 130px;">{{ item_form.valor_unitario }}</td>
-                            <td>R$ {{ item_form.instance.valor_periodo|floatformat:2 }}</td>
-                            <td>{% if item_form.DELETE %}{{ item_form.DELETE }}{% endif %}</td>
-                        </tr>
-                        {% if item_form.non_field_errors %}<tr><td colspan="9" class="text-danger small">{{ item_form.non_field_errors }}</td></tr>{% endif %}
+        <div class="tab-pane fade {% if active_tab == 'financeiro' %}show active{% endif %}" id="financeiro-pane" role="tabpanel" aria-labelledby="financeiro-tab">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                        <h5 class="mb-0">Dados e fechamento</h5>
+                        <button class="btn btn-primary" type="submit">Salvar financeiro</button>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        {% for field in form %}
+                        {% if field.name == 'empreiteiro' %}
+                            {{ field }}
+                        {% elif field.name == 'obra' or field.name == 'empreiteiro_cadastro' or field.name == 'cpf_cnpj' or field.name == 'pix' or field.name == 'numero' or field.name == 'periodo_inicio' or field.name == 'periodo_fim' or field.name == 'data_medicao' or field.name == 'observacoes' or field.name == 'retencao_tecnica' or field.name == 'retencao_tecnica_percentual' or field.name == 'desconto_adicional' or field.name == 'desconto_adicional_percentual' %}
+                        <div class="{% if field.name == 'observacoes' %}col-12{% else %}col-md-3{% endif %}">
+                            <label class="form-label">{{ field.label }}</label>
+                            {% if field.name == 'empreiteiro_cadastro' %}
+                            <input type="search" class="form-control form-control-sm mb-2 js-empreiteiro-search" placeholder="Buscar por nome, CPF/CNPJ ou PIX">
+                            {% endif %}
+                            {{ field }}
+                            {% if field.errors %}<div class="text-danger small">{{ field.errors|join:', ' }}</div>{% endif %}
+                        </div>
+                        {% endif %}
                         {% endfor %}
-                    </tbody>
-                    <template id="item-medicao-empty-form">
-                        <tr>
-                            <td style="min-width: 150px;">{{ formset.empty_form.item_orcamento }}{{ formset.empty_form.id }}</td>
-                            <td style="min-width: 90px;">{{ formset.empty_form.item }}</td>
-                            <td style="min-width: 260px;">{{ formset.empty_form.descricao }}</td>
-                            <td style="min-width: 80px;">{{ formset.empty_form.unidade }}</td>
-                            <td class="text-center text-muted" style="min-width: 110px;">-</td>
-                            <td style="min-width: 130px;">{{ formset.empty_form.quantidade_periodo }}</td>
-                            <td style="min-width: 130px;">{{ formset.empty_form.valor_unitario }}</td>
-                            <td class="text-muted">Calculado ao salvar</td>
-                            <td>{% if formset.empty_form.DELETE %}{{ formset.empty_form.DELETE }}{% endif %}</td>
-                        </tr>
-                    </template>
-                </table>
-            </div>
-            {% if medicao %}
-            <div class="row g-3 mt-3">
-                <div class="col-md-4"><strong>Subtotal:</strong> R$ {{ medicao.subtotal_periodo|floatformat:2 }}</div>
-                <div class="col-md-4"><strong>Descontos:</strong> R$ {{ medicao.total_descontos|floatformat:2 }}</div>
-                <div class="col-md-4"><strong>Líquido:</strong> R$ {{ medicao.total_liquido|floatformat:2 }}</div>
-            </div>
-            {% endif %}
-        </div>
-    </div>
-
-    {% if medicao %}
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <h5 class="mb-3">Retenção e descontos</h5>
-            <p class="text-muted small mb-3">Informe o percentual para calcular sobre o subtotal medido. Se preferir, deixe o percentual zerado e preencha o valor em reais.</p>
-            <div class="row g-3">
-                {% for field in form %}
-                {% if field.name == 'retencao_tecnica' or field.name == 'retencao_tecnica_percentual' or field.name == 'desconto_adicional' or field.name == 'desconto_adicional_percentual' %}
-                <div class="col-md-3">
-                    <label class="form-label">{{ field.label }}</label>
-                    {{ field }}
-                    {% if field.errors %}<div class="text-danger small">{{ field.errors|join:', ' }}</div>{% endif %}
+                    </div>
+                    <div class="row g-3 financeiro-fechamento">
+                        <div class="col-md-4"><strong>Subtotal desta medicao</strong><span>R$ {{ medicao.subtotal_periodo|floatformat:2 }}</span></div>
+                        <div class="col-md-4"><strong>Descontos</strong><span>R$ {{ medicao.total_descontos|floatformat:2 }}</span></div>
+                        <div class="col-md-4"><strong>Total liquido</strong><span>R$ {{ medicao.total_liquido|floatformat:2 }}</span></div>
+                    </div>
                 </div>
-                {% endif %}
-                {% endfor %}
+            </div>
+        </div>
+
+        <div class="tab-pane fade {% if active_tab == 'historico' %}show active{% endif %}" id="historico-pane" role="tabpanel" aria-labelledby="historico-tab">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h5 class="mb-3">Historico da planilha</h5>
+                    <div class="list-group list-group-flush">
+                        {% for anterior in historico_medicoes %}
+                        <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_empreiteiro' anterior.id %}">
+                            {{ anterior.empreiteiro }} - Medicao {{ anterior.numero }} - {{ anterior.data_medicao|date:'d/m/Y' }}
+                            <small class="text-muted d-block">Medido R$ {{ anterior.subtotal_periodo|floatformat:2 }} | Liquido R$ {{ anterior.total_liquido|floatformat:2 }}</small>
+                        </a>
+                        {% empty %}
+                        <div class="text-muted">Nenhuma medicao anterior nesta planilha.</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade {% if active_tab == 'relatorios' %}show active{% endif %}" id="relatorios-pane" role="tabpanel" aria-labelledby="relatorios-tab">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h5 class="mb-3">Relatorios</h5>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <a class="btn btn-outline-danger" href="{% url 'medicao_empreiteiro_pdf' medicao.id %}" target="_blank">PDF da medicao</a>
+                        <a class="btn btn-outline-success" href="{% url 'medicao_empreiteiro_excel' medicao.id %}">Excel da medicao</a>
+                        <a class="btn btn-outline-primary" href="{% url 'relatorio_medicoes' %}?tipo=empreiteiro_cumulativa&empreiteiro={{ medicao.empreiteiro_cadastro_id }}">Relatorio gerencial</a>
+                    </div>
+                    <hr>
+                    <a class="btn btn-outline-danger" href="{% url 'excluir_medicao_empreiteiro' medicao.id %}">Excluir medicao</a>
+                </div>
             </div>
         </div>
     </div>
-    {% endif %}
-    <button class="btn btn-primary" type="submit">Salvar medição</button>
 </form>
 {% if empreiteiros_json %}{{ empreiteiros_json|json_script:"empreiteiros-medicao-data" }}{% endif %}
 {% endblock %}
 
+{% block extra_styles %}
+<style>
+    .medicao-summary {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(140px, 1fr));
+        border: 1px solid #dee2e6;
+        border-radius: .5rem;
+        overflow: hidden;
+        background: #fff;
+    }
+    .medicao-summary > div {
+        padding: .75rem 1rem;
+        border-right: 1px solid #e9ecef;
+    }
+    .medicao-summary > div:last-child { border-right: 0; }
+    .medicao-summary span {
+        display: block;
+        color: #6c757d;
+        font-size: .82rem;
+    }
+    .medicao-summary strong {
+        display: block;
+        font-size: 1.05rem;
+        margin-top: .15rem;
+    }
+    .medicao-edit-table thead th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: #f8f9fa;
+    }
+    .medicao-description {
+        min-width: 300px;
+        white-space: normal;
+        line-height: 1.25;
+    }
+    .financeiro-fechamento > div {
+        border: 1px solid #e9ecef;
+        border-radius: .4rem;
+        padding: .65rem .75rem;
+        background: #f8f9fa;
+    }
+    .financeiro-fechamento strong,
+    .financeiro-fechamento span {
+        display: block;
+    }
+    @media (max-width: 992px) {
+        .medicao-summary { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+    }
+    @media (max-width: 576px) {
+        .medicao-summary { grid-template-columns: 1fr; }
+    }
+</style>
+{% endblock %}
+
 {% block extra_scripts %}
 <script>
-    const totalItensMedicao = document.querySelector('input[name="{{ formset.prefix }}-TOTAL_FORMS"]');
-    const itensMedicaoBody = document.getElementById('itens-medicao-body');
-    const itemMedicaoTemplate = document.getElementById('item-medicao-empty-form');
-    const adicionarItemMedicao = document.getElementById('adicionar-item-medicao');
+    let formChanged = false;
+    const form = document.getElementById('medicao-form');
+    const activeTabInput = document.getElementById('active-tab-input');
 
-    if (totalItensMedicao && itensMedicaoBody && itemMedicaoTemplate && adicionarItemMedicao) {
-        adicionarItemMedicao.addEventListener('click', () => {
-            const index = Number(totalItensMedicao.value);
-            const rowHtml = itemMedicaoTemplate.innerHTML.replaceAll('__prefix__', index);
-            itensMedicaoBody.insertAdjacentHTML('beforeend', rowHtml);
-            totalItensMedicao.value = index + 1;
+    if (form) {
+        form.addEventListener('input', () => { formChanged = true; });
+        form.addEventListener('submit', () => { formChanged = false; });
+    }
+
+    document.querySelectorAll('[data-bs-toggle="tab"]').forEach((tabButton) => {
+        tabButton.addEventListener('shown.bs.tab', (event) => {
+            if (activeTabInput) {
+                activeTabInput.value = event.target.id.replace('-tab', '');
+            }
+        });
+    });
+
+    function confirmarSaida(url) {
+        if (formChanged && !window.confirm('Existem alteracoes nao salvas. Deseja sair sem salvar?')) {
+            return;
+        }
+        window.location.href = url;
+    }
+
+    document.querySelectorAll('.js-scope-select').forEach((select) => {
+        select.addEventListener('change', () => confirmarSaida(select.value));
+    });
+
+    document.querySelectorAll('.js-scope-link').forEach((link) => {
+        link.addEventListener('click', (event) => {
+            if (formChanged && !window.confirm('Existem alteracoes nao salvas. Deseja sair sem salvar?')) {
+                event.preventDefault();
+            }
+        });
+    });
+
+    const searchButton = document.getElementById('item-search-button');
+    const searchField = document.getElementById('item-search-field');
+    if (searchButton && searchField) {
+        searchButton.addEventListener('click', () => {
+            const termo = searchField.value.trim();
+            confirmarSaida(termo ? `?q=${encodeURIComponent(termo)}&tab=itens` : '?tab=itens');
+        });
+        searchField.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                searchButton.click();
+            }
         });
     }
 </script>

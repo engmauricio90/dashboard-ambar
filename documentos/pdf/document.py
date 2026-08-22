@@ -81,12 +81,12 @@ class PdfDocument:
             wrapped.extend(textwrap.wrap(paragraph, width=max(int((width - 12) / avg), 4)) or [''])
         return wrapped or ['']
 
-    def _draw_wrapped(self, text, x, y, w, h, font, fill=None, align='left'):
+    def _draw_wrapped(self, text, x, y, w, h, font, fill=None, align='left', overflow='ellipsis'):
         fill = fill or self.theme.text
         lines = self._wrap_lines(text, w, font)
         line_h = font.getbbox('Ag')[3] - font.getbbox('Ag')[1] + 4
         visible = lines[: max(int((h - 8) / line_h), 1)]
-        if len(lines) > len(visible) and visible:
+        if overflow == 'ellipsis' and len(lines) > len(visible) and visible:
             visible[-1] = f'{visible[-1][: max(len(visible[-1]) - 3, 1)]}...'
         y_text = y + max((h - (line_h * len(visible))) // 2, 4)
         for line in visible:
@@ -434,7 +434,7 @@ class PdfDocument:
         widths[-1] += table_w - sum(widths)
         return widths
 
-    def add_table(self, columns, rows, row_height=42, groups=None, header_fill=None, table_body_level='table_body'):
+    def add_table(self, columns, rows, row_height=42, groups=None, header_fill=None, table_body_level='table_body', overflow='ellipsis'):
         if not rows:
             rows = []
         widths = self._table_widths(columns)
@@ -451,7 +451,10 @@ class PdfDocument:
             font = self.theme.font(table_body_level, bool(row.get('__bold')))
             line_h = font.getbbox('Ag')[3] - font.getbbox('Ag')[1] + 4
             max_lines = max(len(self._wrap_lines(row.get(col.key, '-'), width, font)) for col, width in zip(columns, widths)) if columns else 1
-            return max(42, min(112, line_h * max_lines + 16))
+            calculated = max(42, line_h * max_lines + 16)
+            if overflow == 'ellipsis':
+                return min(112, calculated)
+            return min(self.g.content_bottom - self.g.content_top - header_total_h, calculated)
 
         def draw_header():
             self._ensure_space(header_total_h + body_line_h + 18)
@@ -500,7 +503,7 @@ class PdfDocument:
             for col, width in zip(columns, widths):
                 cell_bg = row.get('__cell_bgs', {}).get(col.key) if isinstance(row.get('__cell_bgs'), dict) else None
                 self.draw.rectangle((x, self.y, x + width, self.y + current_row_h), fill=cell_bg or bg, outline=self.theme.border, width=1)
-                self._draw_wrapped(row.get(col.key, '-'), x, self.y, width, current_row_h, font, align=col.align)
+                self._draw_wrapped(row.get(col.key, '-'), x, self.y, width, current_row_h, font, align=col.align, overflow=overflow)
                 x += width
             self.y += current_row_h
         self.y += 22

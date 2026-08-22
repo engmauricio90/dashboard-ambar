@@ -73,15 +73,15 @@ class RelatorioMedicoesForm(BootstrapForm):
     TIPO_CHOICES = [
         ('', 'Todas'),
         ('construtora', 'Construtora'),
-        ('empreiteiro', 'Empreiteiros'),
-        ('empreiteiro_simples', 'Empreiteiro simples'),
-        ('empreiteiro_cumulativa', 'Empreiteiro cumulativa'),
+        ('empreiteiro', 'Contratados'),
+        ('empreiteiro_simples', 'Contratado simples'),
+        ('empreiteiro_cumulativa', 'Contratado cumulativa'),
     ]
     COLUNAS_CHOICES = [
         ('tipo', 'Tipo'),
         ('obra', 'Obra'),
         ('planilha', 'Planilha'),
-        ('empreiteiro', 'Empreiteiro'),
+        ('empreiteiro', 'Contratado'),
         ('numero', 'Numero'),
         ('data_medicao', 'Data da medicao'),
         ('periodo', 'Periodo'),
@@ -94,7 +94,7 @@ class RelatorioMedicoesForm(BootstrapForm):
 
     tipo = forms.ChoiceField(label='Tipo', required=False, choices=TIPO_CHOICES)
     obra = forms.ModelChoiceField(label='Obra', required=False, queryset=None)
-    empreiteiro = forms.ModelChoiceField(label='Empreiteiro', required=False, queryset=None)
+    empreiteiro = forms.ModelChoiceField(label='Contratado', required=False, queryset=None)
     data_inicial = forms.DateField(
         label='Data inicial',
         required=False,
@@ -313,7 +313,7 @@ class MedicaoEmpreiteiroForm(BootstrapModelForm):
             else Empreiteiro.objects.none()
         )
         self.fields['empreiteiro_cadastro'].required = True
-        self.fields['empreiteiro_cadastro'].empty_label = 'Selecione um empreiteiro cadastrado'
+        self.fields['empreiteiro_cadastro'].empty_label = 'Selecione um contratado cadastrado'
         self.fields['empreiteiro_cadastro'].label_from_instance = (
             lambda empreiteiro: ' - '.join(
                 value
@@ -350,7 +350,7 @@ class MedicaoEmpreiteiroForm(BootstrapModelForm):
             cleaned_data['cpf_cnpj'] = cadastro.cpf_cnpj
             cleaned_data['pix'] = cadastro.pix
         else:
-            self.add_error('empreiteiro_cadastro', 'Selecione um empreiteiro cadastrado.')
+            self.add_error('empreiteiro_cadastro', 'Selecione um contratado cadastrado.')
         return cleaned_data
 
     def save(self, commit=True):
@@ -391,7 +391,7 @@ class MedicaoEmpreiteiroForm(BootstrapModelForm):
             'observacoes': forms.Textarea(attrs={'rows': 3}),
         }
         labels = {
-            'empreiteiro_cadastro': 'Empreiteiro cadastrado',
+            'empreiteiro_cadastro': 'Contratado cadastrado',
             'cpf_cnpj': 'CPF/CNPJ',
             'pix': 'PIX',
             'numero': 'Número',

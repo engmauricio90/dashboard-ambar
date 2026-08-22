@@ -3,7 +3,7 @@
 {% block title %}Medicoes - {{ obra.nome_obra }}{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+<div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-3">
     <div>
         <h1 class="mb-1">Medicoes da obra</h1>
         <p class="text-muted mb-0">{{ obra.nome_obra }}</p>
@@ -11,59 +11,83 @@
     <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-primary" href="{% url 'importar_orcamento_medicao' %}?obra={{ obra.id }}">Importar planilha</a>
         <a class="btn btn-outline-primary" href="{% url 'novo_orcamento_manual_medicao' %}?tipo=construtora&obra={{ obra.id }}">Planilha manual construtora</a>
-        <a class="btn btn-outline-primary" href="{% url 'novo_orcamento_manual_medicao' %}?tipo=empreiteiro&obra={{ obra.id }}">Planilha manual empreiteiro</a>
+        <a class="btn btn-outline-primary" href="{% url 'novo_orcamento_manual_medicao' %}?tipo=empreiteiro&obra={{ obra.id }}">Planilha manual contratado</a>
         <a class="btn btn-outline-dark" href="{% url 'nova_medicao_empreiteiro_simples' %}?obra={{ obra.id }}">Medicao simples</a>
-        <a class="btn btn-secondary" href="{% url 'medicoes_construtora_home' %}">Voltar</a>
+        <a class="btn btn-secondary" href="{% url 'medicoes_home' %}">Voltar</a>
     </div>
 </div>
 
 <div class="card shadow-sm mb-4">
     <div class="card-body">
-        <h5 class="mb-3">Painel operacional da obra</h5>
+        <h5 class="mb-3">Medições da construtora</h5>
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
                 <thead>
                     <tr>
                         <th>Planilha</th>
-                        <th>Tipo</th>
                         <th>Contrato</th>
                         <th>Medido</th>
-                        <th>Pago/Liquido</th>
+                        <th>Líquido</th>
                         <th>Saldo</th>
-                        <th>% concluida</th>
-                        <th>Medicoes</th>
+                        <th>%</th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for planilha in planilhas %}
+                    {% for planilha in planilhas_construtora %}
                     <tr>
                         <td>{{ planilha.nome }}</td>
-                        <td>{{ planilha.get_tipo_display }}</td>
                         <td>R$ {{ planilha.total_orcamento|floatformat:2 }}</td>
-                        {% if planilha.tipo == 'construtora' %}
                         <td>R$ {{ planilha.total_medido_construtora|floatformat:2 }}</td>
                         <td>R$ {{ planilha.total_liquido_construtora|floatformat:2 }}</td>
                         <td>R$ {{ planilha.saldo_medir_construtora|floatformat:2 }}</td>
                         <td>{{ planilha.percentual_medido_construtora|floatformat:2 }}%</td>
-                        {% else %}
-                        <td>R$ {{ planilha.total_medido_empreiteiro|floatformat:2 }}</td>
-                        <td>R$ {{ planilha.total_liquido_empreiteiro|floatformat:2 }}</td>
-                        <td>R$ {{ planilha.saldo_medir_empreiteiro|floatformat:2 }}</td>
-                        <td>{{ planilha.percentual_medido_empreiteiro|floatformat:2 }}%</td>
-                        {% endif %}
-                        <td>{{ planilha.medicoes_construtora.count|add:planilha.medicoes_empreiteiro.count }}</td>
                         <td class="text-end">
-                            {% if planilha.tipo == 'construtora' %}
                             <a class="btn btn-sm btn-primary" href="{% url 'nova_medicao_construtora' planilha.id %}">Nova medicao</a>
-                            {% else %}
-                            <a class="btn btn-sm btn-primary" href="{% url 'nova_medicao_empreiteiro_cumulativa' planilha.id %}">Nova cumulativa</a>
-                            {% endif %}
                             <a class="btn btn-sm btn-outline-primary" href="{% url 'detalhe_orcamento_medicao' planilha.id %}">Abrir</a>
                         </td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="9">Nenhuma planilha importada para esta obra.</td></tr>
+                    <tr><td colspan="7" class="text-muted">Nenhuma planilha de construtora para esta obra.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h5 class="mb-3">Medições de contratados</h5>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Planilha</th>
+                        <th>Contratado</th>
+                        <th>Medido</th>
+                        <th>Pago/Líquido</th>
+                        <th>Saldo</th>
+                        <th>% concluida</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for planilha in planilhas_empreiteiro %}
+                    <tr>
+                        <td>{{ planilha.nome }}</td>
+                        <td>R$ {{ planilha.total_orcamento|floatformat:2 }}</td>
+                        <td>R$ {{ planilha.total_medido_empreiteiro|floatformat:2 }}</td>
+                        <td>R$ {{ planilha.total_liquido_empreiteiro|floatformat:2 }}</td>
+                        <td>R$ {{ planilha.saldo_medir_empreiteiro|floatformat:2 }}</td>
+                        <td>{{ planilha.percentual_medido_empreiteiro|floatformat:2 }}%</td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-primary" href="{% url 'nova_medicao_empreiteiro_cumulativa' planilha.id %}">Nova cumulativa</a>
+                            <a class="btn btn-sm btn-outline-primary" href="{% url 'detalhe_orcamento_medicao' planilha.id %}">Abrir</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="7" class="text-muted">Nenhuma planilha de contratado para esta obra.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -75,7 +99,7 @@
     <div class="col-lg-6">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h5 class="mb-3">Medicoes da construtora</h5>
+                <h5 class="mb-3">Últimas medições da construtora</h5>
                 <div class="list-group list-group-flush">
                     {% for medicao in medicoes_construtora %}
                     <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_construtora' medicao.id %}">
@@ -96,7 +120,7 @@
     <div class="col-lg-6">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h5 class="mb-3">Medicoes de empreiteiros</h5>
+                <h5 class="mb-3">Últimas medições de contratados</h5>
                 <div class="list-group list-group-flush">
                     {% for medicao in medicoes_empreiteiro %}
                     <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_empreiteiro' medicao.id %}">
@@ -109,7 +133,7 @@
                         </small>
                     </a>
                     {% empty %}
-                    <div class="text-muted">Nenhuma medicao de empreiteiro.</div>
+                    <div class="text-muted">Nenhuma medicao de contratado.</div>
                     {% endfor %}
                 </div>
             </div>

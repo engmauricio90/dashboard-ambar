@@ -26,6 +26,7 @@
             text-align: left;
         }
     </style>
+    {% block extra_styles %}{% endblock %}
 </head>
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark" {% if request.empresa and request.empresa.cor_primaria %}style="background-color: {{ request.empresa.cor_primaria }} !important;"{% endif %}>
@@ -80,12 +81,12 @@
                     </div>
                     <a class="nav-link" href="{% url 'lista_diarios' %}">Diários</a>
                     <div class="nav-item dropdown nav-hover">
-                        <a class="nav-link dropdown-toggle" href="{% url 'medicoes_construtora_home' %}" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <a class="nav-link dropdown-toggle" href="{% url 'medicoes_home' %}" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             Medições
                         </a>
                         <ul class="dropdown-menu dropdown-menu-dark">
                             <li><a class="dropdown-item" href="{% url 'medicoes_construtora_home' %}">Medição da construtora</a></li>
-                            <li><a class="dropdown-item" href="{% url 'medicoes_empreiteiros_home' %}">Medição de empreiteiro</a></li>
+                            <li><a class="dropdown-item" href="{% url 'medicoes_empreiteiros_home' %}">Medição de contratado</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{% url 'relatorio_medicoes' %}">Relatórios</a></li>
                         </ul>

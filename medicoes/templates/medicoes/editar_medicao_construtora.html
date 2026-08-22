@@ -1,204 +1,400 @@
 {% extends 'base.html' %}
 
-{% block title %}Medição Construtora{% endblock %}
+{% block title %}Medicao da construtora{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-3">
     <div>
-        <h1 class="mb-1">Medição {{ medicao.numero }} - Construtora</h1>
-        <p class="text-muted mb-0">{{ medicao.orcamento.obra }} - {{ medicao.periodo_inicio }} a {{ medicao.periodo_fim }}</p>
+        <h1 class="mb-1">Medicao {{ medicao.numero }} - Construtora</h1>
+        <p class="text-muted mb-0">
+            {{ medicao.orcamento.obra }} | {{ medicao.orcamento.nome }} |
+            {{ medicao.periodo_inicio|date:'d/m/Y' }} a {{ medicao.periodo_fim|date:'d/m/Y' }}
+        </p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a class="btn btn-outline-danger" href="{% url 'medicao_construtora_pdf' medicao.id %}" target="_blank">PDF</a>
-        <a class="btn btn-outline-success" href="{% url 'medicao_construtora_excel' medicao.id %}">Excel</a>
-        <a class="btn btn-outline-danger" href="{% url 'excluir_medicao_construtora' medicao.id %}">Excluir</a>
         <a class="btn btn-secondary" href="{% url 'detalhe_orcamento_medicao' medicao.orcamento.id %}">Voltar</a>
     </div>
 </div>
 
-<form method="post">
+<div class="medicao-summary shadow-sm mb-4">
+    <div>
+        <span>Total medido</span>
+        <strong>R$ {{ resumo_medicao.subtotal_periodo|floatformat:2 }}</strong>
+    </div>
+    <div>
+        <span>Faturamento direto</span>
+        <strong>R$ {{ medicao.total_faturamento_direto|floatformat:2 }}</strong>
+    </div>
+    <div>
+        <span>Descontos</span>
+        <strong>R$ {{ resumo_medicao.total_descontos|floatformat:2 }}</strong>
+    </div>
+    <div>
+        <span>Retencoes e impostos</span>
+        <strong>R$ {{ total_retido_medicao|floatformat:2 }}</strong>
+    </div>
+    <div>
+        <span>Total liquido</span>
+        <strong class="text-success">R$ {{ resumo_medicao.total_liquido|floatformat:2 }}</strong>
+    </div>
+</div>
+
+<form method="post" id="medicao-form">
     {% csrf_token %}
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <div class="row g-3">
-                {% for field in form %}
-                {% if field.name == 'numero' or field.name == 'periodo_inicio' or field.name == 'periodo_fim' or field.name == 'data_medicao' or field.name == 'observacoes' %}
-                <div class="{% if field.name == 'observacoes' or field.name == 'descricao_faturamento_direto' %}col-12{% else %}col-md-3{% endif %}">
-                    {% if field.field.widget.input_type == 'checkbox' %}
-                    <div class="form-check mt-4">{{ field }} <label class="form-check-label">{{ field.label }}</label></div>
-                    {% else %}
-                    <label class="form-label">{{ field.label }}</label>{{ field }}
-                    {% endif %}
-                    {% if field.errors %}<div class="text-danger small">{{ field.errors|join:', ' }}</div>{% endif %}
-                </div>
-                {% endif %}
-                {% endfor %}
-            </div>
-        </div>
-    </div>
+    <input type="hidden" name="active_tab" id="active-tab-input" value="{{ active_tab }}">
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <h5 class="mb-3">Itens medidos</h5>
-            {% if formset.non_form_errors %}<div class="alert alert-danger">{{ formset.non_form_errors }}</div>{% endif %}
-            {{ formset.management_form }}
-            <div class="table-responsive">
-                <table class="table table-sm align-middle">
-                    <thead><tr><th>Item</th><th>Descrição</th><th>Und</th><th>Contrato</th><th>Anterior</th><th>No periodo</th><th>Atual</th><th>Saldo</th><th>Valor</th></tr></thead>
-                    <tbody>
-                        {% for linha in linhas_medicao %}
-                        {% if linha.tipo == 'grupo' %}
-                        <tr class="table-secondary fw-semibold">
-                            <td>{{ linha.item.item }}</td>
-                            <td colspan="8">{{ linha.item.descricao }}</td>
-                        </tr>
-                        {% else %}
-                        {% with item_form=linha.form %}
-                        <tr>
-                            <td>{{ item_form.instance.item_orcamento.item }}{{ item_form.id }}</td>
-                            <td>{{ item_form.instance.item_orcamento.descricao }}</td>
-                            <td>{{ item_form.instance.item_orcamento.unidade }}</td>
-                            <td>{{ item_form.instance.item_orcamento.quantidade|floatformat:4 }}</td>
-                            <td>{{ item_form.instance.quantidade_acumulada_anterior|floatformat:4 }}</td>
-                            <td style="min-width: 130px;">{{ item_form.quantidade_periodo }}</td>
-                            <td>{{ item_form.instance.quantidade_acumulada_atual|floatformat:4 }}</td>
-                            <td>{{ item_form.instance.saldo_quantidade|floatformat:4 }}</td>
-                            <td>R$ {{ item_form.instance.valor_periodo|floatformat:2 }}</td>
-                        </tr>
-                        {% if item_form.errors %}
-                        <tr>
-                            <td colspan="9" class="text-danger small">{{ item_form.errors }}</td>
-                        </tr>
-                        {% endif %}
-                        {% endwith %}
-                        {% endif %}
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            <div class="row g-3 mt-3">
-                <div class="col-md-3"><strong>Valor bruto:</strong> R$ {{ medicao.total_bruto|floatformat:2 }}</div>
-                <div class="col-md-3"><strong>Base impostos:</strong> R$ {{ medicao.base_impostos|floatformat:2 }}</div>
-                <div class="col-md-3"><strong>Base INSS:</strong> R$ {{ medicao.base_inss|floatformat:2 }}</div>
-                <div class="col-md-3"><strong>Faturamento direto:</strong> R$ {{ medicao.total_faturamento_direto|floatformat:2 }}</div>
-                <div class="col-md-3"><strong>Líquido:</strong> R$ {{ medicao.total_liquido|floatformat:2 }}</div>
-            </div>
-        </div>
-    </div>
+    <ul class="nav nav-tabs mb-3" id="medicao-tabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if active_tab == 'itens' %}active{% endif %}" id="itens-tab" data-bs-toggle="tab" data-bs-target="#itens-pane" type="button" role="tab">Itens</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if active_tab == 'financeiro' %}active{% endif %}" id="financeiro-tab" data-bs-toggle="tab" data-bs-target="#financeiro-pane" type="button" role="tab">Financeiro</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if active_tab == 'historico' %}active{% endif %}" id="historico-tab" data-bs-toggle="tab" data-bs-target="#historico-pane" type="button" role="tab">Historico</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if active_tab == 'relatorios' %}active{% endif %}" id="relatorios-tab" data-bs-toggle="tab" data-bs-target="#relatorios-pane" type="button" role="tab">Relatorios</button>
+        </li>
+    </ul>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <h5 class="mb-3">Retencoes, impostos e faturamento direto</h5>
-            <p class="text-muted small mb-3">ISSQN e calculado sobre a base da NF sem faturamento direto. INSS e calculado sobre a mao de obra medida. Se preferir, deixe o percentual zerado e preencha o valor em reais.</p>
-            <div class="row g-3">
-                {% for field in form %}
-                {% if field.name == 'retencao_tecnica' or field.name == 'retencao_tecnica_percentual' or field.name == 'issqn' or field.name == 'issqn_percentual' or field.name == 'inss' or field.name == 'inss_percentual' or field.name == 'desconto_adicional' or field.name == 'desconto_adicional_percentual' or field.name == 'desconto_adicional_reduz_base_nf' %}
-                <div class="col-md-3">
-                    {% if field.field.widget.input_type == 'checkbox' %}
-                    <div class="form-check mt-4">{{ field }} <label class="form-check-label">{{ field.label }}</label></div>
-                    {% else %}
-                    <label class="form-label">{{ field.label }}</label>{{ field }}
+    <div class="tab-content">
+        <div class="tab-pane fade {% if active_tab == 'itens' %}show active{% endif %}" id="itens-pane" role="tabpanel" aria-labelledby="itens-tab">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-3">
+                        <div>
+                            <h5 class="mb-1">Itens medidos</h5>
+                            <p class="text-muted small mb-0">
+                                Exibindo {{ escopo_itens.total_renderizado }} de {{ escopo_itens.total_itens }} item(ns). Salvar aqui altera somente os itens visiveis.
+                            </p>
+                        </div>
+                        <button class="btn btn-primary" type="submit">Salvar itens</button>
+                    </div>
+
+                    <div class="item-scope-toolbar mb-3">
+                        <div class="row g-2 align-items-end">
+                            {% if escopo_itens.grupos %}
+                            <div class="col-lg-5">
+                                <label class="form-label small text-muted">Grupo</label>
+                                <select class="form-select form-select-sm js-scope-select">
+                                    {% for grupo in escopo_itens.grupos %}
+                                    <option value="?grupo={{ grupo.key }}&tab=itens" {% if escopo_itens.grupo_key == grupo.key %}selected{% endif %}>
+                                        {{ grupo.label }} ({{ grupo.total_itens }})
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            {% endif %}
+                            <div class="col-lg-5">
+                                <label class="form-label small text-muted">Buscar item</label>
+                                <div class="input-group input-group-sm">
+                                    <input class="form-control" type="search" id="item-search-field" value="{{ escopo_itens.busca }}" placeholder="Referencia ou descricao">
+                                    <button class="btn btn-outline-secondary" type="button" id="item-search-button">Buscar</button>
+                                    {% if escopo_itens.busca %}
+                                    <a class="btn btn-outline-secondary" href="?tab=itens">Limpar</a>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if formset.non_form_errors %}<div class="alert alert-danger">{{ formset.non_form_errors }}</div>{% endif %}
+                    {{ formset.management_form }}
+                    <div class="table-responsive medicao-edit-table">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Ref.</th>
+                                    <th scope="col">Descricao</th>
+                                    <th scope="col">Un.</th>
+                                    <th scope="col">Contratada</th>
+                                    <th scope="col">Acumulado</th>
+                                    <th scope="col">Saldo</th>
+                                    <th scope="col" style="width: 150px;">Qtd. periodo</th>
+                                    <th scope="col">%</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for linha in linhas_medicao %}
+                                {% if linha.tipo == 'grupo' %}
+                                <tr class="table-secondary fw-semibold">
+                                    <td>{{ linha.item.item }}</td>
+                                    <td colspan="7">{{ linha.item.descricao }}</td>
+                                </tr>
+                                {% else %}
+                                {% with item_form=linha.form %}
+                                <tr>
+                                    <td class="text-center text-nowrap">{{ item_form.instance.item_orcamento.item }}{{ item_form.id }}</td>
+                                    <td class="medicao-description">{{ item_form.instance.item_orcamento.descricao }}</td>
+                                    <td class="text-center">{{ item_form.instance.item_orcamento.unidade }}</td>
+                                    <td class="text-center">{{ item_form.instance.item_orcamento.quantidade|floatformat:4 }}</td>
+                                    <td class="text-center">{{ item_form.instance.quantidade_acumulada_anterior|floatformat:4 }}</td>
+                                    <td class="text-center">{{ item_form.instance.saldo_quantidade|floatformat:4 }}</td>
+                                    <td>{{ item_form.quantidade_periodo }}</td>
+                                    <td class="text-center">{{ item_form.instance.quantidade_acumulada_atual|floatformat:4 }}</td>
+                                </tr>
+                                {% if item_form.errors %}
+                                <tr><td colspan="8" class="text-danger small">{{ item_form.errors }}</td></tr>
+                                {% endif %}
+                                {% endwith %}
+                                {% endif %}
+                                {% empty %}
+                                <tr><td colspan="8" class="text-muted">Nenhum item encontrado neste escopo.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {% if escopo_itens.pagina %}
+                    <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
+                        <span class="text-muted small">Pagina {{ escopo_itens.pagina.number }} de {{ escopo_itens.pagina.paginator.num_pages }}</span>
+                        <div class="btn-group btn-group-sm">
+                            {% if escopo_itens.pagina.has_previous %}
+                            <a class="btn btn-outline-secondary js-scope-link" href="?page={{ escopo_itens.pagina.previous_page_number }}{% if escopo_itens.busca %}&q={{ escopo_itens.busca }}{% endif %}&tab=itens">Anterior</a>
+                            {% endif %}
+                            {% if escopo_itens.pagina.has_next %}
+                            <a class="btn btn-outline-secondary js-scope-link" href="?page={{ escopo_itens.pagina.next_page_number }}{% if escopo_itens.busca %}&q={{ escopo_itens.busca }}{% endif %}&tab=itens">Proxima</a>
+                            {% endif %}
+                        </div>
+                    </div>
                     {% endif %}
-                    {% if field.errors %}<div class="text-danger small">{{ field.errors|join:', ' }}</div>{% endif %}
                 </div>
-                {% endif %}
-                {% endfor %}
             </div>
         </div>
-    </div>
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <h5 class="mb-3">Faturamento direto descontado</h5>
-            <p class="text-muted small mb-3">Informe o percentual do faturamento direto que sera descontado nesta medição. Eles nao entram na base de calculo de ISSQN e INSS.</p>
-            {% if faturamentos_diretos_linhas %}
-            <div class="table-responsive">
-                <table class="table table-sm align-middle mb-0">
-                    <thead>
-                        <tr>
-                            <th>NF/OC</th>
-                            <th>Empresa</th>
-                            <th>Descrição</th>
-                            <th>Valor NF</th>
-                            <th>Ja descontado</th>
-                            <th>Disponivel</th>
-                            <th style="width: 150px;">% nesta medição</th>
-                            <th>Valor nesta medição</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for linha in faturamentos_diretos_linhas %}
-                        <tr>
-                            <td>{{ linha.faturamento.numero_nf|default:linha.faturamento.numero_ordem_compra|default:'-' }}</td>
-                            <td>{{ linha.faturamento.empresa_comprou }}</td>
-                            <td>{{ linha.faturamento.descricao }}</td>
-                            <td>R$ {{ linha.faturamento.valor_nota|floatformat:2 }}</td>
-                            <td>{{ linha.percentual_outros|floatformat:2 }}%</td>
-                            <td>{{ linha.saldo_percentual|floatformat:2 }}%</td>
-                            <td>
-                                <input
-                                    type="number"
-                                    step="0.0001"
-                                    min="0"
-                                    max="{{ linha.saldo_percentual|floatformat:4 }}"
-                                    name="faturamento_direto_{{ linha.faturamento.id }}_percentual"
-                                    value="{{ linha.percentual_atual|floatformat:4 }}"
-                                    class="form-control form-control-sm faturamento-direto-percentual"
-                                    data-valor="{{ linha.faturamento.valor_nota|stringformat:'f' }}"
-                                    data-target="valor-fd-{{ linha.faturamento.id }}"
-                                >
-                            </td>
-                            <td id="valor-fd-{{ linha.faturamento.id }}">R$ {{ linha.valor_atual|floatformat:2 }}</td>
-                        </tr>
+
+        <div class="tab-pane fade {% if active_tab == 'financeiro' %}show active{% endif %}" id="financeiro-pane" role="tabpanel" aria-labelledby="financeiro-tab">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                        <h5 class="mb-0">Dados e fechamento financeiro</h5>
+                        <button class="btn btn-primary" type="submit">Salvar financeiro</button>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        {% for field in form %}
+                        {% if field.name == 'numero' or field.name == 'periodo_inicio' or field.name == 'periodo_fim' or field.name == 'data_medicao' or field.name == 'observacoes' or field.name == 'retencao_tecnica' or field.name == 'retencao_tecnica_percentual' or field.name == 'issqn' or field.name == 'issqn_percentual' or field.name == 'inss' or field.name == 'inss_percentual' or field.name == 'desconto_adicional' or field.name == 'desconto_adicional_percentual' or field.name == 'desconto_adicional_reduz_base_nf' %}
+                        <div class="{% if field.name == 'observacoes' %}col-12{% elif field.field.widget.input_type == 'checkbox' %}col-md-4{% else %}col-md-3{% endif %}">
+                            {% if field.field.widget.input_type == 'checkbox' %}
+                            <div class="form-check mt-4">{{ field }} <label class="form-check-label">{{ field.label }}</label></div>
+                            {% else %}
+                            <label class="form-label">{{ field.label }}</label>{{ field }}
+                            {% endif %}
+                            {% if field.errors %}<div class="text-danger small">{{ field.errors|join:', ' }}</div>{% endif %}
+                        </div>
+                        {% endif %}
                         {% endfor %}
-                    </tbody>
-                </table>
+                    </div>
+                    <div class="row g-3 financeiro-fechamento">
+                        <div class="col-md-3"><strong>Base da NF</strong><span>R$ {{ resumo_medicao.base_impostos|floatformat:2 }}</span></div>
+                        <div class="col-md-3"><strong>Base INSS</strong><span>R$ {{ resumo_medicao.base_inss|floatformat:2 }}</span></div>
+                        <div class="col-md-3"><strong>Material NF</strong><span>R$ {{ resumo_medicao.valor_material_nf|floatformat:2 }}</span></div>
+                        <div class="col-md-3"><strong>Mao de obra NF</strong><span>R$ {{ resumo_medicao.valor_mao_obra_nf|floatformat:2 }}</span></div>
+                    </div>
+                </div>
             </div>
-            {% else %}
-            <div class="text-muted">Nenhum faturamento direto disponivel para desconto nesta obra.</div>
-            {% endif %}
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h5 class="mb-3">Faturamento direto</h5>
+                    <p class="text-muted small mb-3">Informe o percentual descontado nesta medicao. Estes valores nao entram na base de ISSQN e INSS.</p>
+                    {% if faturamentos_diretos_linhas %}
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>NF/OC</th>
+                                    <th>Empresa</th>
+                                    <th>Descricao</th>
+                                    <th>Valor NF</th>
+                                    <th>Ja descontado</th>
+                                    <th>Disponivel</th>
+                                    <th style="width: 150px;">% nesta medicao</th>
+                                    <th>Valor nesta medicao</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for linha in faturamentos_diretos_linhas %}
+                                <tr>
+                                    <td>{{ linha.faturamento.numero_nf|default:linha.faturamento.numero_ordem_compra|default:'-' }}</td>
+                                    <td>{{ linha.faturamento.empresa_comprou }}</td>
+                                    <td class="medicao-description">{{ linha.faturamento.descricao }}</td>
+                                    <td>R$ {{ linha.faturamento.valor_nota|floatformat:2 }}</td>
+                                    <td>{{ linha.percentual_outros|floatformat:2 }}%</td>
+                                    <td>{{ linha.saldo_percentual|floatformat:2 }}%</td>
+                                    <td>
+                                        <input type="number" step="0.0001" min="0" max="{{ linha.saldo_percentual|floatformat:4 }}" name="faturamento_direto_{{ linha.faturamento.id }}_percentual" value="{{ linha.percentual_atual|floatformat:4 }}" class="form-control form-control-sm faturamento-direto-percentual" data-valor="{{ linha.faturamento.valor_nota|stringformat:'f' }}" data-target="valor-fd-{{ linha.faturamento.id }}">
+                                    </td>
+                                    <td id="valor-fd-{{ linha.faturamento.id }}">R$ {{ linha.valor_atual|floatformat:2 }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-muted">Nenhum faturamento direto disponivel para desconto nesta obra.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade {% if active_tab == 'historico' %}show active{% endif %}" id="historico-pane" role="tabpanel" aria-labelledby="historico-tab">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h5 class="mb-3">Historico de faturamento direto ja descontado</h5>
+                    {% if faturamentos_ja_descontados %}
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead><tr><th>NF/OC</th><th>Empresa</th><th>Descricao</th><th>Valor</th><th>Descontos</th></tr></thead>
+                            <tbody>
+                                {% for faturamento in faturamentos_ja_descontados %}
+                                <tr>
+                                    <td>{{ faturamento.numero_nf|default:faturamento.numero_ordem_compra|default:'-' }}</td>
+                                    <td>{{ faturamento.empresa_comprou }}</td>
+                                    <td class="medicao-description">{{ faturamento.descricao }}</td>
+                                    <td>R$ {{ faturamento.valor_nota|floatformat:2 }}</td>
+                                    <td>{{ faturamento.medicao_desconto|default:'-' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-muted">Nenhum faturamento direto foi descontado em medicoes anteriores desta obra.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade {% if active_tab == 'relatorios' %}show active{% endif %}" id="relatorios-pane" role="tabpanel" aria-labelledby="relatorios-tab">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h5 class="mb-3">Relatorios</h5>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <a class="btn btn-outline-danger" href="{% url 'medicao_construtora_pdf' medicao.id %}" target="_blank">PDF da medicao</a>
+                        <a class="btn btn-outline-success" href="{% url 'medicao_construtora_excel' medicao.id %}">Excel da medicao</a>
+                        <a class="btn btn-outline-primary" href="{% url 'saldo_contratual_construtora' medicao.orcamento.id %}">Saldo contratual</a>
+                    </div>
+                    <hr>
+                    <a class="btn btn-outline-danger" href="{% url 'excluir_medicao_construtora' medicao.id %}">Excluir medicao</a>
+                </div>
+            </div>
         </div>
     </div>
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <h5 class="mb-3">Historico de faturamento direto ja descontado</h5>
-            {% if faturamentos_ja_descontados %}
-            <div class="table-responsive">
-                <table class="table table-sm align-middle mb-0">
-                    <thead>
-                        <tr>
-                            <th>NF/OC</th>
-                            <th>Empresa</th>
-                            <th>Descrição</th>
-                            <th>Valor</th>
-                            <th>Descontos</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for faturamento in faturamentos_ja_descontados %}
-                        <tr>
-                            <td>{{ faturamento.numero_nf|default:faturamento.numero_ordem_compra|default:'-' }}</td>
-                            <td>{{ faturamento.empresa_comprou }}</td>
-                            <td>{{ faturamento.descricao }}</td>
-                            <td>R$ {{ faturamento.valor_nota|floatformat:2 }}</td>
-                            <td>{{ faturamento.medicao_desconto|default:'-' }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <div class="text-muted">Nenhum faturamento direto foi descontado em medições anteriores desta obra.</div>
-            {% endif %}
-        </div>
-    </div>
-    <button class="btn btn-primary" type="submit">Salvar medição</button>
 </form>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .medicao-summary {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(140px, 1fr));
+        gap: 0;
+        border: 1px solid #dee2e6;
+        border-radius: .5rem;
+        overflow: hidden;
+        background: #fff;
+    }
+    .medicao-summary > div {
+        padding: .75rem 1rem;
+        border-right: 1px solid #e9ecef;
+    }
+    .medicao-summary > div:last-child { border-right: 0; }
+    .medicao-summary span {
+        display: block;
+        color: #6c757d;
+        font-size: .82rem;
+    }
+    .medicao-summary strong {
+        display: block;
+        font-size: 1.05rem;
+        margin-top: .15rem;
+    }
+    .medicao-edit-table thead th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: #f8f9fa;
+        vertical-align: middle;
+    }
+    .medicao-description {
+        min-width: 300px;
+        white-space: normal;
+        line-height: 1.25;
+    }
+    .financeiro-fechamento > div {
+        border: 1px solid #e9ecef;
+        border-radius: .4rem;
+        padding: .65rem .75rem;
+        background: #f8f9fa;
+    }
+    .financeiro-fechamento strong,
+    .financeiro-fechamento span {
+        display: block;
+    }
+    @media (max-width: 992px) {
+        .medicao-summary { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+    }
+    @media (max-width: 576px) {
+        .medicao-summary { grid-template-columns: 1fr; }
+    }
+</style>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
     function moedaBR(valor) {
         return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    let formChanged = false;
+    const form = document.getElementById('medicao-form');
+    const activeTabInput = document.getElementById('active-tab-input');
+
+    if (form) {
+        form.addEventListener('input', () => { formChanged = true; });
+        form.addEventListener('submit', () => { formChanged = false; });
+    }
+
+    document.querySelectorAll('[data-bs-toggle="tab"]').forEach((tabButton) => {
+        tabButton.addEventListener('shown.bs.tab', (event) => {
+            if (activeTabInput) {
+                activeTabInput.value = event.target.id.replace('-tab', '');
+            }
+        });
+    });
+
+    function confirmarSaida(url) {
+        if (formChanged && !window.confirm('Existem alteracoes nao salvas. Deseja sair sem salvar?')) {
+            return;
+        }
+        window.location.href = url;
+    }
+
+    document.querySelectorAll('.js-scope-select').forEach((select) => {
+        select.addEventListener('change', () => confirmarSaida(select.value));
+    });
+
+    document.querySelectorAll('.js-scope-link').forEach((link) => {
+        link.addEventListener('click', (event) => {
+            if (formChanged && !window.confirm('Existem alteracoes nao salvas. Deseja sair sem salvar?')) {
+                event.preventDefault();
+            }
+        });
+    });
+
+    const searchButton = document.getElementById('item-search-button');
+    const searchField = document.getElementById('item-search-field');
+    if (searchButton && searchField) {
+        searchButton.addEventListener('click', () => {
+            const termo = searchField.value.trim();
+            confirmarSaida(termo ? `?q=${encodeURIComponent(termo)}&tab=itens` : '?tab=itens');
+        });
+        searchField.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                searchButton.click();
+            }
+        });
     }
 
     document.querySelectorAll('.faturamento-direto-percentual').forEach((field) => {

@@ -14,6 +14,7 @@ from openpyxl import load_workbook
 from empresas.models import Empresa, UsuarioEmpresa
 from obras.models import Obra
 from controles.models import FaturamentoDireto
+from documentos.pdf import PdfDocument, PdfTableColumn
 
 from .forms import RelatorioMedicoesForm
 from .models import (
@@ -655,7 +656,7 @@ class MedicoesTests(TestCase):
         ws = wb.active
         self.assertEqual(ws['A1'].value, 'Relatorio gerencial de medicoes')
         header_row = next(row for row in ws.iter_rows(values_only=True) if row and row[0] == 'Tipo')
-        self.assertEqual(header_row[:4], ('Tipo', 'Empreiteiro', 'Data da medicao', 'Valor medido'))
+        self.assertEqual(header_row[:4], ('Tipo', 'Contratado', 'Data da medicao', 'Valor medido'))
         empreiteiro_row = next(row for row in ws.iter_rows(values_only=True) if row and row[1] == 'Empreiteiro Relatorio')
         self.assertEqual(empreiteiro_row[1], 'Empreiteiro Relatorio')
         self.assertTrue(ws.auto_filter.ref)
@@ -701,8 +702,8 @@ class MedicoesTests(TestCase):
 
         self.assertContains(response_construtora, 'Medição da construtora')
         self.assertContains(response_construtora, orcamento.nome)
-        self.assertContains(response_empreiteiros, 'Medição de empreiteiro')
-        self.assertContains(response_obra, 'Painel operacional da obra')
+        self.assertContains(response_empreiteiros, 'Medicao de contratado')
+        self.assertContains(response_obra, 'Medições da construtora')
 
     def test_medicao_construtora_calcula_acumulado_e_liquido(self):
         orcamento, item = self._orcamento()
@@ -957,6 +958,110 @@ class MedicoesTests(TestCase):
         self.assertEqual(item_medicao.quantidade_periodo, Decimal('15'))
         self.assertFalse(medicao.itens.filter(item_orcamento=grupo).exists())
 
+    def test_editar_grupo_construtora_preserva_itens_nao_renderizados(self):
+        orcamento = OrcamentoMedicao.objects.create(
+            obra=self.obra,
+            nome='Orcamento com grupos',
+            tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
+        )
+        grupo_a = ItemOrcamentoMedicao.objects.create(
+            orcamento=orcamento,
+            tipo=ItemOrcamentoMedicao.TIPO_GRUPO,
+            item='1',
+            descricao='Grupo A',
+            ordem=1,
+        )
+        item_a = ItemOrcamentoMedicao.objects.create(
+            orcamento=orcamento,
+            item='1.1',
+            descricao='Servico A',
+            unidade='m2',
+            quantidade=Decimal('100.0000'),
+            preco_unitario_mao_obra=Decimal('10.0000'),
+            ordem=2,
+        )
+        ItemOrcamentoMedicao.objects.create(
+            orcamento=orcamento,
+            tipo=ItemOrcamentoMedicao.TIPO_GRUPO,
+            item='2',
+            descricao='Grupo B',
+            ordem=3,
+        )
+        item_b = ItemOrcamentoMedicao.objects.create(
+            orcamento=orcamento,
+            item='2.1',
+            descricao='Servico B',
+            unidade='m2',
+            quantidade=Decimal('100.0000'),
+            preco_unitario_mao_obra=Decimal('10.0000'),
+            ordem=4,
+        )
+        medicao = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=1,
+            periodo_inicio=date(2026, 1, 1),
+            periodo_fim=date(2026, 1, 31),
+            data_medicao=date(2026, 1, 31),
+        )
+        medicao_a = ItemMedicaoConstrutora.objects.create(
+            medicao=medicao,
+            item_orcamento=item_a,
+            quantidade_periodo=Decimal('5.0000'),
+        )
+        medicao_b = ItemMedicaoConstrutora.objects.create(
+            medicao=medicao,
+            item_orcamento=item_b,
+            quantidade_periodo=Decimal('7.0000'),
+        )
+
+        url = f"{reverse('editar_medicao_construtora', args=[medicao.id])}?grupo={grupo_a.id}"
+        response = self.client.get(url)
+        self.assertEqual(response.context['escopo_itens']['total_renderizado'], 1)
+        self.assertContains(response, 'Servico A')
+        self.assertNotContains(response, 'Servico B')
+
+        response = self.client.post(
+            url,
+            {
+                'numero': '1',
+                'periodo_inicio': '2026-01-01',
+                'periodo_fim': '2026-01-31',
+                'data_medicao': '2026-01-31',
+                'retencao_tecnica': '0',
+                'retencao_tecnica_percentual': '0',
+                'issqn': '0',
+                'issqn_percentual': '0',
+                'inss': '0',
+                'inss_percentual': '0',
+                'desconto_adicional': '0',
+                'desconto_adicional_percentual': '0',
+                'observacoes': '',
+                'itens-TOTAL_FORMS': '1',
+                'itens-INITIAL_FORMS': '1',
+                'itens-MIN_NUM_FORMS': '0',
+                'itens-MAX_NUM_FORMS': '1000',
+                'itens-0-id': str(medicao_a.id),
+                'itens-0-quantidade_periodo': '12',
+            },
+        )
+
+        self.assertRedirects(response, f"{reverse('editar_medicao_construtora', args=[medicao.id])}?grupo={grupo_a.id}&tab=itens")
+        medicao_a.refresh_from_db()
+        medicao_b.refresh_from_db()
+        self.assertEqual(medicao_a.quantidade_periodo, Decimal('12.0000'))
+        self.assertEqual(medicao_b.quantidade_periodo, Decimal('7.0000'))
+
+    def test_medicao_empreiteiro_grande_renderiza_apenas_pagina_atual(self):
+        _, _, _, segunda = self._medicao_empreiteiro_cumulativa_com_itens(quantidade=300)
+
+        response = self.client.get(f"{reverse('editar_medicao_empreiteiro', args=[segunda.id])}?page=2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['escopo_itens']['total_itens'], 300)
+        self.assertEqual(response.context['escopo_itens']['total_renderizado'], 50)
+        self.assertContains(response, 'Pagina 2 de 6')
+        self.assertContains(response, 'itens-TOTAL_FORMS" value="50"')
+
     def test_medicao_construtora_desconta_faturamento_direto_fora_da_base_de_impostos(self):
         orcamento, item = self._orcamento()
         medicao = MedicaoConstrutora.objects.create(
@@ -1045,6 +1150,110 @@ class MedicoesTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'application/pdf')
         self.assertTrue(response.content.startswith(b'%PDF'))
+
+    def test_pdf_table_wrap_nao_adiciona_reticencias_artificiais(self):
+        doc = PdfDocument(empresa=self.empresa, title='Teste')
+        drawn_texts = []
+        original_text = doc.draw.text
+
+        def capture_text(position, text, *args, **kwargs):
+            drawn_texts.append(str(text))
+            return original_text(position, text, *args, **kwargs)
+
+        texto_longo = (
+            'DESCRICAO_INICIO_123 Execucao de assentamento de piso em basalto serrado 40x40 cm '
+            'incluindo preparacao da base posicionamento nivelamento rejuntamento limpeza final '
+            'e demais servicos necessarios a perfeita execucao do item DESCRICAO_FINAL_987'
+        )
+        with mock.patch.object(doc.draw, 'text', side_effect=capture_text):
+            doc.add_table(
+                [
+                    PdfTableColumn('item', 'Item', width=90),
+                    PdfTableColumn('descricao', 'Descricao', width=560),
+                ],
+                [{'item': '1', 'descricao': texto_longo}],
+                row_height='auto',
+                overflow='wrap',
+            )
+
+        self.assertFalse(any(text.endswith('...') for text in drawn_texts if 'DESCRICAO' in text or 'Execucao' in text))
+        self.assertTrue(any('DESCRICAO_INICIO_123' in text for text in drawn_texts))
+        self.assertTrue(any('DESCRICAO_FINAL_987' in text for text in drawn_texts))
+
+    def test_pdfs_medicoes_geram_com_descricoes_extensas_sem_alterar_dados(self):
+        textos = {
+            '100': 'DESCRICAO_100 ' + ('Servico medido longo ' * 4),
+            '200': 'DESCRICAO_200 ' + ('Execucao completa com preparo nivelamento conferencia e limpeza final ' * 3),
+            '255': ('DESCRICAO_INICIO_123 ' + ('assentamento basalto serrado com rejuntamento nivelamento e limpeza final ' * 4))[:255],
+        }
+        orcamento = OrcamentoMedicao.objects.create(
+            obra=self.obra,
+            nome='Orcamento descricoes extensas',
+            tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
+        )
+        medicao = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=1,
+            periodo_inicio=date(2026, 1, 1),
+            periodo_fim=date(2026, 1, 31),
+            data_medicao=date(2026, 1, 31),
+        )
+        for ordem, descricao in enumerate(textos.values(), start=1):
+            item = ItemOrcamentoMedicao.objects.create(
+                orcamento=orcamento,
+                item=str(ordem),
+                descricao=descricao,
+                unidade='m2',
+                quantidade=Decimal('10.0000'),
+                preco_unitario_material=Decimal('100.0000'),
+            )
+            ItemMedicaoConstrutora.objects.create(medicao=medicao, item_orcamento=item, quantidade_periodo=Decimal('1.0000'))
+
+        pdf = self.client.get(reverse('medicao_construtora_pdf', args=[medicao.id]))
+        excel = self.client.get(reverse('medicao_construtora_excel', args=[medicao.id]))
+
+        self.assertEqual(pdf.status_code, 200)
+        self.assertTrue(pdf.content.startswith(b'%PDF'))
+        wb = load_workbook(BytesIO(excel.content))
+        valores_excel = [cell for row in wb.active.iter_rows(values_only=True) for cell in row if isinstance(cell, str)]
+        self.assertTrue(any(textos['100'] in value for value in valores_excel))
+        self.assertTrue(any(textos['200'] in value for value in valores_excel))
+        self.assertTrue(any(textos['255'] in value for value in valores_excel))
+
+    def test_pdf_empreiteiro_observacao_longa_usa_bloco_de_texto(self):
+        medicao = MedicaoEmpreiteiro.objects.create(
+            empresa=self.empresa,
+            obra=self.obra,
+            tipo=MedicaoEmpreiteiro.TIPO_SIMPLES,
+            empreiteiro='Empreiteiro',
+            numero=77,
+            periodo_inicio=date(2026, 1, 1),
+            periodo_fim=date(2026, 1, 31),
+            data_medicao=date(2026, 1, 31),
+            observacoes=(
+                'Acerto referente aos servicos executados no periodo, incluindo atividades complementares '
+                'realizadas conforme solicitacao da fiscalizacao e ajustes necessarios para conclusao dos servicos previstos.'
+            ),
+        )
+        ItemMedicaoEmpreiteiro.objects.create(
+            medicao=medicao,
+            descricao='Servico simples com descricao longa para validar quebra integral da tabela',
+            unidade='vb',
+            quantidade_periodo=Decimal('1'),
+            valor_unitario=Decimal('100.00'),
+        )
+
+        original_add_text_block = PdfDocument.add_text_block
+
+        def spy_add_text_block(instance, title, text, *args, **kwargs):
+            return original_add_text_block(instance, title, text, *args, **kwargs)
+
+        with mock.patch.object(PdfDocument, 'add_text_block', autospec=True, side_effect=spy_add_text_block) as mocked_text_block:
+            response = self.client.get(reverse('medicao_empreiteiro_pdf', args=[medicao.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.content.startswith(b'%PDF'))
+        self.assertTrue(mocked_text_block.called)
 
     def test_percentuais_sao_calculados_mesmo_sem_valor_salvo(self):
         orcamento, item = self._orcamento()
@@ -1217,7 +1426,7 @@ class MedicoesTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(MedicaoEmpreiteiro.objects.filter(orcamento=orcamento).exists())
         self.assertFalse(Empreiteiro.objects.filter(nome='Novo Empreiteiro').exists())
-        self.assertContains(response, 'Selecione um empreiteiro cadastrado')
+        self.assertContains(response, 'Selecione um contratado cadastrado')
 
     def test_medicao_cumulativa_reaproveita_empreiteiro_cadastrado(self):
         empreiteiro = Empreiteiro.objects.create(
