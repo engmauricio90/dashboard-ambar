@@ -149,10 +149,10 @@
                         <span class="text-muted small">Pagina {{ escopo_itens.pagina.number }} de {{ escopo_itens.pagina.paginator.num_pages }}</span>
                         <div class="btn-group btn-group-sm">
                             {% if escopo_itens.pagina.has_previous %}
-                            <a class="btn btn-outline-secondary js-scope-link" href="?page={{ escopo_itens.pagina.previous_page_number }}{% if escopo_itens.busca %}&q={{ escopo_itens.busca }}{% endif %}&tab=itens">Anterior</a>
+                            <a class="btn btn-outline-secondary js-scope-link" href="?{% if escopo_itens.grupo_key %}grupo={{ escopo_itens.grupo_key }}&{% endif %}page={{ escopo_itens.pagina.previous_page_number }}{% if escopo_itens.busca %}&q={{ escopo_itens.busca }}{% endif %}&tab=itens">Anterior</a>
                             {% endif %}
                             {% if escopo_itens.pagina.has_next %}
-                            <a class="btn btn-outline-secondary js-scope-link" href="?page={{ escopo_itens.pagina.next_page_number }}{% if escopo_itens.busca %}&q={{ escopo_itens.busca }}{% endif %}&tab=itens">Proxima</a>
+                            <a class="btn btn-outline-secondary js-scope-link" href="?{% if escopo_itens.grupo_key %}grupo={{ escopo_itens.grupo_key }}&{% endif %}page={{ escopo_itens.pagina.next_page_number }}{% if escopo_itens.busca %}&q={{ escopo_itens.busca }}{% endif %}&tab=itens">Proxima</a>
                             {% endif %}
                         </div>
                     </div>

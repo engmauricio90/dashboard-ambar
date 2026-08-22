@@ -1226,15 +1226,21 @@ def _escopo_itens_orcamento(request, orcamento):
         if not grupo_key or not any(grupo['key'] == grupo_key for grupo in grupos):
             grupo_key = grupos[0]['key']
         grupo = next(grupo for grupo in grupos if grupo['key'] == grupo_key)
+        itens_grupo = grupo['itens']
+        pagina = None
+        if len(itens_grupo) > ITENS_MEDICAO_POR_PAGINA:
+            paginator = Paginator(itens_grupo, ITENS_MEDICAO_POR_PAGINA)
+            pagina = paginator.get_page(pagina_numero)
+            itens_grupo = list(pagina.object_list)
         return {
             'modo': 'grupo',
             'busca': '',
             'grupo_key': grupo_key,
             'grupos': grupos,
-            'itens': grupo['itens'],
-            'pagina': None,
+            'itens': itens_grupo,
+            'pagina': pagina,
             'total_itens': len(itens_mediveis),
-            'total_renderizado': len(grupo['itens']),
+            'total_renderizado': len(itens_grupo),
             'usa_subset': len(grupos) > 1 or len(itens_mediveis) > ITENS_MEDICAO_LIMITE_TODOS,
             'titulo': grupo['label'],
         }
@@ -1289,7 +1295,7 @@ def _linhas_medicao_construtora_escopo(escopo, formset):
     for item in escopo['itens']:
         form = forms_by_item.get(item.id)
         if form:
-            linhas.append({'tipo': 'item', 'form': form})
+            linhas.append({'tipo': 'item', 'form': form, 'percentual': _percent_from_item(form.instance)})
     return linhas
 
 
@@ -2007,7 +2013,11 @@ def _xlsx_medicao(medicao, itens):
     builder = ExcelReportBuilder(
         empresa=empresa,
         title='Boletim de medicao',
-        subtitle=f'Medicao no {medicao.numero} | Periodo {format_date_br(medicao.periodo_inicio)} a {format_date_br(medicao.periodo_fim)}',
+        subtitle=(
+            f'Medicao no {medicao.numero} | Periodo {format_date_br(medicao.periodo_inicio)} a {format_date_br(medicao.periodo_fim)}'
+            if isinstance(medicao, MedicaoConstrutora)
+            else f'Medicao no {medicao.numero} | Contratado: {medicao.empreiteiro} | Periodo {format_date_br(medicao.periodo_inicio)} a {format_date_br(medicao.periodo_fim)}'
+        ),
         sheet_name='Medicao',
         orientation='landscape',
     )

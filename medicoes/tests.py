@@ -1051,6 +1051,25 @@ class MedicoesTests(TestCase):
         self.assertEqual(medicao_a.quantidade_periodo, Decimal('12.0000'))
         self.assertEqual(medicao_b.quantidade_periodo, Decimal('7.0000'))
 
+    def test_tela_construtora_exibe_percentual_do_item_visivel(self):
+        orcamento, item = self._orcamento()
+        medicao = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=1,
+            periodo_inicio=date(2026, 1, 1),
+            periodo_fim=date(2026, 1, 31),
+            data_medicao=date(2026, 1, 31),
+        )
+        ItemMedicaoConstrutora.objects.create(
+            medicao=medicao,
+            item_orcamento=item,
+            quantidade_periodo=Decimal('25.0000'),
+        )
+
+        response = self.client.get(reverse('editar_medicao_construtora', args=[medicao.id]))
+
+        self.assertContains(response, '25,00%')
+
     def test_medicao_empreiteiro_grande_renderiza_apenas_pagina_atual(self):
         _, _, _, segunda = self._medicao_empreiteiro_cumulativa_com_itens(quantidade=300)
 
@@ -1060,6 +1079,48 @@ class MedicoesTests(TestCase):
         self.assertEqual(response.context['escopo_itens']['total_itens'], 300)
         self.assertEqual(response.context['escopo_itens']['total_renderizado'], 50)
         self.assertContains(response, 'Pagina 2 de 6')
+        self.assertContains(response, 'itens-TOTAL_FORMS" value="50"')
+
+    def test_grupo_grande_construtora_renderiza_apenas_pagina_atual(self):
+        orcamento = OrcamentoMedicao.objects.create(
+            obra=self.obra,
+            nome='Orcamento grupo grande',
+            tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
+        )
+        grupo = ItemOrcamentoMedicao.objects.create(
+            orcamento=orcamento,
+            tipo=ItemOrcamentoMedicao.TIPO_GRUPO,
+            item='1',
+            descricao='Grupo grande',
+            ordem=1,
+        )
+        itens = [
+            ItemOrcamentoMedicao.objects.create(
+                orcamento=orcamento,
+                item=f'1.{index}',
+                descricao=f'Servico grupo grande {index}',
+                unidade='m2',
+                quantidade=Decimal('100.0000'),
+                preco_unitario_mao_obra=Decimal('10.0000'),
+                ordem=index + 1,
+            )
+            for index in range(1, 121)
+        ]
+        medicao = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=1,
+            periodo_inicio=date(2026, 1, 1),
+            periodo_fim=date(2026, 1, 31),
+            data_medicao=date(2026, 1, 31),
+        )
+        for item in itens:
+            ItemMedicaoConstrutora.objects.create(medicao=medicao, item_orcamento=item)
+
+        response = self.client.get(f"{reverse('editar_medicao_construtora', args=[medicao.id])}?grupo={grupo.id}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['escopo_itens']['total_renderizado'], 50)
+        self.assertContains(response, 'Pagina 1 de 3')
         self.assertContains(response, 'itens-TOTAL_FORMS" value="50"')
 
     def test_medicao_construtora_desconta_faturamento_direto_fora_da_base_de_impostos(self):
@@ -1360,6 +1421,11 @@ class MedicoesTests(TestCase):
         self.assertEqual(pdf['Content-Type'], 'application/pdf')
         self.assertEqual(excel.status_code, 200)
         self.assertIn('spreadsheetml', excel['Content-Type'])
+        wb = load_workbook(BytesIO(excel.content))
+        ws = wb.active
+        self.assertTrue(
+            any('Contratado:' in str(cell.value) for row in ws.iter_rows(max_row=10) for cell in row if cell.value)
+        )
 
     def test_medicao_simples_usa_cadastro_de_empreiteiro(self):
         empreiteiro = Empreiteiro.objects.create(
