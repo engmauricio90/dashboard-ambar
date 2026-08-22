@@ -154,6 +154,18 @@ def _format_money4(value):
     return f'R$ {value:.4f}'
 
 
+def _format_decimal2(value):
+    if value is None:
+        return '-'
+    return f'{value:.2f}'.replace('.', ',')
+
+
+def _format_decimal4_br(value):
+    if value is None:
+        return '-'
+    return f'{value:.4f}'.replace('.', ',')
+
+
 def _font(size, bold=False):
     candidates = [
         Path(settings.BASE_DIR) / 'static' / 'fonts' / ('Arial Bold.ttf' if bold else 'Arial.ttf'),
@@ -185,109 +197,12 @@ def _draw_wrapped(draw, text, xy, font, fill, width, line_spacing=8):
     return y
 
 
-def _draw_section_title(draw, title, x, y, w):
-    teal = (4, 95, 101)
-    draw.rounded_rectangle((x, y, x + w, y + 38), radius=6, fill=teal)
-    draw.text((x + 16, y + 9), _clean_pdf_text(title).upper(), font=_font(18, True), fill=(255, 255, 255))
-    return y + 52
-
-
-def _draw_key_value_grid(draw, rows, x, y, w, columns=2):
-    label_font = _font(14, True)
-    value_font = _font(15)
-    border = (211, 218, 221)
-    label = (88, 99, 105)
-    text = (44, 49, 52)
-    col_w = w / columns
-    row_h = 70
-    for index, (key, value) in enumerate(rows):
-        col = index % columns
-        row = index // columns
-        x0 = int(x + col * col_w)
-        y0 = int(y + row * row_h)
-        x1 = int(x0 + col_w)
-        y1 = y0 + row_h
-        draw.rectangle((x0, y0, x1, y1), outline=border, width=1)
-        draw.text((x0 + 14, y0 + 10), _clean_pdf_text(key).upper(), font=label_font, fill=label)
-        _draw_wrapped(draw, value, (x0 + 14, y0 + 34), value_font, text, int(col_w - 28), line_spacing=4)
-    return y + (((len(rows) + columns - 1) // columns) * row_h) + 26
-
-
-def _draw_table(draw, headers, rows, x, y, widths):
-    header_font = _font(14, True)
-    value_font = _font(14)
-    header_fill = (236, 241, 242)
-    border = (194, 202, 206)
-    text = (43, 48, 51)
-    row_h = 46
-    x_cursor = x
-    for header, width in zip(headers, widths):
-        draw.rectangle((x_cursor, y, x_cursor + width, y + row_h), fill=header_fill, outline=border, width=1)
-        draw.text((x_cursor + 10, y + 14), _clean_pdf_text(header).upper(), font=header_font, fill=text)
-        x_cursor += width
-    y += row_h
-    for row in rows:
-        x_cursor = x
-        for value, width in zip(row, widths):
-            draw.rectangle((x_cursor, y, x_cursor + width, y + row_h), outline=border, width=1)
-            _draw_wrapped(draw, value, (x_cursor + 10, y + 12), value_font, text, width - 20, line_spacing=3)
-            x_cursor += width
-        y += row_h
-    return y + 28
-
-
-def _draw_notes_box(draw, title, value, x, y, w):
-    y = _draw_section_title(draw, title, x, y, w)
-    border = (211, 218, 221)
-    draw.rectangle((x, y, x + w, y + 150), outline=border, width=1)
-    _draw_wrapped(draw, value or '-', (x + 16, y + 16), _font(15), (44, 49, 52), w - 32, line_spacing=6)
-    return y + 176
-
-
-def _usa_timbrado_ambar(empresa=None):
-    bg_path = Path(settings.BASE_DIR) / 'static' / 'propostas' / 'reference' / 'page_frame.png'
-    return getattr(empresa, 'slug', '') == 'ambar' and bg_path.exists()
-
-
-def _report_background(empresa=None):
-    bg_path = Path(settings.BASE_DIR) / 'static' / 'propostas' / 'reference' / 'page_frame.png'
-    if _usa_timbrado_ambar(empresa):
-        return Image.open(bg_path).convert('RGB')
-    return Image.new('RGB', (1653, 2338), 'white')
-
-
-def _report_pdf_response(image, filename):
-    buffer = BytesIO()
-    image.save(buffer, 'PDF', resolution=150)
-    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
-    response['Content-Disposition'] = f'inline; filename="{filename}.pdf"'
-    return response
-
-
 def _report_pdf_response_pages(images, filename):
     buffer = BytesIO()
     images[0].save(buffer, 'PDF', save_all=True, append_images=images[1:], resolution=150)
     response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
     response['Content-Disposition'] = f'inline; filename="{filename}.pdf"'
     return response
-
-
-def _draw_report_heading(draw, title, number, date_text, y=405):
-    x = 220
-    w = 1213
-    draw.rounded_rectangle((x, y, x + w, y + 92), radius=10, fill=(250, 251, 251), outline=(207, 216, 220), width=2)
-    draw.text((x + 24, y + 18), _clean_pdf_text(title).upper(), font=_font(28, True), fill=(41, 46, 48))
-    draw.text((x + 24, y + 56), f'Numero: {_clean_pdf_text(number)}', font=_font(17), fill=(92, 101, 105))
-    draw.text((x + w - 260, y + 56), f'Data: {_clean_pdf_text(date_text)}', font=_font(17), fill=(92, 101, 105))
-    return x, y + 132, w
-
-
-def _draw_oc_brand_header(image, draw, empresa):
-    if _usa_timbrado_ambar(empresa):
-        return 405
-    draw_empresa_header(image, draw, empresa, _font(17), _font(24, True), margin=220, height=132)
-    draw.line((220, 210, image.width - 220, 210), fill=(214, 221, 225), width=2)
-    return 255
 
 
 def _queryset_locacoes_filtradas(request):
@@ -1085,128 +1000,92 @@ def gerar_conta_pagar_nf_ordem_compra(request, nota_id):
 
 def ordem_compra_geral_pdf(request, ordem_id):
     ordem = get_object_or_404(
-        OrdemCompraGeral.objects.prefetch_related('itens'),
+        OrdemCompraGeral.objects.select_related('obra', 'centro_custo').prefetch_related('itens'),
         id=ordem_id,
         empresa=request.empresa,
     )
     rows = [
-        [
-            f'{item.item:02d}',
-            item.descricao,
-            _format_decimal4(item.quantidade),
-            item.unidade,
-            _format_money4(item.valor_unitario),
-            _format_money4(item.valor_total),
-            _format_date(item.data_entrega),
-        ]
+        {
+            'item': f'{item.item:02d}',
+            'descricao': item.descricao,
+            'quantidade': _format_decimal4_br(item.quantidade),
+            'unidade': item.unidade,
+            'valor_unitario': format_money_br(item.valor_unitario),
+            'valor_total': format_money_br(item.valor_total),
+            'entrega': _format_date(item.data_entrega),
+        }
         for item in ordem.itens.all()
     ]
-    headers = ['Item', 'Descricao', 'Qtd', 'Un', 'Vlr.', 'Total', 'Entrega']
-    widths = [70, 420, 100, 70, 145, 160, 160]
     filename = f'OC {ordem.numero}'.replace('/', '-')
-
-    def draw_first_page_base():
-        image = _report_background(ordem.empresa)
-        draw = ImageDraw.Draw(image)
-        heading_y = _draw_oc_brand_header(image, draw, ordem.empresa)
-        x, y, w = _draw_report_heading(draw, 'Ordem de compra', ordem.numero, _format_date(ordem.data_emissao), y=heading_y)
-
-        y = _draw_section_title(draw, 'Empresa compradora', x, y, w)
-        y = _draw_key_value_grid(
-            draw,
-            [
-                ('Razao social', ordem.empresa_razao_social),
-                ('CNPJ', ordem.empresa_cnpj or '-'),
-                ('Endereco', ordem.empresa_endereco or '-'),
-                ('Comprador', ordem.comprador or '-'),
-            ],
-            x,
-            y,
-            w,
-            columns=2,
-        )
-
-        y = _draw_section_title(draw, 'Fornecedor', x, y, w)
-        y = _draw_key_value_grid(
-            draw,
-            [
-                ('Fornecedor', ordem.fornecedor),
-                ('CPF/CNPJ', ordem.fornecedor_cpf_cnpj or '-'),
-                ('Endereco', ordem.fornecedor_endereco or '-'),
-                ('Bairro', ordem.fornecedor_bairro or '-'),
-                ('Cidade/UF', f'{ordem.fornecedor_cidade or "-"} / {ordem.fornecedor_uf or "-"}'),
-                ('CEP', ordem.fornecedor_cep or '-'),
-                ('Fone', ordem.fornecedor_fone or '-'),
-                ('IE', ordem.fornecedor_ie or '-'),
-            ],
-            x,
-            y,
-            w,
-            columns=2,
-        )
-
-        aviso = 'Nas notas fiscais e faturas e obrigatorio aparecer o numero desta ordem de compra.'
-        draw.rounded_rectangle((x, y, x + w, y + 48), radius=6, fill=(255, 248, 230), outline=(228, 191, 92), width=1)
-        _draw_wrapped(draw, aviso, (x + 16, y + 14), _font(16, True), (73, 60, 32), w - 32, line_spacing=4)
-        return image, draw, x, y + 72, w
-
-    def draw_summary_page():
-        image = _report_background(ordem.empresa)
-        draw = ImageDraw.Draw(image)
-        heading_y = _draw_oc_brand_header(image, draw, ordem.empresa)
-        x, y, w = _draw_report_heading(draw, 'Ordem de compra', ordem.numero, _format_date(ordem.data_emissao), y=heading_y)
-        y = _draw_section_title(draw, 'Fechamento', x, y, w)
-        draw.rounded_rectangle((x + w - 390, y, x + w, y + 58), radius=6, fill=(4, 95, 101))
-        draw.text((x + w - 360, y + 16), f'TOTAL: {_format_money(ordem.total)}', font=_font(22, True), fill=(255, 255, 255))
-        y += 86
-        y = _draw_notes_box(draw, 'Condicoes de pagamento', ordem.condicoes_pagamento or '-', x, y, w)
-        y = _draw_notes_box(draw, 'Observacoes', ordem.observacoes or '-', x, y, w)
-        draw.text((x, y + 20), _clean_pdf_text(f'Comprador: {ordem.comprador or "-"}'), font=_font(17), fill=(43, 48, 51))
-        draw.text((x, y + 66), '________________________________________', font=_font(17), fill=(43, 48, 51))
-        draw.text((x, y + 92), _clean_pdf_text(ordem.comprador or 'Assinatura'), font=_font(15), fill=(43, 48, 51))
-        draw_empresa_footer(image, draw, ordem.empresa, _font(14), _font(14, True), margin=220, y=image.height - 130)
-        return image
-
-    if len(rows) <= 4:
-        image, draw, x, y, w = draw_first_page_base()
-        y = _draw_section_title(draw, 'Itens', x, y, w)
-        y = _draw_table(draw, headers, rows, x, y, widths)
-        draw.rounded_rectangle((x + w - 360, y, x + w, y + 58), radius=6, fill=(4, 95, 101))
-        draw.text((x + w - 332, y + 16), f'TOTAL: {_format_money(ordem.total)}', font=_font(22, True), fill=(255, 255, 255))
-        y += 86
-        y = _draw_notes_box(draw, 'Condicoes de pagamento', ordem.condicoes_pagamento or '-', x, y, w)
-        y = _draw_notes_box(draw, 'Observacoes', ordem.observacoes or '-', x, y, w)
-        draw.text((x, y + 20), _clean_pdf_text(f'Comprador: {ordem.comprador or "-"}'), font=_font(17), fill=(43, 48, 51))
-        draw.text((x, y + 66), '________________________________________', font=_font(17), fill=(43, 48, 51))
-        draw.text((x, y + 92), _clean_pdf_text(ordem.comprador or 'Assinatura'), font=_font(15), fill=(43, 48, 51))
-        draw_empresa_footer(image, draw, ordem.empresa, _font(14), _font(14, True), margin=220, y=image.height - 130)
-        return _report_pdf_response(image, filename)
-
-    pages = []
-    first_capacity = 10
-    next_capacity = 28
-    chunks = [rows[:first_capacity]]
-    remaining = rows[first_capacity:]
-    while remaining:
-        chunks.append(remaining[:next_capacity])
-        remaining = remaining[next_capacity:]
-
-    for index, chunk in enumerate(chunks):
-        if index == 0:
-            image, draw, x, y, w = draw_first_page_base()
-        else:
-            image = _report_background(ordem.empresa)
-            draw = ImageDraw.Draw(image)
-            heading_y = _draw_oc_brand_header(image, draw, ordem.empresa)
-            x, y, w = _draw_report_heading(draw, 'Ordem de compra', ordem.numero, _format_date(ordem.data_emissao), y=heading_y)
-        y = _draw_section_title(draw, 'Itens' if index == 0 else 'Itens - continuacao', x, y, w)
-        _draw_table(draw, headers, chunk, x, y, widths)
-        footer = f'Pagina {index + 1}'
-        draw_empresa_footer(image, draw, ordem.empresa, _font(14), _font(14, True), margin=220, y=image.height - 130, page_text=footer)
-        pages.append(image)
-
-    pages.append(draw_summary_page())
-    return _report_pdf_response_pages(pages, filename)
+    pdf = PdfDocument(
+        ordem.empresa,
+        title='Ordem de compra',
+        subtitle=f'Número {ordem.numero}',
+        orientation='portrait',
+        filename=f'{filename}.pdf',
+    )
+    pdf.add_title(emitted_on=ordem.data_emissao)
+    pdf.add_info_grid(
+        [
+            ('Número', ordem.numero),
+            ('Data', _format_date(ordem.data_emissao)),
+            ('Status', ordem.get_status_display()),
+            ('Comprador', ordem.comprador or '-'),
+            ('Obra', ordem.obra or '-'),
+            ('Centro de custo', ordem.centro_custo or '-'),
+            ('Categoria', ordem.categoria_despesa or '-'),
+            ('Total', format_money_br(ordem.total)),
+        ],
+        columns=4,
+    )
+    pdf.add_section_header('Empresa compradora')
+    pdf.add_info_grid(
+        [
+            ('Razão social', ordem.empresa_razao_social),
+            ('CNPJ', ordem.empresa_cnpj or '-'),
+            ('Endereço', ordem.empresa_endereco or '-'),
+            ('Comprador', ordem.comprador or '-'),
+        ],
+        columns=2,
+    )
+    pdf.add_section_header('Fornecedor')
+    pdf.add_info_grid(
+        [
+            ('Fornecedor', ordem.fornecedor),
+            ('CPF/CNPJ', ordem.fornecedor_cpf_cnpj or '-'),
+            ('Endereço', ordem.fornecedor_endereco or '-'),
+            ('Bairro', ordem.fornecedor_bairro or '-'),
+            ('Cidade/UF', f'{ordem.fornecedor_cidade or "-"} / {ordem.fornecedor_uf or "-"}'),
+            ('CEP', ordem.fornecedor_cep or '-'),
+            ('Fone', ordem.fornecedor_fone or '-'),
+            ('IE', ordem.fornecedor_ie or '-'),
+        ],
+        columns=2,
+    )
+    pdf.add_text_block(
+        'Aviso fiscal',
+        'Nas notas fiscais e faturas e obrigatorio aparecer o numero desta ordem de compra.',
+        min_height=70,
+    )
+    pdf.add_section_header('Itens')
+    pdf.add_table(
+        [
+            PdfTableColumn('item', 'Item', width=78, align='center'),
+            PdfTableColumn('descricao', 'Descrição', weight=3.6),
+            PdfTableColumn('quantidade', 'Qtd', width=124, align='center'),
+            PdfTableColumn('unidade', 'Un', width=72, align='center'),
+            PdfTableColumn('valor_unitario', 'Vlr. unit.', width=150, align='right'),
+            PdfTableColumn('valor_total', 'Total', width=160, align='right'),
+            PdfTableColumn('entrega', 'Entrega', width=126, align='center'),
+        ],
+        rows,
+        row_height='auto',
+    )
+    pdf.add_totals_box([('Total da ordem', format_money_br(ordem.total), True)], width=560)
+    pdf.add_text_block('Condições de pagamento', ordem.condicoes_pagamento or '-', min_height=84)
+    pdf.add_text_block('Observações', ordem.observacoes or '-', min_height=84)
+    pdf.add_signature_block([ordem.comprador or 'Comprador'])
+    return pdf.response()
 
 
 def lista_ordens_combustivel(request):
@@ -1288,47 +1167,49 @@ def ordem_combustivel_pdf(request, ordem_id):
         id=ordem_id,
         empresa=request.empresa,
     )
-    image = _report_background(ordem.empresa)
-    draw = ImageDraw.Draw(image)
-    draw_empresa_header(image, draw, ordem.empresa, _font(17), _font(24, True), margin=220, height=110)
-    x, y, w = _draw_report_heading(
-        draw,
-        'Ordem de compra de combustivel',
-        ordem.numero,
-        _format_date(ordem.data_ordem),
+    pdf = PdfDocument(
+        ordem.empresa,
+        title='Ordem de compra de combustível',
+        subtitle=f'Número {ordem.numero}',
+        orientation='portrait',
+        filename=f'{ordem.numero}.pdf',
     )
-    y = _draw_section_title(draw, 'Dados da ordem', x, y, w)
-    y = _draw_key_value_grid(
-        draw,
+    pdf.add_title(emitted_on=ordem.data_ordem)
+    pdf.add_info_grid(
         [
+            ('Número', ordem.numero),
+            ('Data', _format_date(ordem.data_ordem)),
             ('Fornecedor/Posto', ordem.fornecedor),
             ('Solicitante', ordem.solicitante or '-'),
             ('Status', ordem.get_status_display()),
-            ('Destino', f'{ordem.get_tipo_destino_display()} - {ordem.destino_display}'),
+            ('Tipo destino', ordem.get_tipo_destino_display()),
+            ('Destino', ordem.destino_display),
+            ('Combustível', ordem.get_tipo_combustivel_display()),
+            ('Total previsto', format_money_br(ordem.valor_total_previsto)),
         ],
-        x,
-        y,
-        w,
+        columns=4,
     )
-    y = _draw_section_title(draw, 'Item autorizado', x, y, w)
-    y = _draw_table(
-        draw,
-        ['Descricao', 'Quantidade', 'Valor unitario', 'Total previsto'],
+    pdf.add_section_header('Item autorizado')
+    pdf.add_table(
         [
-            [
-                f'Combustivel - {ordem.get_tipo_combustivel_display()}',
-                f'{ordem.quantidade_litros:.2f} L',
-                _format_money(ordem.valor_litro_previsto),
-                _format_money(ordem.valor_total_previsto),
-            ]
+            PdfTableColumn('descricao', 'Descrição', weight=3),
+            PdfTableColumn('quantidade', 'Quantidade', width=210, align='center'),
+            PdfTableColumn('valor_unitario', 'Valor unitário', width=230, align='right'),
+            PdfTableColumn('total', 'Total previsto', width=250, align='right'),
         ],
-        x,
-        y,
-        [540, 210, 230, 233],
+        [
+            {
+                'descricao': f'Combustível - {ordem.get_tipo_combustivel_display()}',
+                'quantidade': f'{_format_decimal2(ordem.quantidade_litros)} L',
+                'valor_unitario': format_money_br(ordem.valor_litro_previsto),
+                'total': format_money_br(ordem.valor_total_previsto),
+            }
+        ],
+        row_height=52,
     )
-    _draw_notes_box(draw, 'Observacoes', ordem.observacoes or '-', x, y, w)
-    draw_empresa_footer(image, draw, ordem.empresa, _font(14), _font(14, True), margin=220, y=image.height - 130)
-    return _report_pdf_response(image, ordem.numero)
+    pdf.add_text_block('Observações', ordem.observacoes or '-', min_height=92)
+    pdf.add_signature_block([ordem.solicitante or 'Solicitante', 'Aprovação'])
+    return pdf.response()
 
 
 def editar_ordem_combustivel(request, ordem_id):
@@ -1593,70 +1474,83 @@ def ordem_locacao_maquina_pdf(request, ordem_id):
         id=ordem_id,
         obra__empresa=request.empresa,
     )
-    image = _report_background(ordem.obra.empresa)
-    draw = ImageDraw.Draw(image)
-    draw_empresa_header(image, draw, ordem.obra.empresa, _font(17), _font(24, True), margin=220, height=110)
-    x, y, w = _draw_report_heading(
-        draw,
-        'Ordem de servico de locacao de maquina',
-        ordem.numero,
-        _format_date(ordem.data_solicitacao),
+    empresa = ordem.obra.empresa
+    pdf = PdfDocument(
+        empresa,
+        title='Ordem de serviço de locação de máquina',
+        subtitle=f'Número {ordem.numero}',
+        orientation='portrait',
+        filename=f'{ordem.numero}.pdf',
     )
-    y = _draw_section_title(draw, 'Dados da OS', x, y, w)
-    y = _draw_key_value_grid(
-        draw,
+    periodo_previsto = '-'
+    if ordem.data_prevista_inicio or ordem.data_prevista_fim:
+        periodo_previsto = f'{_format_date(ordem.data_prevista_inicio)} a {_format_date(ordem.data_prevista_fim)}'
+    pdf.add_title(emitted_on=ordem.data_solicitacao)
+    pdf.add_info_grid(
         [
+            ('Número', ordem.numero),
+            ('Data', _format_date(ordem.data_solicitacao)),
             ('Obra', ordem.obra),
             ('Fornecedor', ordem.fornecedor),
-            ('Maquina', ordem.maquina),
+            ('Máquina', ordem.maquina),
             ('Status', ordem.get_status_display()),
             ('Solicitante', ordem.solicitante or '-'),
             ('Responsavel', ordem.responsavel or '-'),
-            ('Tipo de cobranca', ordem.get_tipo_cobranca_display()),
-            ('Condicoes', f'Operador: {"Sim" if ordem.operador_incluso else "Nao"} | Combustivel: {"Sim" if ordem.combustivel_incluso else "Nao"}'),
+            ('Tipo de cobrança', ordem.get_tipo_cobranca_display()),
+            ('Operador incluso', 'Sim' if ordem.operador_incluso else 'Não'),
+            ('Combustível incluso', 'Sim' if ordem.combustivel_incluso else 'Não'),
+            ('Valor previsto', format_money_br(ordem.valor_previsto_total)),
         ],
-        x,
-        y,
-        w,
+        columns=4,
     )
-    y = _draw_section_title(draw, 'Prazos e operacao', x, y, w)
-    y = _draw_table(
-        draw,
-        ['Periodo previsto', 'Mobilizacao', 'Inicio operacao', 'Desmobilizacao'],
+    pdf.add_section_header('Prazos e operação')
+    pdf.add_table(
         [
-            [
-                f'{_format_date(ordem.data_prevista_inicio)} a {_format_date(ordem.data_prevista_fim)}',
-                _format_date(ordem.data_mobilizacao),
-                _format_date(ordem.data_inicio_operacao),
-                _format_date(ordem.data_desmobilizacao),
-            ]
+            PdfTableColumn('periodo', 'Período previsto', weight=2),
+            PdfTableColumn('mobilizacao', 'Mobilização', width=230, align='center'),
+            PdfTableColumn('inicio', 'Início operação', width=230, align='center'),
+            PdfTableColumn('desmobilizacao', 'Desmobilização', width=230, align='center'),
         ],
-        x,
-        y,
-        [330, 290, 290, 303],
-    )
-    y = _draw_section_title(draw, 'Valores contratados', x, y, w)
-    y = _draw_table(
-        draw,
-        ['Item', 'Valor/Info', 'Item', 'Valor/Info'],
         [
-            ['Valor hora', _format_money(ordem.valor_hora), 'Valor diaria', _format_money(ordem.valor_diaria)],
-            ['Valor mensal', _format_money(ordem.valor_mensal), 'Franquia horas', f'{ordem.franquia_horas:.2f}'],
-            ['Mobilizacao', _format_money(ordem.valor_mobilizacao), 'Desmobilizacao', _format_money(ordem.valor_desmobilizacao)],
-            [
-                'Valor previsto manual',
-                _format_money(ordem.valor_previsto_manual) if ordem.valor_previsto_manual is not None else '-',
-                'Tipo cobranca',
-                ordem.get_tipo_cobranca_display(),
-            ],
+            {
+                'periodo': periodo_previsto,
+                'mobilizacao': _format_date(ordem.data_mobilizacao),
+                'inicio': _format_date(ordem.data_inicio_operacao),
+                'desmobilizacao': _format_date(ordem.data_desmobilizacao),
+            }
         ],
-        x,
-        y,
-        [310, 290, 310, 303],
+        row_height=52,
     )
-    _draw_notes_box(draw, 'Observacoes', ordem.observacoes or '-', x, y, w)
-    draw_empresa_footer(image, draw, ordem.obra.empresa, _font(14), _font(14, True), margin=220, y=image.height - 130)
-    return _report_pdf_response(image, ordem.numero)
+    pdf.add_section_header('Valores contratados')
+    pdf.add_table(
+        [
+            PdfTableColumn('item_a', 'Item', weight=1.4),
+            PdfTableColumn('valor_a', 'Valor/Info', width=250, align='right'),
+            PdfTableColumn('item_b', 'Item', weight=1.4),
+            PdfTableColumn('valor_b', 'Valor/Info', width=250, align='right'),
+        ],
+        [
+            {'item_a': 'Valor hora', 'valor_a': format_money_br(ordem.valor_hora), 'item_b': 'Valor diaria', 'valor_b': format_money_br(ordem.valor_diaria)},
+            {'item_a': 'Valor mensal', 'valor_a': format_money_br(ordem.valor_mensal), 'item_b': 'Franquia horas', 'valor_b': _format_decimal2(ordem.franquia_horas)},
+            {
+                'item_a': 'Mobilização',
+                'valor_a': format_money_br(ordem.valor_mobilizacao),
+                'item_b': 'Desmobilização',
+                'valor_b': format_money_br(ordem.valor_desmobilizacao),
+            },
+            {
+                'item_a': 'Valor previsto manual',
+                'valor_a': format_money_br(ordem.valor_previsto_manual) if ordem.valor_previsto_manual is not None else '-',
+                'item_b': 'Tipo cobrança',
+                'valor_b': ordem.get_tipo_cobranca_display(),
+            },
+        ],
+        row_height=46,
+    )
+    pdf.add_totals_box([('Valor previsto total', format_money_br(ordem.valor_previsto_total), True)], width=620)
+    pdf.add_text_block('Observações', ordem.observacoes or '-', min_height=92)
+    pdf.add_signature_block([ordem.solicitante or 'Solicitante', ordem.responsavel or 'Responsável'])
+    return pdf.response()
 
 
 def editar_ordem_locacao_maquina(request, ordem_id):

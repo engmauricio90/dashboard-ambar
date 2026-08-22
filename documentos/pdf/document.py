@@ -73,11 +73,17 @@ class PdfDocument:
     def _text_width(self, text, font):
         return self.draw.textlength(_clean_text(text), font=font)
 
-    def _draw_wrapped(self, text, x, y, w, h, font, fill=None, align='left'):
-        fill = fill or self.theme.text
+    def _wrap_lines(self, text, width, font):
         text = _clean_text(text)
         avg = max(font.getlength('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz') / 52, 1)
-        lines = textwrap.wrap(text, width=max(int((w - 12) / avg), 4)) or ['']
+        wrapped = []
+        for paragraph in text.splitlines() or ['']:
+            wrapped.extend(textwrap.wrap(paragraph, width=max(int((width - 12) / avg), 4)) or [''])
+        return wrapped or ['']
+
+    def _draw_wrapped(self, text, x, y, w, h, font, fill=None, align='left'):
+        fill = fill or self.theme.text
+        lines = self._wrap_lines(text, w, font)
         line_h = font.getbbox('Ag')[3] - font.getbbox('Ag')[1] + 4
         visible = lines[: max(int((h - 8) / line_h), 1)]
         if len(lines) > len(visible) and visible:
@@ -200,6 +206,41 @@ class PdfDocument:
         )
         self.y += 48
 
+    def add_text_block(self, title, text, min_height=94):
+        text = _clean_text(text)
+        body_font = self.theme.font('body')
+        title_font = self.theme.font('small', True)
+        avg = max(body_font.getlength('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz') / 52, 1)
+        lines = textwrap.wrap(text, width=max(int((self.g.content_width - 36) / avg), 8)) or ['-']
+        line_h = body_font.getbbox('Ag')[3] - body_font.getbbox('Ag')[1] + 6
+        h = max(min_height, 42 + (line_h * len(lines)))
+        self._ensure_space(h + 20)
+        x = self.g.content_left
+        self.draw.rounded_rectangle((x, self.y, self.g.content_right, self.y + h), radius=8, fill='white', outline=self.theme.border, width=2)
+        self.draw.text((x + 16, self.y + 12), _clean_text(title).upper(), font=title_font, fill=self.theme.muted)
+        y_text = self.y + 42
+        for line in lines:
+            self.draw.text((x + 16, y_text), line, font=body_font, fill=self.theme.text)
+            y_text += line_h
+        self.y += h + 22
+
+    def add_signature_block(self, labels):
+        labels = [label for label in labels if label]
+        if not labels:
+            return
+        h = 96
+        self._ensure_space(h + 20)
+        gap = 42
+        block_w = int((self.g.content_width - (gap * (len(labels) - 1))) / len(labels))
+        x = self.g.content_left
+        font = self.theme.font('small')
+        for label in labels:
+            y_line = self.y + 42
+            self.draw.line((x + 16, y_line, x + block_w - 16, y_line), fill=self.theme.text, width=2)
+            self._draw_wrapped(label, x, y_line + 10, block_w, 36, font, fill=self.theme.muted, align='center')
+            x += block_w + gap
+        self.y += h + 18
+
     def _table_widths(self, columns):
         table_w = self.g.content_width
         fixed = sum(col.width or 0 for col in columns)
@@ -218,10 +259,21 @@ class PdfDocument:
         widths = self._table_widths(columns)
         groups = groups or []
         header_fill = header_fill or self.theme.primary
-        header_total_h = row_height * (2 if groups else 1)
+        header_row_h = 42 if row_height == 'auto' else row_height
+        header_total_h = header_row_h * (2 if groups else 1)
+        body_font = self.theme.font(table_body_level)
+        body_line_h = body_font.getbbox('Ag')[3] - body_font.getbbox('Ag')[1] + 4
+
+        def row_h(row):
+            if row_height != 'auto':
+                return row_height
+            font = self.theme.font(table_body_level, bool(row.get('__bold')))
+            line_h = font.getbbox('Ag')[3] - font.getbbox('Ag')[1] + 4
+            max_lines = max(len(self._wrap_lines(row.get(col.key, '-'), width, font)) for col, width in zip(columns, widths)) if columns else 1
+            return max(42, min(112, line_h * max_lines + 16))
 
         def draw_header():
-            self._ensure_space(header_total_h + row_height)
+            self._ensure_space(header_total_h + body_line_h + 18)
             if groups:
                 x = self.g.content_left
                 for group in groups:
@@ -229,7 +281,7 @@ class PdfDocument:
                     group_w = sum(widths[group.start : group.end])
                     fill = group.bg or self.theme.header_fill
                     self.draw.rectangle(
-                        (self.g.content_left + before, self.y, self.g.content_left + before + group_w, self.y + row_height),
+                        (self.g.content_left + before, self.y, self.g.content_left + before + group_w, self.y + header_row_h),
                         fill=fill,
                         outline=self.theme.border,
                         width=2,
@@ -239,25 +291,26 @@ class PdfDocument:
                         self.g.content_left + before,
                         self.y,
                         group_w,
-                        row_height,
+                        header_row_h,
                         self.theme.font('table_header', True),
                         fill=self.theme.text,
                         align='center',
                     )
                     x += group_w
-                self.y += row_height
+                self.y += header_row_h
             x = self.g.content_left
             for col, width in zip(columns, widths):
                 fill = col.bg or header_fill
                 text_fill = self.theme.text if fill != self.theme.primary else 'white'
-                self.draw.rectangle((x, self.y, x + width, self.y + row_height), fill=fill, outline=self.theme.border, width=1)
-                self._draw_wrapped(col.label, x, self.y, width, row_height, self.theme.font('table_header', True), fill=text_fill, align='center')
+                self.draw.rectangle((x, self.y, x + width, self.y + header_row_h), fill=fill, outline=self.theme.border, width=1)
+                self._draw_wrapped(col.label, x, self.y, width, header_row_h, self.theme.font('table_header', True), fill=text_fill, align='center')
                 x += width
-            self.y += row_height
+            self.y += header_row_h
 
         draw_header()
         for row_index, row in enumerate(rows):
-            self._ensure_space(row_height)
+            current_row_h = row_h(row)
+            self._ensure_space(current_row_h)
             if self.y == self.g.content_top:
                 draw_header()
             x = self.g.content_left
@@ -265,10 +318,10 @@ class PdfDocument:
             font = self.theme.font(table_body_level, bool(row.get('__bold')))
             for col, width in zip(columns, widths):
                 cell_bg = row.get('__cell_bgs', {}).get(col.key) if isinstance(row.get('__cell_bgs'), dict) else None
-                self.draw.rectangle((x, self.y, x + width, self.y + row_height), fill=cell_bg or bg, outline=self.theme.border, width=1)
-                self._draw_wrapped(row.get(col.key, '-'), x, self.y, width, row_height, font, align=col.align)
+                self.draw.rectangle((x, self.y, x + width, self.y + current_row_h), fill=cell_bg or bg, outline=self.theme.border, width=1)
+                self._draw_wrapped(row.get(col.key, '-'), x, self.y, width, current_row_h, font, align=col.align)
                 x += width
-            self.y += row_height
+            self.y += current_row_h
         self.y += 22
 
     def build(self):
@@ -278,7 +331,7 @@ class PdfDocument:
         total = len(self.pages)
         for index, page in enumerate(self.pages, start=1):
             draw = ImageDraw.Draw(page)
-            page_text = f'Pagina {index} de {total}'
+            page_text = f'Página {index} de {total}'
             draw_empresa_footer(page, draw, self.empresa, self.theme.font('footer'), self.theme.font('footer', True), margin=self.g.margin_left, y=self.g.height - self.g.margin_bottom, page_text=page_text)
         buffer = BytesIO()
         self.pages[0].save(buffer, 'PDF', save_all=True, append_images=self.pages[1:], resolution=150)

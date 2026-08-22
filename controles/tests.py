@@ -1,5 +1,6 @@
 from decimal import Decimal
 import os
+from io import BytesIO
 from tempfile import NamedTemporaryFile
 from datetime import date
 
@@ -9,6 +10,7 @@ from django.core.management import CommandError, call_command
 from django.test import TestCase
 from django.urls import reverse
 from openpyxl import Workbook
+from pypdf import PdfReader
 
 from empresas.models import Empresa, UsuarioEmpresa
 from obras.models import Obra
@@ -80,6 +82,12 @@ class ControleAbastecimentoTests(TestCase):
     def _solicitante_concretagem(self, **kwargs):
         kwargs.setdefault('empresa', self.empresa)
         return SolicitanteConcretagem.objects.create(**kwargs)
+
+    def _assert_pdf_pages(self, response, minimum_pages=1):
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertTrue(response.content.startswith(b'%PDF'))
+        self.assertGreaterEqual(len(PdfReader(BytesIO(response.content)).pages), minimum_pages)
 
     def test_home_controles_carrega(self):
         response = self.client.get(reverse('controles_home'))
@@ -321,8 +329,11 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(item.valor_total, Decimal('4817.2912'))
 
         pdf_response = self.client.get(reverse('ordem_compra_geral_pdf', args=[ordem.id]))
-        self.assertEqual(pdf_response['Content-Type'], 'application/pdf')
-        self.assertTrue(pdf_response.content.startswith(b'%PDF'))
+        self._assert_pdf_pages(pdf_response)
+        ordem.refresh_from_db()
+        item.refresh_from_db()
+        self.assertEqual(ordem.total, Decimal('4817.2912'))
+        self.assertEqual(item.valor_total, Decimal('4817.2912'))
 
     def test_exclui_ordem_compra_geral_preservando_conta_pagar(self):
         ordem = OrdemCompraGeral.objects.create(
@@ -452,9 +463,8 @@ class ControleAbastecimentoTests(TestCase):
 
         pdf_response = self.client.get(reverse('ordem_compra_geral_pdf', args=[ordem.id]))
 
-        self.assertEqual(pdf_response.status_code, 200)
-        self.assertEqual(pdf_response['Content-Type'], 'application/pdf')
-        self.assertTrue(pdf_response.content.startswith(b'%PDF'))
+        self._assert_pdf_pages(pdf_response, minimum_pages=2)
+        self.assertEqual(ordem.total, Decimal('250.0000'))
 
     def test_lista_ordens_compra_filtra_e_totaliza_por_obra(self):
         obra_a = self._obra(nome_obra='Obra A')
@@ -592,9 +602,9 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(HistoricoOrdemCombustivel.objects.count(), 2)
 
         response = self.client.get(reverse('ordem_combustivel_pdf', args=[ordem.id]))
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response['Content-Type'], 'application/pdf')
-        self.assertTrue(response.content.startswith(b'%PDF'))
+        self._assert_pdf_pages(response)
+        ordem.refresh_from_db()
+        self.assertEqual(ordem.valor_total_previsto, Decimal('650.0000'))
 
     def test_cria_ordem_combustivel_para_bombona(self):
         bombona = self._bombona(
@@ -715,9 +725,9 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(HistoricoLocacaoMaquina.objects.count(), 3)
 
         response = self.client.get(reverse('ordem_locacao_maquina_pdf', args=[ordem.id]))
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response['Content-Type'], 'application/pdf')
-        self.assertTrue(response.content.startswith(b'%PDF'))
+        self._assert_pdf_pages(response)
+        ordem.refresh_from_db()
+        self.assertEqual(ordem.valor_previsto_total, Decimal('3025.0000'))
 
     def test_exclui_ordem_locacao_maquina_com_vinculos_por_post(self):
         obra = self._obra(nome_obra='Obra Excluir OS')
