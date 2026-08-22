@@ -241,18 +241,30 @@ class MedicaoConstrutora(models.Model):
 
     @property
     def subtotal_periodo(self):
+        resumo = getattr(self, '_resumo_construtora_cache', None)
+        if resumo:
+            return resumo.subtotal_periodo
         return _sum_decimal(item.valor_periodo for item in self.itens.all())
 
     @property
     def total_mao_obra_periodo(self):
+        resumo = getattr(self, '_resumo_construtora_cache', None)
+        if resumo:
+            return resumo.total_mao_obra_periodo
         return _sum_decimal(item.valor_mao_obra_periodo for item in self.itens.all())
 
     @property
     def total_material_periodo(self):
+        resumo = getattr(self, '_resumo_construtora_cache', None)
+        if resumo:
+            return resumo.total_material_periodo
         return _sum_decimal(item.valor_material_periodo for item in self.itens.all())
 
     @property
     def total_equipamentos_periodo(self):
+        resumo = getattr(self, '_resumo_construtora_cache', None)
+        if resumo:
+            return resumo.total_equipamentos_periodo
         return _sum_decimal(item.valor_equipamentos_periodo for item in self.itens.all())
 
     @property
@@ -261,17 +273,26 @@ class MedicaoConstrutora(models.Model):
 
     @property
     def total_faturamento_direto(self):
+        resumo = getattr(self, '_resumo_construtora_cache', None)
+        if resumo:
+            return resumo.total_faturamento_direto
         vinculado = _sum_decimal(v.valor_descontado for v in self.faturamentos_diretos.select_related('faturamento_direto'))
         return vinculado or self.valor_faturamento_direto
 
     @property
     def base_impostos(self):
+        resumo = getattr(self, '_resumo_construtora_cache', None)
+        if resumo:
+            return resumo.base_impostos
         desconto_base = self.desconto_adicional_calculado if self.desconto_adicional_reduz_base_nf else Decimal('0')
         base = self.subtotal_periodo - self.total_faturamento_direto - desconto_base
         return max(base, Decimal('0'))
 
     @property
     def fator_componentes_nf(self):
+        resumo = getattr(self, '_resumo_construtora_cache', None)
+        if resumo:
+            return resumo.fator_componentes_nf
         subtotal = self.subtotal_periodo
         if not subtotal:
             return Decimal('0')
@@ -279,14 +300,23 @@ class MedicaoConstrutora(models.Model):
 
     @property
     def valor_material_nf(self):
+        resumo = getattr(self, '_resumo_construtora_cache', None)
+        if resumo:
+            return resumo.valor_material_nf
         return (self.total_material_periodo * self.fator_componentes_nf).quantize(Decimal('0.01'))
 
     @property
     def valor_equipamentos_nf(self):
+        resumo = getattr(self, '_resumo_construtora_cache', None)
+        if resumo:
+            return resumo.valor_equipamentos_nf
         return (self.total_equipamentos_periodo * self.fator_componentes_nf).quantize(Decimal('0.01'))
 
     @property
     def valor_mao_obra_nf(self):
+        resumo = getattr(self, '_resumo_construtora_cache', None)
+        if resumo:
+            return resumo.valor_mao_obra_nf
         return max(
             self.base_impostos - self.valor_material_nf - self.valor_equipamentos_nf,
             Decimal('0'),
@@ -294,6 +324,9 @@ class MedicaoConstrutora(models.Model):
 
     @property
     def base_inss(self):
+        resumo = getattr(self, '_resumo_construtora_cache', None)
+        if resumo:
+            return resumo.base_inss
         base = self.total_mao_obra_periodo
         subtotal = self.subtotal_periodo
         if self.desconto_adicional_reduz_base_nf and subtotal:
@@ -304,22 +337,37 @@ class MedicaoConstrutora(models.Model):
 
     @property
     def retencao_tecnica_calculada(self):
+        resumo = getattr(self, '_resumo_construtora_cache', None)
+        if resumo:
+            return resumo.retencao_tecnica_calculada
         return _percent_decimal(self.subtotal_periodo, self.retencao_tecnica_percentual) or self.retencao_tecnica
 
     @property
     def issqn_calculado(self):
+        resumo = getattr(self, '_resumo_construtora_cache', None)
+        if resumo:
+            return resumo.issqn_calculado
         return _percent_decimal(self.base_impostos, self.issqn_percentual) or self.issqn
 
     @property
     def inss_calculado(self):
+        resumo = getattr(self, '_resumo_construtora_cache', None)
+        if resumo:
+            return resumo.inss_calculado
         return _percent_decimal(self.base_inss, self.inss_percentual) or self.inss
 
     @property
     def desconto_adicional_calculado(self):
+        resumo = getattr(self, '_resumo_construtora_cache', None)
+        if resumo:
+            return resumo.desconto_adicional_calculado
         return _percent_decimal(self.subtotal_periodo, self.desconto_adicional_percentual) or self.desconto_adicional
 
     @property
     def total_descontos(self):
+        resumo = getattr(self, '_resumo_construtora_cache', None)
+        if resumo:
+            return resumo.total_descontos
         return (
             self.retencao_tecnica_calculada
             + self.issqn_calculado
@@ -330,6 +378,9 @@ class MedicaoConstrutora(models.Model):
 
     @property
     def total_liquido(self):
+        resumo = getattr(self, '_resumo_construtora_cache', None)
+        if resumo:
+            return resumo.total_liquido
         return self.total_bruto - self.total_descontos
 
     @property
@@ -386,6 +437,8 @@ class ItemMedicaoConstrutora(models.Model):
 
     @property
     def quantidade_acumulada_anterior(self):
+        if hasattr(self, '_quantidade_acumulada_anterior_cache'):
+            return self._quantidade_acumulada_anterior_cache
         total = (
             ItemMedicaoConstrutora.objects.filter(
                 item_orcamento=self.item_orcamento,
@@ -499,14 +552,23 @@ class MedicaoEmpreiteiro(models.Model):
 
     @property
     def subtotal_periodo(self):
+        resumo = getattr(self, '_resumo_empreiteiro_cache', None)
+        if resumo:
+            return resumo.subtotal_periodo
         return _sum_decimal(item.valor_periodo for item in self.itens.all())
 
     @property
     def total_descontos(self):
+        resumo = getattr(self, '_resumo_empreiteiro_cache', None)
+        if resumo:
+            return resumo.total_descontos
         return self.retencao_tecnica + self.desconto_adicional
 
     @property
     def total_liquido(self):
+        resumo = getattr(self, '_resumo_empreiteiro_cache', None)
+        if resumo:
+            return resumo.total_liquido
         return self.subtotal_periodo - self.total_descontos
 
 
@@ -545,6 +607,8 @@ class ItemMedicaoEmpreiteiro(models.Model):
 
     @property
     def quantidade_acumulada_anterior(self):
+        if hasattr(self, '_quantidade_acumulada_anterior_cache'):
+            return self._quantidade_acumulada_anterior_cache
         if not self.item_orcamento_id or not self.medicao.orcamento_id:
             return Decimal('0')
         total = (

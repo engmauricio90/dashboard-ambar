@@ -1,10 +1,13 @@
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from openpyxl import load_workbook
 
@@ -23,6 +26,7 @@ from .models import (
     MedicaoEmpreiteiro,
     OrcamentoMedicao,
 )
+from .services import calcular_resumo_construtora, itens_construtora_com_grupos, itens_empreiteiro_com_acumulados
 
 
 class MedicoesTests(TestCase):
@@ -50,6 +54,109 @@ class MedicoesTests(TestCase):
             preco_unitario_equipamentos=Decimal('2.00'),
         )
         return orcamento, item
+
+    def _orcamento_com_itens(self, quantidade=30, tipo=OrcamentoMedicao.TIPO_CONSTRUTORA):
+        orcamento = OrcamentoMedicao.objects.create(
+            obra=self.obra,
+            nome=f'Orcamento {tipo} {quantidade}',
+            tipo=tipo,
+        )
+        itens = []
+        for index in range(1, quantidade + 1):
+            itens.append(
+                ItemOrcamentoMedicao.objects.create(
+                    orcamento=orcamento,
+                    item=str(index),
+                    descricao=f'Servico de performance {index}',
+                    unidade='m2',
+                    quantidade=Decimal('1000.0000'),
+                    preco_unitario_material=Decimal('12.3456') if tipo == OrcamentoMedicao.TIPO_CONSTRUTORA else Decimal('0'),
+                    preco_unitario_mao_obra=Decimal('5.4321') if tipo == OrcamentoMedicao.TIPO_CONSTRUTORA else Decimal('10.0000'),
+                    preco_unitario_equipamentos=Decimal('1.2345') if tipo == OrcamentoMedicao.TIPO_CONSTRUTORA else Decimal('0'),
+                )
+            )
+        return orcamento, itens
+
+    def _medicao_construtora_com_itens(self, quantidade=30):
+        orcamento, itens = self._orcamento_com_itens(quantidade)
+        primeira = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=1,
+            periodo_inicio=date(2026, 1, 1),
+            periodo_fim=date(2026, 1, 31),
+            data_medicao=date(2026, 1, 31),
+        )
+        segunda = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=2,
+            periodo_inicio=date(2026, 2, 1),
+            periodo_fim=date(2026, 2, 28),
+            data_medicao=date(2026, 2, 28),
+            retencao_tecnica_percentual=Decimal('2.0000'),
+            issqn_percentual=Decimal('5.0000'),
+            inss_percentual=Decimal('11.0000'),
+            desconto_adicional_percentual=Decimal('1.0000'),
+        )
+        terceira = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=3,
+            periodo_inicio=date(2026, 3, 1),
+            periodo_fim=date(2026, 3, 31),
+            data_medicao=date(2026, 3, 31),
+        )
+        for item in itens:
+            ItemMedicaoConstrutora.objects.create(medicao=primeira, item_orcamento=item, quantidade_periodo=Decimal('10.0000'))
+            ItemMedicaoConstrutora.objects.create(medicao=segunda, item_orcamento=item, quantidade_periodo=Decimal('15.0000'))
+            ItemMedicaoConstrutora.objects.create(medicao=terceira, item_orcamento=item, quantidade_periodo=Decimal('20.0000'))
+        return orcamento, itens, primeira, segunda, terceira
+
+    def _medicao_empreiteiro_cumulativa_com_itens(self, quantidade=30):
+        orcamento, itens = self._orcamento_com_itens(quantidade, tipo=OrcamentoMedicao.TIPO_EMPREITEIRO)
+        empreiteiro = Empreiteiro.objects.create(empresa=self.empresa, nome='Empreiteiro Performance')
+        primeira = MedicaoEmpreiteiro.objects.create(
+            empresa=self.empresa,
+            obra=self.obra,
+            orcamento=orcamento,
+            tipo=MedicaoEmpreiteiro.TIPO_CUMULATIVA,
+            empreiteiro_cadastro=empreiteiro,
+            empreiteiro=empreiteiro.nome,
+            numero=1,
+            periodo_inicio=date(2026, 1, 1),
+            periodo_fim=date(2026, 1, 31),
+            data_medicao=date(2026, 1, 31),
+        )
+        segunda = MedicaoEmpreiteiro.objects.create(
+            empresa=self.empresa,
+            obra=self.obra,
+            orcamento=orcamento,
+            tipo=MedicaoEmpreiteiro.TIPO_CUMULATIVA,
+            empreiteiro_cadastro=empreiteiro,
+            empreiteiro=empreiteiro.nome,
+            numero=2,
+            periodo_inicio=date(2026, 2, 1),
+            periodo_fim=date(2026, 2, 28),
+            data_medicao=date(2026, 2, 28),
+        )
+        for item in itens:
+            ItemMedicaoEmpreiteiro.objects.create(
+                medicao=primeira,
+                item_orcamento=item,
+                item=item.item,
+                descricao=item.descricao,
+                unidade=item.unidade,
+                quantidade_periodo=Decimal('10.0000'),
+                valor_unitario=Decimal('10.00'),
+            )
+            ItemMedicaoEmpreiteiro.objects.create(
+                medicao=segunda,
+                item_orcamento=item,
+                item=item.item,
+                descricao=item.descricao,
+                unidade=item.unidade,
+                quantidade_periodo=Decimal('15.0000'),
+                valor_unitario=Decimal('10.00'),
+            )
+        return orcamento, itens, primeira, segunda
 
     def test_importa_orcamento_csv(self):
         arquivo = SimpleUploadedFile(
@@ -643,6 +750,164 @@ class MedicoesTests(TestCase):
         self.assertIn('Material', headers)
         self.assertIn('Mao de obra', headers)
         self.assertIn('Equip.', headers)
+
+    def test_resumo_otimizado_preserva_calculos_financeiros_construtora(self):
+        orcamento, item = self._orcamento()
+        medicao = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=1,
+            periodo_inicio=date(2026, 1, 1),
+            periodo_fim=date(2026, 1, 31),
+            data_medicao=date(2026, 1, 31),
+            retencao_tecnica_percentual=Decimal('2.0000'),
+            issqn_percentual=Decimal('5.0000'),
+            inss_percentual=Decimal('11.0000'),
+            desconto_adicional=Decimal('40.00'),
+            desconto_adicional_reduz_base_nf=True,
+        )
+        ItemMedicaoConstrutora.objects.create(medicao=medicao, item_orcamento=item, quantidade_periodo=Decimal('10'))
+        faturamento = FaturamentoDireto.objects.create(
+            obra=self.obra,
+            numero_nf='FD-REG',
+            empresa_comprou='Cliente',
+            valor_nota=Decimal('30.00'),
+            descricao='Faturamento direto regressao',
+            vencimento_boleto='30 dias',
+        )
+        FaturamentoDiretoMedicao.objects.create(medicao=medicao, faturamento_direto=faturamento, percentual_descontado=Decimal('50.0000'))
+
+        medicao_fallback = MedicaoConstrutora.objects.get(id=medicao.id)
+        esperado = {
+            'subtotal': medicao_fallback.subtotal_periodo,
+            'faturamento_direto': medicao_fallback.total_faturamento_direto,
+            'desconto': medicao_fallback.desconto_adicional_calculado,
+            'retencao': medicao_fallback.retencao_tecnica_calculada,
+            'inss': medicao_fallback.inss_calculado,
+            'issqn': medicao_fallback.issqn_calculado,
+            'base_nf': medicao_fallback.base_impostos,
+            'material': medicao_fallback.valor_material_nf,
+            'mao_obra': medicao_fallback.valor_mao_obra_nf,
+            'equipamentos': medicao_fallback.valor_equipamentos_nf,
+            'total_liquido': medicao_fallback.total_liquido,
+        }
+
+        linhas, _ = itens_construtora_com_grupos(medicao)
+        resumo = calcular_resumo_construtora(
+            medicao,
+            itens=linhas,
+            faturamentos=list(medicao.faturamentos_diretos.select_related('faturamento_direto')),
+        )
+
+        self.assertEqual(resumo.subtotal_periodo, esperado['subtotal'])
+        self.assertEqual(resumo.total_faturamento_direto, esperado['faturamento_direto'])
+        self.assertEqual(resumo.desconto_adicional_calculado, esperado['desconto'])
+        self.assertEqual(resumo.retencao_tecnica_calculada, esperado['retencao'])
+        self.assertEqual(resumo.inss_calculado, esperado['inss'])
+        self.assertEqual(resumo.issqn_calculado, esperado['issqn'])
+        self.assertEqual(resumo.base_impostos, esperado['base_nf'])
+        self.assertEqual(resumo.valor_material_nf, esperado['material'])
+        self.assertEqual(resumo.valor_mao_obra_nf, esperado['mao_obra'])
+        self.assertEqual(resumo.valor_equipamentos_nf, esperado['equipamentos'])
+        self.assertEqual(resumo.total_liquido, esperado['total_liquido'])
+
+    def test_acumulado_otimizado_preserva_edicao_de_medicao_antiga(self):
+        _, itens, primeira, segunda, terceira = self._medicao_construtora_com_itens(quantidade=3)
+        linhas, _ = itens_construtora_com_grupos(segunda)
+        itens_medidos = [linha for linha in linhas if isinstance(linha, ItemMedicaoConstrutora)]
+
+        self.assertEqual(itens_medidos[0].quantidade_acumulada_anterior, Decimal('10.0000'))
+        self.assertEqual(itens_medidos[0].quantidade_acumulada_atual, Decimal('25.0000'))
+        self.assertEqual(terceira.itens.get(item_orcamento=itens[0]).quantidade_acumulada_anterior, Decimal('25.0000'))
+        self.assertEqual(primeira.itens.get(item_orcamento=itens[0]).quantidade_acumulada_anterior, Decimal('0'))
+
+    def test_views_pesadas_de_medicao_nao_executam_query_por_item(self):
+        _, _, _, segunda, _ = self._medicao_construtora_com_itens(quantidade=30)
+
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(reverse('editar_medicao_construtora', args=[segunda.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertLess(len(ctx.captured_queries), 90)
+
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(reverse('medicao_construtora_pdf', args=[segunda.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertLess(len(ctx.captured_queries), 40)
+
+    def test_relatorio_medicoes_nao_recalcula_totais_por_linha(self):
+        orcamento, item = self._orcamento()
+        for numero in range(1, 21):
+            medicao = MedicaoConstrutora.objects.create(
+                orcamento=orcamento,
+                numero=numero,
+                periodo_inicio=date(2026, 1, 1),
+                periodo_fim=date(2026, 1, 31),
+                data_medicao=date(2026, 1, 31),
+            )
+            ItemMedicaoConstrutora.objects.create(medicao=medicao, item_orcamento=item, quantidade_periodo=Decimal('1'))
+
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(reverse('relatorio_medicoes'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertLess(len(ctx.captured_queries), 60)
+
+    def test_pdf_empreiteiro_cumulativo_usa_acumulados_em_lote(self):
+        _, _, _, segunda = self._medicao_empreiteiro_cumulativa_com_itens(quantidade=30)
+        itens = itens_empreiteiro_com_acumulados(segunda)
+
+        self.assertEqual(itens[0].quantidade_acumulada_anterior, Decimal('10.0000'))
+        self.assertEqual(itens[0].quantidade_acumulada_atual, Decimal('25.0000'))
+
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(reverse('medicao_empreiteiro_pdf', args=[segunda.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertLess(len(ctx.captured_queries), 35)
+
+    def test_edicao_medicao_construtora_rollback_quando_etapa_relacionada_falha(self):
+        orcamento, item = self._orcamento()
+        medicao = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=1,
+            periodo_inicio=date(2026, 1, 1),
+            periodo_fim=date(2026, 1, 31),
+            data_medicao=date(2026, 1, 31),
+        )
+        item_medicao = ItemMedicaoConstrutora.objects.create(
+            medicao=medicao,
+            item_orcamento=item,
+            quantidade_periodo=Decimal('5'),
+        )
+
+        payload = {
+            'numero': '1',
+            'periodo_inicio': '2026-01-01',
+            'periodo_fim': '2026-01-31',
+            'data_medicao': '2026-01-31',
+            'retencao_tecnica': '0',
+            'retencao_tecnica_percentual': '0',
+            'issqn': '0',
+            'issqn_percentual': '0',
+            'inss': '0',
+            'inss_percentual': '0',
+            'desconto_adicional': '0',
+            'desconto_adicional_percentual': '0',
+            'observacoes': 'alterado',
+            'itens-TOTAL_FORMS': '1',
+            'itens-INITIAL_FORMS': '1',
+            'itens-MIN_NUM_FORMS': '0',
+            'itens-MAX_NUM_FORMS': '1000',
+            'itens-0-id': str(item_medicao.id),
+            'itens-0-quantidade_periodo': '30',
+        }
+        with mock.patch('medicoes.views._sync_faturamentos_diretos', side_effect=RuntimeError('falha controlada')):
+            with self.assertRaises(RuntimeError):
+                self.client.post(reverse('editar_medicao_construtora', args=[medicao.id]), payload)
+
+        item_medicao.refresh_from_db()
+        medicao.refresh_from_db()
+        self.assertEqual(item_medicao.quantidade_periodo, Decimal('5.0000'))
+        self.assertEqual(medicao.observacoes, '')
 
     def test_medicao_construtora_salva_mesmo_com_grupo_antigo_na_medicao(self):
         orcamento, item = self._orcamento()

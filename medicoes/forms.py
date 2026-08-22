@@ -269,6 +269,15 @@ class MedicaoConstrutoraCabecalhoForm(MedicaoConstrutoraForm):
 
 
 class ItemMedicaoConstrutoraForm(BootstrapModelForm):
+    def __init__(self, *args, **kwargs):
+        self.acumulados_anteriores = kwargs.pop('acumulados_anteriores', {})
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.item_orcamento_id:
+            self.instance._quantidade_acumulada_anterior_cache = self.acumulados_anteriores.get(
+                self.instance.item_orcamento_id,
+                0,
+            )
+
     class Meta:
         model = ItemMedicaoConstrutora
         fields = ['quantidade_periodo']
@@ -281,7 +290,11 @@ class ItemMedicaoConstrutoraForm(BootstrapModelForm):
         if quantidade < 0:
             raise forms.ValidationError('Informe uma quantidade positiva.')
         if self.instance and self.instance.pk:
-            saldo_disponivel = self.instance.item_orcamento.quantidade - self.instance.quantidade_acumulada_anterior
+            acumulado = self.acumulados_anteriores.get(
+                self.instance.item_orcamento_id,
+                self.instance.quantidade_acumulada_anterior,
+            )
+            saldo_disponivel = self.instance.item_orcamento.quantidade - acumulado
             if quantidade > saldo_disponivel:
                 raise forms.ValidationError(f'Quantidade acima do saldo disponivel ({saldo_disponivel:.4f}).')
         return quantidade
@@ -420,9 +433,12 @@ class ItemMedicaoEmpreiteiroForm(BootstrapModelForm):
 
     def __init__(self, *args, **kwargs):
         orcamento = kwargs.pop('orcamento', None)
+        itens_orcamento_choices = kwargs.pop('itens_orcamento_choices', None)
         super().__init__(*args, **kwargs)
         if orcamento:
             self.fields['item_orcamento'].queryset = orcamento.itens.all()
+            if itens_orcamento_choices is not None:
+                self.fields['item_orcamento'].choices = itens_orcamento_choices
         else:
             self.fields['item_orcamento'].required = False
         for field in self.fields.values():
@@ -449,10 +465,21 @@ class ItemMedicaoEmpreiteiroForm(BootstrapModelForm):
         return cleaned_data
 
 
+class BaseItemMedicaoConstrutoraFormSet(forms.BaseInlineFormSet):
+    def __init__(self, *args, **kwargs):
+        self.acumulados_anteriores = kwargs.pop('acumulados_anteriores', {})
+        super().__init__(*args, **kwargs)
+
+    def _construct_form(self, i, **kwargs):
+        kwargs['acumulados_anteriores'] = self.acumulados_anteriores
+        return super()._construct_form(i, **kwargs)
+
+
 ItemMedicaoConstrutoraFormSet = inlineformset_factory(
     MedicaoConstrutora,
     ItemMedicaoConstrutora,
     form=ItemMedicaoConstrutoraForm,
+    formset=BaseItemMedicaoConstrutoraFormSet,
     extra=0,
     can_delete=False,
 )
@@ -470,10 +497,17 @@ ItemOrcamentoMedicaoFormSet = inlineformset_factory(
 class BaseItemMedicaoEmpreiteiroFormSet(forms.BaseInlineFormSet):
     def __init__(self, *args, **kwargs):
         self.orcamento = kwargs.pop('orcamento', None)
+        self.itens_orcamento_choices = None
+        if self.orcamento:
+            self.itens_orcamento_choices = [('', '---------')] + [
+                (item.id, str(item))
+                for item in self.orcamento.itens.all()
+            ]
         super().__init__(*args, **kwargs)
 
     def _construct_form(self, i, **kwargs):
         kwargs['orcamento'] = self.orcamento
+        kwargs['itens_orcamento_choices'] = self.itens_orcamento_choices
         return super()._construct_form(i, **kwargs)
 
 

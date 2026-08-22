@@ -50,6 +50,19 @@ from .models import (
     MedicaoEmpreiteiro,
     OrcamentoMedicao,
 )
+from .services import (
+    acumulados_construtora,
+    acumulados_empreiteiro,
+    aplicar_acumulados_itens,
+    calcular_resumo_construtora,
+    calcular_resumo_empreiteiro,
+    faturamentos_diretos_linhas,
+    faturamentos_vinculados,
+    itens_construtora_com_grupos,
+    itens_empreiteiro_com_acumulados,
+    percentuais_orcamentos_construtora,
+    percentuais_orcamentos_empreiteiro,
+)
 
 
 def _obras_empresa(empresa):
@@ -199,7 +212,9 @@ def _percent_from_item(item):
 
 
 def _pdf_medicao_construtora(medicao):
-    itens = _itens_medicao_construtora_com_grupos(medicao)
+    itens, _ = itens_construtora_com_grupos(medicao)
+    faturamentos = faturamentos_vinculados(medicao)
+    resumo = calcular_resumo_construtora(medicao, itens=itens, faturamentos=faturamentos)
     empresa = medicao.orcamento.obra.empresa
     doc = PdfDocument(
         empresa=empresa,
@@ -223,9 +238,9 @@ def _pdf_medicao_construtora(medicao):
             ('Data da medicao', format_date_br(medicao.data_medicao)),
             ('Total do contrato', _money(medicao.orcamento.total_orcamento)),
             ('Total da obra', _money(medicao.orcamento.obra.contrato_atualizado)),
-            ('Base da NF', _money(medicao.base_impostos)),
-            ('Base INSS', _money(medicao.base_inss)),
-            ('Total liquido', _money(medicao.total_liquido)),
+            ('Base da NF', _money(resumo.base_impostos)),
+            ('Base INSS', _money(resumo.base_inss)),
+            ('Total liquido', _money(resumo.total_liquido)),
         ],
         columns=4,
     )
@@ -286,9 +301,9 @@ def _pdf_medicao_construtora(medicao):
             }
         )
     for label, value, key in [
-        ('Total material', medicao.total_material_periodo, 'material'),
-        ('Total mao de obra', medicao.total_mao_obra_periodo, 'mao_obra'),
-        ('Total equipamentos', medicao.total_equipamentos_periodo, 'equip'),
+        ('Total material', resumo.total_material_periodo, 'material'),
+        ('Total mao de obra', resumo.total_mao_obra_periodo, 'mao_obra'),
+        ('Total equipamentos', resumo.total_equipamentos_periodo, 'equip'),
     ]:
         rows.append(
             {
@@ -302,7 +317,7 @@ def _pdf_medicao_construtora(medicao):
     doc.add_table(columns, rows, row_height=38, groups=groups, table_body_level='small')
 
     desconto_adicional_nf = (
-        medicao.desconto_adicional_calculado
+        resumo.desconto_adicional_calculado
         if medicao.desconto_adicional_reduz_base_nf
         else Decimal('0')
     )
@@ -311,39 +326,38 @@ def _pdf_medicao_construtora(medicao):
             {
                 'title': 'Total da medicao',
                 'rows': [
-                    ('Total medicao', _money(medicao.subtotal_periodo), False),
-                    ('Desconto faturamento direto', f'- {_money(medicao.total_faturamento_direto)}', False),
+                    ('Total medicao', _money(resumo.subtotal_periodo), False),
+                    ('Desconto faturamento direto', f'- {_money(resumo.total_faturamento_direto)}', False),
                     ('Desconto adicional NF', f'- {_money(desconto_adicional_nf)}', False),
-                    ('Total a faturar', _money(medicao.base_impostos), True),
+                    ('Total a faturar', _money(resumo.base_impostos), True),
                 ],
             },
             {
                 'title': 'Retencoes e impostos',
                 'rows': [
-                    ('Retencao tecnica', _money(medicao.retencao_tecnica_calculada), False),
-                    ('INSS', _money(medicao.inss_calculado), False),
-                    ('ISSQN', _money(medicao.issqn_calculado), False),
-                    ('Total retido', _money(medicao.retencao_tecnica_calculada + medicao.inss_calculado + medicao.issqn_calculado), True),
+                    ('Retencao tecnica', _money(resumo.retencao_tecnica_calculada), False),
+                    ('INSS', _money(resumo.inss_calculado), False),
+                    ('ISSQN', _money(resumo.issqn_calculado), False),
+                    ('Total retido', _money(resumo.retencao_tecnica_calculada + resumo.inss_calculado + resumo.issqn_calculado), True),
                 ],
             },
             {
                 'title': 'Fechamento',
                 'rows': [
-                    ('Subtotal', _money(medicao.subtotal_periodo), False),
-                    ('Base da NF', _money(medicao.base_impostos), False),
-                    ('Material NF', _money(medicao.valor_material_nf), False),
-                    ('Mao de obra NF', _money(medicao.valor_mao_obra_nf), False),
-                    ('Equipamentos NF', _money(medicao.valor_equipamentos_nf), False),
-                    ('Base INSS', _money(medicao.base_inss), False),
-                    ('Descontos', _money(medicao.total_descontos), False),
-                    ('Total liquido', _money(medicao.total_liquido), True),
+                    ('Subtotal', _money(resumo.subtotal_periodo), False),
+                    ('Base da NF', _money(resumo.base_impostos), False),
+                    ('Material NF', _money(resumo.valor_material_nf), False),
+                    ('Mao de obra NF', _money(resumo.valor_mao_obra_nf), False),
+                    ('Equipamentos NF', _money(resumo.valor_equipamentos_nf), False),
+                    ('Base INSS', _money(resumo.base_inss), False),
+                    ('Descontos', _money(resumo.total_descontos), False),
+                    ('Total liquido', _money(resumo.total_liquido), True),
                 ],
             },
         ]
     )
 
-    faturamentos = medicao.faturamentos_diretos.select_related('faturamento_direto')
-    if faturamentos.exists():
+    if faturamentos:
         doc.add_section_header('Faturamentos diretos descontados', bg=doc.theme.header_fill)
         doc.add_table(
             [
@@ -449,11 +463,13 @@ def _percent_value(base, percent):
 
 
 def _aplicar_percentuais_construtora(medicao):
+    itens = list(medicao.itens.select_related('item_orcamento'))
+    resumo = calcular_resumo_construtora(medicao, itens=itens, faturamentos=faturamentos_vinculados(medicao))
     campos = {
-        'retencao_tecnica': (medicao.subtotal_periodo, medicao.retencao_tecnica_percentual),
-        'desconto_adicional': (medicao.subtotal_periodo, medicao.desconto_adicional_percentual),
-        'issqn': (medicao.base_impostos, medicao.issqn_percentual),
-        'inss': (medicao.base_inss, medicao.inss_percentual),
+        'retencao_tecnica': (resumo.subtotal_periodo, medicao.retencao_tecnica_percentual),
+        'desconto_adicional': (resumo.subtotal_periodo, medicao.desconto_adicional_percentual),
+        'issqn': (resumo.base_impostos, medicao.issqn_percentual),
+        'inss': (resumo.base_inss, medicao.inss_percentual),
     }
     updates = []
     for field, (base, percent) in campos.items():
@@ -478,7 +494,13 @@ def _sync_faturamentos_diretos(medicao, post_data):
         for vinculo in medicao.faturamentos_diretos.select_related('faturamento_direto')
     }
     usados = set()
-    for faturamento in FaturamentoDireto.objects.filter(obra=medicao.orcamento.obra):
+    faturamentos = list(
+        FaturamentoDireto.objects.filter(obra=medicao.orcamento.obra)
+        .prefetch_related('vinculos_medicao')
+        .order_by('data_lancamento', 'id')
+    )
+    faturamento_ids = {faturamento.id for faturamento in faturamentos}
+    for faturamento in faturamentos:
         raw_percent = (post_data.get(f'faturamento_direto_{faturamento.id}_percentual') or '').strip()
         try:
             percentual = Decimal(raw_percent.replace(',', '.')) if raw_percent else Decimal('0')
@@ -488,7 +510,8 @@ def _sync_faturamentos_diretos(medicao, post_data):
         ja_descontado = sum(
             (
                 vinculo.percentual_descontado
-                for vinculo in faturamento.vinculos_medicao.exclude(medicao=medicao)
+                for vinculo in faturamento.vinculos_medicao.all()
+                if vinculo.medicao_id != medicao.id
             ),
             Decimal('0'),
         )
@@ -505,44 +528,19 @@ def _sync_faturamentos_diretos(medicao, post_data):
             vinculo.delete()
         _atualizar_resumo_faturamento_direto(faturamento)
     for faturamento_id, vinculo in atuais.items():
-        if faturamento_id not in usados and not FaturamentoDireto.objects.filter(
-            id=faturamento_id,
-            obra=medicao.orcamento.obra,
-        ).exists():
+        if faturamento_id not in usados and faturamento_id not in faturamento_ids:
             faturamento = vinculo.faturamento_direto
             vinculo.delete()
             _atualizar_resumo_faturamento_direto(faturamento)
 
 
 def _faturamentos_diretos_context(medicao):
-    linhas = []
-    for faturamento in FaturamentoDireto.objects.filter(obra=medicao.orcamento.obra).order_by('data_lancamento', 'id'):
-        vinculo_atual = medicao.faturamentos_diretos.filter(faturamento_direto=faturamento).first()
-        percentual_atual = vinculo_atual.percentual_descontado if vinculo_atual else Decimal('0')
-        percentual_outros = sum(
-            (
-                vinculo.percentual_descontado
-                for vinculo in faturamento.vinculos_medicao.exclude(medicao=medicao)
-            ),
-            Decimal('0'),
-        )
-        saldo_percentual = max(Decimal('100') - percentual_outros, Decimal('0'))
-        if saldo_percentual <= 0 and not vinculo_atual:
-            continue
-        linhas.append(
-            {
-                'faturamento': faturamento,
-                'percentual_atual': percentual_atual,
-                'percentual_outros': percentual_outros,
-                'saldo_percentual': saldo_percentual,
-                'valor_atual': vinculo_atual.valor_descontado if vinculo_atual else Decimal('0'),
-            }
-        )
-    return linhas
+    return faturamentos_diretos_linhas(medicao)
 
 
 def _aplicar_percentuais_empreiteiro(medicao):
-    base = medicao.subtotal_periodo
+    resumo = calcular_resumo_empreiteiro(medicao, itens=list(medicao.itens.all()))
+    base = resumo.subtotal_periodo
     campos = {
         'retencao_tecnica': medicao.retencao_tecnica_percentual,
         'desconto_adicional': medicao.desconto_adicional_percentual,
@@ -645,14 +643,27 @@ def _linhas_relatorio_medicoes(filtros, empresa):
     linhas = []
 
     if tipo in {'', 'construtora'} and not empreiteiro:
-        medicoes = _medicoes_construtora_empresa(empresa).select_related('orcamento', 'orcamento__obra')
+        medicoes = _medicoes_construtora_empresa(empresa).select_related(
+            'orcamento',
+            'orcamento__obra',
+        ).prefetch_related(
+            'itens__item_orcamento',
+            'faturamentos_diretos__faturamento_direto',
+        )
         if obra:
             medicoes = medicoes.filter(orcamento__obra=obra)
         if data_inicial:
             medicoes = medicoes.filter(data_medicao__gte=data_inicial)
         if data_final:
             medicoes = medicoes.filter(data_medicao__lte=data_final)
+        medicoes = list(medicoes)
+        percentuais = percentuais_orcamentos_construtora(medicao.orcamento_id for medicao in medicoes)
         for medicao in medicoes:
+            resumo = calcular_resumo_construtora(
+                medicao,
+                itens=list(medicao.itens.all()),
+                faturamentos=list(medicao.faturamentos_diretos.all()),
+            )
             linhas.append(
                 {
                     'tipo': 'Construtora',
@@ -663,16 +674,21 @@ def _linhas_relatorio_medicoes(filtros, empresa):
                     'data_medicao': medicao.data_medicao,
                     'periodo_inicio': medicao.periodo_inicio,
                     'periodo_fim': medicao.periodo_fim,
-                    'medido': medicao.subtotal_periodo,
-                    'descontos': medicao.total_descontos,
-                    'liquido': medicao.total_liquido,
-                    'percentual': medicao.orcamento.percentual_medido_construtora,
+                    'medido': resumo.subtotal_periodo,
+                    'descontos': resumo.total_descontos,
+                    'liquido': resumo.total_liquido,
+                    'percentual': percentuais.get(medicao.orcamento_id, Decimal('0')),
                     'url': reverse('editar_medicao_construtora', args=[medicao.id]),
                 }
             )
 
     if tipo in {'', 'empreiteiro', 'empreiteiro_simples', 'empreiteiro_cumulativa'}:
-        medicoes = _medicoes_empreiteiro_empresa(empresa).select_related('obra', 'orcamento', 'orcamento__obra', 'empreiteiro_cadastro')
+        medicoes = _medicoes_empreiteiro_empresa(empresa).select_related(
+            'obra',
+            'orcamento',
+            'orcamento__obra',
+            'empreiteiro_cadastro',
+        ).prefetch_related('itens__item_orcamento')
         if tipo == 'empreiteiro_simples':
             medicoes = medicoes.filter(tipo=MedicaoEmpreiteiro.TIPO_SIMPLES)
         elif tipo == 'empreiteiro_cumulativa':
@@ -685,8 +701,11 @@ def _linhas_relatorio_medicoes(filtros, empresa):
             medicoes = medicoes.filter(data_medicao__gte=data_inicial)
         if data_final:
             medicoes = medicoes.filter(data_medicao__lte=data_final)
+        medicoes = list(medicoes)
+        percentuais = percentuais_orcamentos_empreiteiro(medicao.orcamento_id for medicao in medicoes)
         for medicao in medicoes:
             orcamento = medicao.orcamento
+            resumo = calcular_resumo_empreiteiro(medicao, itens=list(medicao.itens.all()))
             linhas.append(
                 {
                     'tipo': f'Empreiteiro {medicao.get_tipo_display()}',
@@ -697,10 +716,10 @@ def _linhas_relatorio_medicoes(filtros, empresa):
                     'data_medicao': medicao.data_medicao,
                     'periodo_inicio': medicao.periodo_inicio,
                     'periodo_fim': medicao.periodo_fim,
-                    'medido': medicao.subtotal_periodo,
-                    'descontos': medicao.total_descontos,
-                    'liquido': medicao.total_liquido,
-                    'percentual': orcamento.percentual_medido_empreiteiro if orcamento else None,
+                    'medido': resumo.subtotal_periodo,
+                    'descontos': resumo.total_descontos,
+                    'liquido': resumo.total_liquido,
+                    'percentual': percentuais.get(orcamento.id) if orcamento else None,
                     'url': reverse('editar_medicao_empreiteiro', args=[medicao.id]),
                 }
             )
@@ -1133,16 +1152,7 @@ def _sincronizar_itens_medicao_construtora(medicao):
 
 
 def _itens_medicao_construtora_com_grupos(medicao):
-    itens_medicao = {
-        item.item_orcamento_id: item
-        for item in medicao.itens.select_related('item_orcamento')
-    }
-    linhas = []
-    for item_orcamento in medicao.orcamento.itens.all():
-        if item_orcamento.eh_grupo:
-            linhas.append(item_orcamento)
-        elif item_orcamento.id in itens_medicao:
-            linhas.append(itens_medicao[item_orcamento.id])
+    linhas, _ = itens_construtora_com_grupos(medicao)
     return linhas
 
 
@@ -1407,24 +1417,42 @@ def nova_medicao_construtora(request, orcamento_id):
 
 def editar_medicao_construtora(request, medicao_id):
     medicao = get_object_or_404(
-        MedicaoConstrutora.objects.select_related('orcamento', 'orcamento__obra'),
+        MedicaoConstrutora.objects.select_related('orcamento', 'orcamento__obra', 'orcamento__obra__empresa').prefetch_related('orcamento__itens'),
         id=medicao_id,
         orcamento__obra__empresa=request.empresa,
     )
     _sincronizar_itens_medicao_construtora(medicao)
+    acumulados = acumulados_construtora(medicao)
     if request.method == 'POST':
         form = MedicaoConstrutoraForm(request.POST, instance=medicao)
-        formset = ItemMedicaoConstrutoraFormSet(request.POST, instance=medicao)
+        formset = ItemMedicaoConstrutoraFormSet(
+            request.POST,
+            instance=medicao,
+            acumulados_anteriores=acumulados,
+            queryset=medicao.itens.select_related('item_orcamento'),
+        )
         if form.is_valid() and formset.is_valid():
-            form.save()
-            formset.save()
-            _sync_faturamentos_diretos(medicao, request.POST)
-            _aplicar_percentuais_construtora(medicao)
+            with transaction.atomic():
+                form.save()
+                formset.save()
+                _sync_faturamentos_diretos(medicao, request.POST)
+                _aplicar_percentuais_construtora(medicao)
             messages.success(request, 'Medicao da construtora atualizada com sucesso.')
             return redirect('editar_medicao_construtora', medicao_id=medicao.id)
     else:
         form = MedicaoConstrutoraForm(instance=medicao)
-        formset = ItemMedicaoConstrutoraFormSet(instance=medicao)
+        formset = ItemMedicaoConstrutoraFormSet(
+            instance=medicao,
+            acumulados_anteriores=acumulados,
+            queryset=medicao.itens.select_related('item_orcamento'),
+        )
+    itens_forms = [form_item.instance for form_item in formset.forms]
+    aplicar_acumulados_itens(itens_forms, acumulados)
+    calcular_resumo_construtora(
+        medicao,
+        itens=itens_forms,
+        faturamentos=faturamentos_vinculados(medicao),
+    )
     faturamentos_ja_descontados = FaturamentoDireto.objects.filter(
         obra=medicao.orcamento.obra,
         vinculos_medicao__isnull=False,
@@ -1571,23 +1599,36 @@ def nova_medicao_empreiteiro_cumulativa(request, orcamento_id):
 
 def editar_medicao_empreiteiro(request, medicao_id):
     medicao = get_object_or_404(
-        MedicaoEmpreiteiro.objects.select_related('obra', 'orcamento'),
+        MedicaoEmpreiteiro.objects.select_related('obra', 'orcamento', 'orcamento__obra', 'empreiteiro_cadastro'),
         id=medicao_id,
         empresa=request.empresa,
     )
     if request.method == 'POST':
         form = MedicaoEmpreiteiroForm(request.POST, instance=medicao, empresa=request.empresa)
-        formset = ItemMedicaoEmpreiteiroFormSet(request.POST, instance=medicao, orcamento=medicao.orcamento)
+        formset = ItemMedicaoEmpreiteiroFormSet(
+            request.POST,
+            instance=medicao,
+            orcamento=medicao.orcamento,
+            queryset=medicao.itens.select_related('item_orcamento'),
+        )
         if form.is_valid() and formset.is_valid():
-            form.save()
-            _sync_empreiteiro_medicao(medicao)
-            formset.save()
-            _aplicar_percentuais_empreiteiro(medicao)
+            with transaction.atomic():
+                form.save()
+                _sync_empreiteiro_medicao(medicao)
+                formset.save()
+                _aplicar_percentuais_empreiteiro(medicao)
             messages.success(request, 'Medicao de empreiteiro atualizada com sucesso.')
             return redirect('editar_medicao_empreiteiro', medicao_id=medicao.id)
     else:
         form = MedicaoEmpreiteiroForm(instance=medicao, empresa=request.empresa)
-        formset = ItemMedicaoEmpreiteiroFormSet(instance=medicao, orcamento=medicao.orcamento)
+        formset = ItemMedicaoEmpreiteiroFormSet(
+            instance=medicao,
+            orcamento=medicao.orcamento,
+            queryset=medicao.itens.select_related('item_orcamento'),
+        )
+    itens = [form_item.instance for form_item in formset.forms]
+    aplicar_acumulados_itens(itens, acumulados_empreiteiro(medicao))
+    calcular_resumo_empreiteiro(medicao, itens=itens)
     template = (
         'medicoes/editar_medicao_empreiteiro_simples.html'
         if medicao.tipo == MedicaoEmpreiteiro.TIPO_SIMPLES
@@ -1657,7 +1698,8 @@ def medicao_empreiteiro_pdf(request, medicao_id):
 
 
 def _pdf_medicao_empreiteiro(medicao):
-    itens = list(medicao.itens.select_related('item_orcamento'))
+    itens = itens_empreiteiro_com_acumulados(medicao)
+    resumo = calcular_resumo_empreiteiro(medicao, itens=itens)
     doc = PdfDocument(
         empresa=medicao.empresa,
         title='Boletim de medicao de empreiteiro',
@@ -1727,7 +1769,7 @@ def _pdf_medicao_empreiteiro(medicao):
             ('Subtotal medido', _money(medicao.subtotal_periodo), False),
             ('Retencao tecnica', f'- {_money(medicao.retencao_tecnica)}', False),
             ('Desconto adicional', f'- {_money(medicao.desconto_adicional)}', False),
-            ('Total liquido', _money(medicao.total_liquido), True),
+            ('Total liquido', _money(resumo.total_liquido), True),
         ],
         width=620,
     )
@@ -1739,6 +1781,15 @@ def _pdf_medicao_empreiteiro(medicao):
 
 def _xlsx_medicao(medicao, itens):
     empresa = medicao.orcamento.obra.empresa if isinstance(medicao, MedicaoConstrutora) else medicao.empresa
+    itens = list(itens)
+    if isinstance(medicao, MedicaoConstrutora):
+        resumo = calcular_resumo_construtora(
+            medicao,
+            itens=itens,
+            faturamentos=faturamentos_vinculados(medicao),
+        )
+    else:
+        resumo = calcular_resumo_empreiteiro(medicao, itens=itens)
     builder = ExcelReportBuilder(
         empresa=empresa,
         title='Boletim de medicao',
@@ -1862,7 +1913,7 @@ def _xlsx_medicao(medicao, itens):
     summary_start = ws.max_row + 1
     ws.append(['Resumo'])
     ws.cell(ws.max_row, 1).font = Font(bold=True, size=12)
-    ws.append(['Valor bruto', medicao.total_bruto if isinstance(medicao, MedicaoConstrutora) else medicao.subtotal_periodo])
+    ws.append(['Valor bruto', resumo.subtotal_periodo])
     if isinstance(medicao, MedicaoConstrutora):
         ws.append(['Total material medido', medicao.total_material_periodo])
         ws.append(['Total mao de obra medida', medicao.total_mao_obra_periodo])
@@ -1901,9 +1952,13 @@ def medicao_construtora_excel(request, medicao_id):
 
 
 def medicao_empreiteiro_excel(request, medicao_id):
-    medicao = get_object_or_404(MedicaoEmpreiteiro, id=medicao_id, empresa=request.empresa)
+    medicao = get_object_or_404(
+        MedicaoEmpreiteiro.objects.select_related('obra', 'orcamento', 'orcamento__obra', 'empreiteiro_cadastro'),
+        id=medicao_id,
+        empresa=request.empresa,
+    )
     response = HttpResponse(
-        _xlsx_medicao(medicao, medicao.itens.select_related('item_orcamento')),
+        _xlsx_medicao(medicao, itens_empreiteiro_com_acumulados(medicao)),
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     )
     response['Content-Disposition'] = f'attachment; filename="medicao_empreiteiro_{medicao.numero}.xlsx"'
