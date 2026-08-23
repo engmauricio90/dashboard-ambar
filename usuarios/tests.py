@@ -54,15 +54,30 @@ class UsuariosTests(TestCase):
 
         self.assertRedirects(response, reverse('minha_area'))
 
-    def test_administrador_cria_usuario_com_grupo_e_obra(self):
+    def test_grupo_administrador_global_nao_administra_painel_legado(self):
         administrador = Group.objects.get_or_create(name='Administrador')[0]
-        financeiro = Group.objects.get_or_create(name='Financeiro')[0]
+        self.user.groups.add(administrador)
+
+        response = self.client.get(reverse('lista_usuarios'))
+
+        self.assertRedirects(response, reverse('minha_area'))
+
+    def test_administrador_da_empresa_nao_acessa_painel_global_legado(self):
         UsuarioEmpresa.objects.update_or_create(
             usuario=self.user,
             empresa=self.empresa,
             defaults={'administrador_empresa': True},
         )
-        self.user.groups.add(administrador)
+
+        response = self.client.get(reverse('lista_usuarios'))
+
+        self.assertRedirects(response, reverse('minha_area'))
+
+    def test_superuser_cria_usuario_com_grupo_e_obra_no_painel_tecnico(self):
+        financeiro = Group.objects.get_or_create(name='Financeiro')[0]
+        self.user.is_staff = True
+        self.user.is_superuser = True
+        self.user.save(update_fields=['is_staff', 'is_superuser'])
 
         response = self.client.post(
             reverse('novo_usuario'),
@@ -91,6 +106,15 @@ class UsuariosTests(TestCase):
         self.assertEqual(novo.perfil.cargo, 'Analista financeiro')
         self.assertTrue(novo.perfil.obras.filter(id=self.obra.id).exists())
         self.assertTrue(UsuarioEmpresa.objects.filter(usuario=novo, empresa=self.empresa, ativo=True).exists())
+
+    def test_staff_acessa_painel_global_legado_como_ferramenta_tecnica(self):
+        self.user.is_staff = True
+        self.user.save(update_fields=['is_staff'])
+
+        response = self.client.get(reverse('lista_usuarios'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Usuarios')
 
     def test_usuario_edita_proprio_perfil(self):
         response = self.client.post(

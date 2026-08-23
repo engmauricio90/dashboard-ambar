@@ -6,7 +6,6 @@ from django.contrib.auth.models import Group
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 
-from config.permissions import user_in_groups
 from empresas.services import vincular_usuario_as_empresas_do_criador
 
 from .forms import MeuPerfilForm, PerfilUsuarioForm, UsuarioForm
@@ -18,7 +17,7 @@ GRUPOS_PADRAO = ['Administrador', 'Diretoria', 'Financeiro', 'Engenharia', 'Comp
 
 
 def _pode_administrar_usuarios(user):
-    return user.is_superuser or user_in_groups(user, ('Administrador',))
+    return user.is_superuser or user.is_staff
 
 
 def _perfil(user):

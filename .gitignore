@@ -25,11 +25,15 @@ staticfiles/
 render*.json
 
 # Test / cache
+tmp/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
 htmlcov/
+
+# Local operational imports / exports
+financeiro/data/*.csv
 
 # Editors / OS
 .vscode/
