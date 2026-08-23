@@ -566,12 +566,6 @@ class MedicoesTests(TestCase):
         self.assertContains(response_detalhe, 'R$ 225,00')
         self.assertContains(response_detalhe, '25,00% concluida')
 
-        response_home = self.client.get(reverse('medicoes_empreiteiros_home'))
-        self.assertContains(response_home, 'R$ 300,00')
-        self.assertContains(response_home, 'R$ 75,00')
-        self.assertContains(response_home, 'R$ 225,00')
-        self.assertContains(response_home, '25,00%')
-
     def test_relatorio_gerencial_medicoes_filtra_colunas_e_exporta(self):
         orcamento, item = self._orcamento()
         medicao_construtora = MedicaoConstrutora.objects.create(
@@ -696,14 +690,131 @@ class MedicoesTests(TestCase):
 
     def test_telas_separadas_de_medicao_carregam(self):
         orcamento, item = self._orcamento()
+        del item
         response_construtora = self.client.get(reverse('medicoes_construtora_home'))
         response_empreiteiros = self.client.get(reverse('medicoes_empreiteiros_home'))
         response_obra = self.client.get(reverse('medicoes_obra', args=[self.obra.id]))
 
-        self.assertContains(response_construtora, 'Medição da construtora')
-        self.assertContains(response_construtora, orcamento.nome)
-        self.assertContains(response_empreiteiros, 'Medicao de contratado')
+        self.assertContains(response_construtora, 'Medicao da construtora')
+        self.assertNotContains(response_construtora, orcamento.nome)
+        self.assertContains(response_empreiteiros, 'Medicoes de contratados')
         self.assertContains(response_obra, 'Medições da construtora')
+
+    def test_homes_de_medicoes_sao_paineis_leves(self):
+        orcamento, item = self._orcamento()
+        medicao = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=1,
+            periodo_inicio=date(2026, 5, 1),
+            periodo_fim=date(2026, 5, 31),
+            data_medicao=date(2026, 5, 31),
+        )
+        ItemMedicaoConstrutora.objects.create(medicao=medicao, item_orcamento=item, quantidade_periodo=Decimal('10'))
+        contratado = Empreiteiro.objects.create(empresa=self.empresa, nome='Contratado Oculto')
+        medicao_contratado = MedicaoEmpreiteiro.objects.create(
+            empresa=self.empresa,
+            tipo=MedicaoEmpreiteiro.TIPO_SIMPLES,
+            obra=self.obra,
+            empreiteiro_cadastro=contratado,
+            empreiteiro=contratado.nome,
+            numero=1,
+            periodo_inicio=date(2026, 5, 1),
+            periodo_fim=date(2026, 5, 31),
+            data_medicao=date(2026, 5, 31),
+        )
+        ItemMedicaoEmpreiteiro.objects.create(
+            medicao=medicao_contratado,
+            item='1',
+            descricao='Servico que nao deve aparecer na home',
+            quantidade_periodo=Decimal('1'),
+            valor_unitario=Decimal('100.00'),
+        )
+
+        response_home = self.client.get(reverse('medicoes_home'))
+        response_construtora = self.client.get(reverse('medicoes_construtora_home'))
+        response_contratados = self.client.get(reverse('medicoes_empreiteiros_home'))
+
+        self.assertContains(response_home, 'Painel operacional')
+        self.assertNotContains(response_home, orcamento.nome)
+        self.assertNotContains(response_home, 'Contratado Oculto')
+        self.assertNotContains(response_home, 'Ultimas medicoes')
+        self.assertNotContains(response_construtora, 'Obras com medicao da construtora')
+        self.assertNotContains(response_construtora, orcamento.nome)
+        self.assertNotContains(response_construtora, 'Ultimas medicoes')
+        self.assertNotContains(response_contratados, 'Servico que nao deve aparecer na home')
+        self.assertNotContains(response_contratados, 'Empreiteiros')
+        self.assertContains(response_contratados, 'Contratados')
+
+    def test_urls_principais_de_medicoes_foram_preservadas(self):
+        urls = [
+            'medicoes_home',
+            'medicoes_construtora_home',
+            'medicoes_empreiteiros_home',
+            'lista_orcamentos_medicao',
+            'relatorio_medicoes',
+        ]
+        for url_name in urls:
+            with self.subTest(url_name=url_name):
+                response = self.client.get(reverse(url_name))
+                self.assertEqual(response.status_code, 200)
+
+    def test_contadores_das_homes_respeitam_empresa_ativa(self):
+        outra_empresa = Empresa.objects.create(nome='Empresa Fora do Tenant', slug='fora-do-tenant')
+        outra_obra = Obra.objects.create(empresa=outra_empresa, nome_obra='Obra Fora', cliente='Cliente Fora')
+        OrcamentoMedicao.objects.create(
+            obra=outra_obra,
+            nome='Planilha Fora do Tenant',
+            tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
+        )
+        outro_contratado = Empreiteiro.objects.create(empresa=outra_empresa, nome='Contratado Fora')
+        MedicaoEmpreiteiro.objects.create(
+            empresa=outra_empresa,
+            tipo=MedicaoEmpreiteiro.TIPO_SIMPLES,
+            obra=outra_obra,
+            empreiteiro_cadastro=outro_contratado,
+            empreiteiro=outro_contratado.nome,
+            numero=1,
+            periodo_inicio=date(2026, 6, 1),
+            periodo_fim=date(2026, 6, 30),
+            data_medicao=date(2026, 6, 30),
+        )
+
+        orcamento, item = self._orcamento()
+        del orcamento, item
+        contratado = Empreiteiro.objects.create(empresa=self.empresa, nome='Contratado do Tenant')
+        MedicaoEmpreiteiro.objects.create(
+            empresa=self.empresa,
+            tipo=MedicaoEmpreiteiro.TIPO_SIMPLES,
+            obra=self.obra,
+            empreiteiro_cadastro=contratado,
+            empreiteiro=contratado.nome,
+            numero=1,
+            periodo_inicio=date(2026, 6, 1),
+            periodo_fim=date(2026, 6, 30),
+            data_medicao=date(2026, 6, 30),
+        )
+
+        response_home = self.client.get(reverse('medicoes_home'))
+        response_construtora = self.client.get(reverse('medicoes_construtora_home'))
+        response_contratados = self.client.get(reverse('medicoes_empreiteiros_home'))
+
+        self.assertEqual(response_home.context['total_planilhas_construtora'], 1)
+        self.assertEqual(response_home.context['total_contratados_ativos'], 1)
+        self.assertEqual(response_construtora.context['total_planilhas'], 1)
+        self.assertEqual(response_construtora.context['total_obras_com_planilha'], 1)
+        self.assertEqual(response_contratados.context['total_simples'], 1)
+        self.assertNotContains(response_home, 'Fora do Tenant')
+
+    def test_homes_de_medicoes_mantem_baixo_numero_de_queries(self):
+        self._medicao_construtora_com_itens(quantidade=8)
+        self._medicao_empreiteiro_cumulativa_com_itens(quantidade=8)
+
+        for url_name in ['medicoes_home', 'medicoes_construtora_home', 'medicoes_empreiteiros_home']:
+            with self.subTest(url_name=url_name):
+                with CaptureQueriesContext(connection) as captured:
+                    response = self.client.get(reverse(url_name))
+                self.assertEqual(response.status_code, 200)
+                self.assertLessEqual(len(captured), 35)
 
     def test_medicao_construtora_calcula_acumulado_e_liquido(self):
         orcamento, item = self._orcamento()

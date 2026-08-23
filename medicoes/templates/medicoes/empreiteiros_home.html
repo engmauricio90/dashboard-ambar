@@ -1,106 +1,140 @@
 {% extends 'base.html' %}
 
-{% block title %}Medicao de contratado{% endblock %}
+{% block title %}Medicoes de contratados{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+<div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-3">
     <div>
-        <h1 class="mb-1">Medicao de contratado</h1>
-        <p class="text-muted mb-0">Recibos simples e medicoes cumulativas por planilha.</p>
+        <h1 class="mb-1">Medicoes de contratados</h1>
+        <p class="text-muted mb-0">Painel operacional para recibos simples, planilhas cumulativas e cadastro de contratados.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-primary" href="{% url 'nova_medicao_empreiteiro_simples' %}">Nova medicao simples</a>
         <a class="btn btn-outline-primary" href="{% url 'novo_orcamento_manual_medicao' %}?tipo=empreiteiro">Criar cumulativa manual</a>
-        <a class="btn btn-outline-dark" href="{% url 'lista_empreiteiros_medicao' %}">Contratados</a>
-        <a class="btn btn-outline-secondary" href="{% url 'importar_orcamento_medicao' %}">Importar planilha</a>
+        <a class="btn btn-outline-secondary" href="{% url 'lista_empreiteiros_medicao' %}">Contratados</a>
     </div>
 </div>
 
-<div class="row g-4 mb-4">
-    <div class="col-lg-6">
-        <div class="card shadow-sm h-100">
-            <div class="card-body">
-                <h5 class="mb-3">Medicoes simples</h5>
-                <div class="list-group list-group-flush">
-                    {% for medicao in simples %}
-                    <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_empreiteiro' medicao.id %}">
-                        {{ medicao.empreiteiro }} - Medicao {{ medicao.numero }} - {{ medicao.data_medicao|date:'d/m/Y' }}<br>
-                        <small class="text-muted">
-                            {{ medicao.obra|default:'Sem obra' }} |
-                            {{ medicao.periodo_inicio|date:'d/m/Y' }} a {{ medicao.periodo_fim|date:'d/m/Y' }} |
-                            Pago/Liquido R$ {{ medicao.total_liquido|floatformat:2 }}
-                        </small>
-                    </a>
-                    {% empty %}
-                    <div class="text-muted">Nenhuma medicao simples cadastrada.</div>
-                    {% endfor %}
-                </div>
-            </div>
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="metric-card">
+            <span>Medicoes simples</span>
+            <strong>{{ total_simples }}</strong>
         </div>
     </div>
-    <div class="col-lg-6">
-        <div class="card shadow-sm h-100">
-            <div class="card-body">
-                <h5 class="mb-3">Medicoes cumulativas</h5>
-                <div class="list-group list-group-flush">
-                    {% for medicao in cumulativas %}
-                    <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_empreiteiro' medicao.id %}">
-                        {{ medicao.empreiteiro }} - Medicao {{ medicao.numero }} - {{ medicao.data_medicao|date:'d/m/Y' }}<br>
-                        <small class="text-muted">
-                            {{ medicao.obra|default:'Sem obra' }} |
-                            {{ medicao.orcamento.nome|default:'Sem planilha' }} |
-                            Medido R$ {{ medicao.subtotal_periodo|floatformat:2 }} |
-                            Descontos R$ {{ medicao.total_descontos|floatformat:2 }} |
-                            Pago/Liquido R$ {{ medicao.total_liquido|floatformat:2 }}
-                        </small>
-                    </a>
-                    {% empty %}
-                    <div class="text-muted">Nenhuma medicao cumulativa cadastrada.</div>
-                    {% endfor %}
-                </div>
-            </div>
+    <div class="col-md-3">
+        <div class="metric-card">
+            <span>Medicoes cumulativas</span>
+            <strong>{{ total_cumulativas }}</strong>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="metric-card">
+            <span>Planilhas cumulativas</span>
+            <strong>{{ total_planilhas }}</strong>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="metric-card">
+            <span>Contratados ativos</span>
+            <strong>{{ total_contratados_ativos }}</strong>
         </div>
     </div>
 </div>
 
-<div class="card shadow-sm">
-    <div class="card-body">
-        <h5 class="mb-3">Planilhas de contratados</h5>
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead>
-                    <tr>
-                        <th>Obra</th>
-                        <th>Planilha</th>
-                        <th>Contratado</th>
-                        <th>Medido</th>
-                        <th>Pago/Liquido</th>
-                        <th>Saldo</th>
-                        <th>% concluida</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for planilha in planilhas %}
-                    <tr>
-                        <td>{{ planilha.obra.nome_obra }}</td>
-                        <td>{{ planilha.nome }}</td>
-                        <td>R$ {{ planilha.total_orcamento|floatformat:2 }}</td>
-                        <td>R$ {{ planilha.total_medido_empreiteiro|floatformat:2 }}</td>
-                        <td>R$ {{ planilha.total_liquido_empreiteiro|floatformat:2 }}</td>
-                        <td>R$ {{ planilha.saldo_medir_empreiteiro|floatformat:2 }}</td>
-                        <td>{{ planilha.percentual_medido_empreiteiro|floatformat:2 }}%</td>
-                        <td class="text-end">
-                            <a class="btn btn-sm btn-primary" href="{% url 'nova_medicao_empreiteiro_cumulativa' planilha.id %}">Nova cumulativa</a>
-                            <a class="btn btn-sm btn-outline-secondary" href="{% url 'detalhe_orcamento_medicao' planilha.id %}">Abrir</a>
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr><td colspan="8">Nenhuma planilha de contratado importada.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+<div class="row g-3">
+    <div class="col-lg-4">
+        <div class="module-card h-100">
+            <div>
+                <h2>Recibo simples</h2>
+                <p>Use para lancamentos rapidos por periodo, com itens digitaveis e PDF do recibo.</p>
+            </div>
+            <a class="btn btn-primary" href="{% url 'nova_medicao_empreiteiro_simples' %}">Nova medicao simples</a>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="module-card h-100">
+            <div>
+                <h2>Cumulativas</h2>
+                <p>Acesse a lista de planilhas para abrir saldos, acumulados e criar nova medicao cumulativa.</p>
+            </div>
+            <a class="btn btn-outline-primary" href="{% url 'lista_orcamentos_medicao' %}">Ver planilhas</a>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="module-card h-100">
+            <div>
+                <h2>Contratados</h2>
+                <p>Consulte, cadastre e mantenha os dados usados automaticamente nas medicoes.</p>
+            </div>
+            <a class="btn btn-outline-secondary" href="{% url 'lista_empreiteiros_medicao' %}">Abrir cadastro</a>
         </div>
     </div>
 </div>
+
+<div class="row g-3 mt-1">
+    <div class="col-lg-6">
+        <div class="module-card module-card-compact h-100">
+            <div>
+                <h2>Importacao</h2>
+                <p>Importe uma planilha quando a medicao cumulativa precisar partir de uma base de contrato.</p>
+            </div>
+            <a class="btn btn-outline-secondary" href="{% url 'importar_orcamento_medicao' %}">Importar planilha</a>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="module-card module-card-compact h-100">
+            <div>
+                <h2>Relatorios</h2>
+                <p>Gere consulta gerencial por contratado, obra, periodo, tipo e colunas escolhidas.</p>
+            </div>
+            <a class="btn btn-outline-secondary" href="{% url 'relatorio_medicoes' %}?tipo=empreiteiro">Abrir relatorio</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .metric-card,
+    .module-card {
+        border: 1px solid #dee2e6;
+        border-radius: .5rem;
+        background: #fff;
+        box-shadow: 0 .125rem .25rem rgba(0, 0, 0, .06);
+    }
+    .metric-card {
+        padding: 1rem;
+    }
+    .metric-card span {
+        display: block;
+        color: #6c757d;
+        font-size: .9rem;
+    }
+    .metric-card strong {
+        display: block;
+        margin-top: .35rem;
+        font-size: 1.65rem;
+        line-height: 1.1;
+    }
+    .module-card {
+        display: flex;
+        min-height: 190px;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 1.25rem;
+    }
+    .module-card-compact {
+        min-height: 155px;
+    }
+    .module-card h2 {
+        margin-bottom: .5rem;
+        font-size: 1.15rem;
+    }
+    .module-card p {
+        margin-bottom: 0;
+        color: #495057;
+    }
+</style>
 {% endblock %}

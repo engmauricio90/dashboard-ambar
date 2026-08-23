@@ -604,11 +604,14 @@ def _read_csv(file):
 
 
 def medicoes_home(request):
+    orcamentos = _orcamentos_empresa(request.empresa)
+    medicoes_empreiteiro = _medicoes_empreiteiro_empresa(request.empresa)
     contexto = {
-        'obras': _obras_empresa(request.empresa).filter(orcamentos_medicao__isnull=False).distinct().order_by('nome_obra')[:12],
-        'orcamentos': _orcamentos_empresa(request.empresa).select_related('obra').order_by('-id')[:8],
-        'medicoes_construtora': _medicoes_construtora_empresa(request.empresa).select_related('orcamento', 'orcamento__obra')[:8],
-        'medicoes_empreiteiro': _medicoes_empreiteiro_empresa(request.empresa).select_related('obra', 'orcamento')[:8],
+        'total_planilhas_construtora': orcamentos.filter(tipo=OrcamentoMedicao.TIPO_CONSTRUTORA).count(),
+        'total_planilhas_contratados': orcamentos.filter(tipo=OrcamentoMedicao.TIPO_EMPREITEIRO).count(),
+        'total_medicoes_construtora': _medicoes_construtora_empresa(request.empresa).count(),
+        'total_medicoes_contratados': medicoes_empreiteiro.count(),
+        'total_contratados_ativos': Empreiteiro.objects.filter(empresa=request.empresa, ativo=True).count(),
     }
     return render(request, 'medicoes/home.html', contexto)
 
@@ -886,29 +889,25 @@ def relatorio_medicoes(request):
 
 
 def medicoes_construtora_home(request):
+    orcamentos = _orcamentos_empresa(request.empresa).filter(tipo=OrcamentoMedicao.TIPO_CONSTRUTORA)
     contexto = {
-        'obras': _obras_empresa(request.empresa).filter(
-            orcamentos_medicao__tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
-        ).distinct().order_by('nome_obra'),
-        'planilhas': _orcamentos_empresa(request.empresa).filter(
-            tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
-        ).select_related('obra').prefetch_related('medicoes_construtora', 'itens'),
-        'medicoes': _medicoes_construtora_empresa(request.empresa).select_related('orcamento', 'orcamento__obra')[:12],
+        'total_planilhas': orcamentos.count(),
+        'total_medicoes': _medicoes_construtora_empresa(request.empresa).count(),
+        'total_obras_com_planilha': _obras_empresa(request.empresa)
+        .filter(orcamentos_medicao__tipo=OrcamentoMedicao.TIPO_CONSTRUTORA)
+        .distinct()
+        .count(),
     }
     return render(request, 'medicoes/construtora_home.html', contexto)
 
 
 def medicoes_empreiteiros_home(request):
+    medicoes = _medicoes_empreiteiro_empresa(request.empresa)
     contexto = {
-        'simples': _medicoes_empreiteiro_empresa(request.empresa).filter(
-            tipo=MedicaoEmpreiteiro.TIPO_SIMPLES,
-        ).select_related('obra')[:15],
-        'cumulativas': _medicoes_empreiteiro_empresa(request.empresa).filter(
-            tipo=MedicaoEmpreiteiro.TIPO_CUMULATIVA,
-        ).select_related('obra', 'orcamento')[:15],
-        'planilhas': _orcamentos_empresa(request.empresa).filter(
-            tipo=OrcamentoMedicao.TIPO_EMPREITEIRO,
-        ).select_related('obra').prefetch_related('itens', 'medicoes_empreiteiro')[:15],
+        'total_simples': medicoes.filter(tipo=MedicaoEmpreiteiro.TIPO_SIMPLES).count(),
+        'total_cumulativas': medicoes.filter(tipo=MedicaoEmpreiteiro.TIPO_CUMULATIVA).count(),
+        'total_planilhas': _orcamentos_empresa(request.empresa).filter(tipo=OrcamentoMedicao.TIPO_EMPREITEIRO).count(),
+        'total_contratados_ativos': Empreiteiro.objects.filter(empresa=request.empresa, ativo=True).count(),
     }
     return render(request, 'medicoes/empreiteiros_home.html', contexto)
 

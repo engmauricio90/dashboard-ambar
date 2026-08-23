@@ -1,96 +1,117 @@
 {% extends 'base.html' %}
 
-{% block title %}Medição da Construtora{% endblock %}
+{% block title %}Medicao da Construtora{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+<div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-3">
     <div>
-        <h1 class="mb-1">Medição da construtora</h1>
-        <p class="text-muted mb-0">Planilhas por obra, medições acumulativas, impostos, descontos e faturamento direto.</p>
+        <h1 class="mb-1">Medicao da construtora</h1>
+        <p class="text-muted mb-0">Painel operacional das planilhas e boletins acumulativos da empresa.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a class="btn btn-primary" href="{% url 'novo_orcamento_manual_medicao' %}?tipo=construtora">Criar planilha manual</a>
         <a class="btn btn-primary" href="{% url 'importar_orcamento_medicao' %}">Importar planilha</a>
+        <a class="btn btn-outline-primary" href="{% url 'novo_orcamento_manual_medicao' %}?tipo=construtora">Criar planilha manual</a>
         <a class="btn btn-outline-secondary" href="{% url 'lista_orcamentos_medicao' %}">Todas as planilhas</a>
     </div>
 </div>
 
-<div class="card shadow-sm mb-4">
-    <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-            <h5 class="mb-0">Obras com medição da construtora</h5>
-            <span class="text-muted small">{{ obras|length }} obra(s)</span>
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="metric-card">
+            <span>Planilhas operacionais</span>
+            <strong>{{ total_planilhas }}</strong>
         </div>
-        <div class="row g-2">
-            {% for obra in obras %}
-            <div class="col-md-4">
-                <a class="btn btn-outline-primary w-100 text-start" href="{% url 'medicoes_obra' obra.id %}">
-                    {{ obra.nome_obra }}
-                </a>
+    </div>
+    <div class="col-md-4">
+        <div class="metric-card">
+            <span>Medicoes registradas</span>
+            <strong>{{ total_medicoes }}</strong>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="metric-card">
+            <span>Obras com planilha</span>
+            <strong>{{ total_obras_com_planilha }}</strong>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-4">
+        <div class="module-card h-100">
+            <div>
+                <h2>Planilhas operacionais</h2>
+                <p>Abra a lista paginada para consultar planilhas, saldos, itens e iniciar novas medicoes.</p>
             </div>
-            {% empty %}
-            <div class="col-12 text-muted">Nenhuma obra com planilha de construtora importada.</div>
-            {% endfor %}
+            <a class="btn btn-primary" href="{% url 'lista_orcamentos_medicao' %}">Ver planilhas</a>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="module-card h-100">
+            <div>
+                <h2>Nova medicao</h2>
+                <p>Para criar uma medicao, escolha primeiro a planilha operacional correta.</p>
+            </div>
+            <a class="btn btn-outline-primary" href="{% url 'lista_orcamentos_medicao' %}">Escolher planilha</a>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="module-card h-100">
+            <div>
+                <h2>Relatorios</h2>
+                <p>Consulte o relatorio gerencial com filtros por obra, planilha, periodo e colunas.</p>
+            </div>
+            <a class="btn btn-outline-secondary" href="{% url 'relatorio_medicoes' %}?tipo=construtora">Abrir relatorio</a>
         </div>
     </div>
 </div>
 
-<div class="card shadow-sm mb-4">
-    <div class="card-body">
-        <h5 class="mb-3">Planilhas operacionais</h5>
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead>
-                    <tr>
-                        <th>Obra</th>
-                        <th>Planilha</th>
-                        <th>Contrato</th>
-                        <th>Medido</th>
-                        <th>Saldo</th>
-                        <th>%</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for planilha in planilhas %}
-                    <tr>
-                        <td>{{ planilha.obra.nome_obra }}</td>
-                        <td>{{ planilha.nome }}</td>
-                        <td>R$ {{ planilha.total_orcamento|floatformat:2 }}</td>
-                        <td>R$ {{ planilha.total_medido_construtora|floatformat:2 }}</td>
-                        <td>R$ {{ planilha.saldo_medir_construtora|floatformat:2 }}</td>
-                        <td>{{ planilha.percentual_medido_construtora|floatformat:2 }}%</td>
-                        <td class="text-end">
-                            <a class="btn btn-sm btn-primary" href="{% url 'nova_medicao_construtora' planilha.id %}">Nova medição</a>
-                            <a class="btn btn-sm btn-outline-secondary" href="{% url 'detalhe_orcamento_medicao' planilha.id %}">Abrir</a>
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr><td colspan="7">Nenhuma planilha importada.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
+{% if total_planilhas == 0 %}
+<div class="alert alert-light border mt-4">
+    Nenhuma planilha da construtora foi cadastrada nesta empresa.
+    <a href="{% url 'importar_orcamento_medicao' %}">Importar primeira planilha</a>.
 </div>
+{% endif %}
+{% endblock %}
 
-<div class="card shadow-sm">
-    <div class="card-body">
-        <h5 class="mb-3">Ultimas medições</h5>
-        <div class="list-group list-group-flush">
-            {% for medicao in medicoes %}
-            <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_construtora' medicao.id %}">
-                Medição {{ medicao.numero }} - {{ medicao.orcamento.obra.nome_obra }} - {{ medicao.orcamento.nome }}<br>
-                <small class="text-muted">
-                    Bruto R$ {{ medicao.total_bruto|floatformat:2 }} |
-                    Faturamento direto R$ {{ medicao.total_faturamento_direto|floatformat:2 }} |
-                    Líquido R$ {{ medicao.total_liquido|floatformat:2 }}
-                </small>
-            </a>
-            {% empty %}
-            <div class="text-muted">Nenhuma medição da construtora cadastrada.</div>
-            {% endfor %}
-        </div>
-    </div>
-</div>
+{% block extra_styles %}
+<style>
+    .metric-card,
+    .module-card {
+        border: 1px solid #dee2e6;
+        border-radius: .5rem;
+        background: #fff;
+        box-shadow: 0 .125rem .25rem rgba(0, 0, 0, .06);
+    }
+    .metric-card {
+        padding: 1rem;
+    }
+    .metric-card span {
+        display: block;
+        color: #6c757d;
+        font-size: .9rem;
+    }
+    .metric-card strong {
+        display: block;
+        margin-top: .35rem;
+        font-size: 1.65rem;
+        line-height: 1.1;
+    }
+    .module-card {
+        display: flex;
+        min-height: 190px;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 1.25rem;
+    }
+    .module-card h2 {
+        margin-bottom: .5rem;
+        font-size: 1.15rem;
+    }
+    .module-card p {
+        margin-bottom: 0;
+        color: #495057;
+    }
+</style>
 {% endblock %}
