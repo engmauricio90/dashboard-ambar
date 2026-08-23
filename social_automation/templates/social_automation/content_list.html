@@ -55,7 +55,7 @@
                     {% for content in page_obj %}
                     <tr>
                         <td>{% if content.status == 'rascunho' %}<input type="checkbox" class="form-check-input" name="content_ids" value="{{ content.id }}">{% endif %}</td>
-                        <td>{% if content.base_image %}<img src="{{ content.base_image.arquivo.url }}" class="social-thumb-sm" alt="">{% else %}<span class="social-placeholder">sem imagem</span>{% endif %}</td>
+                        <td>{% if content.final_image %}<img src="{{ content.final_image.url }}" class="social-thumb-sm" alt="">{% elif content.base_image %}<img src="{{ content.base_image.arquivo.url }}" class="social-thumb-sm" alt="">{% else %}<span class="social-placeholder">sem imagem</span>{% endif %}</td>
                         <td>{{ content.profile.nome }}</td>
                         <td>{{ content.frase|truncatechars:110 }}</td>
                         <td><span class="badge text-bg-secondary">{{ content.get_status_display }}</span></td>

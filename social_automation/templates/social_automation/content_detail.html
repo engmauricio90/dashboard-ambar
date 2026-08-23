@@ -12,11 +12,11 @@
     <div class="col-lg-8">
         <div class="card shadow-sm mb-3">
             <div class="card-body">
-                <div class="d-flex gap-3 align-items-start">
+                <div class="d-flex gap-4 align-items-start flex-wrap">
                     {% if content.final_image %}
-                        <img src="{{ content.final_image.url }}" class="social-thumb" alt="">
+                        <img src="{{ content.final_image.url }}" class="social-preview-lg" alt="">
                     {% elif content.base_image %}
-                        <img src="{{ content.base_image.arquivo.url }}" class="social-thumb" alt="">
+                        <img src="{{ content.base_image.arquivo.url }}" class="social-preview-lg" alt="">
                     {% else %}
                         <span class="social-placeholder" style="width:96px;height:96px">sem imagem</span>
                     {% endif %}
@@ -67,6 +67,9 @@
                     <form method="post" action="{% url 'social_automation:content_unschedule' content.id %}">{% csrf_token %}<button class="btn btn-outline-warning w-100" type="submit">Desagendar</button></form>
                 {% elif content.status == 'rejeitado' %}
                     <form method="post" action="{% url 'social_automation:content_restore' content.id %}">{% csrf_token %}<button class="btn btn-outline-primary w-100" type="submit">Restaurar rascunho</button></form>
+                {% endif %}
+                {% if content.base_image %}
+                <form method="post" action="{% url 'social_automation:content_render' content.id %}">{% csrf_token %}<button class="btn btn-outline-secondary w-100" type="submit">Renderizar novamente</button></form>
                 {% endif %}
                 {% if content.pode_excluir_operacionalmente %}
                 <form method="post" action="{% url 'social_automation:content_delete' content.id %}" onsubmit="return confirm('Excluir este conteudo?');">{% csrf_token %}<button class="btn btn-outline-danger w-100" type="submit">Excluir</button></form>

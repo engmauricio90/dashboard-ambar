@@ -1,0 +1,83 @@
+{% extends 'social_automation/base.html' %}
+
+{% block social_title %}Gerar conteudos com IA{% endblock %}
+{% block social_subtitle %}{{ profile.nome }} - gera rascunhos moderados e renderizados para revisao.{% endblock %}
+{% block social_actions %}
+<a href="{% url 'social_automation:profile_detail' profile.id %}" class="btn btn-outline-secondary">Voltar ao perfil</a>
+<a href="{% url 'social_automation:profile_content_list' profile.id %}" class="btn btn-outline-secondary">Fila</a>
+{% endblock %}
+
+{% block social_content %}
+<form method="post" class="card shadow-sm mb-3" id="social-generate-form">
+    {% csrf_token %}
+    <div class="card-body">
+        {{ form.non_field_errors }}
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">{{ form.quantidade.label }}</label>
+                {{ form.quantidade }}
+                <div class="form-text">{{ form.quantidade.help_text }}</div>
+                {{ form.quantidade.errors }}
+                <div class="btn-group btn-group-sm mt-2" role="group" aria-label="Quantidades rapidas">
+                    <button type="button" class="btn btn-outline-secondary" data-qty="5">5</button>
+                    <button type="button" class="btn btn-outline-secondary" data-qty="10">10</button>
+                    <button type="button" class="btn btn-outline-secondary" data-qty="20">20</button>
+                    <button type="button" class="btn btn-outline-secondary" data-qty="30">30</button>
+                </div>
+            </div>
+            <div class="col-md-9">
+                <label class="form-label">{{ form.tema.label }}</label>
+                {{ form.tema }}
+                {{ form.tema.errors }}
+            </div>
+        </div>
+        <div class="alert alert-light border mt-3 mb-0">
+            A geracao usa o estilo e as instrucoes cadastradas no perfil, verifica repeticoes recentes, modera o texto e escolhe imagens-base ativas.
+        </div>
+    </div>
+    <div class="card-footer">
+        <button class="btn btn-primary" type="submit" id="social-generate-submit">Gerar rascunhos</button>
+    </div>
+</form>
+
+{% if resultado %}
+<div class="card shadow-sm">
+    <div class="card-header fw-bold">Resultado do lote</div>
+    <div class="card-body">
+        <div class="row g-3 mb-3">
+            <div class="col-md-3"><strong>{{ resultado.criados }}</strong><div class="text-muted small">Criados</div></div>
+            <div class="col-md-3"><strong>{{ resultado.duplicados }}</strong><div class="text-muted small">Duplicados</div></div>
+            <div class="col-md-3"><strong>{{ resultado.bloqueados }}</strong><div class="text-muted small">Bloqueados</div></div>
+            <div class="col-md-3"><strong>{{ resultado.falhas }}</strong><div class="text-muted small">Falhas</div></div>
+        </div>
+        {% if resultado.conteudos %}
+        <div class="row g-3">
+            {% for content in resultado.conteudos %}
+            <div class="col-md-4">
+                <a href="{% url 'social_automation:content_detail' content.id %}" class="text-decoration-none text-reset">
+                    <div class="border rounded p-2 h-100">
+                        {% if content.final_image %}<img src="{{ content.final_image.url }}" class="w-100 rounded mb-2" alt="">{% endif %}
+                        <strong>{{ content.frase|truncatechars:90 }}</strong>
+                    </div>
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% for mensagem in resultado.mensagens %}<div class="text-muted small mt-2">{{ mensagem }}</div>{% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<script>
+document.querySelectorAll('[data-qty]').forEach(function(button) {
+    button.addEventListener('click', function() {
+        document.querySelector('#id_quantidade').value = button.dataset.qty;
+    });
+});
+document.querySelector('#social-generate-form')?.addEventListener('submit', function() {
+    document.querySelector('#social-generate-submit').disabled = true;
+    document.querySelector('#social-generate-submit').textContent = 'Gerando...';
+});
+</script>
+{% endblock %}

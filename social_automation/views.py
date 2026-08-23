@@ -8,8 +8,11 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from .forms import SocialBaseImageForm, SocialContentForm, SocialProfileForm, SocialScheduleForm
+from .ai import OpenAINotConfigured, OpenAIUnavailable
+from .forms import SocialBaseImageForm, SocialContentForm, SocialGenerateForm, SocialProfileForm, SocialScheduleForm
+from .generation import gerar_lote_conteudos
 from .models import SocialBaseImage, SocialContent, SocialProfile
+from .rendering import SocialRenderError, renderizar_conteudo_social
 from .services import (
     agendar_conteudo,
     aprovar_conteudo,
@@ -201,6 +204,11 @@ def content_create(request, profile_id=None):
         if form.is_valid():
             content = form.save()
             criar_evento_criacao(content, request.user)
+            if content.base_image:
+                try:
+                    renderizar_conteudo_social(content)
+                except SocialRenderError as exc:
+                    messages.warning(request, f'Rascunho salvo, mas o card final nao foi renderizado: {exc}')
             messages.success(request, 'Rascunho criado com sucesso.')
             return redirect('social_automation:content_detail', content_id=content.id)
     else:
@@ -215,11 +223,21 @@ def content_update(request, content_id):
         messages.error(request, 'Este conteudo nao pode ser editado pela interface operacional.')
         return redirect('social_automation:content_detail', content_id=content.id)
     if request.method == 'POST':
+        frase_original = content.frase
+        base_image_original_id = content.base_image_id
         form = SocialContentForm(request.POST, request.FILES, instance=content)
         if form.is_valid():
             content = form.save()
             registrar_edicao(content, request.user)
-            messages.success(request, 'Conteudo atualizado com sucesso.')
+            if content.base_image and (content.frase != frase_original or content.base_image_id != base_image_original_id):
+                try:
+                    renderizar_conteudo_social(content)
+                    messages.success(request, 'Conteudo atualizado e card renderizado novamente.')
+                except SocialRenderError as exc:
+                    messages.warning(request, f'Conteudo atualizado, mas o card final nao foi renderizado: {exc}')
+                    return redirect('social_automation:content_detail', content_id=content.id)
+            else:
+                messages.success(request, 'Conteudo atualizado com sucesso.')
             return redirect('social_automation:content_detail', content_id=content.id)
     else:
         form = SocialContentForm(instance=content)
@@ -232,6 +250,46 @@ def content_detail(request, content_id):
     schedule_form = SocialScheduleForm(profile=content.profile) if content.status == SocialContent.Status.APROVADO else None
     events = content.events.select_related('usuario')[:20]
     return render(request, 'social_automation/content_detail.html', {'content': content, 'events': events, 'schedule_form': schedule_form})
+
+
+@staff_required
+def profile_generate(request, profile_id):
+    profile = _profile_or_404(profile_id)
+    resultado = None
+    if request.method == 'POST':
+        form = SocialGenerateForm(request.POST)
+        if form.is_valid():
+            try:
+                resultado = gerar_lote_conteudos(
+                    profile=profile,
+                    quantidade=form.cleaned_data['quantidade'],
+                    tema=form.cleaned_data['tema'],
+                    usuario=request.user,
+                )
+                if resultado.criados:
+                    messages.success(request, f'{resultado.criados} conteudo(s) gerado(s) como rascunho.')
+                if resultado.duplicados or resultado.bloqueados or resultado.falhas:
+                    messages.warning(
+                        request,
+                        f'Ignorados: {resultado.duplicados} duplicado(s), {resultado.bloqueados} bloqueado(s), {resultado.falhas} falha(s).',
+                    )
+            except (OpenAINotConfigured, OpenAIUnavailable, ValidationError) as exc:
+                _handle_validation_error(request, exc)
+    else:
+        form = SocialGenerateForm()
+    return render(request, 'social_automation/generate_form.html', {'profile': profile, 'form': form, 'resultado': resultado})
+
+
+@staff_required
+@require_POST
+def content_render(request, content_id):
+    content = get_object_or_404(_content_queryset(), pk=content_id)
+    try:
+        renderizar_conteudo_social(content)
+        messages.success(request, 'Card renderizado novamente.')
+    except SocialRenderError as exc:
+        messages.error(request, str(exc))
+    return redirect('social_automation:content_detail', content_id=content.id)
 
 
 @staff_required

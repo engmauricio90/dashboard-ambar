@@ -2,6 +2,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from django import forms
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
@@ -156,3 +157,27 @@ class SocialScheduleForm(BootstrapMixin, forms.Form):
             raise forms.ValidationError('Informe uma data e hora futura.')
         cleaned['scheduled_at'] = scheduled_at
         return cleaned
+
+
+class SocialGenerateForm(BootstrapMixin, forms.Form):
+    quantidade = forms.IntegerField(label='Quantidade', min_value=1)
+    tema = forms.CharField(
+        label='Tema opcional',
+        required=False,
+        widget=forms.Textarea(attrs={'rows': 3, 'placeholder': 'Ex.: rotina de obra, bastidores, seguranca, equipe'}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        limite = settings.OPENAI_SOCIAL_MAX_BATCH
+        self.fields['quantidade'].max_value = limite
+        self.fields['quantidade'].initial = min(10, limite)
+        self.fields['quantidade'].help_text = f'Maximo configurado: {limite}.'
+        self._apply_bootstrap()
+
+    def clean_quantidade(self):
+        quantidade = self.cleaned_data['quantidade']
+        limite = settings.OPENAI_SOCIAL_MAX_BATCH
+        if quantidade > limite:
+            raise forms.ValidationError(f'Informe no maximo {limite} conteudos por lote.')
+        return quantidade

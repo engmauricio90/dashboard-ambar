@@ -6,6 +6,7 @@
 <a href="{% url 'social_automation:profile_update' profile.id %}" class="btn btn-outline-primary">Configuracoes</a>
 <a href="{% url 'social_automation:image_list' profile.id %}" class="btn btn-outline-secondary">Biblioteca</a>
 <a href="{% url 'social_automation:profile_content_list' profile.id %}" class="btn btn-outline-secondary">Conteudos</a>
+<a href="{% url 'social_automation:profile_generate' profile.id %}" class="btn btn-primary">Gerar com IA</a>
 <a href="{% url 'social_automation:profile_content_create' profile.id %}" class="btn btn-success">Novo rascunho</a>
 {% endblock %}
 
