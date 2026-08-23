@@ -54,6 +54,7 @@ from .models import (
 from .services import (
     acumulados_construtora,
     acumulados_empreiteiro,
+    anotar_resumo_planilhas_construtora,
     aplicar_acumulados_itens,
     calcular_resumo_construtora,
     calcular_resumo_empreiteiro,
@@ -981,6 +982,80 @@ def medicoes_obra(request, obra_id):
 def lista_orcamentos(request):
     orcamentos = _orcamentos_empresa(request.empresa).select_related('obra')
     return render(request, 'medicoes/lista_orcamentos.html', {'orcamentos': orcamentos})
+
+
+def lista_planilhas_construtora(request):
+    qs = _orcamentos_empresa(request.empresa).filter(tipo=OrcamentoMedicao.TIPO_CONSTRUTORA).select_related('obra')
+    obras = _obras_empresa(request.empresa).filter(
+        orcamentos_medicao__tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
+    ).distinct().order_by('nome_obra')
+    q = request.GET.get('q', '').strip()
+    obra_id = request.GET.get('obra', '').strip()
+    saldo = request.GET.get('saldo', '').strip()
+    ordem = request.GET.get('ordem', 'recentes').strip() or 'recentes'
+
+    if q:
+        qs = qs.filter(Q(nome__icontains=q) | Q(obra__nome_obra__icontains=q))
+    obra_filtrada = None
+    if obra_id:
+        obra_filtrada = obras.filter(id=obra_id).first()
+        if obra_filtrada:
+            qs = qs.filter(obra=obra_filtrada)
+        else:
+            qs = qs.none()
+
+    qs = anotar_resumo_planilhas_construtora(qs)
+    if saldo == 'com':
+        qs = qs.filter(saldo_otimizado__gt=0)
+    elif saldo == 'sem':
+        qs = qs.filter(saldo_otimizado__lte=0)
+    else:
+        saldo = ''
+
+    ordenacoes = {
+        'recentes': ('-created_at', '-id'),
+        'obra': ('obra__nome_obra', 'nome', '-id'),
+        'planilha': ('nome', '-id'),
+        'contrato': ('-total_contrato_otimizado', 'obra__nome_obra', 'nome'),
+        'medido': ('-total_medido_otimizado', 'obra__nome_obra', 'nome'),
+        'saldo': ('-saldo_otimizado', 'obra__nome_obra', 'nome'),
+        'percentual': ('-percentual_medido_otimizado', 'obra__nome_obra', 'nome'),
+    }
+    if ordem not in ordenacoes:
+        ordem = 'recentes'
+    qs = qs.order_by(*ordenacoes[ordem])
+
+    paginator = Paginator(qs, 25)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    query_params = request.GET.copy()
+    query_params.pop('page', None)
+    querystring = query_params.urlencode()
+    total_empresa = _orcamentos_empresa(request.empresa).filter(tipo=OrcamentoMedicao.TIPO_CONSTRUTORA).count()
+    return render(
+        request,
+        'medicoes/lista_planilhas_construtora.html',
+        {
+            'page_obj': page_obj,
+            'planilhas': page_obj.object_list,
+            'obras': obras,
+            'q': q,
+            'obra_id': obra_id if obra_filtrada else '',
+            'saldo': saldo,
+            'ordem': ordem,
+            'querystring': querystring,
+            'total_resultados': paginator.count,
+            'total_empresa': total_empresa,
+            'ordenacoes': [
+                ('recentes', 'Mais recentes'),
+                ('obra', 'Obra'),
+                ('planilha', 'Planilha'),
+                ('contrato', 'Valor do contrato'),
+                ('medido', 'Valor medido'),
+                ('saldo', 'Saldo'),
+                ('percentual', 'Percentual medido'),
+            ],
+        },
+    )
 
 
 def importar_orcamento(request):

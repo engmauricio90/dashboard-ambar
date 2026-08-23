@@ -27,7 +27,12 @@ from .models import (
     MedicaoEmpreiteiro,
     OrcamentoMedicao,
 )
-from .services import calcular_resumo_construtora, itens_construtora_com_grupos, itens_empreiteiro_com_acumulados
+from .services import (
+    anotar_resumo_planilhas_construtora,
+    calcular_resumo_construtora,
+    itens_construtora_com_grupos,
+    itens_empreiteiro_com_acumulados,
+)
 
 
 class MedicoesTests(TestCase):
@@ -815,6 +820,150 @@ class MedicoesTests(TestCase):
                     response = self.client.get(reverse(url_name))
                 self.assertEqual(response.status_code, 200)
                 self.assertLessEqual(len(captured), 35)
+
+    def test_resumo_otimizado_planilhas_construtora_equivale_as_properties(self):
+        orcamento, item = self._orcamento()
+        ItemOrcamentoMedicao.objects.create(
+            orcamento=orcamento,
+            tipo=ItemOrcamentoMedicao.TIPO_GRUPO,
+            ordem=0,
+            item='1',
+            descricao='Grupo que nao deve somar',
+        )
+        segunda_medicao = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=2,
+            periodo_inicio=date(2026, 7, 1),
+            periodo_fim=date(2026, 7, 31),
+            data_medicao=date(2026, 7, 31),
+        )
+        terceira_medicao = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=3,
+            periodo_inicio=date(2026, 8, 1),
+            periodo_fim=date(2026, 8, 31),
+            data_medicao=date(2026, 8, 31),
+        )
+        ItemMedicaoConstrutora.objects.create(medicao=segunda_medicao, item_orcamento=item, quantidade_periodo=Decimal('10'))
+        ItemMedicaoConstrutora.objects.create(medicao=terceira_medicao, item_orcamento=item, quantidade_periodo=Decimal('15'))
+        zero = OrcamentoMedicao.objects.create(
+            obra=self.obra,
+            nome='Planilha zero',
+            tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
+        )
+
+        planilhas = {
+            planilha.id: planilha
+            for planilha in anotar_resumo_planilhas_construtora(
+                OrcamentoMedicao.objects.filter(id__in=[orcamento.id, zero.id])
+            )
+        }
+
+        otimizada = planilhas[orcamento.id]
+        self.assertEqual(otimizada.total_contrato_otimizado, orcamento.total_orcamento)
+        self.assertEqual(otimizada.total_medido_otimizado, orcamento.total_medido_construtora)
+        self.assertEqual(otimizada.saldo_otimizado, orcamento.saldo_medir_construtora)
+        self.assertEqual(otimizada.percentual_medido_otimizado.quantize(Decimal('0.01')), orcamento.percentual_medido_construtora)
+        self.assertEqual(otimizada.quantidade_medicoes, 2)
+
+        zero_otimizada = planilhas[zero.id]
+        self.assertEqual(zero_otimizada.total_contrato_otimizado, Decimal('0'))
+        self.assertEqual(zero_otimizada.total_medido_otimizado, Decimal('0'))
+        self.assertEqual(zero_otimizada.saldo_otimizado, Decimal('0'))
+        self.assertEqual(zero_otimizada.percentual_medido_otimizado, Decimal('0'))
+
+    def test_lista_planilhas_construtora_filtra_busca_e_preserva_tenant(self):
+        orcamento, item = self._orcamento()
+        del item
+        orcamento.nome = 'Planilha Alpha'
+        orcamento.save(update_fields=['nome'])
+        outra_obra = Obra.objects.create(empresa=self.empresa, nome_obra='Obra Beta', cliente='Cliente')
+        OrcamentoMedicao.objects.create(
+            obra=outra_obra,
+            nome='Planilha Beta',
+            tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
+        )
+        outra_empresa = Empresa.objects.create(nome='Empresa B', slug='empresa-b-planilhas')
+        obra_externa = Obra.objects.create(empresa=outra_empresa, nome_obra='Obra Externa', cliente='Cliente')
+        OrcamentoMedicao.objects.create(
+            obra=obra_externa,
+            nome='Planilha Externa',
+            tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
+        )
+
+        response_busca = self.client.get(reverse('lista_planilhas_construtora'), {'q': 'Alpha'})
+        self.assertContains(response_busca, 'Planilha Alpha')
+        self.assertNotContains(response_busca, 'Planilha Beta')
+        self.assertNotContains(response_busca, 'Planilha Externa')
+
+        response_obra = self.client.get(reverse('lista_planilhas_construtora'), {'obra': outra_obra.id})
+        self.assertContains(response_obra, 'Planilha Beta')
+        self.assertNotContains(response_obra, 'Planilha Alpha')
+
+        response_cross_tenant = self.client.get(reverse('lista_planilhas_construtora'), {'obra': obra_externa.id})
+        self.assertNotContains(response_cross_tenant, 'Planilha Externa')
+        self.assertEqual(response_cross_tenant.context['total_resultados'], 0)
+
+    def test_lista_planilhas_construtora_filtra_saldo_ordena_e_pagina(self):
+        for index in range(30):
+            orcamento = OrcamentoMedicao.objects.create(
+                obra=self.obra,
+                nome=f'Planilha paginada {index:02d}',
+                tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
+            )
+            item = ItemOrcamentoMedicao.objects.create(
+                orcamento=orcamento,
+                item=str(index),
+                descricao='Servico paginado',
+                unidade='m2',
+                quantidade=Decimal('10.0000'),
+                preco_unitario_material=Decimal('10.0000'),
+            )
+            if index % 2 == 0:
+                medicao = MedicaoConstrutora.objects.create(
+                    orcamento=orcamento,
+                    numero=1,
+                    periodo_inicio=date(2026, 9, 1),
+                    periodo_fim=date(2026, 9, 30),
+                    data_medicao=date(2026, 9, 30),
+                )
+                ItemMedicaoConstrutora.objects.create(medicao=medicao, item_orcamento=item, quantidade_periodo=Decimal('10.0000'))
+
+        response = self.client.get(reverse('lista_planilhas_construtora'), {'ordem': 'saldo'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context['planilhas']), 25)
+        self.assertContains(response, 'page=2')
+
+        response_page_2 = self.client.get(reverse('lista_planilhas_construtora'), {'ordem': 'saldo', 'page': 2})
+        self.assertEqual(len(response_page_2.context['planilhas']), 5)
+
+        response_com_saldo = self.client.get(reverse('lista_planilhas_construtora'), {'saldo': 'com'})
+        self.assertEqual(response_com_saldo.context['total_resultados'], 15)
+
+        response_sem_saldo = self.client.get(reverse('lista_planilhas_construtora'), {'saldo': 'sem'})
+        self.assertEqual(response_sem_saldo.context['total_resultados'], 15)
+
+    def test_lista_planilhas_construtora_nao_cresce_queries_por_planilha(self):
+        for index in range(35):
+            orcamento = OrcamentoMedicao.objects.create(
+                obra=self.obra,
+                nome=f'Planilha query {index:02d}',
+                tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
+            )
+            ItemOrcamentoMedicao.objects.create(
+                orcamento=orcamento,
+                item=str(index),
+                descricao='Servico query',
+                unidade='m2',
+                quantidade=Decimal('1.0000'),
+                preco_unitario_material=Decimal('100.0000'),
+            )
+
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.get(reverse('lista_planilhas_construtora'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertLessEqual(len(captured), 20)
 
     def test_medicao_construtora_calcula_acumulado_e_liquido(self):
         orcamento, item = self._orcamento()

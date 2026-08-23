@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 from decimal import Decimal
 
-from django.db.models import DecimalField, ExpressionWrapper, F, Sum
+from django.db.models import Case, Count, DecimalField, ExpressionWrapper, F, IntegerField, OuterRef, Subquery, Sum, Value, When
+from django.db.models.functions import Coalesce
 
 from .models import (
     FaturamentoDiretoMedicao,
@@ -192,6 +193,76 @@ def percentuais_orcamentos_empreiteiro(orcamento_ids):
         orcamento_ids,
         ItemMedicaoEmpreiteiro,
         'medicao__orcamento_id',
+    )
+
+
+def anotar_resumo_planilhas_construtora(qs):
+    decimal_field = DecimalField(max_digits=20, decimal_places=4)
+    integer_field = IntegerField()
+    item_total_expr = ExpressionWrapper(
+        F('quantidade')
+        * (
+            F('preco_unitario_material')
+            + F('preco_unitario_mao_obra')
+            + F('preco_unitario_equipamentos')
+        ),
+        output_field=decimal_field,
+    )
+    contrato_subquery = (
+        ItemOrcamentoMedicao.objects.filter(
+            orcamento_id=OuterRef('pk'),
+            tipo=ItemOrcamentoMedicao.TIPO_ITEM,
+        )
+        .annotate(valor_total=item_total_expr)
+        .values('orcamento_id')
+        .annotate(total=Sum('valor_total'))
+        .values('total')[:1]
+    )
+    medido_expr = ExpressionWrapper(
+        F('quantidade_periodo')
+        * (
+            F('item_orcamento__preco_unitario_material')
+            + F('item_orcamento__preco_unitario_mao_obra')
+            + F('item_orcamento__preco_unitario_equipamentos')
+        ),
+        output_field=decimal_field,
+    )
+    medido_subquery = (
+        ItemMedicaoConstrutora.objects.filter(
+            medicao__orcamento_id=OuterRef('pk'),
+            item_orcamento__tipo=ItemOrcamentoMedicao.TIPO_ITEM,
+        )
+        .annotate(valor_medido=medido_expr)
+        .values('medicao__orcamento_id')
+        .annotate(total=Sum('valor_medido'))
+        .values('total')[:1]
+    )
+    medicoes_count_subquery = (
+        MedicaoConstrutora.objects.filter(orcamento_id=OuterRef('pk'))
+        .values('orcamento_id')
+        .annotate(total=Count('id'))
+        .values('total')[:1]
+    )
+    qs = qs.annotate(
+        total_contrato_otimizado=Coalesce(Subquery(contrato_subquery, output_field=decimal_field), Value(ZERO), output_field=decimal_field),
+        total_medido_otimizado=Coalesce(Subquery(medido_subquery, output_field=decimal_field), Value(ZERO), output_field=decimal_field),
+        quantidade_medicoes=Coalesce(Subquery(medicoes_count_subquery, output_field=integer_field), Value(0), output_field=integer_field),
+    )
+    saldo_expr = ExpressionWrapper(
+        F('total_contrato_otimizado') - F('total_medido_otimizado'),
+        output_field=decimal_field,
+    )
+    percentual_expr = ExpressionWrapper(
+        F('total_medido_otimizado') * Value(Decimal('100')) / F('total_contrato_otimizado'),
+        output_field=decimal_field,
+    )
+    return qs.annotate(
+        saldo_otimizado=saldo_expr,
+        percentual_medido_otimizado=Case(
+            When(total_contrato_otimizado=ZERO, then=Value(ZERO)),
+            default=percentual_expr,
+            output_field=decimal_field,
+        ),
     )
 
 
