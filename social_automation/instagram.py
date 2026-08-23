@@ -4,6 +4,7 @@ import time
 import urllib.parse
 import urllib.request
 import urllib.error
+from pathlib import Path
 
 from django.conf import settings
 from django.core import signing
@@ -11,6 +12,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.urls import reverse
 from django.utils import timezone
+from PIL import Image
 
 from .models import SocialContent
 from .services import registrar_evento
@@ -131,6 +133,35 @@ def gerar_token_midia_temporaria(content):
     )
 
 
+def auditar_imagem_final(content):
+    if not content.final_image:
+        raise InstagramPublishError('Renderize o card final antes de publicar.')
+    with content.final_image.storage.open(content.final_image.name, 'rb') as arquivo:
+        header = arquivo.read(3)
+        arquivo.seek(0, 2)
+        size = arquivo.tell()
+        arquivo.seek(0)
+        try:
+            image = Image.open(arquivo)
+            image.load()
+        except Exception as exc:
+            raise InstagramPublishError('A imagem final nao e um arquivo de imagem valido.') from exc
+    if image.format != 'JPEG' or header != b'\xff\xd8\xff':
+        raise InstagramPublishError('A imagem final precisa ser JPEG valido para publicacao no Instagram.')
+    if image.mode != 'RGB':
+        raise InstagramPublishError('A imagem final precisa estar em RGB.')
+    return {
+        'name': content.final_image.name,
+        'extension': Path(content.final_image.name).suffix.lower(),
+        'format': image.format,
+        'mode': image.mode,
+        'width': image.width,
+        'height': image.height,
+        'bytes': size,
+        'jpeg_signature': header == b'\xff\xd8\xff',
+    }
+
+
 def validar_token_midia_temporaria(token):
     try:
         payload = signing.loads(token, salt=MEDIA_SIGNING_SALT, max_age=settings.INSTAGRAM_MEDIA_URL_TTL_SECONDS)
@@ -146,6 +177,7 @@ def url_midia_temporaria(content):
     base_url = (settings.PLATFORM_BASE_URL or '').rstrip('/')
     if not base_url.startswith('https://'):
         raise InstagramConfigurationError('Configure PLATFORM_BASE_URL com uma URL HTTPS publica antes de publicar.')
+    auditar_imagem_final(content)
     token = gerar_token_midia_temporaria(content)
     return f'{base_url}{reverse("social_public_final_image", args=[token])}'
 
@@ -168,7 +200,9 @@ def montar_caption(content):
 
 
 def criar_container_imagem(image_url, caption):
-    data = _request('POST', f'{_ig_user_id()}/media', {'image_url': image_url, 'caption': caption})
+    payload = {'image_url': image_url, 'caption': caption}
+    logger.info('Instagram creating image container endpoint=%s content_type=image', f'{_ig_user_id()}/media')
+    data = _request('POST', f'{_ig_user_id()}/media', payload)
     container_id = data.get('id')
     if not container_id:
         raise InstagramAPIError('A API do Instagram nao retornou o container de midia.')
@@ -262,6 +296,7 @@ def publicar_conteudo_instagram(content, usuario=None):
     try:
         verificar_configuracao_instagram()
         obter_conta_instagram()
+        auditar_imagem_final(content)
         image_url = url_midia_temporaria(content)
         caption = montar_caption(content)
         container_id = criar_container_imagem(image_url, caption)

@@ -334,8 +334,14 @@ def public_final_image(request, token):
         raise Http404 from exc
     if not content.final_image:
         raise Http404
-    response = FileResponse(content.final_image.open('rb'), content_type='image/jpeg')
+    response = FileResponse(
+        content.final_image.storage.open(content.final_image.name, 'rb'),
+        content_type='image/jpeg',
+        as_attachment=False,
+        filename='instagram-card.jpg',
+    )
     response['Cache-Control'] = 'private, max-age=0, no-store'
+    response['X-Content-Type-Options'] = 'nosniff'
     return response
 
 

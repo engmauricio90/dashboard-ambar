@@ -25,6 +25,8 @@ from .instagram import (
     InstagramAPIError,
     MEDIA_SIGNING_SALT,
     PUBLICADO_INSTAGRAM,
+    auditar_imagem_final,
+    criar_container_imagem,
     gerar_token_midia_temporaria,
     publicar_conteudo_instagram,
     validar_token_midia_temporaria,
@@ -610,11 +612,40 @@ class SocialAutomationInstagramIntegrationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'image/jpeg')
         self.assertEqual(response['Cache-Control'], 'private, max-age=0, no-store')
-        b''.join(response.streaming_content)
+        self.assertIn('inline', response.get('Content-Disposition', ''))
+        self.assertIn('.jpg', response.get('Content-Disposition', ''))
+        body = b''.join(response.streaming_content)
+        self.assertTrue(body.startswith(b'\xff\xd8\xff'))
+        image = Image.open(BytesIO(body))
+        self.assertEqual(image.format, 'JPEG')
+        self.assertEqual(image.size, (1080, 1080))
         response.close()
 
         response = self.client.get(reverse('social_public_final_image', args=['token-invalido']))
         self.assertEqual(response.status_code, 404)
+
+    def test_signed_url_anomina_nao_redireciona_para_login(self):
+        content = self._content_ready()
+        token = gerar_token_midia_temporaria(content)
+        self.client.logout()
+        response = self.client.get(reverse('social_public_final_image', args=[token]), follow=False)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(response.status_code, {301, 302})
+        self.assertEqual(response['Content-Type'], 'image/jpeg')
+        b''.join(response.streaming_content)
+        response.close()
+
+    def test_auditoria_confirma_jpeg_real(self):
+        content = self._content_ready()
+        auditoria = auditar_imagem_final(content)
+
+        self.assertEqual(auditoria['format'], 'JPEG')
+        self.assertEqual(auditoria['extension'], '.jpg')
+        self.assertEqual(auditoria['mode'], 'RGB')
+        self.assertEqual((auditoria['width'], auditoria['height']), (1080, 1080))
+        self.assertTrue(auditoria['jpeg_signature'])
+        self.assertGreater(auditoria['bytes'], 0)
 
     @override_settings(INSTAGRAM_MEDIA_URL_TTL_SECONDS=-1)
     def test_signed_url_expirada_nao_acessa(self):
@@ -655,6 +686,26 @@ class SocialAutomationInstagramIntegrationTests(TestCase):
         self.assertEqual(content.external_permalink, 'https://instagram.com/p/teste/')
         self.assertIsNotNone(content.published_at)
         self.assertTrue(content.events.filter(acao=PUBLICADO_INSTAGRAM).exists())
+
+    @override_settings(INSTAGRAM_ACCESS_TOKEN='token-teste', INSTAGRAM_USER_ID='178000000000')
+    def test_criacao_container_envia_image_url_sem_media_type_video(self):
+        captured = {}
+
+        def fake_request(method, path, params=None):
+            captured['method'] = method
+            captured['path'] = path
+            captured['params'] = params
+            return {'id': 'container-1'}
+
+        with mock.patch('social_automation.instagram._request', side_effect=fake_request):
+            container_id = criar_container_imagem('https://dashboard-ambar.onrender.com/social-media/public/token/', 'Legenda')
+
+        self.assertEqual(container_id, 'container-1')
+        self.assertEqual(captured['method'], 'POST')
+        self.assertIn('/media', captured['path'])
+        self.assertEqual(captured['params']['image_url'], 'https://dashboard-ambar.onrender.com/social-media/public/token/')
+        self.assertEqual(captured['params']['caption'], 'Legenda')
+        self.assertNotIn('media_type', captured['params'])
 
     @override_settings(
         INSTAGRAM_ACCESS_TOKEN='token-teste',
