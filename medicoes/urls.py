@@ -12,6 +12,7 @@ urlpatterns = [
     path('construtora/planilhas/', empresa_required(views.lista_planilhas_construtora), name='lista_planilhas_construtora'),
     path('construtora/medicoes/', empresa_required(views.lista_medicoes_construtora), name='lista_medicoes_construtora'),
     path('empreiteiros/', empresa_required(views.medicoes_empreiteiros_home), name='medicoes_empreiteiros_home'),
+    path('empreiteiros/planilhas/', empresa_required(views.lista_planilhas_empreiteiros), name='lista_planilhas_empreiteiros'),
     path('empreiteiros/medicoes/', empresa_required(views.lista_medicoes_empreiteiros), name='lista_medicoes_empreiteiros'),
     path('empreiteiros/cadastro/', empresa_required(views.lista_empreiteiros), name='lista_empreiteiros_medicao'),
     path('empreiteiros/cadastro/novo/', empresa_required(views.novo_empreiteiro), name='novo_empreiteiro_medicao'),
