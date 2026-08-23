@@ -6,7 +6,7 @@
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
         <h1 class="mb-1">{{ orcamento.nome }}</h1>
-        <p class="text-muted mb-0">{{ orcamento.obra }} - {{ orcamento.get_tipo_display }}</p>
+        <p class="text-muted mb-0">{{ orcamento.obra }} - {% if orcamento.tipo == 'empreiteiro' %}Contratados{% else %}Construtora{% endif %}</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         {% if orcamento.tipo == 'construtora' %}
@@ -17,7 +17,11 @@
         {% endif %}
         <a class="btn btn-outline-primary" href="{% url 'editar_itens_orcamento_medicao' orcamento.id %}">Editar itens</a>
         <a class="btn btn-outline-danger" href="{% url 'excluir_orcamento_medicao' orcamento.id %}">Excluir planilha</a>
-        <a class="btn btn-secondary" href="{% url 'medicoes_obra' orcamento.obra.id %}">Voltar para obra</a>
+        {% if orcamento.tipo == 'empreiteiro' %}
+        <a class="btn btn-secondary" href="{% url 'lista_planilhas_empreiteiros' %}">Lista de planilhas</a>
+        {% else %}
+        <a class="btn btn-secondary" href="{% url 'lista_planilhas_construtora' %}">Lista de planilhas</a>
+        {% endif %}
     </div>
 </div>
 
@@ -25,7 +29,7 @@
     {% if orcamento.tipo == 'empreiteiro' %}
     <div class="col-md-3">
         <div class="card shadow-sm h-100"><div class="card-body">
-            <h6>Contratado</h6>
+            <h6>Contrato</h6>
             <h4>R$ {{ orcamento.total_orcamento|floatformat:2 }}</h4>
         </div></div>
     </div>

@@ -12,12 +12,15 @@
             {{ medicao.periodo_inicio|date:'d/m/Y' }} a {{ medicao.periodo_fim|date:'d/m/Y' }}
         </p>
     </div>
-    <a class="btn btn-secondary" href="{% url 'medicoes_empreiteiros_home' %}">Voltar</a>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-secondary" href="{% url 'lista_medicoes_empreiteiros' %}">Lista de medicoes</a>
+        <a class="btn btn-secondary" href="{% url 'detalhe_orcamento_medicao' medicao.orcamento.id %}">Planilha</a>
+    </div>
 </div>
 
 <div class="medicao-summary shadow-sm mb-4">
     <div>
-        <span>Contratado</span>
+        <span>Contrato</span>
         <strong>R$ {{ medicao.orcamento.total_orcamento|floatformat:2 }}</strong>
     </div>
     <div>
