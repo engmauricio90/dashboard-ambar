@@ -3,6 +3,8 @@ from io import BytesIO, StringIO
 import os
 from pathlib import Path
 import tempfile
+import urllib.error
+import urllib.parse
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -29,6 +31,8 @@ from .instagram import (
     criar_container_imagem,
     gerar_token_midia_temporaria,
     publicar_conteudo_instagram,
+    resumir_image_url,
+    url_midia_temporaria,
     validar_token_midia_temporaria,
 )
 from .rendering import SocialRenderError, renderizar_conteudo_social
@@ -636,6 +640,41 @@ class SocialAutomationInstagramIntegrationTests(TestCase):
         b''.join(response.streaming_content)
         response.close()
 
+    @override_settings(PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com', INSTAGRAM_MEDIA_URL_TTL_SECONDS=3600)
+    def test_signed_url_meta_user_agent_e_head(self):
+        content = self._content_ready()
+        token = gerar_token_midia_temporaria(content)
+        path = reverse('social_public_final_image', args=[token])
+
+        meta_response = self.client.get(
+            path,
+            HTTP_USER_AGENT='facebookexternalhit/1.1',
+            follow=False,
+        )
+        self.assertEqual(meta_response.status_code, 200)
+        self.assertEqual(meta_response['Content-Type'], 'image/jpeg')
+        body = b''.join(meta_response.streaming_content)
+        self.assertTrue(body.startswith(b'\xff\xd8\xff'))
+        meta_response.close()
+
+        head_response = self.client.head(path, follow=False)
+        self.assertEqual(head_response.status_code, 200)
+        self.assertEqual(head_response['Content-Type'], 'image/jpeg')
+        head_response.close()
+
+        signed_url = url_midia_temporaria(content)
+        self.assertEqual(urllib.parse.urlparse(signed_url).netloc, 'dashboard-ambar.onrender.com')
+
+    @override_settings(PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com')
+    def test_url_jpg_alternativa_preserva_assinatura(self):
+        content = self._content_ready()
+        url = url_midia_temporaria(content, com_extensao_jpg=True)
+        resumo = resumir_image_url(url)
+
+        self.assertTrue(url.startswith('https://dashboard-ambar.onrender.com/'))
+        self.assertTrue(resumo['has_jpg'])
+        self.assertEqual(resumo['path_structure'], '/social-media/public-jpg/[signed-token]/imagem.jpg')
+
     def test_auditoria_confirma_jpeg_real(self):
         content = self._content_ready()
         auditoria = auditar_imagem_final(content)
@@ -706,6 +745,60 @@ class SocialAutomationInstagramIntegrationTests(TestCase):
         self.assertEqual(captured['params']['image_url'], 'https://dashboard-ambar.onrender.com/social-media/public/token/')
         self.assertEqual(captured['params']['caption'], 'Legenda')
         self.assertNotIn('media_type', captured['params'])
+        self.assertNotIn('caption', captured['params']['image_url'])
+        self.assertNotIn('%253A', captured['params']['image_url'])
+
+    def test_erro_meta_completo_e_sanitizado(self):
+        payload = {
+            'error': {
+                'message': 'Only photo or video can be accepted as media type. https://dashboard-ambar.onrender.com/social-media/public/token-secreto/',
+                'type': 'OAuthException',
+                'code': 9004,
+                'error_subcode': 2207052,
+                'is_transient': False,
+                'error_user_title': 'Media invalida',
+                'error_user_msg': 'Falhou em https://dashboard-ambar.onrender.com/social-media/public/token-secreto/',
+                'fbtrace_id': 'ABC123',
+            }
+        }
+
+        class FakeHTTPError(Exception):
+            pass
+
+        error = urllib.error.HTTPError(
+            url='https://graph.instagram.com/v23.0/178/media',
+            code=400,
+            msg='Bad Request',
+            hdrs={},
+            fp=BytesIO(__import__('json').dumps(payload).encode('utf-8')),
+        )
+        with override_settings(INSTAGRAM_ACCESS_TOKEN='segredo'), mock.patch('urllib.request.urlopen', side_effect=error):
+            with self.assertRaises(InstagramAPIError) as ctx:
+                criar_container_imagem('https://dashboard-ambar.onrender.com/social-media/public/token-secreto/', '')
+
+        exc = ctx.exception
+        self.assertEqual(exc.code, 9004)
+        self.assertEqual(exc.subcode, 2207052)
+        self.assertEqual(exc.error_type, 'OAuthException')
+        self.assertFalse(exc.is_transient)
+        self.assertEqual(exc.fbtrace_id, 'ABC123')
+        self.assertNotIn('token-secreto', str(exc))
+        self.assertNotIn('token-secreto', exc.user_msg)
+
+    @override_settings(INSTAGRAM_ACCESS_TOKEN='token-teste', INSTAGRAM_USER_ID='178000000000', PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com')
+    def test_diagnostico_container_nao_chama_media_publish(self):
+        content = self._content_ready()
+        output = StringIO()
+        with mock.patch('social_automation.instagram._request', return_value={'id': 'container-1'}) as request_mock, mock.patch(
+            'social_automation.instagram.publicar_container'
+        ) as publish_mock:
+            call_command('diagnosticar_container_instagram', str(content.id), stdout=output)
+
+        texto = output.getvalue()
+        self.assertIn('media_publish: NAO executado', texto)
+        self.assertIn('image_url_sha256=', texto)
+        self.assertEqual(request_mock.call_count, 2)
+        publish_mock.assert_not_called()
 
     @override_settings(
         INSTAGRAM_ACCESS_TOKEN='token-teste',

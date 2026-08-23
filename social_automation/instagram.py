@@ -1,9 +1,11 @@
 import json
 import logging
+import re
 import time
 import urllib.parse
 import urllib.request
 import urllib.error
+from hashlib import sha256
 from pathlib import Path
 
 from django.conf import settings
@@ -30,10 +32,16 @@ class InstagramConfigurationError(Exception):
 
 
 class InstagramAPIError(Exception):
-    def __init__(self, message, *, status=None, code=None):
+    def __init__(self, message, *, status=None, code=None, error_type=None, subcode=None, is_transient=None, user_title='', user_msg='', fbtrace_id=''):
         super().__init__(message)
         self.status = status
         self.code = code
+        self.error_type = error_type
+        self.subcode = subcode
+        self.is_transient = is_transient
+        self.user_title = user_title
+        self.user_msg = user_msg
+        self.fbtrace_id = fbtrace_id
 
 
 class InstagramPublishError(Exception):
@@ -92,9 +100,28 @@ def _request(method, path, params=None):
             payload = {}
         error = payload.get('error') or {}
         code = error.get('code')
+        subcode = error.get('error_subcode')
         message = error.get('message') or 'Erro de comunicacao com a API do Instagram.'
-        logger.warning('Instagram API error status=%s code=%s path=%s', exc.code, code, path)
-        raise InstagramAPIError(_sanitize_error(message), status=exc.code, code=code) from exc
+        logger.warning(
+            'Instagram API error status=%s code=%s subcode=%s type=%s fbtrace_id=%s path=%s',
+            exc.code,
+            code,
+            subcode,
+            error.get('type'),
+            error.get('fbtrace_id'),
+            path,
+        )
+        raise InstagramAPIError(
+            _sanitize_error(message),
+            status=exc.code,
+            code=code,
+            error_type=error.get('type'),
+            subcode=subcode,
+            is_transient=error.get('is_transient'),
+            user_title=_sanitize_error(error.get('error_user_title', '')),
+            user_msg=_sanitize_error(error.get('error_user_msg', '')),
+            fbtrace_id=error.get('fbtrace_id', ''),
+        ) from exc
     except Exception as exc:
         logger.warning('Instagram API unavailable path=%s error=%s', path, type(exc).__name__)
         raise InstagramAPIError('Nao foi possivel comunicar com a API do Instagram agora.') from exc
@@ -105,7 +132,36 @@ def _sanitize_error(message):
     for secret in [settings.INSTAGRAM_ACCESS_TOKEN]:
         if secret:
             text = text.replace(secret, '[token]')
+    text = _sanitize_signed_urls(text)
     return text[:500]
+
+
+def _sanitize_signed_urls(text):
+    if not text:
+        return ''
+    text = str(text)
+    text = re.sub(r'(/social-media/public-jpg/)[^\s"\']+(/imagem\.jpg)?', r'\1[signed-token]\2', text)
+    text = re.sub(r'(/social-media/public/)[^\s"\']+', r'\1[signed-token]/', text)
+    return text
+
+
+def resumir_image_url(image_url):
+    parsed = urllib.parse.urlparse(image_url)
+    path = parsed.path or ''
+    if '/social-media/public-jpg/' in path:
+        path_structure = '/social-media/public-jpg/[signed-token]/imagem.jpg'
+    elif '/social-media/public/' in path:
+        path_structure = '/social-media/public/[signed-token]/'
+    else:
+        path_structure = path
+    return {
+        'scheme': parsed.scheme,
+        'host': parsed.netloc,
+        'path_structure': path_structure,
+        'length': len(image_url),
+        'sha256': sha256(image_url.encode('utf-8')).hexdigest(),
+        'has_jpg': path.lower().endswith('.jpg') or path.lower().endswith('.jpeg'),
+    }
 
 
 def obter_conta_instagram():
@@ -173,13 +229,14 @@ def validar_token_midia_temporaria(token):
     return content
 
 
-def url_midia_temporaria(content):
+def url_midia_temporaria(content, *, com_extensao_jpg=False):
     base_url = (settings.PLATFORM_BASE_URL or '').rstrip('/')
     if not base_url.startswith('https://'):
         raise InstagramConfigurationError('Configure PLATFORM_BASE_URL com uma URL HTTPS publica antes de publicar.')
     auditar_imagem_final(content)
     token = gerar_token_midia_temporaria(content)
-    return f'{base_url}{reverse("social_public_final_image", args=[token])}'
+    route = 'social_public_final_image_jpg' if com_extensao_jpg else 'social_public_final_image'
+    return f'{base_url}{reverse(route, args=[token])}'
 
 
 def montar_caption(content):
@@ -201,7 +258,16 @@ def montar_caption(content):
 
 def criar_container_imagem(image_url, caption):
     payload = {'image_url': image_url, 'caption': caption}
-    logger.info('Instagram creating image container endpoint=%s content_type=image', f'{_ig_user_id()}/media')
+    resumo = resumir_image_url(image_url)
+    logger.info(
+        'Instagram creating image container endpoint=%s content_type=image image_url_scheme=%s image_url_host=%s image_url_path_structure=%s image_url_length=%s image_url_sha256=%s',
+        f'{_ig_user_id()}/media',
+        resumo['scheme'],
+        resumo['host'],
+        resumo['path_structure'],
+        resumo['length'],
+        resumo['sha256'],
+    )
     data = _request('POST', f'{_ig_user_id()}/media', payload)
     container_id = data.get('id')
     if not container_id:

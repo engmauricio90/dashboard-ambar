@@ -12,6 +12,7 @@ from .views import protected_media
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('social-media/public-jpg/<path:token>/imagem.jpg', social_automation_views.public_final_image, name='social_public_final_image_jpg'),
     path('social-media/public/<path:token>/', social_automation_views.public_final_image, name='social_public_final_image'),
     path('media/<path:path>', protected_media, name='protected_media'),
     path('login/', RateLimitedLoginView.as_view(), name='login'),
