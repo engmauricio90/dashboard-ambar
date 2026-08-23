@@ -13,7 +13,7 @@ from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from empresas.models import Empresa, UsuarioEmpresa
 
@@ -30,6 +30,7 @@ from .instagram import (
     validar_token_midia_temporaria,
 )
 from .rendering import SocialRenderError, renderizar_conteudo_social
+from .rendering import _layout_text, _region
 
 
 User = get_user_model()
@@ -479,6 +480,37 @@ class SocialAutomationRenderingPositionTests(TestCase):
             renderizar_conteudo_social(content)
             content.refresh_from_db()
             self.assertTrue(content.final_image.name.endswith('.jpg'))
+
+    def test_layout_prefere_menos_linhas_para_frases_tipicas(self):
+        canvas = Image.new('RGBA', (1080, 1080))
+        draw = ImageDraw.Draw(canvas)
+        frases = [
+            'Meu salario e timido: aparece e some.',
+            'Se segunda fosse comida, eu devolvia.',
+            'Hoje eu acordei produtiva por engano.',
+        ]
+        for position in [
+            SocialBaseImage.TextPosition.LEFT,
+            SocialBaseImage.TextPosition.RIGHT,
+            SocialBaseImage.TextPosition.TOP,
+            SocialBaseImage.TextPosition.BOTTOM,
+            SocialBaseImage.TextPosition.AUTO,
+        ]:
+            region, _align = _region(position)
+            for frase in frases:
+                _font, lines, _line_height, _text_height = _layout_text(draw, frase, region[2], region[3])
+                self.assertLessEqual(len(lines), 4, f'{position}: {lines}')
+
+    def test_regioes_usam_mais_largura_sem_ocupar_canvas_inteiro(self):
+        left, _ = _region(SocialBaseImage.TextPosition.LEFT)
+        right, _ = _region(SocialBaseImage.TextPosition.RIGHT)
+        bottom, _ = _region(SocialBaseImage.TextPosition.BOTTOM)
+
+        self.assertGreaterEqual(left[2], 520)
+        self.assertGreaterEqual(right[2], 520)
+        self.assertGreaterEqual(bottom[2], 900)
+        self.assertLess(left[2], 1080)
+        self.assertLess(right[2], 1080)
 
     def test_texto_impossivel_falha_sem_truncar(self):
         frase = 'X' * 900

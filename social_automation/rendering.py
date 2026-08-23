@@ -13,6 +13,10 @@ class SocialRenderError(Exception):
 CANVAS_SIZE = (1080, 1080)
 SAFE_MARGIN = 78
 AUTO_POSITION = 'bottom'
+MAX_FONT_SIZE = 72
+MIN_FONT_SIZE = 28
+IDEAL_MAX_LINES = 4
+ACCEPTABLE_MAX_LINES = 5
 
 
 def _font(size):
@@ -57,11 +61,48 @@ def _wrap(draw, text, font, max_width):
     return lines
 
 
+def _layout_candidate(draw, text, max_width, max_height, size):
+    font = _font(size)
+    lines = _wrap(draw, text, font, max_width)
+    line_height = _line_height(draw, font) + max(8, size // 7)
+    total_height = line_height * len(lines)
+    fits = total_height <= max_height and all(_text_width(draw, line, font) <= max_width for line in lines)
+    return {
+        'font': font,
+        'lines': lines,
+        'line_height': line_height,
+        'total_height': total_height,
+        'fits': fits,
+        'size': size,
+    }
+
+
+def _candidate_score(candidate):
+    line_count = len(candidate['lines'])
+    if 2 <= line_count <= IDEAL_MAX_LINES:
+        line_penalty = 0
+    elif line_count == 1:
+        line_penalty = 8
+    elif line_count <= ACCEPTABLE_MAX_LINES:
+        line_penalty = 18
+    else:
+        line_penalty = 60 + (line_count - ACCEPTABLE_MAX_LINES) * 20
+    return (line_penalty, -candidate['size'])
+
+
 def _layout_text(draw, text, max_width, max_height):
-    for size in range(78, 31, -2):
+    candidates = []
+    for size in range(MAX_FONT_SIZE, MIN_FONT_SIZE - 1, -2):
+        candidate = _layout_candidate(draw, text, max_width, max_height, size)
+        if candidate['fits']:
+            candidates.append(candidate)
+    if candidates:
+        best = sorted(candidates, key=_candidate_score)[0]
+        return best['font'], best['lines'], best['line_height'], best['total_height']
+    for size in range(MIN_FONT_SIZE - 2, 19, -2):
         font = _font(size)
         lines = _wrap(draw, text, font, max_width)
-        line_height = _line_height(draw, font) + 12
+        line_height = _line_height(draw, font) + 8
         total_height = line_height * len(lines)
         if total_height <= max_height and all(_text_width(draw, line, font) <= max_width for line in lines):
             return font, lines, line_height, total_height
@@ -73,12 +114,12 @@ def _region(position):
     if position == 'auto':
         position = AUTO_POSITION
     if position == 'left':
-        return (SAFE_MARGIN, 112, 455, 856), 'left'
+        return (SAFE_MARGIN, 112, 540, 856), 'left'
     if position == 'right':
-        return (625, 112, 377, 856), 'right'
+        return (462, 112, 540, 856), 'right'
     if position == 'top':
-        return (112, SAFE_MARGIN, 856, 360), 'center'
-    return (112, 640, 856, 330), 'center'
+        return (SAFE_MARGIN, SAFE_MARGIN, 924, 380), 'center'
+    return (SAFE_MARGIN, 626, 924, 354), 'center'
 
 
 def _apply_gradient(overlay, position, region):
