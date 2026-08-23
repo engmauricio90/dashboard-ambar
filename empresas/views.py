@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from .forms import GRUPOS_FUNCIONAIS, IdentidadeVisualEmpresaForm, UsuarioEmpresaCriacaoForm, UsuarioEmpresaVinculoForm
+from .emails import enviar_acesso_usuario_empresa, enviar_convite_usuario_empresa
 from .models import Empresa, UsuarioEmpresa
 from .services import definir_empresa_na_sessao, empresas_do_usuario, usuario_administra_empresa
 
@@ -104,8 +105,19 @@ def novo_usuario_empresa(request):
     if request.method == 'POST':
         form = UsuarioEmpresaCriacaoForm(request.POST, empresa=empresa)
         if form.is_valid():
-            vinculo = form.save()
-            messages.success(request, f'Usuario {vinculo.usuario.username} criado para {empresa.nome}.')
+            vinculo, usuario_criado = form.save()
+            if not vinculo.usuario.email:
+                messages.warning(request, 'Usuario vinculado, mas sem e-mail para envio de convite.')
+            elif usuario_criado or not vinculo.usuario.has_usable_password():
+                if enviar_convite_usuario_empresa(request, vinculo):
+                    messages.success(request, f'Convite enviado para {vinculo.usuario.email}.')
+                else:
+                    messages.warning(request, 'Usuario vinculado, mas nao foi possivel enviar o convite agora. Tente reenviar depois.')
+            else:
+                if enviar_acesso_usuario_empresa(request, vinculo):
+                    messages.success(request, f'Acesso liberado e comunicado para {vinculo.usuario.email}.')
+                else:
+                    messages.warning(request, 'Usuario vinculado, mas nao foi possivel enviar o aviso de acesso agora.')
             return redirect('usuarios_empresa')
     else:
         form = UsuarioEmpresaCriacaoForm(empresa=empresa)
@@ -174,4 +186,27 @@ def alternar_status_usuario_empresa(request, vinculo_id):
     vinculo.ativo = novo_status
     vinculo.save(update_fields=['ativo'])
     messages.success(request, 'Status do usuario nesta empresa atualizado.')
+    return redirect('usuarios_empresa')
+
+
+@login_required
+@require_POST
+def reenviar_convite_usuario_empresa(request, vinculo_id):
+    empresa, bloqueio = _exigir_admin_empresa(request)
+    if bloqueio:
+        return bloqueio
+    vinculo = get_object_or_404(UsuarioEmpresa.objects.select_related('usuario', 'empresa'), pk=vinculo_id, empresa=empresa)
+    if not vinculo.ativo:
+        messages.error(request, 'Nao e possivel reenviar convite para usuario inativo nesta empresa.')
+        return redirect('usuarios_empresa')
+    if not vinculo.usuario.email:
+        messages.error(request, 'Este usuario nao possui e-mail cadastrado para convite.')
+        return redirect('usuarios_empresa')
+    if vinculo.usuario.has_usable_password():
+        messages.info(request, 'Este usuario ja possui senha definida. Use o fluxo de acesso normal.')
+        return redirect('usuarios_empresa')
+    if enviar_convite_usuario_empresa(request, vinculo):
+        messages.success(request, 'Convite reenviado com sucesso.')
+    else:
+        messages.warning(request, 'Nao foi possivel reenviar o convite agora. Verifique a configuracao de e-mail.')
     return redirect('usuarios_empresa')

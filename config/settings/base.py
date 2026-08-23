@@ -134,6 +134,24 @@ LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'home'
 LOGOUT_REDIRECT_URL = 'login'
 
+PLATFORM_NAME = env('PLATFORM_NAME', 'Sistema de Obras')
+PLATFORM_BASE_URL = env('PLATFORM_BASE_URL', '')
+PLATFORM_SUPPORT_EMAIL = env('PLATFORM_SUPPORT_EMAIL', '')
+
+EMAIL_BACKEND = env(
+    'EMAIL_BACKEND',
+    'django.core.mail.backends.console.EmailBackend' if DEBUG else 'django.core.mail.backends.smtp.EmailBackend',
+)
+EMAIL_HOST = env('EMAIL_HOST', '')
+EMAIL_PORT = int(env('EMAIL_PORT', '587'))
+EMAIL_HOST_USER = env('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', '')
+EMAIL_USE_TLS = env_bool('EMAIL_USE_TLS', True)
+EMAIL_USE_SSL = env_bool('EMAIL_USE_SSL', False)
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', PLATFORM_SUPPORT_EMAIL or 'no-reply@sistema-obras.local')
+SERVER_EMAIL = env('SERVER_EMAIL', DEFAULT_FROM_EMAIL)
+PASSWORD_RESET_TIMEOUT = int(env('PASSWORD_RESET_TIMEOUT', '259200'))
+
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

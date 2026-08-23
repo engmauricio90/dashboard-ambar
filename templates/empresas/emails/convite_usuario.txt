@@ -1,0 +1,10 @@
+Voce foi convidado para acessar {{ empresa.nome }} em {{ platform_name }}.
+
+Defina sua senha pelo link abaixo:
+{{ reset_url }}
+
+Esse link e pessoal, seguro e possui prazo de expiracao.
+
+Se voce nao esperava este convite, ignore este e-mail.
+
+{% if support_email %}Suporte: {{ support_email }}{% endif %}

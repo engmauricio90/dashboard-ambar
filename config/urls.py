@@ -4,6 +4,8 @@ from django.conf.urls.static import static
 from django.urls import path, include
 from django.contrib.auth import views as auth_views
 
+from usuarios.forms import PlataformaPasswordResetForm
+
 from .views import protected_media
 
 urlpatterns = [
@@ -11,6 +13,32 @@ urlpatterns = [
     path('media/<path:path>', protected_media, name='protected_media'),
     path('login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),
+    path(
+        'senha/redefinir/',
+        auth_views.PasswordResetView.as_view(
+            template_name='registration/password_reset_form.html',
+            email_template_name='registration/password_reset_email.txt',
+            html_email_template_name='registration/password_reset_email.html',
+            subject_template_name='registration/password_reset_subject.txt',
+            form_class=PlataformaPasswordResetForm,
+        ),
+        name='password_reset',
+    ),
+    path(
+        'senha/redefinir/enviado/',
+        auth_views.PasswordResetDoneView.as_view(template_name='registration/password_reset_done.html'),
+        name='password_reset_done',
+    ),
+    path(
+        'senha/redefinir/<uidb64>/<token>/',
+        auth_views.PasswordResetConfirmView.as_view(template_name='registration/password_reset_confirm.html'),
+        name='password_reset_confirm',
+    ),
+    path(
+        'senha/redefinir/concluido/',
+        auth_views.PasswordResetCompleteView.as_view(template_name='registration/password_reset_complete.html'),
+        name='password_reset_complete',
+    ),
     path('', include('dashboard.urls')),
     path('obras/', include('obras.urls')),
     path('controles/', include('controles.urls')),

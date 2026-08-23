@@ -1,7 +1,10 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.core import mail
 from django.test import TestCase
+from django.test.utils import override_settings
 from django.urls import reverse
+from urllib.parse import urlparse
 
 from empresas.models import Empresa, UsuarioEmpresa
 from obras.models import Obra
@@ -148,3 +151,71 @@ class UsuariosTests(TestCase):
         self.assertTrue(self.user.check_password('nova-senha-forte-123'))
         response_area = self.client.get(reverse('minha_area'))
         self.assertEqual(response_area.status_code, 200)
+
+
+@override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend', PLATFORM_BASE_URL='https://app.exemplo.com')
+class PasswordResetTests(TestCase):
+    def setUp(self):
+        self.empresa = Empresa.objects.get(slug='ambar')
+        self.user = User.objects.create_user(
+            username='reset-user',
+            email='reset@example.com',
+            password='senha-antiga-123',
+        )
+        UsuarioEmpresa.objects.create(usuario=self.user, empresa=self.empresa)
+
+    def _link_reset(self):
+        for trecho in mail.outbox[-1].body.split():
+            if '/senha/redefinir/' in trecho:
+                return trecho
+        self.fail('Link de reset nao encontrado.')
+
+    def test_pagina_reset_acessivel_sem_login(self):
+        response = self.client.get(reverse('password_reset'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Redefinir senha')
+
+    def test_reset_email_existente_envia_link_absoluto_https(self):
+        response = self.client.post(reverse('password_reset'), {'email': 'reset@example.com'})
+
+        self.assertRedirects(response, reverse('password_reset_done'))
+        self.assertEqual(len(mail.outbox), 1)
+        link = self._link_reset()
+        self.assertTrue(link.startswith('https://app.exemplo.com/senha/redefinir/'))
+        self.assertIn('reset@example.com', mail.outbox[0].to)
+
+    def test_reset_email_inexistente_tem_mesma_resposta_sem_envio(self):
+        response = self.client.post(reverse('password_reset'), {'email': 'inexistente@example.com'})
+
+        self.assertRedirects(response, reverse('password_reset_done'))
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_reset_email_duplicado_nao_escolhe_usuario_arbitrario(self):
+        User.objects.create_user(username='reset-duplicado', email='reset@example.com', password='outra-senha-123')
+
+        response = self.client.post(reverse('password_reset'), {'email': 'reset@example.com'})
+
+        self.assertRedirects(response, reverse('password_reset_done'))
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_link_valido_redefine_senha_e_token_nao_reutiliza(self):
+        self.client.post(reverse('password_reset'), {'email': 'reset@example.com'})
+        confirm_path = urlparse(self._link_reset()).path
+        response = self.client.get(confirm_path)
+        self.assertEqual(response.status_code, 302)
+
+        response = self.client.post(
+            response.url,
+            {
+                'new_password1': 'senha-nova-forte-123',
+                'new_password2': 'senha-nova-forte-123',
+            },
+        )
+
+        self.assertRedirects(response, reverse('password_reset_complete'))
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('senha-nova-forte-123'))
+        self.assertTrue(self.client.login(username='reset-user', password='senha-nova-forte-123'))
+        response = self.client.get(confirm_path)
+        self.assertContains(response, 'Link invalido')

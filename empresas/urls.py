@@ -11,4 +11,5 @@ urlpatterns = [
     path('usuarios/novo/', views.novo_usuario_empresa, name='novo_usuario_empresa'),
     path('usuarios/<int:vinculo_id>/editar/', views.editar_usuario_empresa, name='editar_usuario_empresa'),
     path('usuarios/<int:vinculo_id>/status/', views.alternar_status_usuario_empresa, name='alternar_status_usuario_empresa'),
+    path('usuarios/<int:vinculo_id>/reenviar-convite/', views.reenviar_convite_usuario_empresa, name='reenviar_convite_usuario_empresa'),
 ]

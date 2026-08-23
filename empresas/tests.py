@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.core import mail
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import CommandError, call_command
@@ -9,6 +10,7 @@ from django.test import Client, RequestFactory, TestCase
 from django.test.utils import override_settings
 from django.urls import reverse
 from django.utils import timezone
+from urllib.parse import urlparse
 import tempfile
 
 from controles.models import CronogramaObra, OrcamentoRadarObra, OrdemCompraGeral
@@ -801,7 +803,6 @@ class Fase6PilotoCassoniUsuariosTests(TestCase):
                 'first_name': 'Piloto',
                 'last_name': 'Cassoni',
                 'email': 'piloto@example.com',
-                'password': 'senha-temporaria-segura',
                 'grupo': str(self.grupo_financeiro.id),
                 'administrador_empresa': 'on',
                 'obras_permitidas': [str(self.obra_cassoni.id)],
@@ -810,16 +811,144 @@ class Fase6PilotoCassoniUsuariosTests(TestCase):
 
         self.assertRedirects(response, reverse('usuarios_empresa'))
         usuario = User.objects.get(username='piloto-cassoni')
-        self.assertTrue(usuario.check_password('senha-temporaria-segura'))
+        self.assertFalse(usuario.has_usable_password())
         self.assertFalse(usuario.is_staff)
         self.assertFalse(usuario.is_superuser)
         self.assertFalse(usuario.groups.exists())
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('piloto@example.com', mail.outbox[0].to)
+        self.assertNotIn('senha-temporaria', mail.outbox[0].body)
         vinculo = UsuarioEmpresa.objects.get(usuario=usuario)
         self.assertEqual(vinculo.empresa, self.cassoni)
         self.assertEqual(vinculo.grupo, self.grupo_financeiro)
         self.assertTrue(vinculo.administrador_empresa)
         self.assertTrue(vinculo.obras_permitidas.filter(pk=self.obra_cassoni.pk).exists())
         self.assertFalse(UsuarioEmpresa.objects.filter(usuario=usuario, empresa=self.ambar).exists())
+
+    def _primeiro_link_email(self):
+        for trecho in mail.outbox[-1].body.split():
+            if '/senha/redefinir/' in trecho:
+                return urlparse(trecho).path
+        self.fail('Link de senha nao encontrado no e-mail.')
+
+    def test_convite_novo_usuario_permite_definir_senha_e_login(self):
+        self.client.force_login(self.admin_cassoni)
+        self._selecionar(self.cassoni)
+        self.client.post(
+            reverse('novo_usuario_empresa'),
+            {
+                'email': 'novo-convite@example.com',
+                'first_name': 'Novo',
+                'grupo': str(self.grupo_financeiro.id),
+            },
+        )
+        usuario = User.objects.get(email='novo-convite@example.com')
+        self.assertFalse(usuario.has_usable_password())
+
+        confirm_path = self._primeiro_link_email()
+        response = self.client.get(confirm_path)
+        self.assertEqual(response.status_code, 302)
+        response = self.client.post(
+            response.url,
+            {
+                'new_password1': 'senha-nova-forte-123',
+                'new_password2': 'senha-nova-forte-123',
+            },
+        )
+
+        self.assertRedirects(response, reverse('password_reset_complete'))
+        usuario.refresh_from_db()
+        self.assertTrue(usuario.check_password('senha-nova-forte-123'))
+        self.assertTrue(self.client.login(username=usuario.username, password='senha-nova-forte-123'))
+
+    def test_link_de_convite_usado_nao_pode_ser_reutilizado(self):
+        self.client.force_login(self.admin_cassoni)
+        self._selecionar(self.cassoni)
+        self.client.post(reverse('novo_usuario_empresa'), {'email': 'token-usado@example.com'})
+        usuario = User.objects.get(email='token-usado@example.com')
+        confirm_path = self._primeiro_link_email()
+        response = self.client.get(confirm_path)
+        self.client.post(
+            response.url,
+            {
+                'new_password1': 'senha-nova-forte-123',
+                'new_password2': 'senha-nova-forte-123',
+            },
+        )
+
+        response = self.client.get(confirm_path)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Link invalido')
+        usuario.refresh_from_db()
+        self.assertTrue(usuario.check_password('senha-nova-forte-123'))
+
+    def test_convidar_usuario_existente_cria_vinculo_sem_duplicar_user(self):
+        existente = User.objects.create_user(
+            username='existente-ambar',
+            email='existente@example.com',
+            password='senha-existente-123',
+        )
+        UsuarioEmpresa.objects.create(usuario=existente, empresa=self.ambar, grupo=self.grupo_consulta)
+        self.client.force_login(self.admin_cassoni)
+        self._selecionar(self.cassoni)
+
+        response = self.client.post(
+            reverse('novo_usuario_empresa'),
+            {
+                'email': 'EXISTENTE@example.com',
+                'grupo': str(self.grupo_financeiro.id),
+            },
+        )
+
+        self.assertRedirects(response, reverse('usuarios_empresa'))
+        self.assertEqual(User.objects.filter(email__iexact='existente@example.com').count(), 1)
+        vinculo = UsuarioEmpresa.objects.get(usuario=existente, empresa=self.cassoni)
+        self.assertEqual(vinculo.grupo, self.grupo_financeiro)
+        self.assertTrue(existente.has_usable_password())
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('Voce recebeu acesso', mail.outbox[0].subject)
+        self.assertNotIn('/senha/redefinir/', mail.outbox[0].body)
+
+    def test_nao_cria_vinculo_duplicado_no_convite(self):
+        self.comum_cassoni.email = 'comum-cassoni@example.com'
+        self.comum_cassoni.save(update_fields=['email'])
+        self.client.force_login(self.admin_cassoni)
+        self._selecionar(self.cassoni)
+
+        response = self.client.post(reverse('novo_usuario_empresa'), {'email': self.comum_cassoni.email})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(UsuarioEmpresa.objects.filter(usuario=self.comum_cassoni, empresa=self.cassoni).count(), 1)
+
+    def test_reenvia_convite_para_usuario_pendente(self):
+        pendente = User.objects.create_user(username='pendente', email='pendente@example.com')
+        pendente.set_unusable_password()
+        pendente.save(update_fields=['password'])
+        vinculo = UsuarioEmpresa.objects.create(usuario=pendente, empresa=self.cassoni)
+        self.client.force_login(self.admin_cassoni)
+        self._selecionar(self.cassoni)
+
+        response = self.client.post(reverse('reenviar_convite_usuario_empresa', args=[vinculo.id]))
+
+        self.assertRedirects(response, reverse('usuarios_empresa'))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('pendente@example.com', mail.outbox[0].to)
+
+    def test_reenvio_nao_reativa_vinculo_inativo(self):
+        pendente = User.objects.create_user(username='pendente-inativo', email='pendente-inativo@example.com')
+        pendente.set_unusable_password()
+        pendente.save(update_fields=['password'])
+        vinculo = UsuarioEmpresa.objects.create(usuario=pendente, empresa=self.cassoni, ativo=False)
+        self.client.force_login(self.admin_cassoni)
+        self._selecionar(self.cassoni)
+
+        response = self.client.post(reverse('reenviar_convite_usuario_empresa', args=[vinculo.id]))
+
+        self.assertRedirects(response, reverse('usuarios_empresa'))
+        vinculo.refresh_from_db()
+        self.assertFalse(vinculo.ativo)
+        self.assertEqual(len(mail.outbox), 0)
 
     def test_post_adulterado_nao_aceita_obra_de_outra_empresa(self):
         self.client.force_login(self.admin_cassoni)
@@ -829,7 +958,7 @@ class Fase6PilotoCassoniUsuariosTests(TestCase):
             reverse('novo_usuario_empresa'),
             {
                 'username': 'tamper-obra',
-                'password': 'senha-temporaria-segura',
+                'email': 'tamper-obra@example.com',
                 'grupo': str(self.grupo_financeiro.id),
                 'obras_permitidas': [str(self.obra_ambar.id)],
             },

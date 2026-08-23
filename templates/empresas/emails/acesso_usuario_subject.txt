@@ -1,0 +1,1 @@
+Voce recebeu acesso a {{ empresa.nome }}

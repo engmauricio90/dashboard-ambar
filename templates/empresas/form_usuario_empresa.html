@@ -32,6 +32,7 @@
                     <div class="col-md-4">
                         <label class="form-label">{{ form.username.label }}</label>
                         {{ form.username }}
+                        {% if form.username.help_text %}<div class="form-text">{{ form.username.help_text }}</div>{% endif %}
                         {{ form.username.errors }}
                     </div>
                 {% endif %}
@@ -50,15 +51,12 @@
                     {{ form.email }}
                     {{ form.email.errors }}
                 </div>
-                {% if modo == 'novo' %}
-                    <div class="col-md-4">
-                        <label class="form-label">{{ form.password.label }}</label>
-                        {{ form.password }}
-                        <div class="form-text">{{ form.password.help_text }}</div>
-                        {{ form.password.errors }}
-                    </div>
-                {% endif %}
             </div>
+            {% if modo == 'novo' %}
+                <div class="form-text mt-3">
+                    O usuario recebera um convite por e-mail para definir a propria senha. Nenhuma senha temporaria sera exibida ou enviada.
+                </div>
+            {% endif %}
         </div>
     </div>
 
@@ -95,6 +93,6 @@
         </div>
     </div>
 
-    <button type="submit" class="btn btn-primary">Salvar</button>
+    <button type="submit" class="btn btn-primary">{% if modo == 'novo' %}Enviar convite{% else %}Salvar{% endif %}</button>
 </form>
 {% endblock %}

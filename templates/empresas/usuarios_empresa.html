@@ -10,7 +10,7 @@
     </div>
     <div class="d-flex gap-2">
         <a href="{% url 'identidade_visual_empresa' %}" class="btn btn-outline-secondary">Identidade visual</a>
-        <a href="{% url 'novo_usuario_empresa' %}" class="btn btn-primary">Novo usuario</a>
+        <a href="{% url 'novo_usuario_empresa' %}" class="btn btn-primary">Convidar usuario</a>
     </div>
 </div>
 
@@ -38,10 +38,12 @@
                     <td>{% if vinculo.grupo %}{{ vinculo.grupo.name }}{% else %}-{% endif %}</td>
                     <td>{% if vinculo.administrador_empresa %}Sim{% else %}Nao{% endif %}</td>
                     <td>
-                        {% if vinculo.ativo %}
-                            <span class="badge text-bg-success">Ativo</span>
-                        {% else %}
+                        {% if not vinculo.ativo %}
                             <span class="badge text-bg-secondary">Inativo</span>
+                        {% elif not vinculo.usuario.has_usable_password %}
+                            <span class="badge text-bg-warning">Convite pendente</span>
+                        {% else %}
+                            <span class="badge text-bg-success">Ativo</span>
                         {% endif %}
                     </td>
                     <td>
@@ -54,6 +56,12 @@
                     <td class="text-end">
                         <div class="d-inline-flex gap-2">
                             <a href="{% url 'editar_usuario_empresa' vinculo.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                            {% if vinculo.ativo and not vinculo.usuario.has_usable_password %}
+                                <form method="post" action="{% url 'reenviar_convite_usuario_empresa' vinculo.id %}" class="m-0">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-primary">Reenviar convite</button>
+                                </form>
+                            {% endif %}
                             <form method="post" action="{% url 'alternar_status_usuario_empresa' vinculo.id %}" class="m-0">
                                 {% csrf_token %}
                                 <button type="submit" class="btn btn-sm btn-outline-secondary">

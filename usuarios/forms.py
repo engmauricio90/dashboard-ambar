@@ -1,6 +1,9 @@
 from django import forms
 from django.contrib.auth import get_user_model
+from django.contrib.auth.forms import PasswordResetForm
 from django.contrib.auth.models import Group
+from django.conf import settings
+from urllib.parse import urlparse
 
 from obras.forms import BootstrapModelForm
 
@@ -8,6 +11,38 @@ from .models import PerfilUsuario
 
 
 User = get_user_model()
+
+
+class PlataformaPasswordResetForm(PasswordResetForm):
+    email = forms.EmailField(
+        label='E-mail',
+        max_length=254,
+        widget=forms.EmailInput(attrs={'autocomplete': 'email', 'class': 'form-control'}),
+    )
+
+    def get_users(self, email):
+        usuarios = [
+            user
+            for user in User._default_manager.filter(email__iexact=email, is_active=True)
+            if user.has_usable_password() and user.email.lower() == email.lower()
+        ]
+        if len(usuarios) != 1:
+            return []
+        return usuarios
+
+    def save(self, *args, **kwargs):
+        extra_context = kwargs.pop('extra_email_context', None) or {}
+        extra_context.setdefault('platform_name', settings.PLATFORM_NAME)
+        extra_context.setdefault('support_email', settings.PLATFORM_SUPPORT_EMAIL)
+
+        if settings.PLATFORM_BASE_URL:
+            parsed = urlparse(settings.PLATFORM_BASE_URL)
+            if parsed.netloc:
+                kwargs['domain_override'] = parsed.netloc
+                kwargs['use_https'] = parsed.scheme == 'https'
+
+        kwargs['extra_email_context'] = extra_context
+        return super().save(*args, **kwargs)
 
 
 class UsuarioForm(BootstrapModelForm):

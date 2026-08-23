@@ -1,0 +1,6 @@
+Voce recebeu acesso a {{ empresa.nome }} em {{ platform_name }}.
+
+Use seu usuario e senha atuais para entrar:
+{{ login_url }}
+
+{% if support_email %}Suporte: {{ support_email }}{% endif %}

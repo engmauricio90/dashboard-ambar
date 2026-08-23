@@ -18,6 +18,7 @@ class LoginRequiredMiddleware:
             reverse(settings.LOGIN_URL),
             reverse('logout'),
             reverse('healthz'),
+            '/senha/',
             '/admin/',
             settings.STATIC_URL,
             settings.MEDIA_URL,

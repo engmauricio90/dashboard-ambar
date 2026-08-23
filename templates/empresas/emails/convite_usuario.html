@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<body style="margin:0;padding:0;background:#f6f7f9;font-family:Arial,sans-serif;color:#111827;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f7f9;padding:24px 0;">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;">
+                    <tr>
+                        <td style="padding:28px;">
+                            <h1 style="font-size:22px;margin:0 0 8px;">Convite de acesso</h1>
+                            <p style="font-size:15px;line-height:1.5;margin:0 0 20px;color:#4b5563;">Voce foi convidado para acessar <strong>{{ empresa.nome }}</strong> em {{ platform_name }}.</p>
+                            <p style="margin:0 0 24px;">
+                                <a href="{{ reset_url }}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:6px;font-weight:bold;">Definir senha</a>
+                            </p>
+                            <p style="font-size:13px;line-height:1.5;margin:0;color:#6b7280;">Esse link e pessoal, seguro e possui prazo de expiracao.</p>
+                            {% if support_email %}<p style="font-size:13px;line-height:1.5;margin:16px 0 0;color:#6b7280;">Suporte: {{ support_email }}</p>{% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

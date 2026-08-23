@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.utils.text import slugify
 
 from obras.models import Obra
 
@@ -24,16 +25,16 @@ def _css_class_for_widget(widget):
 
 
 class UsuarioEmpresaCriacaoForm(forms.Form):
-    username = forms.CharField(label='Usuario', max_length=150)
+    username = forms.CharField(
+        label='Usuario',
+        max_length=150,
+        required=False,
+        help_text='Opcional para usuarios novos. Se ficar vazio, o sistema gera a partir do e-mail.',
+    )
     first_name = forms.CharField(label='Nome', max_length=150, required=False)
     last_name = forms.CharField(label='Sobrenome', max_length=150, required=False)
-    email = forms.EmailField(label='E-mail', required=False)
-    password = forms.CharField(
-        label='Senha temporaria',
-        widget=forms.PasswordInput(attrs={'autocomplete': 'new-password'}),
-        help_text='Defina uma senha temporaria manual. O usuario podera troca-la em Minha area.',
-    )
-    grupo = forms.ModelChoiceField(label='Grupo/Função', queryset=Group.objects.none(), required=False)
+    email = forms.EmailField(label='E-mail', required=True)
+    grupo = forms.ModelChoiceField(label='Grupo/Funcao', queryset=Group.objects.none(), required=False)
     administrador_empresa = forms.BooleanField(label='Administrador da empresa', required=False)
     obras_permitidas = forms.ModelMultipleChoiceField(
         label='Obras permitidas',
@@ -45,6 +46,7 @@ class UsuarioEmpresaCriacaoForm(forms.Form):
 
     def __init__(self, *args, empresa=None, **kwargs):
         self.empresa = empresa
+        self.usuario_existente = None
         super().__init__(*args, **kwargs)
         self.fields['grupo'].queryset = grupos_funcionais_queryset()
         self.fields['obras_permitidas'].queryset = (
@@ -52,25 +54,59 @@ class UsuarioEmpresaCriacaoForm(forms.Form):
         )
         for field in self.fields.values():
             field.widget.attrs.setdefault('class', _css_class_for_widget(field.widget))
+        self.fields['email'].widget.attrs.setdefault('autocomplete', 'email')
 
     def clean_username(self):
-        username = self.cleaned_data['username'].strip()
-        if User.objects.filter(username__iexact=username).exists():
+        username = self.cleaned_data.get('username', '').strip()
+        if username and User.objects.filter(username__iexact=username).exists():
             raise forms.ValidationError('Ja existe um usuario com este username.')
         return username
 
+    def clean_email(self):
+        email = (self.cleaned_data.get('email') or '').strip().lower()
+        usuarios = list(User.objects.filter(email__iexact=email).order_by('id'))
+        if len(usuarios) > 1:
+            raise forms.ValidationError('Existe mais de uma conta com este e-mail. Regularize antes de convidar.')
+        if usuarios:
+            self.usuario_existente = usuarios[0]
+            if UsuarioEmpresa.objects.filter(usuario=self.usuario_existente, empresa=self.empresa).exists():
+                raise forms.ValidationError('Este usuario ja possui vinculo com esta empresa.')
+        return email
+
+    def clean(self):
+        cleaned_data = super().clean()
+        username = cleaned_data.get('username')
+        if self.usuario_existente and username and username.lower() != self.usuario_existente.username.lower():
+            self.add_error('username', 'Este e-mail ja pertence a outro usuario. Deixe o campo usuario vazio.')
+        return cleaned_data
+
+    def _gerar_username(self, email):
+        base = slugify(email.split('@')[0]) or 'usuario'
+        base = base[:120]
+        username = base
+        contador = 2
+        while User.objects.filter(username__iexact=username).exists():
+            sufixo = f'-{contador}'
+            username = f'{base[:150 - len(sufixo)]}{sufixo}'
+            contador += 1
+        return username
+
     def save(self):
-        user = User(
-            username=self.cleaned_data['username'],
-            first_name=self.cleaned_data.get('first_name', ''),
-            last_name=self.cleaned_data.get('last_name', ''),
-            email=self.cleaned_data.get('email', ''),
-            is_active=True,
-            is_staff=False,
-            is_superuser=False,
-        )
-        user.set_password(self.cleaned_data['password'])
-        user.save()
+        user = self.usuario_existente
+        usuario_criado = False
+        if user is None:
+            user = User(
+                username=self.cleaned_data.get('username') or self._gerar_username(self.cleaned_data['email']),
+                first_name=self.cleaned_data.get('first_name', ''),
+                last_name=self.cleaned_data.get('last_name', ''),
+                email=self.cleaned_data['email'],
+                is_active=True,
+                is_staff=False,
+                is_superuser=False,
+            )
+            user.set_unusable_password()
+            user.save()
+            usuario_criado = True
         vinculo = UsuarioEmpresa.objects.create(
             usuario=user,
             empresa=self.empresa,
@@ -79,7 +115,7 @@ class UsuarioEmpresaCriacaoForm(forms.Form):
             ativo=True,
         )
         vinculo.obras_permitidas.set(self.cleaned_data.get('obras_permitidas'))
-        return vinculo
+        return vinculo, usuario_criado
 
 
 class UsuarioEmpresaVinculoForm(forms.ModelForm):
@@ -91,7 +127,7 @@ class UsuarioEmpresaVinculoForm(forms.ModelForm):
         model = UsuarioEmpresa
         fields = ['grupo', 'administrador_empresa', 'ativo', 'obras_permitidas']
         labels = {
-            'grupo': 'Grupo/Função',
+            'grupo': 'Grupo/Funcao',
             'administrador_empresa': 'Administrador da empresa',
             'ativo': 'Ativo nesta empresa',
             'obras_permitidas': 'Obras permitidas',
@@ -110,6 +146,7 @@ class UsuarioEmpresaVinculoForm(forms.ModelForm):
         self.fields['first_name'].initial = self.instance.usuario.first_name
         self.fields['last_name'].initial = self.instance.usuario.last_name
         self.fields['email'].initial = self.instance.usuario.email
+        self.fields['email'].widget.attrs.setdefault('autocomplete', 'email')
         for field in self.fields.values():
             field.widget.attrs.setdefault('class', _css_class_for_widget(field.widget))
 
