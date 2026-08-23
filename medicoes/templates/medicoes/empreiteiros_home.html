@@ -9,6 +9,7 @@
         <p class="text-muted mb-0">Painel operacional para recibos simples, planilhas cumulativas e cadastro de contratados.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-primary" href="{% url 'lista_medicoes_empreiteiros' %}">Ver medicoes</a>
         <a class="btn btn-primary" href="{% url 'nova_medicao_empreiteiro_simples' %}">Nova medicao simples</a>
         <a class="btn btn-outline-primary" href="{% url 'novo_orcamento_manual_medicao' %}?tipo=empreiteiro">Criar cumulativa manual</a>
         <a class="btn btn-outline-secondary" href="{% url 'lista_empreiteiros_medicao' %}">Contratados</a>
@@ -55,12 +56,24 @@
     <div class="col-lg-4">
         <div class="module-card h-100">
             <div>
+                <h2>Medicoes</h2>
+                <p>Consulte recibos simples e medicoes cumulativas em uma lista paginada, com filtros e acoes rapidas.</p>
+            </div>
+            <a class="btn btn-outline-primary" href="{% url 'lista_medicoes_empreiteiros' %}">Ver medicoes</a>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="module-card h-100">
+            <div>
                 <h2>Cumulativas</h2>
                 <p>Acesse a lista de planilhas para abrir saldos, acumulados e criar nova medicao cumulativa.</p>
             </div>
             <a class="btn btn-outline-primary" href="{% url 'lista_orcamentos_medicao' %}">Ver planilhas</a>
         </div>
     </div>
+</div>
+
+<div class="row g-3 mt-1">
     <div class="col-lg-4">
         <div class="module-card h-100">
             <div>
@@ -70,10 +83,7 @@
             <a class="btn btn-outline-secondary" href="{% url 'lista_empreiteiros_medicao' %}">Abrir cadastro</a>
         </div>
     </div>
-</div>
-
-<div class="row g-3 mt-1">
-    <div class="col-lg-6">
+    <div class="col-lg-4">
         <div class="module-card module-card-compact h-100">
             <div>
                 <h2>Importacao</h2>
@@ -82,7 +92,7 @@
             <a class="btn btn-outline-secondary" href="{% url 'importar_orcamento_medicao' %}">Importar planilha</a>
         </div>
     </div>
-    <div class="col-lg-6">
+    <div class="col-lg-4">
         <div class="module-card module-card-compact h-100">
             <div>
                 <h2>Relatorios</h2>

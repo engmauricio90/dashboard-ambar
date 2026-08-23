@@ -1,0 +1,244 @@
+{% extends 'base.html' %}
+
+{% block title %}Medicoes de Contratados{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-3">
+    <div>
+        <div class="text-muted small mb-1">
+            <a href="{% url 'medicoes_home' %}" class="text-muted">Medicoes</a>
+            <span>/</span>
+            <a href="{% url 'medicoes_empreiteiros_home' %}" class="text-muted">Contratados</a>
+            <span>/ Medicoes</span>
+        </div>
+        <h1 class="mb-1">Medicoes de Contratados</h1>
+        <p class="text-muted mb-0">Consulta operacional paginada para recibos simples e medicoes cumulativas.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-primary" href="{% url 'nova_medicao_empreiteiro_simples' %}">Nova simples</a>
+        <a class="btn btn-outline-primary" href="{% url 'novo_orcamento_manual_medicao' %}?tipo=empreiteiro">Nova cumulativa</a>
+        <a class="btn btn-outline-secondary" href="{% url 'lista_empreiteiros_medicao' %}">Contratados</a>
+        <a class="btn btn-outline-secondary" href="{% url 'medicoes_empreiteiros_home' %}">Voltar</a>
+    </div>
+</div>
+
+<form method="get" class="filter-card mb-3">
+    <div class="row g-2 align-items-end">
+        <div class="col-lg-3">
+            <label class="form-label" for="filtro-contratado">Contratado</label>
+            <select id="filtro-contratado" class="form-select" name="contratado">
+                <option value="">Todos</option>
+                {% for contratado in contratados %}
+                <option value="{{ contratado.id }}" {% if contratado_id == contratado.id|stringformat:'s' %}selected{% endif %}>{{ contratado.nome }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-lg-3">
+            <label class="form-label" for="filtro-obra">Obra</label>
+            <select id="filtro-obra" class="form-select" name="obra">
+                <option value="">Todas</option>
+                {% for obra in obras %}
+                <option value="{{ obra.id }}" {% if obra_id == obra.id|stringformat:'s' %}selected{% endif %}>{{ obra.nome_obra }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-lg-3">
+            <label class="form-label" for="filtro-planilha">Planilha</label>
+            <select id="filtro-planilha" class="form-select" name="planilha">
+                <option value="">Todas</option>
+                {% for planilha in planilhas %}
+                <option value="{{ planilha.id }}" {% if planilha_id == planilha.id|stringformat:'s' %}selected{% endif %}>{{ planilha.obra.nome_obra }} - {{ planilha.nome }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-lg-2">
+            <label class="form-label" for="filtro-tipo">Tipo</label>
+            <select id="filtro-tipo" class="form-select" name="tipo">
+                <option value="">Todos</option>
+                {% for valor, rotulo in tipos %}
+                <option value="{{ valor }}" {% if tipo == valor %}selected{% endif %}>{{ rotulo }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-lg-1">
+            <label class="form-label" for="filtro-numero">No</label>
+            <input id="filtro-numero" class="form-control" type="number" min="1" name="numero" value="{{ numero }}">
+        </div>
+        <div class="col-lg-2">
+            <label class="form-label" for="filtro-data-inicio">De</label>
+            <input id="filtro-data-inicio" class="form-control" type="date" name="data_inicio" value="{{ data_inicio }}">
+        </div>
+        <div class="col-lg-2">
+            <label class="form-label" for="filtro-data-fim">Ate</label>
+            <input id="filtro-data-fim" class="form-control" type="date" name="data_fim" value="{{ data_fim }}">
+        </div>
+        <div class="col-lg-3">
+            <label class="form-label" for="filtro-ordem">Ordenar por</label>
+            <select id="filtro-ordem" class="form-select" name="ordem">
+                {% for valor, rotulo in ordenacoes %}
+                <option value="{{ valor }}" {% if ordem == valor %}selected{% endif %}>{{ rotulo }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-lg-5 d-flex gap-2 flex-wrap">
+            <button class="btn btn-primary" type="submit">Filtrar</button>
+            <a class="btn btn-outline-secondary" href="{% url 'lista_medicoes_empreiteiros' %}">Limpar</a>
+        </div>
+    </div>
+</form>
+
+<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+    <div class="text-muted small">
+        {{ total_resultados }} medicao(oes) encontrada(s)
+        {% if total_resultados != total_empresa %}de {{ total_empresa }} medicao(oes) de contratados{% endif %}
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 operational-table">
+            <thead>
+                <tr>
+                    <th>Tipo</th>
+                    <th>No</th>
+                    <th>Data</th>
+                    <th>Contratado</th>
+                    <th>Obra</th>
+                    <th>Planilha</th>
+                    <th>Periodo</th>
+                    <th class="text-end">Total medido</th>
+                    <th class="text-end">Desconto</th>
+                    <th class="text-end">Retencao</th>
+                    <th class="text-end">Liquido</th>
+                    <th class="text-end">Acoes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for medicao in medicoes %}
+                <tr>
+                    <td>
+                        {% if medicao.tipo == 'simples' %}
+                        <span class="badge text-bg-light border">Simples</span>
+                        {% else %}
+                        <span class="badge text-bg-primary">Cumulativa</span>
+                        {% endif %}
+                    </td>
+                    <td class="fw-semibold numeric">Medicao {{ medicao.numero }}</td>
+                    <td class="numeric">{{ medicao.data_medicao|date:'d/m/Y' }}</td>
+                    <td>{{ medicao.empreiteiro }}</td>
+                    <td>
+                        {% if medicao.obra %}
+                        {{ medicao.obra.nome_obra }}
+                        {% elif medicao.orcamento %}
+                        {{ medicao.orcamento.obra.nome_obra }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>{% if medicao.orcamento %}{{ medicao.orcamento.nome }}{% else %}-{% endif %}</td>
+                    <td class="numeric">{{ medicao.periodo_inicio|date:'d/m/y' }} a {{ medicao.periodo_fim|date:'d/m/y' }}</td>
+                    <td class="text-end numeric">R$ {{ medicao.subtotal_otimizado|floatformat:2 }}</td>
+                    <td class="text-end numeric">R$ {{ medicao.desconto_adicional|floatformat:2 }}</td>
+                    <td class="text-end numeric">R$ {{ medicao.retencao_tecnica|floatformat:2 }}</td>
+                    <td class="text-end numeric fw-semibold">R$ {{ medicao.total_liquido_otimizado|floatformat:2 }}</td>
+                    <td class="text-end">
+                        <div class="btn-group btn-group-sm">
+                            <a class="btn btn-primary" href="{% url 'editar_medicao_empreiteiro' medicao.id %}">Abrir</a>
+                            <button class="btn btn-outline-secondary dropdown-toggle dropdown-toggle-split" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <span class="visually-hidden">Mais acoes</span>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item" href="{% url 'medicao_empreiteiro_pdf' medicao.id %}" target="_blank">PDF</a></li>
+                                <li><a class="dropdown-item" href="{% url 'medicao_empreiteiro_excel' medicao.id %}">Excel</a></li>
+                                {% if medicao.orcamento %}
+                                <li><a class="dropdown-item" href="{% url 'detalhe_orcamento_medicao' medicao.orcamento.id %}">Abrir planilha</a></li>
+                                {% endif %}
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item text-danger" href="{% url 'excluir_medicao_empreiteiro' medicao.id %}">Excluir</a></li>
+                            </ul>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="12" class="empty-state">
+                        {% if total_empresa == 0 %}
+                        <strong>Nenhuma medicao de contratado encontrada.</strong>
+                        <span>Crie uma medicao simples ou uma medicao cumulativa a partir de uma planilha.</span>
+                        <div class="mt-3 d-flex justify-content-center gap-2 flex-wrap">
+                            <a class="btn btn-primary btn-sm" href="{% url 'nova_medicao_empreiteiro_simples' %}">Nova simples</a>
+                            <a class="btn btn-outline-primary btn-sm" href="{% url 'novo_orcamento_manual_medicao' %}?tipo=empreiteiro">Nova cumulativa</a>
+                        </div>
+                        {% else %}
+                        <strong>Nenhuma medicao corresponde aos filtros informados.</strong>
+                        <span>Ajuste os filtros ou limpe a busca para visualizar todas as medicoes.</span>
+                        <div class="mt-3">
+                            <a class="btn btn-outline-secondary btn-sm" href="{% url 'lista_medicoes_empreiteiros' %}">Limpar filtros</a>
+                        </div>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if page_obj.paginator.num_pages > 1 %}
+<nav class="mt-3" aria-label="Paginacao das medicoes de contratados">
+    <ul class="pagination justify-content-end mb-0">
+        {% if page_obj.has_previous %}
+        <li class="page-item"><a class="page-link" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.previous_page_number }}">Anterior</a></li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">Anterior</span></li>
+        {% endif %}
+        <li class="page-item disabled"><span class="page-link">Pagina {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span></li>
+        {% if page_obj.has_next %}
+        <li class="page-item"><a class="page-link" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.next_page_number }}">Proxima</a></li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">Proxima</span></li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .filter-card {
+        border: 1px solid #dee2e6;
+        border-radius: .5rem;
+        background: #fff;
+        padding: 1rem;
+        box-shadow: 0 .125rem .25rem rgba(0, 0, 0, .05);
+    }
+    .operational-table {
+        min-width: 1360px;
+    }
+    .operational-table thead th {
+        background: #eef3f6;
+        border-bottom-color: #adb5bd;
+        font-size: .82rem;
+        white-space: nowrap;
+    }
+    .operational-table td {
+        vertical-align: middle;
+    }
+    .numeric {
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+    .empty-state {
+        padding: 2rem;
+        text-align: center;
+    }
+    .empty-state strong,
+    .empty-state span {
+        display: block;
+    }
+    .empty-state span {
+        margin-top: .35rem;
+        color: #6c757d;
+    }
+</style>
+{% endblock %}

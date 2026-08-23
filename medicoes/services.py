@@ -418,6 +418,34 @@ def anotar_resumo_medicoes_construtora(qs):
     return qs
 
 
+def anotar_resumo_medicoes_contratados(qs):
+    decimal_field = DecimalField(max_digits=20, decimal_places=4)
+    item_subtotal_expr = ExpressionWrapper(
+        F('quantidade_periodo') * F('valor_unitario'),
+        output_field=decimal_field,
+    )
+    subtotal_subquery = (
+        ItemMedicaoEmpreiteiro.objects.filter(medicao_id=OuterRef('pk'))
+        .annotate(valor=item_subtotal_expr)
+        .values('medicao_id')
+        .annotate(total=Sum('valor'))
+        .values('total')[:1]
+    )
+    qs = qs.annotate(
+        subtotal_otimizado=Coalesce(Subquery(subtotal_subquery, output_field=decimal_field), Value(ZERO), output_field=decimal_field),
+    ).annotate(
+        total_descontos_otimizado=ExpressionWrapper(
+            F('retencao_tecnica') + F('desconto_adicional'),
+            output_field=decimal_field,
+        ),
+        total_liquido_otimizado=ExpressionWrapper(
+            F('subtotal_otimizado') - F('retencao_tecnica') - F('desconto_adicional'),
+            output_field=decimal_field,
+        ),
+    )
+    return qs
+
+
 def _percentuais_orcamentos(orcamento_ids, item_model, medicao_group_field):
     ids = {orcamento_id for orcamento_id in orcamento_ids if orcamento_id}
     if not ids:

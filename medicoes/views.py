@@ -56,6 +56,7 @@ from .services import (
     acumulados_construtora,
     acumulados_empreiteiro,
     anotar_resumo_medicoes_construtora,
+    anotar_resumo_medicoes_contratados,
     anotar_resumo_planilhas_construtora,
     aplicar_acumulados_itens,
     calcular_resumo_construtora,
@@ -1153,6 +1154,140 @@ def lista_medicoes_construtora(request):
                 ('obra', 'Obra'),
                 ('numero', 'Numero'),
                 ('bruto', 'Maior valor medido'),
+                ('liquido', 'Maior valor liquido'),
+            ],
+        },
+    )
+
+
+def lista_medicoes_empreiteiros(request):
+    qs = _medicoes_empreiteiro_empresa(request.empresa).select_related(
+        'obra',
+        'orcamento',
+        'orcamento__obra',
+        'empreiteiro_cadastro',
+    )
+    contratados = Empreiteiro.objects.filter(empresa=request.empresa).order_by('nome')
+    obras = _obras_empresa(request.empresa).filter(
+        Q(medicoes_empreiteiros__isnull=False)
+        | Q(orcamentos_medicao__medicoes_empreiteiro__isnull=False)
+    ).distinct().order_by('nome_obra')
+    planilhas_base = _orcamentos_empresa(request.empresa).filter(
+        tipo=OrcamentoMedicao.TIPO_EMPREITEIRO,
+        medicoes_empreiteiro__isnull=False,
+    ).select_related('obra').distinct().order_by('obra__nome_obra', 'nome')
+
+    contratado_id = request.GET.get('contratado', '').strip()
+    obra_id = request.GET.get('obra', '').strip()
+    planilha_id = request.GET.get('planilha', '').strip()
+    tipo = request.GET.get('tipo', '').strip()
+    numero = request.GET.get('numero', '').strip()
+    data_inicio_raw = request.GET.get('data_inicio', '').strip()
+    data_fim_raw = request.GET.get('data_fim', '').strip()
+    ordem = request.GET.get('ordem', 'recentes').strip() or 'recentes'
+
+    contratado_filtrado = None
+    if contratado_id:
+        contratado_filtrado = contratados.filter(id=contratado_id).first()
+        if contratado_filtrado:
+            qs = qs.filter(empreiteiro_cadastro=contratado_filtrado)
+        else:
+            qs = qs.none()
+
+    obra_filtrada = None
+    if obra_id:
+        obra_filtrada = obras.filter(id=obra_id).first()
+        if obra_filtrada:
+            qs = qs.filter(Q(obra=obra_filtrada) | Q(orcamento__obra=obra_filtrada))
+            planilhas_base = planilhas_base.filter(obra=obra_filtrada)
+        else:
+            qs = qs.none()
+            planilhas_base = planilhas_base.none()
+
+    planilha_filtrada = None
+    if planilha_id:
+        planilha_filtrada = planilhas_base.filter(id=planilha_id).first()
+        if planilha_filtrada:
+            qs = qs.filter(orcamento=planilha_filtrada)
+        else:
+            qs = qs.none()
+
+    tipos_validos = {
+        MedicaoEmpreiteiro.TIPO_SIMPLES,
+        MedicaoEmpreiteiro.TIPO_CUMULATIVA,
+    }
+    if tipo in tipos_validos:
+        qs = qs.filter(tipo=tipo)
+    else:
+        tipo = ''
+
+    numero_int = None
+    if numero:
+        try:
+            numero_int = int(numero)
+        except ValueError:
+            numero_int = None
+        if numero_int is not None:
+            qs = qs.filter(numero=numero_int)
+
+    data_inicio = parse_date(data_inicio_raw) if data_inicio_raw else None
+    data_fim = parse_date(data_fim_raw) if data_fim_raw else None
+    if data_inicio:
+        qs = qs.filter(data_medicao__gte=data_inicio)
+    if data_fim:
+        qs = qs.filter(data_medicao__lte=data_fim)
+
+    qs = anotar_resumo_medicoes_contratados(qs)
+    ordenacoes = {
+        'recentes': ('-data_medicao', '-numero', '-id'),
+        'antigas': ('data_medicao', 'numero', 'id'),
+        'contratado': ('empreiteiro', '-data_medicao', '-numero'),
+        'obra': ('obra__nome_obra', 'orcamento__obra__nome_obra', '-data_medicao', '-numero'),
+        'numero': ('-numero', '-data_medicao', '-id'),
+        'valor': ('-subtotal_otimizado', '-data_medicao', '-numero'),
+        'liquido': ('-total_liquido_otimizado', '-data_medicao', '-numero'),
+    }
+    if ordem not in ordenacoes:
+        ordem = 'recentes'
+    qs = qs.order_by(*ordenacoes[ordem])
+
+    paginator = Paginator(qs, 25)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    query_params = request.GET.copy()
+    query_params.pop('page', None)
+    querystring = query_params.urlencode()
+    total_empresa = _medicoes_empreiteiro_empresa(request.empresa).count()
+    return render(
+        request,
+        'medicoes/lista_medicoes_empreiteiros.html',
+        {
+            'page_obj': page_obj,
+            'medicoes': page_obj.object_list,
+            'contratados': contratados,
+            'obras': obras,
+            'planilhas': planilhas_base,
+            'contratado_id': contratado_id if contratado_filtrado else '',
+            'obra_id': obra_id if obra_filtrada else '',
+            'planilha_id': planilha_id if planilha_filtrada else '',
+            'tipo': tipo,
+            'numero': numero,
+            'data_inicio': data_inicio_raw,
+            'data_fim': data_fim_raw,
+            'ordem': ordem,
+            'querystring': querystring,
+            'total_resultados': paginator.count,
+            'total_empresa': total_empresa,
+            'tipos': [
+                (MedicaoEmpreiteiro.TIPO_SIMPLES, 'Simples'),
+                (MedicaoEmpreiteiro.TIPO_CUMULATIVA, 'Cumulativa'),
+            ],
+            'ordenacoes': [
+                ('recentes', 'Mais recentes'),
+                ('antigas', 'Mais antigas'),
+                ('contratado', 'Contratado'),
+                ('obra', 'Obra'),
+                ('numero', 'Numero'),
+                ('valor', 'Maior valor medido'),
                 ('liquido', 'Maior valor liquido'),
             ],
         },

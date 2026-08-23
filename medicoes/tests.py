@@ -29,8 +29,10 @@ from .models import (
 )
 from .services import (
     anotar_resumo_medicoes_construtora,
+    anotar_resumo_medicoes_contratados,
     anotar_resumo_planilhas_construtora,
     calcular_resumo_construtora,
+    calcular_resumo_empreiteiro,
     itens_construtora_com_grupos,
     itens_empreiteiro_com_acumulados,
 )
@@ -1153,6 +1155,231 @@ class MedicoesTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertLessEqual(len(captured), 22)
+
+    def test_resumo_otimizado_medicoes_contratados_equivale_ao_service_oficial(self):
+        contratado = Empreiteiro.objects.create(empresa=self.empresa, nome='Contratado Resumo')
+        simples = MedicaoEmpreiteiro.objects.create(
+            empresa=self.empresa,
+            tipo=MedicaoEmpreiteiro.TIPO_SIMPLES,
+            obra=self.obra,
+            empreiteiro_cadastro=contratado,
+            empreiteiro=contratado.nome,
+            numero=1,
+            periodo_inicio=date(2026, 7, 1),
+            periodo_fim=date(2026, 7, 31),
+            data_medicao=date(2026, 7, 31),
+            retencao_tecnica=Decimal('10.00'),
+            desconto_adicional=Decimal('5.00'),
+        )
+        ItemMedicaoEmpreiteiro.objects.create(
+            medicao=simples,
+            item='1',
+            descricao='Servico simples',
+            quantidade_periodo=Decimal('2.5000'),
+            valor_unitario=Decimal('100.00'),
+        )
+        ItemMedicaoEmpreiteiro.objects.create(
+            medicao=simples,
+            item='2',
+            descricao='Servico simples extra',
+            quantidade_periodo=Decimal('1.0000'),
+            valor_unitario=Decimal('50.00'),
+        )
+        resumo_simples = calcular_resumo_empreiteiro(simples)
+        otimizada_simples = anotar_resumo_medicoes_contratados(MedicaoEmpreiteiro.objects.filter(id=simples.id)).get()
+
+        self.assertEqual(otimizada_simples.subtotal_otimizado.quantize(Decimal('0.01')), resumo_simples.subtotal_periodo.quantize(Decimal('0.01')))
+        self.assertEqual(otimizada_simples.total_descontos_otimizado.quantize(Decimal('0.01')), resumo_simples.total_descontos.quantize(Decimal('0.01')))
+        self.assertEqual(otimizada_simples.total_liquido_otimizado.quantize(Decimal('0.01')), resumo_simples.total_liquido.quantize(Decimal('0.01')))
+
+        _, _, _, cumulativa = self._medicao_empreiteiro_cumulativa_com_itens(quantidade=2)
+        cumulativa.retencao_tecnica = Decimal('15.00')
+        cumulativa.desconto_adicional = Decimal('7.00')
+        cumulativa.save()
+        resumo_cumulativa = calcular_resumo_empreiteiro(cumulativa)
+        otimizada_cumulativa = anotar_resumo_medicoes_contratados(MedicaoEmpreiteiro.objects.filter(id=cumulativa.id)).get()
+
+        self.assertEqual(otimizada_cumulativa.subtotal_otimizado.quantize(Decimal('0.01')), resumo_cumulativa.subtotal_periodo.quantize(Decimal('0.01')))
+        self.assertEqual(otimizada_cumulativa.total_descontos_otimizado.quantize(Decimal('0.01')), resumo_cumulativa.total_descontos.quantize(Decimal('0.01')))
+        self.assertEqual(otimizada_cumulativa.total_liquido_otimizado.quantize(Decimal('0.01')), resumo_cumulativa.total_liquido.quantize(Decimal('0.01')))
+
+    def test_lista_medicoes_contratados_filtra_tipo_contratado_obra_planilha_numero_e_datas(self):
+        contratado_a = Empreiteiro.objects.create(empresa=self.empresa, nome='Contratado A')
+        contratado_b = Empreiteiro.objects.create(empresa=self.empresa, nome='Contratado B')
+        simples = MedicaoEmpreiteiro.objects.create(
+            empresa=self.empresa,
+            tipo=MedicaoEmpreiteiro.TIPO_SIMPLES,
+            obra=self.obra,
+            empreiteiro_cadastro=contratado_a,
+            empreiteiro=contratado_a.nome,
+            numero=1,
+            periodo_inicio=date(2026, 8, 1),
+            periodo_fim=date(2026, 8, 15),
+            data_medicao=date(2026, 8, 15),
+        )
+        ItemMedicaoEmpreiteiro.objects.create(medicao=simples, item='1', descricao='Servico simples', quantidade_periodo=Decimal('1'), valor_unitario=Decimal('100'))
+        outra_obra = Obra.objects.create(empresa=self.empresa, nome_obra='Obra Contratado B', cliente='Cliente')
+        orcamento = OrcamentoMedicao.objects.create(
+            obra=outra_obra,
+            nome='Planilha Contratado B',
+            tipo=OrcamentoMedicao.TIPO_EMPREITEIRO,
+        )
+        item = ItemOrcamentoMedicao.objects.create(
+            orcamento=orcamento,
+            item='1',
+            descricao='Servico cumulativo',
+            unidade='m2',
+            quantidade=Decimal('10'),
+            preco_unitario_mao_obra=Decimal('30'),
+        )
+        cumulativa = MedicaoEmpreiteiro.objects.create(
+            empresa=self.empresa,
+            tipo=MedicaoEmpreiteiro.TIPO_CUMULATIVA,
+            obra=outra_obra,
+            orcamento=orcamento,
+            empreiteiro_cadastro=contratado_b,
+            empreiteiro=contratado_b.nome,
+            numero=2,
+            periodo_inicio=date(2026, 9, 1),
+            periodo_fim=date(2026, 9, 30),
+            data_medicao=date(2026, 9, 30),
+        )
+        ItemMedicaoEmpreiteiro.objects.create(medicao=cumulativa, item_orcamento=item, quantidade_periodo=Decimal('2'), valor_unitario=Decimal('30'))
+
+        response_tipo = self.client.get(reverse('lista_medicoes_empreiteiros'), {'tipo': MedicaoEmpreiteiro.TIPO_SIMPLES})
+        self.assertEqual([medicao.id for medicao in response_tipo.context['medicoes']], [simples.id])
+
+        response_contratado = self.client.get(reverse('lista_medicoes_empreiteiros'), {'contratado': contratado_b.id})
+        self.assertEqual([medicao.id for medicao in response_contratado.context['medicoes']], [cumulativa.id])
+
+        response_obra = self.client.get(reverse('lista_medicoes_empreiteiros'), {'obra': outra_obra.id})
+        self.assertEqual([medicao.id for medicao in response_obra.context['medicoes']], [cumulativa.id])
+
+        response_planilha = self.client.get(reverse('lista_medicoes_empreiteiros'), {'planilha': orcamento.id})
+        self.assertEqual([medicao.id for medicao in response_planilha.context['medicoes']], [cumulativa.id])
+
+        response_numero = self.client.get(reverse('lista_medicoes_empreiteiros'), {'numero': 1})
+        self.assertEqual([medicao.id for medicao in response_numero.context['medicoes']], [simples.id])
+
+        response_data = self.client.get(
+            reverse('lista_medicoes_empreiteiros'),
+            {'data_inicio': '2026-09-01', 'data_fim': '2026-09-30'},
+        )
+        self.assertEqual([medicao.id for medicao in response_data.context['medicoes']], [cumulativa.id])
+
+        response_invalido = self.client.get(reverse('lista_medicoes_empreiteiros'), {'numero': 'abc', 'data_inicio': 'invalida', 'tipo': 'externo'})
+        self.assertEqual(response_invalido.status_code, 200)
+        self.assertEqual(response_invalido.context['tipo'], '')
+
+    def test_lista_medicoes_contratados_preserva_tenant_e_get_cross_tenant(self):
+        contratado = Empreiteiro.objects.create(empresa=self.empresa, nome='Contratado Interno')
+        medicao = MedicaoEmpreiteiro.objects.create(
+            empresa=self.empresa,
+            tipo=MedicaoEmpreiteiro.TIPO_SIMPLES,
+            obra=self.obra,
+            empreiteiro_cadastro=contratado,
+            empreiteiro=contratado.nome,
+            numero=1,
+            periodo_inicio=date(2026, 10, 1),
+            periodo_fim=date(2026, 10, 31),
+            data_medicao=date(2026, 10, 31),
+        )
+        ItemMedicaoEmpreiteiro.objects.create(medicao=medicao, item='1', descricao='Servico interno', quantidade_periodo=Decimal('1'), valor_unitario=Decimal('100'))
+        outra_empresa = Empresa.objects.create(nome='Empresa Contratado Fora', slug='empresa-contratado-fora')
+        obra_externa = Obra.objects.create(empresa=outra_empresa, nome_obra='Obra externa contratado', cliente='Cliente')
+        contratado_externo = Empreiteiro.objects.create(empresa=outra_empresa, nome='Contratado Externo')
+        planilha_externa = OrcamentoMedicao.objects.create(
+            obra=obra_externa,
+            nome='Planilha externa contratado',
+            tipo=OrcamentoMedicao.TIPO_EMPREITEIRO,
+        )
+        medicao_externa = MedicaoEmpreiteiro.objects.create(
+            empresa=outra_empresa,
+            tipo=MedicaoEmpreiteiro.TIPO_CUMULATIVA,
+            obra=obra_externa,
+            orcamento=planilha_externa,
+            empreiteiro_cadastro=contratado_externo,
+            empreiteiro=contratado_externo.nome,
+            numero=1,
+            periodo_inicio=date(2026, 10, 1),
+            periodo_fim=date(2026, 10, 31),
+            data_medicao=date(2026, 10, 31),
+        )
+        ItemMedicaoEmpreiteiro.objects.create(medicao=medicao_externa, item='1', descricao='Servico externo', quantidade_periodo=Decimal('1'), valor_unitario=Decimal('100'))
+
+        for params in [
+            {'contratado': contratado_externo.id},
+            {'obra': obra_externa.id},
+            {'planilha': planilha_externa.id},
+        ]:
+            with self.subTest(params=params):
+                response = self.client.get(reverse('lista_medicoes_empreiteiros'), params)
+                self.assertEqual(response.context['total_resultados'], 0)
+                self.assertNotContains(response, 'Contratado Externo')
+                self.assertNotContains(response, 'Planilha externa contratado')
+
+    def test_lista_medicoes_contratados_pagina_ordena_acoes_e_querystring(self):
+        contratado = Empreiteiro.objects.create(empresa=self.empresa, nome='Contratado Paginado')
+        for index in range(30):
+            medicao = MedicaoEmpreiteiro.objects.create(
+                empresa=self.empresa,
+                tipo=MedicaoEmpreiteiro.TIPO_SIMPLES,
+                obra=self.obra,
+                empreiteiro_cadastro=contratado,
+                empreiteiro=contratado.nome,
+                numero=index + 1,
+                periodo_inicio=date(2026, 11, 1),
+                periodo_fim=date(2026, 11, 30),
+                data_medicao=date(2026, 11, 30),
+            )
+            ItemMedicaoEmpreiteiro.objects.create(
+                medicao=medicao,
+                item='1',
+                descricao='Servico paginado',
+                quantidade_periodo=Decimal(index + 1),
+                valor_unitario=Decimal('10.00'),
+            )
+
+        response = self.client.get(reverse('lista_medicoes_empreiteiros'), {'contratado': contratado.id, 'ordem': 'valor'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context['medicoes']), 25)
+        self.assertContains(response, 'page=2')
+        self.assertContains(response, f'contratado={contratado.id}')
+        self.assertContains(response, reverse('medicao_empreiteiro_pdf', args=[response.context['medicoes'][0].id]))
+        self.assertContains(response, reverse('medicao_empreiteiro_excel', args=[response.context['medicoes'][0].id]))
+        self.assertContains(response, reverse('excluir_medicao_empreiteiro', args=[response.context['medicoes'][0].id]))
+
+        response_page_2 = self.client.get(reverse('lista_medicoes_empreiteiros'), {'contratado': contratado.id, 'ordem': 'valor', 'page': 2})
+        self.assertEqual(len(response_page_2.context['medicoes']), 5)
+
+    def test_lista_medicoes_contratados_nao_cresce_queries_por_medicao(self):
+        contratado = Empreiteiro.objects.create(empresa=self.empresa, nome='Contratado Query')
+        for index in range(35):
+            medicao = MedicaoEmpreiteiro.objects.create(
+                empresa=self.empresa,
+                tipo=MedicaoEmpreiteiro.TIPO_SIMPLES,
+                obra=self.obra,
+                empreiteiro_cadastro=contratado,
+                empreiteiro=contratado.nome,
+                numero=index + 1,
+                periodo_inicio=date(2026, 12, 1),
+                periodo_fim=date(2026, 12, 31),
+                data_medicao=date(2026, 12, 31),
+            )
+            ItemMedicaoEmpreiteiro.objects.create(medicao=medicao, item='1', descricao='Servico query', quantidade_periodo=Decimal('1'), valor_unitario=Decimal('100'))
+
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.get(reverse('lista_medicoes_empreiteiros'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertLessEqual(len(captured), 22)
+
+    def test_home_contratados_aponta_para_lista_operacional(self):
+        response = self.client.get(reverse('medicoes_empreiteiros_home'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse('lista_medicoes_empreiteiros'))
+        self.assertContains(response, 'Ver medicoes')
 
     def test_medicao_construtora_calcula_acumulado_e_liquido(self):
         orcamento, item = self._orcamento()
