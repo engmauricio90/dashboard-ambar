@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     'diarios',
     'usuarios',
     'empresas',
+    'social_automation',
 ]
 
 MIDDLEWARE = [

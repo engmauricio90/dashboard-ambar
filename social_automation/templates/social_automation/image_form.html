@@ -1,0 +1,23 @@
+{% extends 'social_automation/base.html' %}
+
+{% block social_title %}Adicionar imagem-base{% endblock %}
+{% block social_subtitle %}{{ profile.nome }}{% endblock %}
+
+{% block social_content %}
+<form method="post" enctype="multipart/form-data" class="card shadow-sm">
+    {% csrf_token %}
+    <div class="card-body">
+        {{ form.non_field_errors }}
+        <div class="row g-3">
+            <div class="col-md-6"><label class="form-label">{{ form.arquivo.label }}</label>{{ form.arquivo }}{{ form.arquivo.errors }}</div>
+            <div class="col-md-6"><label class="form-label">{{ form.nome.label }}</label>{{ form.nome }}{{ form.nome.errors }}</div>
+            <div class="col-md-9"><label class="form-label">{{ form.tags.label }}</label>{{ form.tags }}</div>
+            <div class="col-md-3 d-flex align-items-end"><div class="form-check mb-2">{{ form.ativa }} <label class="form-check-label">{{ form.ativa.label }}</label></div></div>
+        </div>
+    </div>
+    <div class="card-footer d-flex gap-2">
+        <button class="btn btn-primary" type="submit">Salvar</button>
+        <a href="{% url 'social_automation:image_list' profile.id %}" class="btn btn-outline-secondary">Cancelar</a>
+    </div>
+</form>
+{% endblock %}

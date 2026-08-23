@@ -1,0 +1,36 @@
+{% extends 'social_automation/base.html' %}
+
+{% block social_title %}Perfis sociais{% endblock %}
+{% block social_subtitle %}Perfis internos preparados para automacao futura.{% endblock %}
+{% block social_actions %}<a href="{% url 'social_automation:profile_create' %}" class="btn btn-primary">Novo perfil</a>{% endblock %}
+
+{% block social_content %}
+<div class="card shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-striped align-middle mb-0">
+            <thead><tr><th>Nome</th><th>Username</th><th>Plataforma</th><th>Modo</th><th>Ativo</th><th>Fila</th><th class="text-end">Acoes</th></tr></thead>
+            <tbody>
+                {% for profile in profiles %}
+                <tr>
+                    <td><strong>{{ profile.nome }}</strong></td>
+                    <td>{{ profile.username }}</td>
+                    <td>{{ profile.get_plataforma_display }}</td>
+                    <td>{{ profile.get_modo_operacao_display }}</td>
+                    <td>{% if profile.ativo %}<span class="badge text-bg-success">Ativo</span>{% else %}<span class="badge text-bg-secondary">Inativo</span>{% endif %}</td>
+                    <td>{{ profile.total_fila }}</td>
+                    <td class="text-end">
+                        <div class="d-inline-flex gap-2">
+                            <a href="{% url 'social_automation:profile_detail' profile.id %}" class="btn btn-sm btn-outline-primary">Abrir</a>
+                            <a href="{% url 'social_automation:profile_update' profile.id %}" class="btn btn-sm btn-outline-secondary">Editar</a>
+                            <form method="post" action="{% url 'social_automation:profile_toggle' profile.id %}">{% csrf_token %}<button class="btn btn-sm btn-outline-warning" type="submit">{% if profile.ativo %}Desativar{% else %}Ativar{% endif %}</button></form>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center text-muted py-4">Nenhum perfil social cadastrado.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

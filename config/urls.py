@@ -19,6 +19,7 @@ urlpatterns = [
     path('plataforma/clientes/<int:empresa_id>/', empresas_views.detalhe_cliente_plataforma, name='detalhe_cliente_plataforma'),
     path('plataforma/clientes/<int:empresa_id>/editar/', empresas_views.editar_cliente_plataforma, name='editar_cliente_plataforma'),
     path('plataforma/clientes/convites/<int:vinculo_id>/reenviar/', empresas_views.reenviar_convite_plataforma, name='reenviar_convite_plataforma'),
+    path('plataforma/automacoes/social/', include('social_automation.urls')),
     path(
         'senha/redefinir/',
         RateLimitedPasswordResetView.as_view(),

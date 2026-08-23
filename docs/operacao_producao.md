@@ -102,6 +102,7 @@ Rotina minima:
 
 - Confirmar se o disco persistente esta montado em `/var/data`.
 - Exportar copia periodica de `/var/data/media`.
+- Incluir uploads de automacao social em `media/social/` na copia externa.
 - Guardar copia fora do Render.
 - Testar abertura de arquivos restaurados.
 

@@ -106,6 +106,7 @@
                     {% endif %}
                     {% if request.user.is_staff or request.user.is_superuser %}
                     <a class="nav-link" href="{% url 'clientes_plataforma' %}">Clientes</a>
+                    <a class="nav-link" href="{% url 'social_automation:home' %}">Automacao Social</a>
                     {% endif %}
                     <a class="nav-link" href="{% url 'minha_area' %}">Minha area</a>
                     {% if request.user.is_staff or request.user.is_superuser %}

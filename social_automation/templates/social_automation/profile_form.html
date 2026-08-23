@@ -1,0 +1,42 @@
+{% extends 'social_automation/base.html' %}
+
+{% block social_title %}{{ titulo }}{% endblock %}
+{% block social_subtitle %}Configure identidade, modo de operacao e instrucoes futuras de IA.{% endblock %}
+
+{% block social_content %}
+<form method="post" class="card shadow-sm">
+    {% csrf_token %}
+    <div class="card-body">
+        {{ form.non_field_errors }}
+        <h5 class="mb-3">Identidade</h5>
+        <div class="row g-3">
+            <div class="col-md-5"><label class="form-label">{{ form.nome.label }}</label>{{ form.nome }}{{ form.nome.errors }}</div>
+            <div class="col-md-4"><label class="form-label">{{ form.username.label }}</label>{{ form.username }}{{ form.username.errors }}</div>
+            <div class="col-md-3"><label class="form-label">{{ form.plataforma.label }}</label>{{ form.plataforma }}{{ form.plataforma.errors }}</div>
+            <div class="col-md-8"><label class="form-label">{{ form.timezone.label }}</label>{{ form.timezone }}{{ form.timezone.errors }}</div>
+            <div class="col-md-4 d-flex align-items-end"><div class="form-check mb-2">{{ form.ativo }} <label class="form-check-label">{{ form.ativo.label }}</label></div></div>
+        </div>
+        <hr>
+        <h5 class="mb-3">Automacao</h5>
+        <div class="row g-3">
+            <div class="col-md-4"><label class="form-label">{{ form.modo_operacao.label }}</label>{{ form.modo_operacao }}</div>
+            <div class="col-md-3"><label class="form-label">{{ form.posts_por_dia.label }}</label>{{ form.posts_por_dia }}</div>
+            <div class="col-md-5"><label class="form-label">{{ form.horarios_texto.label }}</label>{{ form.horarios_texto }}<div class="form-text">{{ form.horarios_texto.help_text }}</div>{{ form.horarios_texto.errors }}</div>
+        </div>
+        <hr>
+        <h5 class="mb-3">Conteudo</h5>
+        <div class="mb-3"><label class="form-label">{{ form.estilo.label }}</label>{{ form.estilo }}</div>
+        <div class="mb-3"><label class="form-label">{{ form.instrucoes_ia.label }}</label>{{ form.instrucoes_ia }}</div>
+        <hr>
+        <h5 class="mb-3">Comentarios futuros</h5>
+        <div class="row g-3">
+            <div class="col-md-4 d-flex align-items-end"><div class="form-check mb-2">{{ form.responder_comentarios }} <label class="form-check-label">{{ form.responder_comentarios.label }}</label></div></div>
+            <div class="col-md-3"><label class="form-label">{{ form.limite_respostas.label }}</label>{{ form.limite_respostas }}</div>
+        </div>
+    </div>
+    <div class="card-footer d-flex gap-2">
+        <button class="btn btn-primary" type="submit">Salvar</button>
+        <a href="{% if profile %}{% url 'social_automation:profile_detail' profile.id %}{% else %}{% url 'social_automation:profile_list' %}{% endif %}" class="btn btn-outline-secondary">Cancelar</a>
+    </div>
+</form>
+{% endblock %}

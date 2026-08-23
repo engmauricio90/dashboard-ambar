@@ -1,0 +1,79 @@
+{% extends 'social_automation/base.html' %}
+
+{% block social_title %}{% if profile %}Conteudos - {{ profile.nome }}{% else %}Fila de conteudos{% endif %}{% endblock %}
+{% block social_subtitle %}Rascunhos, aprovados, rejeitados e agendados para publicacao futura.{% endblock %}
+{% block social_actions %}
+<a href="{% if profile %}{% url 'social_automation:profile_content_create' profile.id %}{% else %}{% url 'social_automation:content_create' %}{% endif %}" class="btn btn-success">Novo rascunho</a>
+{% if profile %}<a href="{% url 'social_automation:profile_detail' profile.id %}" class="btn btn-outline-secondary">Voltar ao perfil</a>{% endif %}
+{% endblock %}
+
+{% block social_content %}
+<form method="get" class="card shadow-sm mb-3">
+    <div class="card-body">
+        <div class="row g-2 align-items-end">
+            {% if not profile %}
+            <div class="col-md-3">
+                <label class="form-label">Perfil</label>
+                <select class="form-select" name="profile">
+                    <option value="">Todos</option>
+                    {% for item in profiles %}<option value="{{ item.id }}" {% if filtros.profile == item.id|stringformat:'s' %}selected{% endif %}>{{ item.nome }}</option>{% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            <div class="col-md-2">
+                <label class="form-label">Status</label>
+                <select class="form-select" name="status">
+                    <option value="">Todos</option>
+                    {% for value,label in status_choices %}<option value="{{ value }}" {% if filtros.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Ordenacao</label>
+                <select class="form-select" name="ordenacao">
+                    <option value="recentes" {% if filtros.ordenacao == 'recentes' %}selected{% endif %}>Mais recentes</option>
+                    <option value="antigos" {% if filtros.ordenacao == 'antigos' %}selected{% endif %}>Mais antigos</option>
+                    <option value="agendamento" {% if filtros.ordenacao == 'agendamento' %}selected{% endif %}>Agendamento mais proximo</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Busca</label>
+                <input class="form-control" name="busca" value="{{ filtros.busca }}" placeholder="Frase ou legenda">
+            </div>
+            <div class="col-md-1 d-grid"><button class="btn btn-outline-secondary" type="submit">Filtrar</button></div>
+        </div>
+    </div>
+</form>
+
+<form method="post" action="{% url 'social_automation:content_bulk_approve' %}">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+    <div class="card shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-striped align-middle mb-0">
+                <thead><tr><th></th><th>Preview/base</th><th>Perfil</th><th>Frase</th><th>Status</th><th>Agendamento</th><th>Criado em</th><th class="text-end">Acoes</th></tr></thead>
+                <tbody>
+                    {% for content in page_obj %}
+                    <tr>
+                        <td>{% if content.status == 'rascunho' %}<input type="checkbox" class="form-check-input" name="content_ids" value="{{ content.id }}">{% endif %}</td>
+                        <td>{% if content.base_image %}<img src="{{ content.base_image.arquivo.url }}" class="social-thumb-sm" alt="">{% else %}<span class="social-placeholder">sem imagem</span>{% endif %}</td>
+                        <td>{{ content.profile.nome }}</td>
+                        <td>{{ content.frase|truncatechars:110 }}</td>
+                        <td><span class="badge text-bg-secondary">{{ content.get_status_display }}</span></td>
+                        <td>{{ content.scheduled_at|date:'d/m/Y H:i'|default:'-' }}</td>
+                        <td>{{ content.created_at|date:'d/m/Y H:i' }}</td>
+                        <td class="text-end"><a href="{% url 'social_automation:content_detail' content.id %}" class="btn btn-sm btn-outline-primary">Abrir</a></td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="8" class="text-center text-muted py-4">Nenhum conteudo na fila.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer d-flex justify-content-between align-items-center">
+            <button class="btn btn-sm btn-outline-success" type="submit">Aprovar selecionados</button>
+            <span class="text-muted small">{{ page_obj.paginator.count }} registro(s)</span>
+        </div>
+    </div>
+</form>
+{% include 'social_automation/pagination.html' %}
+{% endblock %}

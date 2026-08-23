@@ -22,6 +22,9 @@ def _usuario_pode_acessar_media(request, path):
                 return True
 
     if getattr(request.user, 'is_authenticated', False):
+        if normalized_path.startswith('social/') and (request.user.is_staff or request.user.is_superuser):
+            return True
+
         perfil = getattr(request.user, 'perfil', None)
         if perfil and perfil.avatar and _normalized_media_path(perfil.avatar.name) == normalized_path:
             return True

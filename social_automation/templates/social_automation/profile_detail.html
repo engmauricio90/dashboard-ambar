@@ -1,0 +1,38 @@
+{% extends 'social_automation/base.html' %}
+
+{% block social_title %}{{ profile.nome }}{% endblock %}
+{% block social_subtitle %}{{ profile.username }} - {{ profile.get_plataforma_display }} - {{ profile.get_modo_operacao_display }}{% endblock %}
+{% block social_actions %}
+<a href="{% url 'social_automation:profile_update' profile.id %}" class="btn btn-outline-primary">Configuracoes</a>
+<a href="{% url 'social_automation:image_list' profile.id %}" class="btn btn-outline-secondary">Biblioteca</a>
+<a href="{% url 'social_automation:profile_content_list' profile.id %}" class="btn btn-outline-secondary">Conteudos</a>
+<a href="{% url 'social_automation:profile_content_create' profile.id %}" class="btn btn-success">Novo rascunho</a>
+{% endblock %}
+
+{% block social_content %}
+<div class="row g-3 mb-4">
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>Imagens</h6><h3>{{ total_imagens }}</h3></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>Conteudos</h6><h3>{{ total_conteudos }}</h3></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>Rascunhos</h6><h3>{{ rascunhos }}</h3></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>Agendados</h6><h3>{{ agendados }}</h3></div></div></div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header fw-bold">Ultimos conteudos</div>
+    <div class="list-group list-group-flush">
+        {% for content in contents %}
+        <a href="{% url 'social_automation:content_detail' content.id %}" class="list-group-item list-group-item-action">
+            <div class="d-flex justify-content-between gap-3">
+                <span><strong>{{ content.get_status_display }}</strong> - {{ content.frase|truncatechars:100 }}</span>
+                <span class="text-muted small">{{ content.created_at|date:'d/m/Y H:i' }}</span>
+            </div>
+        </a>
+        {% empty %}
+        <div class="list-group-item text-center text-muted py-4">
+            Nenhum conteudo na fila.
+            <div class="mt-2"><a href="{% url 'social_automation:profile_content_create' profile.id %}" class="btn btn-sm btn-primary">Criar rascunho</a></div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

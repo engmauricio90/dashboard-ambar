@@ -1,0 +1,51 @@
+from django.contrib import admin
+
+from .models import SocialBaseImage, SocialContent, SocialContentEvent, SocialProfile
+
+
+class SocialBaseImageInline(admin.TabularInline):
+    model = SocialBaseImage
+    extra = 0
+    fields = ['nome', 'ativa', 'tags', 'vezes_usada', 'ultima_utilizacao']
+    readonly_fields = ['vezes_usada', 'ultima_utilizacao']
+
+
+@admin.register(SocialProfile)
+class SocialProfileAdmin(admin.ModelAdmin):
+    list_display = ['nome', 'username', 'plataforma', 'modo_operacao', 'ativo', 'posts_por_dia', 'updated_at']
+    list_filter = ['plataforma', 'modo_operacao', 'ativo']
+    search_fields = ['nome', 'username', 'estilo', 'instrucoes_ia']
+    inlines = [SocialBaseImageInline]
+
+
+@admin.register(SocialBaseImage)
+class SocialBaseImageAdmin(admin.ModelAdmin):
+    list_display = ['nome', 'profile', 'ativa', 'vezes_usada', 'ultima_utilizacao', 'created_at']
+    list_filter = ['ativa', 'profile']
+    search_fields = ['nome', 'tags', 'profile__nome', 'profile__username']
+    readonly_fields = ['vezes_usada', 'ultima_utilizacao', 'created_at', 'updated_at']
+
+
+class SocialContentEventInline(admin.TabularInline):
+    model = SocialContentEvent
+    extra = 0
+    fields = ['acao', 'usuario', 'detalhe', 'created_at']
+    readonly_fields = ['acao', 'usuario', 'detalhe', 'created_at']
+    can_delete = False
+
+
+@admin.register(SocialContent)
+class SocialContentAdmin(admin.ModelAdmin):
+    list_display = ['id', 'profile', 'status', 'scheduled_at', 'published_at', 'created_at']
+    list_filter = ['status', 'profile']
+    search_fields = ['frase', 'legenda', 'hashtags', 'profile__nome', 'profile__username']
+    readonly_fields = ['created_at', 'updated_at', 'published_at', 'external_post_id', 'external_permalink', 'tentativas', 'ultima_tentativa']
+    inlines = [SocialContentEventInline]
+
+
+@admin.register(SocialContentEvent)
+class SocialContentEventAdmin(admin.ModelAdmin):
+    list_display = ['content', 'acao', 'usuario', 'created_at']
+    list_filter = ['acao']
+    search_fields = ['content__frase', 'detalhe', 'usuario__username']
+    readonly_fields = ['content', 'acao', 'usuario', 'detalhe', 'created_at']

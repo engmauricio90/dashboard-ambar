@@ -1,0 +1,28 @@
+{% extends 'social_automation/base.html' %}
+
+{% block social_title %}{{ titulo }}{% endblock %}
+{% block social_subtitle %}{% if profile %}{{ profile.nome }}{% else %}Conteudo manual para a fila social.{% endif %}{% endblock %}
+
+{% block social_content %}
+<form method="post" class="card shadow-sm">
+    {% csrf_token %}
+    <div class="card-body">
+        {{ form.non_field_errors }}
+        <div class="row g-3">
+            {% if not profile %}
+            <div class="col-md-6"><label class="form-label">{{ form.profile.label }}</label>{{ form.profile }}{{ form.profile.errors }}</div>
+            {% else %}
+            {{ form.profile }}
+            {% endif %}
+            <div class="col-md-6"><label class="form-label">{{ form.base_image.label }}</label>{{ form.base_image }}{{ form.base_image.errors }}</div>
+            <div class="col-12"><label class="form-label">{{ form.frase.label }}</label>{{ form.frase }}{{ form.frase.errors }}</div>
+            <div class="col-md-7"><label class="form-label">{{ form.legenda.label }}</label>{{ form.legenda }}</div>
+            <div class="col-md-5"><label class="form-label">{{ form.hashtags.label }}</label>{{ form.hashtags }}</div>
+        </div>
+    </div>
+    <div class="card-footer d-flex gap-2">
+        <button class="btn btn-primary" type="submit">Salvar</button>
+        <a href="{% if content %}{% url 'social_automation:content_detail' content.id %}{% elif profile %}{% url 'social_automation:profile_content_list' profile.id %}{% else %}{% url 'social_automation:content_list' %}{% endif %}" class="btn btn-outline-secondary">Cancelar</a>
+    </div>
+</form>
+{% endblock %}
