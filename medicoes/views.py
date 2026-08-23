@@ -14,6 +14,7 @@ from django.core.paginator import Paginator
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.dateparse import parse_date
 from django.utils import timezone
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -54,6 +55,7 @@ from .models import (
 from .services import (
     acumulados_construtora,
     acumulados_empreiteiro,
+    anotar_resumo_medicoes_construtora,
     anotar_resumo_planilhas_construtora,
     aplicar_acumulados_itens,
     calcular_resumo_construtora,
@@ -1053,6 +1055,105 @@ def lista_planilhas_construtora(request):
                 ('medido', 'Valor medido'),
                 ('saldo', 'Saldo'),
                 ('percentual', 'Percentual medido'),
+            ],
+        },
+    )
+
+
+def lista_medicoes_construtora(request):
+    qs = _medicoes_construtora_empresa(request.empresa).select_related('orcamento', 'orcamento__obra')
+    obras = _obras_empresa(request.empresa).filter(
+        orcamentos_medicao__medicoes_construtora__isnull=False,
+    ).distinct().order_by('nome_obra')
+    planilhas_base = _orcamentos_empresa(request.empresa).filter(
+        tipo=OrcamentoMedicao.TIPO_CONSTRUTORA,
+        medicoes_construtora__isnull=False,
+    ).select_related('obra').distinct().order_by('obra__nome_obra', 'nome')
+
+    obra_id = request.GET.get('obra', '').strip()
+    planilha_id = request.GET.get('planilha', '').strip()
+    numero = request.GET.get('numero', '').strip()
+    data_inicio_raw = request.GET.get('data_inicio', '').strip()
+    data_fim_raw = request.GET.get('data_fim', '').strip()
+    ordem = request.GET.get('ordem', 'recentes').strip() or 'recentes'
+
+    obra_filtrada = None
+    if obra_id:
+        obra_filtrada = obras.filter(id=obra_id).first()
+        if obra_filtrada:
+            qs = qs.filter(orcamento__obra=obra_filtrada)
+            planilhas_base = planilhas_base.filter(obra=obra_filtrada)
+        else:
+            qs = qs.none()
+            planilhas_base = planilhas_base.none()
+
+    planilha_filtrada = None
+    if planilha_id:
+        planilha_filtrada = planilhas_base.filter(id=planilha_id).first()
+        if planilha_filtrada:
+            qs = qs.filter(orcamento=planilha_filtrada)
+        else:
+            qs = qs.none()
+
+    numero_int = None
+    if numero:
+        try:
+            numero_int = int(numero)
+        except ValueError:
+            numero_int = None
+        if numero_int is not None:
+            qs = qs.filter(numero=numero_int)
+
+    data_inicio = parse_date(data_inicio_raw) if data_inicio_raw else None
+    data_fim = parse_date(data_fim_raw) if data_fim_raw else None
+    if data_inicio:
+        qs = qs.filter(data_medicao__gte=data_inicio)
+    if data_fim:
+        qs = qs.filter(data_medicao__lte=data_fim)
+
+    qs = anotar_resumo_medicoes_construtora(qs)
+    ordenacoes = {
+        'recentes': ('-data_medicao', '-numero', '-id'),
+        'antigas': ('data_medicao', 'numero', 'id'),
+        'obra': ('orcamento__obra__nome_obra', '-data_medicao', '-numero'),
+        'numero': ('-numero', '-data_medicao', '-id'),
+        'bruto': ('-subtotal_otimizado', '-data_medicao', '-numero'),
+        'liquido': ('-total_liquido_otimizado', '-data_medicao', '-numero'),
+    }
+    if ordem not in ordenacoes:
+        ordem = 'recentes'
+    qs = qs.order_by(*ordenacoes[ordem])
+
+    paginator = Paginator(qs, 25)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    query_params = request.GET.copy()
+    query_params.pop('page', None)
+    querystring = query_params.urlencode()
+    total_empresa = _medicoes_construtora_empresa(request.empresa).count()
+    return render(
+        request,
+        'medicoes/lista_medicoes_construtora.html',
+        {
+            'page_obj': page_obj,
+            'medicoes': page_obj.object_list,
+            'obras': obras,
+            'planilhas': planilhas_base,
+            'obra_id': obra_id if obra_filtrada else '',
+            'planilha_id': planilha_id if planilha_filtrada else '',
+            'numero': numero,
+            'data_inicio': data_inicio_raw,
+            'data_fim': data_fim_raw,
+            'ordem': ordem,
+            'querystring': querystring,
+            'total_resultados': paginator.count,
+            'total_empresa': total_empresa,
+            'ordenacoes': [
+                ('recentes', 'Mais recentes'),
+                ('antigas', 'Mais antigas'),
+                ('obra', 'Obra'),
+                ('numero', 'Numero'),
+                ('bruto', 'Maior valor medido'),
+                ('liquido', 'Maior valor liquido'),
             ],
         },
     )

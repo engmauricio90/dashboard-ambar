@@ -11,6 +11,7 @@
     <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-primary" href="{% url 'importar_orcamento_medicao' %}">Importar planilha</a>
         <a class="btn btn-outline-primary" href="{% url 'novo_orcamento_manual_medicao' %}?tipo=construtora">Criar planilha manual</a>
+        <a class="btn btn-outline-primary" href="{% url 'lista_medicoes_construtora' %}">Ver medicoes</a>
         <a class="btn btn-outline-secondary" href="{% url 'lista_planilhas_construtora' %}">Todas as planilhas</a>
     </div>
 </div>
@@ -37,7 +38,7 @@
 </div>
 
 <div class="row g-3">
-    <div class="col-lg-4">
+    <div class="col-lg-3">
         <div class="module-card h-100">
             <div>
                 <h2>Planilhas operacionais</h2>
@@ -46,7 +47,16 @@
             <a class="btn btn-primary" href="{% url 'lista_planilhas_construtora' %}">Ver planilhas</a>
         </div>
     </div>
-    <div class="col-lg-4">
+    <div class="col-lg-3">
+        <div class="module-card h-100">
+            <div>
+                <h2>Medicoes</h2>
+                <p>Consulte a lista paginada com filtros por obra, planilha, numero e data.</p>
+            </div>
+            <a class="btn btn-outline-primary" href="{% url 'lista_medicoes_construtora' %}">Ver medicoes</a>
+        </div>
+    </div>
+    <div class="col-lg-3">
         <div class="module-card h-100">
             <div>
                 <h2>Nova medicao</h2>
@@ -55,7 +65,7 @@
             <a class="btn btn-outline-primary" href="{% url 'lista_planilhas_construtora' %}">Escolher planilha</a>
         </div>
     </div>
-    <div class="col-lg-4">
+    <div class="col-lg-3">
         <div class="module-card h-100">
             <div>
                 <h2>Relatorios</h2>

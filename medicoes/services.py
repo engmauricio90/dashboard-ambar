@@ -253,7 +253,7 @@ def anotar_resumo_planilhas_construtora(qs):
         output_field=decimal_field,
     )
     percentual_expr = ExpressionWrapper(
-        F('total_medido_otimizado') * Value(Decimal('100')) / F('total_contrato_otimizado'),
+        F('total_medido_otimizado') * Value(Decimal('100.0000'), output_field=decimal_field) / F('total_contrato_otimizado'),
         output_field=decimal_field,
     )
     return qs.annotate(
@@ -264,6 +264,158 @@ def anotar_resumo_planilhas_construtora(qs):
             output_field=decimal_field,
         ),
     )
+
+
+def anotar_resumo_medicoes_construtora(qs):
+    decimal_field = DecimalField(max_digits=20, decimal_places=4)
+    item_subtotal_expr = ExpressionWrapper(
+        F('quantidade_periodo')
+        * (
+            F('item_orcamento__preco_unitario_material')
+            + F('item_orcamento__preco_unitario_mao_obra')
+            + F('item_orcamento__preco_unitario_equipamentos')
+        ),
+        output_field=decimal_field,
+    )
+    item_mao_obra_expr = ExpressionWrapper(
+        F('quantidade_periodo') * F('item_orcamento__preco_unitario_mao_obra'),
+        output_field=decimal_field,
+    )
+    subtotal_subquery = (
+        ItemMedicaoConstrutora.objects.filter(
+            medicao_id=OuterRef('pk'),
+            item_orcamento__tipo=ItemOrcamentoMedicao.TIPO_ITEM,
+        )
+        .annotate(valor=item_subtotal_expr)
+        .values('medicao_id')
+        .annotate(total=Sum('valor'))
+        .values('total')[:1]
+    )
+    mao_obra_subquery = (
+        ItemMedicaoConstrutora.objects.filter(
+            medicao_id=OuterRef('pk'),
+            item_orcamento__tipo=ItemOrcamentoMedicao.TIPO_ITEM,
+        )
+        .annotate(valor=item_mao_obra_expr)
+        .values('medicao_id')
+        .annotate(total=Sum('valor'))
+        .values('total')[:1]
+    )
+    faturamento_subquery = (
+        FaturamentoDiretoMedicao.objects.filter(medicao_id=OuterRef('pk'))
+        .values('medicao_id')
+        .annotate(total=Sum('valor_descontado'))
+        .values('total')[:1]
+    )
+    qs = qs.annotate(
+        subtotal_otimizado=Coalesce(Subquery(subtotal_subquery, output_field=decimal_field), Value(ZERO), output_field=decimal_field),
+        total_mao_obra_otimizado=Coalesce(Subquery(mao_obra_subquery, output_field=decimal_field), Value(ZERO), output_field=decimal_field),
+        faturamento_vinculado_otimizado=Coalesce(Subquery(faturamento_subquery, output_field=decimal_field), Value(ZERO), output_field=decimal_field),
+    ).annotate(
+        faturamento_direto_otimizado=Case(
+            When(faturamento_vinculado_otimizado__gt=ZERO, then=F('faturamento_vinculado_otimizado')),
+            default=F('valor_faturamento_direto'),
+            output_field=decimal_field,
+        ),
+        desconto_adicional_otimizado=Case(
+            When(
+                desconto_adicional_percentual__gt=ZERO,
+                then=ExpressionWrapper(
+                    F('subtotal_otimizado') * F('desconto_adicional_percentual') * Value(Decimal('0.0100'), output_field=decimal_field),
+                    output_field=decimal_field,
+                ),
+            ),
+            default=F('desconto_adicional'),
+            output_field=decimal_field,
+        ),
+        retencao_tecnica_otimizada=Case(
+            When(
+                retencao_tecnica_percentual__gt=ZERO,
+                then=ExpressionWrapper(
+                    F('subtotal_otimizado') * F('retencao_tecnica_percentual') * Value(Decimal('0.0100'), output_field=decimal_field),
+                    output_field=decimal_field,
+                ),
+            ),
+            default=F('retencao_tecnica'),
+            output_field=decimal_field,
+        ),
+    ).annotate(
+        desconto_base_nf_otimizado=Case(
+            When(desconto_adicional_reduz_base_nf=True, then=F('desconto_adicional_otimizado')),
+            default=Value(ZERO),
+            output_field=decimal_field,
+        ),
+        desconto_inss_otimizado=Case(
+            When(desconto_adicional_otimizado__gt=F('subtotal_otimizado'), then=F('subtotal_otimizado')),
+            default=F('desconto_adicional_otimizado'),
+            output_field=decimal_field,
+        ),
+    ).annotate(
+        base_impostos_raw_otimizada=ExpressionWrapper(
+            F('subtotal_otimizado') - F('faturamento_direto_otimizado') - F('desconto_base_nf_otimizado'),
+            output_field=decimal_field,
+        ),
+        base_inss_raw_otimizada=Case(
+            When(
+                desconto_adicional_reduz_base_nf=True,
+                subtotal_otimizado__gt=ZERO,
+                then=ExpressionWrapper(
+                    F('total_mao_obra_otimizado')
+                    * (F('subtotal_otimizado') - F('desconto_inss_otimizado'))
+                    / F('subtotal_otimizado'),
+                    output_field=decimal_field,
+                ),
+            ),
+            default=F('total_mao_obra_otimizado'),
+            output_field=decimal_field,
+        ),
+    ).annotate(
+        base_impostos_otimizada=Case(
+            When(base_impostos_raw_otimizada__lt=ZERO, then=Value(ZERO)),
+            default=F('base_impostos_raw_otimizada'),
+            output_field=decimal_field,
+        ),
+        base_inss_otimizada=Case(
+            When(base_inss_raw_otimizada__lt=ZERO, then=Value(ZERO)),
+            default=F('base_inss_raw_otimizada'),
+            output_field=decimal_field,
+        ),
+    ).annotate(
+        issqn_otimizado=Case(
+            When(
+                issqn_percentual__gt=ZERO,
+                then=ExpressionWrapper(
+                    F('base_impostos_otimizada') * F('issqn_percentual') * Value(Decimal('0.0100'), output_field=decimal_field),
+                    output_field=decimal_field,
+                ),
+            ),
+            default=F('issqn'),
+            output_field=decimal_field,
+        ),
+        inss_otimizado=Case(
+            When(
+                inss_percentual__gt=ZERO,
+                then=ExpressionWrapper(
+                    F('base_inss_otimizada') * F('inss_percentual') * Value(Decimal('0.0100'), output_field=decimal_field),
+                    output_field=decimal_field,
+                ),
+            ),
+            default=F('inss'),
+            output_field=decimal_field,
+        ),
+    ).annotate(
+        impostos_otimizados=ExpressionWrapper(F('issqn_otimizado') + F('inss_otimizado'), output_field=decimal_field),
+        total_liquido_otimizado=ExpressionWrapper(
+            F('subtotal_otimizado')
+            - F('faturamento_direto_otimizado')
+            - F('desconto_adicional_otimizado')
+            - F('retencao_tecnica_otimizada')
+            - F('issqn_otimizado')
+            - F('inss_otimizado'),
+            output_field=decimal_field,
+        ),
+    )
+    return qs
 
 
 def _percentuais_orcamentos(orcamento_ids, item_model, medicao_group_field):
