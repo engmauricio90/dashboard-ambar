@@ -17,9 +17,11 @@ class Command(BaseCommand):
         if not content:
             raise CommandError('Conteudo nao encontrado.')
 
-        signed_url = url_midia_temporaria(content, com_extensao_jpg=options['jpg_url'])
-        self._testar('NOSSA_URL_SEM_CAPTION', signed_url, '')
-        self._testar('NOSSA_URL_COM_CAPTION', signed_url, montar_caption(content))
+        old_url = url_midia_temporaria(content, com_extensao_jpg=options['jpg_url'], legacy=True)
+        meta_compat_url = url_midia_temporaria(content)
+        self._testar('ROTA_ANTIGA', old_url, '')
+        self._testar('META_COMPAT_SEM_CAPTION', meta_compat_url, '')
+        self._testar('META_COMPAT_COM_CAPTION', meta_compat_url, montar_caption(content))
 
         external_url = options.get('external_url') or ''
         if external_url:

@@ -20,6 +20,8 @@ class LoginRequiredMiddleware:
             reverse('healthz'),
             '/senha/',
             '/social-media/public/',
+            '/social-media/public-jpg/',
+            '/social-media/ig/',
             '/admin/',
             settings.STATIC_URL,
             settings.MEDIA_URL,

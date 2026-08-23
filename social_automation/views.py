@@ -3,7 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.conf import settings
-from django.http import FileResponse, Http404, HttpResponseForbidden, HttpResponseNotAllowed
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseForbidden, HttpResponseNotAllowed
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -18,6 +18,7 @@ from .instagram import (
     InstagramPublishError,
     obter_conta_instagram,
     publicar_conteudo_instagram,
+    validar_assinatura_midia_meta,
     validar_token_midia_temporaria,
 )
 from .models import SocialBaseImage, SocialContent, SocialProfile
@@ -342,6 +343,24 @@ def public_final_image(request, token):
     )
     response['Cache-Control'] = 'private, max-age=0, no-store'
     response['X-Content-Type-Options'] = 'nosniff'
+    return response
+
+
+def ig_final_image(request, content_id, signature):
+    if request.method not in {'GET', 'HEAD'}:
+        return HttpResponseNotAllowed(['GET', 'HEAD'])
+    try:
+        content = validar_assinatura_midia_meta(content_id, signature)
+    except ValidationError as exc:
+        raise Http404 from exc
+    if not content.final_image:
+        raise Http404
+    with content.final_image.storage.open(content.final_image.name, 'rb') as arquivo:
+        image_bytes = arquivo.read()
+    body = b'' if request.method == 'HEAD' else image_bytes
+    response = HttpResponse(body, content_type='image/jpeg')
+    response['Content-Length'] = str(len(image_bytes))
+    response['Cache-Control'] = 'private, max-age=0, no-store'
     return response
 
 

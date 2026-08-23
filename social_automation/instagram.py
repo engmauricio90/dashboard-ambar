@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 GRAPH_HOST = 'https://graph.instagram.com'
 MEDIA_SIGNING_SALT = 'social-automation-instagram-media'
+MEDIA_META_SIGNING_SALT = 'social-automation-instagram-meta-media'
 PUBLICADO_INSTAGRAM = 'publicado_instagram'
 
 
@@ -140,6 +141,7 @@ def _sanitize_signed_urls(text):
     if not text:
         return ''
     text = str(text)
+    text = re.sub(r'(/social-media/ig/\d+/)[^\s"\']+(\.jpg)?', r'\1[signed-token]\2', text)
     text = re.sub(r'(/social-media/public-jpg/)[^\s"\']+(/imagem\.jpg)?', r'\1[signed-token]\2', text)
     text = re.sub(r'(/social-media/public/)[^\s"\']+', r'\1[signed-token]/', text)
     return text
@@ -148,7 +150,9 @@ def _sanitize_signed_urls(text):
 def resumir_image_url(image_url):
     parsed = urllib.parse.urlparse(image_url)
     path = parsed.path or ''
-    if '/social-media/public-jpg/' in path:
+    if re.search(r'/social-media/ig/\d+/', path):
+        path_structure = re.sub(r'(/social-media/ig/\d+/).+(\.jpg)$', r'\1[signed-token]\2', path)
+    elif '/social-media/public-jpg/' in path:
         path_structure = '/social-media/public-jpg/[signed-token]/imagem.jpg'
     elif '/social-media/public/' in path:
         path_structure = '/social-media/public/[signed-token]/'
@@ -187,6 +191,16 @@ def gerar_token_midia_temporaria(content):
         {'content_id': content.id, 'file': content.final_image.name},
         salt=MEDIA_SIGNING_SALT,
     )
+
+
+def gerar_assinatura_midia_meta(content):
+    if not content.final_image:
+        raise InstagramPublishError('Renderize o card final antes de publicar.')
+    signed_value = signing.TimestampSigner(salt=MEDIA_META_SIGNING_SALT).sign(str(content.id))
+    prefix = f'{content.id}:'
+    if not signed_value.startswith(prefix):
+        raise InstagramPublishError('Nao foi possivel gerar a assinatura temporaria da midia.')
+    return signed_value[len(prefix):]
 
 
 def auditar_imagem_final(content):
@@ -229,10 +243,38 @@ def validar_token_midia_temporaria(token):
     return content
 
 
-def url_midia_temporaria(content, *, com_extensao_jpg=False):
+def validar_assinatura_midia_meta(content_id, signature):
+    signed_value = f'{content_id}:{signature}'
+    try:
+        unsigned = signing.TimestampSigner(salt=MEDIA_META_SIGNING_SALT).unsign(
+            signed_value,
+            max_age=settings.INSTAGRAM_MEDIA_URL_TTL_SECONDS,
+        )
+    except signing.BadSignature as exc:
+        raise ValidationError('Assinatura invalida ou expirada.') from exc
+    if str(unsigned) != str(content_id):
+        raise ValidationError('Assinatura invalida ou expirada.')
+    content = SocialContent.objects.filter(pk=content_id).first()
+    if not content or not content.final_image:
+        raise ValidationError('Assinatura invalida ou expirada.')
+    return content
+
+
+def url_midia_meta_compat(content):
     base_url = (settings.PLATFORM_BASE_URL or '').rstrip('/')
     if not base_url.startswith('https://'):
         raise InstagramConfigurationError('Configure PLATFORM_BASE_URL com uma URL HTTPS publica antes de publicar.')
+    auditar_imagem_final(content)
+    signature = gerar_assinatura_midia_meta(content)
+    return f'{base_url}{reverse("social_public_final_image_meta_compat", args=[content.id, signature])}'
+
+
+def url_midia_temporaria(content, *, com_extensao_jpg=False, legacy=False):
+    base_url = (settings.PLATFORM_BASE_URL or '').rstrip('/')
+    if not base_url.startswith('https://'):
+        raise InstagramConfigurationError('Configure PLATFORM_BASE_URL com uma URL HTTPS publica antes de publicar.')
+    if not legacy:
+        return url_midia_meta_compat(content)
     auditar_imagem_final(content)
     token = gerar_token_midia_temporaria(content)
     route = 'social_public_final_image_jpg' if com_extensao_jpg else 'social_public_final_image'

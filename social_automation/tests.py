@@ -1,5 +1,6 @@
 from datetime import timedelta
 from io import BytesIO, StringIO
+from hashlib import sha256
 import os
 from pathlib import Path
 import tempfile
@@ -29,10 +30,13 @@ from .instagram import (
     PUBLICADO_INSTAGRAM,
     auditar_imagem_final,
     criar_container_imagem,
+    gerar_assinatura_midia_meta,
     gerar_token_midia_temporaria,
     publicar_conteudo_instagram,
     resumir_image_url,
+    url_midia_meta_compat,
     url_midia_temporaria,
+    validar_assinatura_midia_meta,
     validar_token_midia_temporaria,
 )
 from .rendering import SocialRenderError, renderizar_conteudo_social
@@ -668,12 +672,69 @@ class SocialAutomationInstagramIntegrationTests(TestCase):
     @override_settings(PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com')
     def test_url_jpg_alternativa_preserva_assinatura(self):
         content = self._content_ready()
-        url = url_midia_temporaria(content, com_extensao_jpg=True)
+        url = url_midia_temporaria(content, com_extensao_jpg=True, legacy=True)
         resumo = resumir_image_url(url)
 
         self.assertTrue(url.startswith('https://dashboard-ambar.onrender.com/'))
         self.assertTrue(resumo['has_jpg'])
         self.assertEqual(resumo['path_structure'], '/social-media/public-jpg/[signed-token]/imagem.jpg')
+
+    @override_settings(PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com', INSTAGRAM_MEDIA_URL_TTL_SECONDS=3600)
+    def test_meta_compat_url_curta_assinada_e_menor_que_legada(self):
+        content = self._content_ready()
+        signature = gerar_assinatura_midia_meta(content)
+        validado = validar_assinatura_midia_meta(content.id, signature)
+        meta_url = url_midia_meta_compat(content)
+        legacy_url = url_midia_temporaria(content, com_extensao_jpg=True, legacy=True)
+        resumo = resumir_image_url(meta_url)
+
+        self.assertEqual(validado, content)
+        self.assertIn(f'/social-media/ig/{content.id}/', meta_url)
+        self.assertTrue(meta_url.endswith('.jpg'))
+        self.assertLess(len(meta_url), len(legacy_url))
+        self.assertEqual(resumo['path_structure'], f'/social-media/ig/{content.id}/[signed-token].jpg')
+
+    @override_settings(INSTAGRAM_MEDIA_URL_TTL_SECONDS=-1)
+    def test_meta_compat_ttl_expira(self):
+        content = self._content_ready()
+        signature = gerar_assinatura_midia_meta(content)
+        with self.assertRaises(ValidationError):
+            validar_assinatura_midia_meta(content.id, signature)
+
+    def test_meta_compat_content_id_adulterado_e_recusado(self):
+        content = self._content_ready()
+        signature = gerar_assinatura_midia_meta(content)
+        with self.assertRaises(ValidationError):
+            validar_assinatura_midia_meta(content.id + 1, signature)
+
+    @override_settings(INSTAGRAM_MEDIA_URL_TTL_SECONDS=3600)
+    def test_meta_compat_serve_httpresponse_nao_streaming_com_bytes_identicos(self):
+        content = self._content_ready()
+        signature = gerar_assinatura_midia_meta(content)
+        path = reverse('social_public_final_image_meta_compat', args=[content.id, signature])
+        self.client.logout()
+
+        response = self.client.get(path, HTTP_USER_AGENT='facebookexternalhit/1.1', follow=False)
+        with content.final_image.storage.open(content.final_image.name, 'rb') as arquivo:
+            storage_bytes = arquivo.read()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.streaming)
+        self.assertEqual(response['Content-Type'], 'image/jpeg')
+        self.assertEqual(response['Content-Length'], str(len(storage_bytes)))
+        self.assertEqual(response.get('Content-Disposition', ''), '')
+        self.assertNotIn('Content-Encoding', response)
+        self.assertEqual(response.content, storage_bytes)
+        self.assertEqual(sha256(response.content).hexdigest(), sha256(storage_bytes).hexdigest())
+        self.assertTrue(response.content.startswith(b'\xff\xd8\xff'))
+        self.assertNotIn(response.status_code, {301, 302})
+
+        head_response = self.client.head(path, follow=False)
+        self.assertEqual(head_response.status_code, 200)
+        self.assertFalse(head_response.streaming)
+        self.assertEqual(head_response['Content-Type'], 'image/jpeg')
+        self.assertEqual(head_response['Content-Length'], str(len(storage_bytes)))
+        self.assertEqual(head_response.content, b'')
 
     def test_auditoria_confirma_jpeg_real(self):
         content = self._content_ready()
@@ -725,6 +786,35 @@ class SocialAutomationInstagramIntegrationTests(TestCase):
         self.assertEqual(content.external_permalink, 'https://instagram.com/p/teste/')
         self.assertIsNotNone(content.published_at)
         self.assertTrue(content.events.filter(acao=PUBLICADO_INSTAGRAM).exists())
+
+    @override_settings(
+        INSTAGRAM_ACCESS_TOKEN='token-teste',
+        INSTAGRAM_USER_ID='178000000000',
+        INSTAGRAM_EXPECTED_USERNAME='lailapistola',
+        PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com',
+        INSTAGRAM_MEDIA_URL_TTL_SECONDS=3600,
+    )
+    def test_publicacao_real_usa_url_meta_compat(self):
+        content = self._content_ready()
+        captured = {}
+
+        def fake_container(image_url, caption):
+            captured['image_url'] = image_url
+            captured['caption'] = caption
+            return 'container-1'
+
+        with mock.patch('social_automation.instagram.obter_conta_instagram', return_value={'username': 'lailapistola'}), mock.patch(
+            'social_automation.instagram.criar_container_imagem',
+            side_effect=fake_container,
+        ), mock.patch('social_automation.instagram.aguardar_container_pronto', return_value={'status_code': 'FINISHED'}), mock.patch(
+            'social_automation.instagram.publicar_container',
+            return_value='media-1',
+        ), mock.patch('social_automation.instagram.obter_midia_publicada', return_value={'id': 'media-1'}):
+            publicar_conteudo_instagram(content, self.staff)
+
+        self.assertIn(f'/social-media/ig/{content.id}/', captured['image_url'])
+        self.assertTrue(captured['image_url'].endswith('.jpg'))
+        self.assertNotIn('/social-media/public', captured['image_url'])
 
     @override_settings(INSTAGRAM_ACCESS_TOKEN='token-teste', INSTAGRAM_USER_ID='178000000000')
     def test_criacao_container_envia_image_url_sem_media_type_video(self):
@@ -796,8 +886,11 @@ class SocialAutomationInstagramIntegrationTests(TestCase):
 
         texto = output.getvalue()
         self.assertIn('media_publish: NAO executado', texto)
+        self.assertIn('ROTA_ANTIGA', texto)
+        self.assertIn('META_COMPAT_SEM_CAPTION', texto)
+        self.assertIn('META_COMPAT_COM_CAPTION', texto)
         self.assertIn('image_url_sha256=', texto)
-        self.assertEqual(request_mock.call_count, 2)
+        self.assertEqual(request_mock.call_count, 3)
         publish_mock.assert_not_called()
 
     @override_settings(

@@ -1,4 +1,5 @@
 from io import BytesIO
+from hashlib import sha256
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -6,7 +7,7 @@ import urllib.request
 from django.core.management.base import BaseCommand, CommandError
 from PIL import Image
 
-from social_automation.instagram import InstagramConfigurationError, auditar_imagem_final, url_midia_temporaria
+from social_automation.instagram import InstagramConfigurationError, auditar_imagem_final, resumir_image_url, url_midia_temporaria
 from social_automation.models import SocialContent
 
 
@@ -40,6 +41,11 @@ class Command(BaseCommand):
         redirected = normal['redirected']
         content_type = normal['content_type']
         body = normal['body']
+        with content.final_image.storage.open(content.final_image.name, 'rb') as arquivo:
+            storage_body = arquivo.read()
+        storage_sha = sha256(storage_body).hexdigest()
+        http_sha = sha256(body).hexdigest()
+        resumo = resumir_image_url(url)
 
         jpeg_signature = body.startswith(b'\xff\xd8\xff')
         pillow_format = '-'
@@ -59,6 +65,8 @@ class Command(BaseCommand):
         )
 
         self.stdout.write('URL HTTPS: OK')
+        self.stdout.write('URL type: META_COMPAT')
+        self.stdout.write(f'URL length: {resumo["length"]}')
         self.stdout.write(f'HTTP: {status}')
         self.stdout.write(f'HTTP normal: {normal["status"]}')
         self.stdout.write(f'HTTP Meta-UA: {meta["status"]}')
@@ -66,9 +74,14 @@ class Command(BaseCommand):
         self.stdout.write(f'HEAD status: {head["status"]}')
         self.stdout.write(f'Redirect: {"SIM" if redirected else "NAO"}')
         self.stdout.write(f'Content-Type: {content_type or "-"}')
+        self.stdout.write(f'Content-Length: {normal["headers"].get("Content-Length") or "-"}')
+        self.stdout.write(f'Transfer-Encoding: {normal["headers"].get("Transfer-Encoding") or "-"}')
+        self.stdout.write(f'Content-Encoding: {normal["headers"].get("Content-Encoding") or "-"}')
+        self.stdout.write(f'Content-Disposition: {normal["headers"].get("Content-Disposition") or "-"}')
         self.stdout.write(f'Content-Type normal: {normal["content_type"] or "-"}')
         self.stdout.write(f'Content-Type Meta-UA: {meta["content_type"] or "-"}')
         self.stdout.write(f'HEAD Content-Type: {head["content_type"] or "-"}')
+        self.stdout.write(f'HEAD Content-Length: {head["headers"].get("Content-Length") or "-"}')
         self.stdout.write(f'Bytes: {len(body)}')
         self.stdout.write(f'Bytes normal: {len(normal["body"])}')
         self.stdout.write(f'Bytes Meta-UA: {len(meta["body"])}')
@@ -78,6 +91,9 @@ class Command(BaseCommand):
         self.stdout.write(f'Pillow format: {pillow_format}')
         self.stdout.write(f'Dimensoes: {dimensions}')
         self.stdout.write(f'Arquivo local: {auditoria["format"]} {auditoria["width"]}x{auditoria["height"]} {auditoria["bytes"]} bytes')
+        self.stdout.write(f'SHA256 storage: {storage_sha}')
+        self.stdout.write(f'SHA256 HTTP: {http_sha}')
+        self.stdout.write(f'Bytes identicos: {"SIM" if storage_body == body else "NAO"}')
         self.stdout.write(f'Meta-ready: {"SIM" if ok else "NAO"}')
         if not ok:
             raise CommandError('A midia ainda nao esta pronta para a Meta.')
@@ -91,6 +107,7 @@ class Command(BaseCommand):
                 'status': response.status,
                 'redirected': False,
                 'content_type': response.headers.get('Content-Type', ''),
+                'headers': dict(response.headers.items()),
                 'body': response.read() if method != 'HEAD' else b'',
             }
         except urllib.error.HTTPError as exc:
@@ -98,6 +115,7 @@ class Command(BaseCommand):
                 'status': exc.code,
                 'redirected': exc.code in {301, 302, 303, 307, 308},
                 'content_type': exc.headers.get('Content-Type', ''),
+                'headers': dict(exc.headers.items()),
                 'body': exc.read() if method != 'HEAD' else b'',
             }
 
