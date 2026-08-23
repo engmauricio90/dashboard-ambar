@@ -1,11 +1,11 @@
 from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.utils.text import slugify
 
 from obras.models import Obra
 
 from .models import Empresa, UsuarioEmpresa
+from .services import gerar_username_por_email
 
 
 User = get_user_model()
@@ -80,23 +80,12 @@ class UsuarioEmpresaCriacaoForm(forms.Form):
             self.add_error('username', 'Este e-mail ja pertence a outro usuario. Deixe o campo usuario vazio.')
         return cleaned_data
 
-    def _gerar_username(self, email):
-        base = slugify(email.split('@')[0]) or 'usuario'
-        base = base[:120]
-        username = base
-        contador = 2
-        while User.objects.filter(username__iexact=username).exists():
-            sufixo = f'-{contador}'
-            username = f'{base[:150 - len(sufixo)]}{sufixo}'
-            contador += 1
-        return username
-
     def save(self):
         user = self.usuario_existente
         usuario_criado = False
         if user is None:
             user = User(
-                username=self.cleaned_data.get('username') or self._gerar_username(self.cleaned_data['email']),
+                username=self.cleaned_data.get('username') or gerar_username_por_email(self.cleaned_data['email']),
                 first_name=self.cleaned_data.get('first_name', ''),
                 last_name=self.cleaned_data.get('last_name', ''),
                 email=self.cleaned_data['email'],
@@ -116,6 +105,55 @@ class UsuarioEmpresaCriacaoForm(forms.Form):
         )
         vinculo.obras_permitidas.set(self.cleaned_data.get('obras_permitidas'))
         return vinculo, usuario_criado
+
+
+class OnboardingClienteForm(forms.Form):
+    nome = forms.CharField(label='Nome da empresa', max_length=160)
+    razao_social = forms.CharField(label='Razao social', max_length=180, required=False)
+    cnpj = forms.CharField(label='CNPJ', max_length=20, required=False)
+    email = forms.EmailField(label='E-mail da empresa', required=False)
+    telefone = forms.CharField(label='Telefone', max_length=40, required=False)
+    cidade = forms.CharField(label='Cidade', max_length=120, required=False)
+    estado = forms.CharField(label='UF', max_length=2, required=False)
+    cep = forms.CharField(label='CEP', max_length=20, required=False)
+
+    admin_first_name = forms.CharField(label='Nome do administrador', max_length=150, required=False)
+    admin_last_name = forms.CharField(label='Sobrenome', max_length=150, required=False)
+    admin_email = forms.EmailField(label='E-mail do administrador', required=True)
+    admin_grupo = forms.ModelChoiceField(label='Grupo/Funcao', queryset=Group.objects.none(), required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.usuario_existente = None
+        self.fields['admin_grupo'].queryset = grupos_funcionais_queryset()
+        diretoria = self.fields['admin_grupo'].queryset.filter(name='Diretoria').first()
+        if diretoria:
+            self.fields['admin_grupo'].initial = diretoria
+        for field in self.fields.values():
+            field.widget.attrs.setdefault('class', _css_class_for_widget(field.widget))
+        self.fields['email'].widget.attrs.setdefault('autocomplete', 'email')
+        self.fields['admin_email'].widget.attrs.setdefault('autocomplete', 'email')
+
+    def clean_nome(self):
+        nome = self.cleaned_data['nome'].strip()
+        if Empresa.objects.filter(nome__iexact=nome).exists():
+            raise forms.ValidationError('Ja existe uma empresa com este nome.')
+        return nome
+
+    def clean_cnpj(self):
+        cnpj = (self.cleaned_data.get('cnpj') or '').strip()
+        if cnpj and Empresa.objects.filter(cnpj__iexact=cnpj).exists():
+            raise forms.ValidationError('Ja existe uma empresa com este CNPJ.')
+        return cnpj
+
+    def clean_admin_email(self):
+        email = (self.cleaned_data.get('admin_email') or '').strip().lower()
+        usuarios = list(User.objects.filter(email__iexact=email).order_by('id'))
+        if len(usuarios) > 1:
+            raise forms.ValidationError('Existe mais de uma conta com este e-mail. Regularize antes de continuar.')
+        if usuarios:
+            self.usuario_existente = usuarios[0]
+        return email
 
 
 class UsuarioEmpresaVinculoForm(forms.ModelForm):
@@ -198,3 +236,25 @@ class IdentidadeVisualEmpresaForm(forms.ModelForm):
             if isinstance(field.widget, forms.ClearableFileInput):
                 css_class = 'form-control'
             field.widget.attrs.setdefault('class', css_class)
+
+
+class ClientePlataformaForm(forms.ModelForm):
+    class Meta:
+        model = Empresa
+        fields = ['nome', 'razao_social', 'cnpj', 'email', 'telefone', 'cidade', 'estado', 'cep', 'ativa']
+        labels = {
+            'nome': 'Nome da empresa',
+            'razao_social': 'Razao social',
+            'cnpj': 'CNPJ',
+            'email': 'E-mail',
+            'telefone': 'Telefone',
+            'cidade': 'Cidade',
+            'estado': 'UF',
+            'cep': 'CEP',
+            'ativa': 'Empresa ativa',
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault('class', _css_class_for_widget(field.widget))

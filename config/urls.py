@@ -4,6 +4,7 @@ from django.conf.urls.static import static
 from django.urls import path, include
 from django.contrib.auth import views as auth_views
 
+from empresas import views as empresas_views
 from usuarios.forms import PlataformaPasswordResetForm
 
 from .views import protected_media
@@ -13,6 +14,11 @@ urlpatterns = [
     path('media/<path:path>', protected_media, name='protected_media'),
     path('login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),
+    path('plataforma/clientes/', empresas_views.clientes_plataforma, name='clientes_plataforma'),
+    path('plataforma/clientes/novo/', empresas_views.novo_cliente_plataforma, name='novo_cliente_plataforma'),
+    path('plataforma/clientes/<int:empresa_id>/', empresas_views.detalhe_cliente_plataforma, name='detalhe_cliente_plataforma'),
+    path('plataforma/clientes/<int:empresa_id>/editar/', empresas_views.editar_cliente_plataforma, name='editar_cliente_plataforma'),
+    path('plataforma/clientes/convites/<int:vinculo_id>/reenviar/', empresas_views.reenviar_convite_plataforma, name='reenviar_convite_plataforma'),
     path(
         'senha/redefinir/',
         auth_views.PasswordResetView.as_view(

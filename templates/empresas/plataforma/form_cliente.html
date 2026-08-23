@@ -1,0 +1,118 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <h1 class="mb-1">{{ titulo }}</h1>
+        <p class="text-muted mb-0">Area da plataforma. Este fluxo nao pertence a uma empresa/tenant especifico.</p>
+    </div>
+    <a href="{% url 'clientes_plataforma' %}" class="btn btn-secondary">Voltar</a>
+</div>
+
+<form method="post" class="mb-5">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+        <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header fw-bold">Empresa</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">{{ form.nome.label }}</label>
+                    {{ form.nome }}
+                    {{ form.nome.errors }}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">{{ form.razao_social.label }}</label>
+                    {{ form.razao_social }}
+                    {{ form.razao_social.errors }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.cnpj.label }}</label>
+                    {{ form.cnpj }}
+                    {{ form.cnpj.errors }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.email.label }}</label>
+                    {{ form.email }}
+                    {{ form.email.errors }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.telefone.label }}</label>
+                    {{ form.telefone }}
+                    {{ form.telefone.errors }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.cidade.label }}</label>
+                    {{ form.cidade }}
+                    {{ form.cidade.errors }}
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">{{ form.estado.label }}</label>
+                    {{ form.estado }}
+                    {{ form.estado.errors }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.cep.label }}</label>
+                    {{ form.cep }}
+                    {{ form.cep.errors }}
+                </div>
+                {% if form.ativa %}
+                <div class="col-md-3 d-flex align-items-center pt-4">
+                    <div class="form-check">
+                        {{ form.ativa }}
+                        <label class="form-check-label">{{ form.ativa.label }}</label>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {% if form.admin_email %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-header fw-bold">Primeiro administrador</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.admin_first_name.label }}</label>
+                    {{ form.admin_first_name }}
+                    {{ form.admin_first_name.errors }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.admin_last_name.label }}</label>
+                    {{ form.admin_last_name }}
+                    {{ form.admin_last_name.errors }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.admin_email.label }}</label>
+                    {{ form.admin_email }}
+                    {{ form.admin_email.errors }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.admin_grupo.label }}</label>
+                    {{ form.admin_grupo }}
+                    {{ form.admin_grupo.errors }}
+                </div>
+            </div>
+            <div class="form-text mt-3">
+                O administrador recebera um convite por e-mail para definir a propria senha. Nenhuma senha temporaria sera criada.
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header fw-bold">Opcoes iniciais</div>
+        <div class="card-body text-muted">
+            A empresa nasce ativa, sem obras e com identidade visual padrao. Logo, cores, documentos, obras e equipe podem ser configurados depois.
+        </div>
+    </div>
+    {% endif %}
+
+    <button type="submit" class="btn btn-primary">{% if form.admin_email %}Criar cliente e enviar convite{% else %}Salvar{% endif %}</button>
+</form>
+{% endblock %}

@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+
+{% block title %}Clientes da plataforma{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="mb-1">Clientes da plataforma</h1>
+        <p class="text-muted mb-0">Area operacional interna para onboarding assistido de empresas.</p>
+    </div>
+    <a href="{% url 'novo_cliente_plataforma' %}" class="btn btn-primary">Novo cliente</a>
+</div>
+
+<form method="get" class="card shadow-sm mb-3">
+    <div class="card-body">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-10">
+                <label class="form-label" for="busca">Buscar</label>
+                <input class="form-control" id="busca" name="busca" value="{{ busca }}" placeholder="Empresa, razao social, CNPJ ou e-mail">
+            </div>
+            <div class="col-md-2 d-grid">
+                <button type="submit" class="btn btn-outline-secondary">Filtrar</button>
+            </div>
+        </div>
+    </div>
+</form>
+
+<div class="card shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-striped align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Empresa</th>
+                    <th>CNPJ</th>
+                    <th>Status</th>
+                    <th>Usuarios</th>
+                    <th>Obras</th>
+                    <th>Convites pendentes</th>
+                    <th>Criada em</th>
+                    <th class="text-end">Acoes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for empresa in empresas %}
+                <tr>
+                    <td>
+                        <strong>{{ empresa.nome }}</strong>
+                        {% if empresa.razao_social %}<div class="text-muted small">{{ empresa.razao_social }}</div>{% endif %}
+                    </td>
+                    <td>{{ empresa.cnpj|default:'-' }}</td>
+                    <td>
+                        {% if empresa.ativa %}
+                            <span class="badge text-bg-success">Ativa</span>
+                        {% else %}
+                            <span class="badge text-bg-secondary">Inativa</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ empresa.total_usuarios }}</td>
+                    <td>{{ empresa.total_obras }}</td>
+                    <td>{{ empresa.convites_pendentes }}</td>
+                    <td>{{ empresa.criado_em|date:'d/m/Y' }}</td>
+                    <td class="text-end">
+                        <div class="d-inline-flex gap-2">
+                            <a href="{% url 'detalhe_cliente_plataforma' empresa.id %}" class="btn btn-sm btn-outline-primary">Abrir</a>
+                            <a href="{% url 'editar_cliente_plataforma' empresa.id %}" class="btn btn-sm btn-outline-secondary">Editar</a>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="8" class="text-center text-muted py-4">Nenhum cliente encontrado.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

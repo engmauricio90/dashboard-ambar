@@ -12,6 +12,7 @@ from django.urls import reverse
 from django.utils import timezone
 from urllib.parse import urlparse
 import tempfile
+from unittest import mock
 
 from controles.models import CronogramaObra, OrcamentoRadarObra, OrdemCompraGeral
 from diarios.models import DiarioObra, FotoDiario
@@ -21,6 +22,7 @@ from obras.models import Obra
 from .middleware import EmpresaAtivaMiddleware
 from .models import Empresa, UsuarioEmpresa
 from .services import (
+    criar_cliente_assistido,
     definir_empresa_na_sessao,
     empresa_ativa_do_request,
     obter_ou_criar_empresa_padrao,
@@ -1025,3 +1027,193 @@ class Fase6PilotoCassoniUsuariosTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(usuario.groups.exists())
+
+
+class Fase7DOnboardingAssistidoTests(TestCase):
+    def setUp(self):
+        self.ambar = obter_ou_criar_empresa_padrao()
+        self.diretoria = Group.objects.get_or_create(name='Diretoria')[0]
+        self.financeiro = Group.objects.get_or_create(name='Financeiro')[0]
+        self.staff = User.objects.create_user(username='operador', password='senha', is_staff=True)
+        self.admin_tenant = User.objects.create_user(username='admin-tenant', password='senha')
+        UsuarioEmpresa.objects.create(
+            usuario=self.admin_tenant,
+            empresa=self.ambar,
+            grupo=self.diretoria,
+            administrador_empresa=True,
+        )
+
+    def _link_email(self):
+        for trecho in mail.outbox[-1].body.split():
+            if '/senha/redefinir/' in trecho:
+                return urlparse(trecho).path
+        self.fail('Link de convite nao encontrado.')
+
+    def test_staff_acessa_area_de_clientes(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse('clientes_plataforma'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Clientes da plataforma')
+
+    def test_admin_tenant_nao_acessa_area_de_clientes(self):
+        self.client.force_login(self.admin_tenant)
+
+        get_response = self.client.get(reverse('clientes_plataforma'))
+        post_response = self.client.post(reverse('novo_cliente_plataforma'), {'nome': 'Bloqueado'})
+
+        self.assertEqual(get_response.status_code, 403)
+        self.assertEqual(post_response.status_code, 403)
+        self.assertFalse(Empresa.objects.filter(nome='Bloqueado').exists())
+
+    def test_staff_cria_cliente_primeiro_admin_e_convite(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.post(
+            reverse('novo_cliente_plataforma'),
+            {
+                'nome': 'Cliente SaaS Teste',
+                'razao_social': 'Cliente SaaS Teste Ltda',
+                'cnpj': '00.000.000/0001-01',
+                'email': 'contato@cliente.test',
+                'telefone': '51999999999',
+                'cidade': 'Porto Alegre',
+                'estado': 'RS',
+                'cep': '90000-000',
+                'admin_first_name': 'Joao',
+                'admin_last_name': 'Cliente',
+                'admin_email': 'admin@cliente.test',
+                'admin_grupo': str(self.diretoria.id),
+            },
+        )
+
+        empresa = Empresa.objects.get(nome='Cliente SaaS Teste')
+        self.assertRedirects(response, f"{reverse('detalhe_cliente_plataforma', args=[empresa.id])}?convite=enviado")
+        usuario = User.objects.get(email='admin@cliente.test')
+        self.assertFalse(usuario.has_usable_password())
+        vinculo = UsuarioEmpresa.objects.get(usuario=usuario, empresa=empresa)
+        self.assertTrue(vinculo.administrador_empresa)
+        self.assertTrue(vinculo.ativo)
+        self.assertEqual(vinculo.grupo, self.diretoria)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('admin@cliente.test', mail.outbox[0].to)
+        self.assertFalse(UsuarioEmpresa.objects.filter(usuario=self.staff, empresa=empresa).exists())
+
+    def test_criacao_reaproveita_usuario_existente_sem_duplicar(self):
+        existente = User.objects.create_user(
+            username='existente-cliente',
+            email='existente-cliente@example.com',
+            password='senha-existente-123',
+        )
+        UsuarioEmpresa.objects.create(usuario=existente, empresa=self.ambar)
+        self.client.force_login(self.staff)
+
+        response = self.client.post(
+            reverse('novo_cliente_plataforma'),
+            {
+                'nome': 'Cliente Usuario Existente',
+                'admin_email': 'EXISTENTE-CLIENTE@example.com',
+                'admin_grupo': str(self.financeiro.id),
+            },
+        )
+
+        empresa = Empresa.objects.get(nome='Cliente Usuario Existente')
+        self.assertRedirects(response, f"{reverse('detalhe_cliente_plataforma', args=[empresa.id])}?convite=enviado")
+        self.assertEqual(User.objects.filter(email__iexact='existente-cliente@example.com').count(), 1)
+        vinculo = UsuarioEmpresa.objects.get(usuario=existente, empresa=empresa)
+        self.assertTrue(vinculo.administrador_empresa)
+        self.assertEqual(vinculo.grupo, self.financeiro)
+        self.assertTrue(existente.has_usable_password())
+        self.assertIn('Voce recebeu acesso', mail.outbox[0].subject)
+
+    def test_nao_cria_cliente_com_cnpj_duplicado(self):
+        Empresa.objects.create(nome='Empresa CNPJ', slug='empresa-cnpj', cnpj='11.111.111/0001-11')
+        self.client.force_login(self.staff)
+
+        response = self.client.post(
+            reverse('novo_cliente_plataforma'),
+            {
+                'nome': 'Outra Empresa CNPJ',
+                'cnpj': '11.111.111/0001-11',
+                'admin_email': 'admin-cnpj@example.com',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Empresa.objects.filter(nome='Outra Empresa CNPJ').exists())
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_slug_colisao_recebe_sufixo(self):
+        Empresa.objects.create(nome='Empresa Antiga', slug='cliente-modelo')
+        self.client.force_login(self.staff)
+
+        self.client.post(reverse('novo_cliente_plataforma'), {'nome': 'Cliente Modelo', 'admin_email': 'admin-slug@example.com'})
+
+        empresa = Empresa.objects.get(nome='Cliente Modelo')
+        self.assertEqual(empresa.slug, 'cliente-modelo-2')
+
+    def test_atomicidade_nao_deixa_empresa_orfa(self):
+        with self.assertRaises(RuntimeError):
+            with mock.patch('empresas.services.UsuarioEmpresa.objects.create', side_effect=RuntimeError('falha vinculo')):
+                criar_cliente_assistido(
+                    {
+                        'nome': 'Empresa Orfa',
+                        'admin_email': 'orfa@example.com',
+                        'usuario_existente': None,
+                        'admin_grupo': self.diretoria,
+                    }
+                )
+
+        self.assertFalse(Empresa.objects.filter(nome='Empresa Orfa').exists())
+        self.assertFalse(User.objects.filter(email='orfa@example.com').exists())
+
+    def test_falha_smtp_mantem_empresa_e_vinculo_para_reenvio(self):
+        self.client.force_login(self.staff)
+
+        with mock.patch('empresas.views.enviar_convite_usuario_empresa', return_value=False):
+            response = self.client.post(
+                reverse('novo_cliente_plataforma'),
+                {'nome': 'Cliente SMTP Falha', 'admin_email': 'smtp-falha@example.com'},
+            )
+
+        empresa = Empresa.objects.get(nome='Cliente SMTP Falha')
+        usuario = User.objects.get(email='smtp-falha@example.com')
+        vinculo = UsuarioEmpresa.objects.get(usuario=usuario, empresa=empresa)
+        self.assertRedirects(response, f"{reverse('detalhe_cliente_plataforma', args=[empresa.id])}?convite=falha")
+        self.assertTrue(vinculo.administrador_empresa)
+        response = self.client.get(reverse('detalhe_cliente_plataforma', args=[empresa.id]))
+        self.assertContains(response, 'Reenviar convite')
+
+    def test_primeiro_admin_aceita_convite_e_dashboard_sem_obras_funciona(self):
+        self.client.force_login(self.staff)
+        self.client.post(reverse('novo_cliente_plataforma'), {'nome': 'Cliente Zero Obras', 'admin_email': 'zero@example.com'})
+        empresa = Empresa.objects.get(nome='Cliente Zero Obras')
+        usuario = User.objects.get(email='zero@example.com')
+        confirm_path = self._link_email()
+
+        response = self.client.get(confirm_path)
+        self.client.post(
+            response.url,
+            {
+                'new_password1': 'senha-nova-forte-123',
+                'new_password2': 'senha-nova-forte-123',
+            },
+        )
+        self.client.logout()
+        self.assertTrue(self.client.login(username=usuario.username, password='senha-nova-forte-123'))
+        response = self.client.get(reverse('home'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.session['empresa_id'], empresa.id)
+        self.assertContains(response, 'Cliente Zero Obras')
+        self.assertFalse(empresa.obras.exists())
+
+    def test_empresa_sem_branding_exibe_detalhe_sem_erro(self):
+        empresa = Empresa.objects.create(nome='Sem Branding', slug='sem-branding')
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse('detalhe_cliente_plataforma', args=[empresa.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Sem Branding')
