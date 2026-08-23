@@ -1,3 +1,5 @@
+import importlib.util
+import logging
 import os
 from pathlib import Path
 
@@ -30,6 +32,13 @@ DEBUG = env_bool('DJANGO_DEBUG', False)
 ALLOWED_HOSTS = env_list('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1')
 CSRF_TRUSTED_ORIGINS = env_list('DJANGO_CSRF_TRUSTED_ORIGINS', '')
 DATA_UPLOAD_MAX_NUMBER_FIELDS = int(env('DJANGO_DATA_UPLOAD_MAX_NUMBER_FIELDS', '20000'))
+DJANGO_LOG_LEVEL = env('DJANGO_LOG_LEVEL', 'INFO')
+LOGIN_RATE_LIMIT = int(env('LOGIN_RATE_LIMIT', '10'))
+LOGIN_RATE_LIMIT_WINDOW = int(env('LOGIN_RATE_LIMIT_WINDOW', '300'))
+PASSWORD_RESET_RATE_LIMIT = int(env('PASSWORD_RESET_RATE_LIMIT', '5'))
+PASSWORD_RESET_RATE_LIMIT_WINDOW = int(env('PASSWORD_RESET_RATE_LIMIT_WINDOW', '3600'))
+INVITE_RATE_LIMIT = int(env('INVITE_RATE_LIMIT', '20'))
+INVITE_RATE_LIMIT_WINDOW = int(env('INVITE_RATE_LIMIT_WINDOW', '3600'))
 
 render_hostname = env('RENDER_EXTERNAL_HOSTNAME')
 if render_hostname and render_hostname not in ALLOWED_HOSTS:
@@ -154,6 +163,68 @@ PASSWORD_RESET_TIMEOUT = int(env('PASSWORD_RESET_TIMEOUT', '259200'))
 
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+CACHES = {
+    'default': {
+        'BACKEND': env('DJANGO_CACHE_BACKEND', 'django.core.cache.backends.locmem.LocMemCache'),
+        'LOCATION': env('DJANGO_CACHE_LOCATION', 'sistema-obras-default'),
+    }
+}
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'console': {
+            'format': '%(asctime)s %(levelname)s %(name)s %(message)s',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'console',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': DJANGO_LOG_LEVEL,
+    },
+    'loggers': {
+        'django.security': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['console'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+    },
+}
+
+SENTRY_DSN = env('SENTRY_DSN', '')
+SENTRY_ENVIRONMENT = env('SENTRY_ENVIRONMENT', 'development' if DEBUG else 'production')
+SENTRY_RELEASE = env('SENTRY_RELEASE', '')
+SENTRY_TRACES_SAMPLE_RATE = float(env('SENTRY_TRACES_SAMPLE_RATE', '0'))
+
+if SENTRY_DSN:
+    if importlib.util.find_spec('sentry_sdk'):
+        import sentry_sdk
+        from sentry_sdk.integrations.django import DjangoIntegration
+
+        sentry_options = {
+            'dsn': SENTRY_DSN,
+            'integrations': [DjangoIntegration()],
+            'environment': SENTRY_ENVIRONMENT,
+            'traces_sample_rate': SENTRY_TRACES_SAMPLE_RATE,
+            'send_default_pii': False,
+        }
+        if SENTRY_RELEASE:
+            sentry_options['release'] = SENTRY_RELEASE
+        sentry_sdk.init(**sentry_options)
+    else:
+        logging.getLogger(__name__).warning('SENTRY_DSN configurado, mas sentry-sdk nao esta instalado.')
 
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

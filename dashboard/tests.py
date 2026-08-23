@@ -109,6 +109,14 @@ class DashboardHomeTests(TestCase):
         self.assertIn('grafico_status', response.context)
         self.assertEqual(response.context['quantidade_obras_em_alerta'], 1)
 
+    def test_healthz_valida_aplicacao_e_banco(self):
+        self.client.logout()
+
+        response = self.client.get(reverse('healthz'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'status': 'ok', 'database': 'ok'})
+
     def test_total_contratos_ignora_obras_concluidas(self):
         Obra.objects.create(
             empresa=self.empresa,

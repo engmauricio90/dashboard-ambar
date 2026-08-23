@@ -1,14 +1,19 @@
 from decimal import Decimal
 from datetime import date
+import logging
 
+from django.db import connections
 from django.db.models import Prefetch
-from django.http import HttpResponse
+from django.http import JsonResponse
 from django.shortcuts import render
 
 from empresas.decorators import empresa_required
 from obras.models import NotaFiscal, Obra
 
 from .forms import DashboardFiltroForm
+
+
+logger = logging.getLogger(__name__)
 
 
 def _obras_base_queryset(empresa):
@@ -164,4 +169,11 @@ def relatorio_geral(request):
 
 
 def healthz(request):
-    return HttpResponse('ok', content_type='text/plain')
+    try:
+        with connections['default'].cursor() as cursor:
+            cursor.execute('SELECT 1')
+            cursor.fetchone()
+    except Exception:
+        logger.exception('Health check falhou ao consultar o banco de dados.')
+        return JsonResponse({'status': 'error', 'database': 'unavailable'}, status=503)
+    return JsonResponse({'status': 'ok', 'database': 'ok'})

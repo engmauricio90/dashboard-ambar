@@ -32,15 +32,35 @@ services:
         value: "True"
       - key: DJANGO_SECURE_HSTS_PRELOAD
         value: "True"
+      - key: DJANGO_LOG_LEVEL
+        value: INFO
       - key: POSTGRES_CONN_MAX_AGE
         value: "60"
       - key: POSTGRES_SSL_REQUIRE
         value: "True"
+      - key: LOGIN_RATE_LIMIT
+        value: "10"
+      - key: LOGIN_RATE_LIMIT_WINDOW
+        value: "300"
+      - key: PASSWORD_RESET_RATE_LIMIT
+        value: "5"
+      - key: PASSWORD_RESET_RATE_LIMIT_WINDOW
+        value: "3600"
+      - key: INVITE_RATE_LIMIT
+        value: "20"
+      - key: INVITE_RATE_LIMIT_WINDOW
+        value: "3600"
+      - key: SENTRY_ENVIRONMENT
+        value: production
+      - key: SENTRY_TRACES_SAMPLE_RATE
+        value: "0"
       - key: DJANGO_SUPERUSER_USERNAME
         sync: false
       - key: DJANGO_SUPERUSER_EMAIL
         sync: false
       - key: DJANGO_SUPERUSER_PASSWORD
+        sync: false
+      - key: SENTRY_DSN
         sync: false
       - key: DATABASE_URL
         fromDatabase:

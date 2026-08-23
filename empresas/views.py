@@ -7,6 +7,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
+from config.rate_limit import invite_rate_limited, too_many_requests
+
 from .forms import (
     GRUPOS_FUNCIONAIS,
     ClientePlataformaForm,
@@ -88,6 +90,8 @@ def _exigir_operador_plataforma(request):
 def _enviar_email_acesso_ou_convite(request, vinculo, usuario_criado=False):
     if not vinculo.usuario.email:
         return 'sem_email'
+    if invite_rate_limited(request, vinculo):
+        return 'rate_limited'
     if usuario_criado or not vinculo.usuario.has_usable_password():
         return 'enviado' if enviar_convite_usuario_empresa(request, vinculo) else 'falha'
     return 'enviado' if enviar_acesso_usuario_empresa(request, vinculo) else 'falha'
@@ -149,6 +153,8 @@ def novo_cliente_plataforma(request):
                 messages.success(request, 'Cliente criado e convite enviado com sucesso.')
             elif status_convite == 'sem_email':
                 messages.warning(request, 'Cliente criado, mas o administrador nao possui e-mail para convite.')
+            elif status_convite == 'rate_limited':
+                messages.warning(request, 'Cliente criado, mas o limite de envios de convite foi atingido. Tente reenviar depois.')
             else:
                 messages.warning(request, 'Cliente criado, mas nao foi possivel enviar o convite.')
             return redirect(f"{reverse('detalhe_cliente_plataforma', args=[resultado['empresa'].id])}?convite={status_convite}")
@@ -217,6 +223,8 @@ def reenviar_convite_plataforma(request, vinculo_id):
     if vinculo.usuario.has_usable_password():
         messages.info(request, 'Este usuario ja possui senha definida.')
         return redirect('detalhe_cliente_plataforma', empresa_id=vinculo.empresa_id)
+    if invite_rate_limited(request, vinculo):
+        return too_many_requests('Limite de reenvio de convites atingido. Aguarde antes de tentar novamente.')
     if enviar_convite_usuario_empresa(request, vinculo):
         messages.success(request, 'Convite reenviado com sucesso.')
     else:
@@ -262,6 +270,8 @@ def novo_usuario_empresa(request):
             vinculo, usuario_criado = form.save()
             if not vinculo.usuario.email:
                 messages.warning(request, 'Usuario vinculado, mas sem e-mail para envio de convite.')
+            elif invite_rate_limited(request, vinculo):
+                messages.warning(request, 'Usuario vinculado, mas o limite de envios de convite foi atingido. Tente reenviar depois.')
             elif usuario_criado or not vinculo.usuario.has_usable_password():
                 if enviar_convite_usuario_empresa(request, vinculo):
                     messages.success(request, f'Convite enviado para {vinculo.usuario.email}.')
@@ -359,6 +369,8 @@ def reenviar_convite_usuario_empresa(request, vinculo_id):
     if vinculo.usuario.has_usable_password():
         messages.info(request, 'Este usuario ja possui senha definida. Use o fluxo de acesso normal.')
         return redirect('usuarios_empresa')
+    if invite_rate_limited(request, vinculo):
+        return too_many_requests('Limite de reenvio de convites atingido. Aguarde antes de tentar novamente.')
     if enviar_convite_usuario_empresa(request, vinculo):
         messages.success(request, 'Convite reenviado com sucesso.')
     else:

@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core import mail
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import CommandError, call_command
@@ -721,6 +722,7 @@ class Fase5IdentidadeVisualTests(TestCase):
 
 class Fase6PilotoCassoniUsuariosTests(TestCase):
     def setUp(self):
+        cache.clear()
         self.ambar = obter_ou_criar_empresa_padrao()
         self.cassoni = Empresa.objects.create(nome='Cassoni Engenharia', slug='cassoni')
         self.grupo_financeiro = Group.objects.get_or_create(name='Financeiro')[0]
@@ -936,6 +938,22 @@ class Fase6PilotoCassoniUsuariosTests(TestCase):
         self.assertRedirects(response, reverse('usuarios_empresa'))
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn('pendente@example.com', mail.outbox[0].to)
+
+    @override_settings(INVITE_RATE_LIMIT=1, INVITE_RATE_LIMIT_WINDOW=3600)
+    def test_reenvio_convite_tem_rate_limit(self):
+        pendente = User.objects.create_user(username='pendente-limitado', email='pendente-limitado@example.com')
+        pendente.set_unusable_password()
+        pendente.save(update_fields=['password'])
+        vinculo = UsuarioEmpresa.objects.create(usuario=pendente, empresa=self.cassoni)
+        self.client.force_login(self.admin_cassoni)
+        self._selecionar(self.cassoni)
+
+        response = self.client.post(reverse('reenviar_convite_usuario_empresa', args=[vinculo.id]))
+        self.assertRedirects(response, reverse('usuarios_empresa'))
+        response = self.client.post(reverse('reenviar_convite_usuario_empresa', args=[vinculo.id]))
+
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(len(mail.outbox), 1)
 
     def test_reenvio_nao_reativa_vinculo_inativo(self):
         pendente = User.objects.create_user(username='pendente-inativo', email='pendente-inativo@example.com')

@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.core.cache import cache
 from django.core import mail
 from django.test import TestCase
 from django.test.utils import override_settings
@@ -219,3 +220,33 @@ class PasswordResetTests(TestCase):
         self.assertTrue(self.client.login(username='reset-user', password='senha-nova-forte-123'))
         response = self.client.get(confirm_path)
         self.assertContains(response, 'Link invalido')
+
+
+class RateLimitAutenticacaoTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    @override_settings(LOGIN_RATE_LIMIT=2, LOGIN_RATE_LIMIT_WINDOW=300)
+    def test_login_bloqueia_excesso_de_tentativas(self):
+        for _indice in range(2):
+            response = self.client.post(reverse('login'), {'username': 'alvo', 'password': 'errada'})
+            self.assertEqual(response.status_code, 200)
+
+        response = self.client.post(reverse('login'), {'username': 'alvo', 'password': 'errada'})
+
+        self.assertEqual(response.status_code, 429)
+        self.assertContains(response, 'Muitas tentativas de login', status_code=429)
+
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+        PASSWORD_RESET_RATE_LIMIT=1,
+        PASSWORD_RESET_RATE_LIMIT_WINDOW=3600,
+    )
+    def test_reset_senha_bloqueia_excesso_de_solicitacoes(self):
+        response = self.client.post(reverse('password_reset'), {'email': 'alvo@example.com'})
+        self.assertRedirects(response, reverse('password_reset_done'))
+
+        response = self.client.post(reverse('password_reset'), {'email': 'alvo@example.com'})
+
+        self.assertEqual(response.status_code, 429)
+        self.assertContains(response, 'Muitas solicitacoes', status_code=429)
