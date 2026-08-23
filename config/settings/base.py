@@ -27,6 +27,10 @@ def env_list(key, default=''):
     return [item.strip() for item in value.split(',') if item.strip()]
 
 
+def media_root_path():
+    return Path(env('MEDIA_ROOT') or env('DJANGO_MEDIA_ROOT') or BASE_DIR / 'media')
+
+
 SECRET_KEY = env('DJANGO_SECRET_KEY', 'dev-insecure-secret-key')
 DEBUG = env_bool('DJANGO_DEBUG', False)
 ALLOWED_HOSTS = env_list('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1')
@@ -148,7 +152,7 @@ STORAGES = {
 }
 
 MEDIA_URL = '/media/'
-MEDIA_ROOT = Path(env('DJANGO_MEDIA_ROOT', BASE_DIR / 'media'))
+MEDIA_ROOT = media_root_path()
 
 
 LOGIN_URL = 'login'

@@ -1,5 +1,7 @@
 from datetime import timedelta
 from io import BytesIO, StringIO
+import os
+from pathlib import Path
 import tempfile
 from unittest import mock
 
@@ -684,6 +686,87 @@ class SocialAutomationInstagramIntegrationTests(TestCase):
             content = self._content_ready(status=status)
             with self.assertRaisesMessage(Exception, 'Somente conteudos aprovados'):
                 publicar_conteudo_instagram(content, self.staff)
+
+
+class SocialAutomationMediaRootTests(TestCase):
+    def setUp(self):
+        self.staff = User.objects.create_user(username='staff-media-root-social', password='senha', is_staff=True)
+        self.client.force_login(self.staff)
+        self.profile = SocialProfile.objects.create(nome='Perfil Media', username='@lailapistola', horarios_publicacao=['12:00'])
+
+    def _content_ready(self, status=SocialContent.Status.APROVADO, username='@lailapistola'):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        media_override = override_settings(MEDIA_ROOT=tmp.name)
+        media_override.enable()
+        self.addCleanup(media_override.disable)
+        self.profile.username = username
+        self.profile.save(update_fields=['username', 'updated_at'])
+        image = SocialBaseImage.objects.create(
+            profile=self.profile,
+            nome='Base Instagram',
+            tags='laila',
+            arquivo=imagem_social('instagram-base.jpg'),
+        )
+        content = SocialContent.objects.create(
+            profile=self.profile,
+            base_image=image,
+            frase='Segunda-feira chegou com personalidade',
+            legenda='Legenda curta',
+            hashtags='#laila #humor',
+            status=status,
+        )
+        renderizar_conteudo_social(content)
+        content.refresh_from_db()
+        return content
+
+    def test_media_root_local_e_override_por_env(self):
+        from config.settings import base
+
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(base.media_root_path(), base.BASE_DIR / 'media')
+
+        with mock.patch.dict(os.environ, {'MEDIA_ROOT': '/var/data/media'}, clear=True):
+            self.assertEqual(base.media_root_path(), Path('/var/data/media'))
+
+        with mock.patch.dict(os.environ, {'DJANGO_MEDIA_ROOT': '/legacy/media'}, clear=True):
+            self.assertEqual(base.media_root_path(), Path('/legacy/media'))
+
+        with mock.patch.dict(os.environ, {'MEDIA_ROOT': '/var/data/media', 'DJANGO_MEDIA_ROOT': '/legacy/media'}, clear=True):
+            self.assertEqual(base.media_root_path(), Path('/var/data/media'))
+
+    def test_uploads_sociais_usam_media_root_configurado_e_signed_url_funciona(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root, INSTAGRAM_MEDIA_URL_TTL_SECONDS=3600):
+            response = self.client.post(
+                reverse('social_automation:image_create', args=[self.profile.id]),
+                {
+                    'nome': 'Base persistente',
+                    'tags': 'laila',
+                    'text_position': SocialBaseImage.TextPosition.AUTO,
+                    'ativa': 'on',
+                    'arquivo': imagem_social('base-persistente.jpg'),
+                },
+            )
+            self.assertRedirects(response, reverse('social_automation:image_list', args=[self.profile.id]))
+            image = SocialBaseImage.objects.get(nome='Base persistente')
+            self.assertTrue(Path(image.arquivo.path).is_relative_to(Path(media_root)))
+
+            content = SocialContent.objects.create(
+                profile=self.profile,
+                base_image=image,
+                frase='Card final salvo no storage configurado',
+                status=SocialContent.Status.APROVADO,
+            )
+            renderizar_conteudo_social(content)
+            content.refresh_from_db()
+            self.assertTrue(Path(content.final_image.path).is_relative_to(Path(media_root)))
+
+            token = gerar_token_midia_temporaria(content)
+            public_response = self.client.get(reverse('social_public_final_image', args=[token]))
+            self.assertEqual(public_response.status_code, 200)
+            self.assertEqual(public_response['Content-Type'], 'image/jpeg')
+            b''.join(public_response.streaming_content)
+            public_response.close()
 
     @override_settings(
         INSTAGRAM_ACCESS_TOKEN='token-teste',
