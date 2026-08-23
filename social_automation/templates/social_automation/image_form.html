@@ -1,6 +1,6 @@
 {% extends 'social_automation/base.html' %}
 
-{% block social_title %}Adicionar imagem-base{% endblock %}
+{% block social_title %}{% if image %}Editar imagem-base{% else %}Adicionar imagem-base{% endif %}{% endblock %}
 {% block social_subtitle %}{{ profile.nome }}{% endblock %}
 
 {% block social_content %}
@@ -11,7 +11,8 @@
         <div class="row g-3">
             <div class="col-md-6"><label class="form-label">{{ form.arquivo.label }}</label>{{ form.arquivo }}{{ form.arquivo.errors }}</div>
             <div class="col-md-6"><label class="form-label">{{ form.nome.label }}</label>{{ form.nome }}{{ form.nome.errors }}</div>
-            <div class="col-md-9"><label class="form-label">{{ form.tags.label }}</label>{{ form.tags }}</div>
+            <div class="col-md-6"><label class="form-label">{{ form.tags.label }}</label>{{ form.tags }}</div>
+            <div class="col-md-3"><label class="form-label">{{ form.text_position.label }}</label>{{ form.text_position }}</div>
             <div class="col-md-3 d-flex align-items-end"><div class="form-check mb-2">{{ form.ativa }} <label class="form-check-label">{{ form.ativa.label }}</label></div></div>
         </div>
     </div>

@@ -90,11 +90,15 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
 class SocialBaseImageForm(BootstrapMixin, forms.ModelForm):
     class Meta:
         model = SocialBaseImage
-        fields = ['arquivo', 'nome', 'tags', 'ativa']
+        fields = ['arquivo', 'nome', 'tags', 'text_position', 'ativa']
+        labels = {
+            'text_position': 'Posicao preferencial do texto',
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._apply_bootstrap()
+        self.fields['text_position'].widget.attrs['class'] = 'form-select'
 
 
 class SocialContentForm(BootstrapMixin, forms.ModelForm):

@@ -1,7 +1,7 @@
 {% extends 'social_automation/base.html' %}
 
 {% block social_title %}Biblioteca - {{ profile.nome }}{% endblock %}
-{% block social_subtitle %}Imagens-base originais. A renderizacao final vira na proxima fase.{% endblock %}
+{% block social_subtitle %}Imagens-base originais e posicao preferencial do texto nos cards.{% endblock %}
 {% block social_actions %}
 <a href="{% url 'social_automation:image_create' profile.id %}" class="btn btn-primary">Adicionar imagem</a>
 <a href="{% url 'social_automation:profile_detail' profile.id %}" class="btn btn-outline-secondary">Voltar ao perfil</a>
@@ -16,15 +16,19 @@
             <div class="card-body">
                 <h6 class="mb-1">{{ image.nome }}</h6>
                 <p class="text-muted small mb-2">{{ image.tags|default:'Sem tags' }}</p>
+                <div class="small">Texto: {{ image.get_text_position_display }}</div>
                 <div class="small">Usos: {{ image.vezes_usada }}</div>
                 <div class="small">Ultimo uso: {{ image.ultima_utilizacao|date:'d/m/Y H:i'|default:'-' }}</div>
             </div>
-            <div class="card-footer d-flex justify-content-between align-items-center">
+            <div class="card-footer d-flex justify-content-between align-items-center gap-2">
                 {% if image.ativa %}<span class="badge text-bg-success">Ativa</span>{% else %}<span class="badge text-bg-secondary">Inativa</span>{% endif %}
-                <form method="post" action="{% url 'social_automation:image_toggle' image.id %}">
-                    {% csrf_token %}
-                    <button class="btn btn-sm btn-outline-warning" type="submit">{% if image.ativa %}Desativar{% else %}Ativar{% endif %}</button>
-                </form>
+                <div class="d-flex gap-1">
+                    <a href="{% url 'social_automation:image_update' image.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                    <form method="post" action="{% url 'social_automation:image_toggle' image.id %}">
+                        {% csrf_token %}
+                        <button class="btn btn-sm btn-outline-warning" type="submit">{% if image.ativa %}Desativar{% else %}Ativar{% endif %}</button>
+                    </form>
+                </div>
             </div>
         </div>
     </div>

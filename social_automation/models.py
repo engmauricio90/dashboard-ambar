@@ -69,10 +69,18 @@ class SocialProfile(models.Model):
 
 
 class SocialBaseImage(models.Model):
+    class TextPosition(models.TextChoices):
+        AUTO = 'auto', 'Automatica'
+        LEFT = 'left', 'Esquerda'
+        RIGHT = 'right', 'Direita'
+        TOP = 'top', 'Superior'
+        BOTTOM = 'bottom', 'Inferior'
+
     profile = models.ForeignKey(SocialProfile, on_delete=models.CASCADE, related_name='base_images')
     arquivo = models.ImageField(upload_to=social_base_image_upload_to)
     nome = models.CharField(max_length=120)
     tags = models.CharField(max_length=255, blank=True)
+    text_position = models.CharField(max_length=10, choices=TextPosition.choices, default=TextPosition.AUTO)
     ativa = models.BooleanField(default=True)
     vezes_usada = models.PositiveIntegerField(default=0)
     ultima_utilizacao = models.DateTimeField(blank=True, null=True)

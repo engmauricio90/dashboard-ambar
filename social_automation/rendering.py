@@ -11,6 +11,8 @@ class SocialRenderError(Exception):
 
 
 CANVAS_SIZE = (1080, 1080)
+SAFE_MARGIN = 78
+AUTO_POSITION = 'bottom'
 
 
 def _font(size):
@@ -66,6 +68,49 @@ def _layout_text(draw, text, max_width, max_height):
     raise SocialRenderError('Texto grande demais para renderizar com legibilidade.')
 
 
+def _region(position):
+    position = position or AUTO_POSITION
+    if position == 'auto':
+        position = AUTO_POSITION
+    if position == 'left':
+        return (SAFE_MARGIN, 112, 455, 856), 'left'
+    if position == 'right':
+        return (625, 112, 377, 856), 'right'
+    if position == 'top':
+        return (112, SAFE_MARGIN, 856, 360), 'center'
+    return (112, 640, 856, 330), 'center'
+
+
+def _apply_gradient(overlay, position, region):
+    width, height = CANVAS_SIZE
+    pixels = ImageDraw.Draw(overlay)
+    max_alpha = 120
+    if position in {'auto', 'bottom'}:
+        start = max(region[1] - 70, 0)
+        for y in range(start, height):
+            progress = (y - start) / max(height - start, 1)
+            alpha = int(max_alpha * progress)
+            pixels.line((0, y, width, y), fill=(0, 0, 0, alpha))
+    elif position == 'top':
+        end = min(region[1] + region[3] + 90, height)
+        for y in range(0, end):
+            progress = 1 - (y / max(end, 1))
+            alpha = int(max_alpha * progress)
+            pixels.line((0, y, width, y), fill=(0, 0, 0, alpha))
+    elif position == 'left':
+        end = min(region[0] + region[2] + 120, width)
+        for x in range(0, end):
+            progress = 1 - (x / max(end, 1))
+            alpha = int(max_alpha * progress)
+            pixels.line((x, 0, x, height), fill=(0, 0, 0, alpha))
+    elif position == 'right':
+        start = max(region[0] - 120, 0)
+        for x in range(start, width):
+            progress = (x - start) / max(width - start, 1)
+            alpha = int(max_alpha * progress)
+            pixels.line((x, 0, x, height), fill=(0, 0, 0, alpha))
+
+
 def renderizar_conteudo_social(content):
     if not content.base_image or not content.base_image.arquivo:
         raise SocialRenderError('Selecione uma imagem-base antes de renderizar.')
@@ -81,29 +126,24 @@ def renderizar_conteudo_social(content):
 
     overlay = Image.new('RGBA', CANVAS_SIZE, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
-    margin = 78
-    max_width = CANVAS_SIZE[0] - margin * 2
-    max_height = 420
+    position = getattr(content.base_image, 'text_position', AUTO_POSITION) or AUTO_POSITION
+    region, align = _region(position)
+    _apply_gradient(overlay, position, region)
+    max_width = region[2]
+    max_height = region[3]
     font, lines, line_height, text_height = _layout_text(draw, content.frase, max_width, max_height)
 
-    padding_x = 46
-    padding_y = 38
-    band_height = text_height + padding_y * 2
-    band_top = (CANVAS_SIZE[1] - band_height) // 2
-    band_left = margin - 18
-    band_right = CANVAS_SIZE[0] - margin + 18
-    draw.rounded_rectangle(
-        (band_left, band_top, band_right, band_top + band_height),
-        radius=18,
-        fill=(0, 0, 0, 150),
-    )
-
-    y = band_top + padding_y
+    y = region[1] + max((region[3] - text_height) // 2, 0)
     for line in lines:
         width = _text_width(draw, line, font)
-        x = (CANVAS_SIZE[0] - width) // 2
-        draw.text((x + 2, y + 2), line, font=font, fill=(0, 0, 0, 150))
-        draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
+        if align == 'left':
+            x = region[0]
+        elif align == 'right':
+            x = region[0] + region[2] - width
+        else:
+            x = region[0] + (region[2] - width) // 2
+        draw.text((x + 3, y + 4), line, font=font, fill=(0, 0, 0, 150))
+        draw.text((x, y), line, font=font, fill=(255, 255, 255, 255), stroke_width=3, stroke_fill=(0, 0, 0, 170))
         y += line_height
 
     final = Image.alpha_composite(image.convert('RGBA'), overlay).convert('RGB')

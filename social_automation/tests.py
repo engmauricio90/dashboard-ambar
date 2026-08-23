@@ -17,7 +17,7 @@ from .models import SocialBaseImage, SocialContent, SocialContentEvent, SocialPr
 from .ai import GeneratedContent
 from .generation import gerar_lote_conteudos
 from .image_selection import selecionar_imagem_base
-from .rendering import renderizar_conteudo_social
+from .rendering import SocialRenderError, renderizar_conteudo_social
 
 
 User = get_user_model()
@@ -132,7 +132,13 @@ class SocialAutomationWorkflowTests(TestCase):
         with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
             response = self.client.post(
                 reverse('social_automation:image_create', args=[self.profile.id]),
-                {'nome': 'Cachorro serio', 'tags': 'cachorro, serio', 'ativa': 'on', 'arquivo': imagem_teste()},
+                {
+                    'nome': 'Cachorro serio',
+                    'tags': 'cachorro, serio',
+                    'text_position': SocialBaseImage.TextPosition.AUTO,
+                    'ativa': 'on',
+                    'arquivo': imagem_teste(),
+                },
             )
 
             image = SocialBaseImage.objects.get(profile=self.profile)
@@ -415,3 +421,105 @@ class SocialAutomationGenerationTests(TestCase):
         self.client.force_login(comum)
         response = self.client.get(reverse('social_automation:profile_generate', args=[self.profile.id]))
         self.assertEqual(response.status_code, 403)
+
+
+class SocialAutomationRenderingPositionTests(TestCase):
+    def setUp(self):
+        self.staff = User.objects.create_user(username='staff-render-social', password='senha', is_staff=True)
+        self.client.force_login(self.staff)
+        self.profile = SocialProfile.objects.create(nome='Perfil Visual', username='@visual', horarios_publicacao=['12:00'])
+
+    def _image(self, position, nome='base-position'):
+        return SocialBaseImage.objects.create(
+            profile=self.profile,
+            nome=nome,
+            tags='laila, fundo limpo',
+            text_position=position,
+            arquivo=imagem_social(f'{nome}-{position}.jpg', tamanho=(1400, 1100), cor='darkseagreen'),
+        )
+
+    def _content(self, image, frase='Segunda-feira tambem tem seu charme duvidoso'):
+        return SocialContent.objects.create(profile=self.profile, base_image=image, frase=frase)
+
+    def test_renderiza_posicoes_preferenciais_e_auto(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            for position in [
+                SocialBaseImage.TextPosition.LEFT,
+                SocialBaseImage.TextPosition.RIGHT,
+                SocialBaseImage.TextPosition.TOP,
+                SocialBaseImage.TextPosition.BOTTOM,
+                SocialBaseImage.TextPosition.AUTO,
+            ]:
+                content = self._content(self._image(position, nome=f'base-{position}'))
+                renderizar_conteudo_social(content)
+                content.refresh_from_db()
+                with Image.open(content.final_image.path) as final:
+                    self.assertEqual(final.size, (1080, 1080))
+                    self.assertEqual(final.format, 'JPEG')
+
+    def test_frase_longa_reduz_fonte_sem_cortar(self):
+        frase = (
+            'Execucao de rotina com descricao propositalmente extensa para validar quebra de linha, '
+            'reducao de fonte e preservacao da regiao segura do texto.'
+        )
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            content = self._content(self._image(SocialBaseImage.TextPosition.LEFT), frase=frase)
+            renderizar_conteudo_social(content)
+            content.refresh_from_db()
+            self.assertTrue(content.final_image.name.endswith('.jpg'))
+
+    def test_texto_impossivel_falha_sem_truncar(self):
+        frase = 'X' * 900
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            content = self._content(self._image(SocialBaseImage.TextPosition.RIGHT), frase=frase)
+            with self.assertRaises(SocialRenderError):
+                renderizar_conteudo_social(content)
+
+    def test_original_permanece_intacto(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            image = self._image(SocialBaseImage.TextPosition.BOTTOM)
+            with image.arquivo.open('rb') as arquivo:
+                original = arquivo.read()
+            renderizar_conteudo_social(self._content(image))
+            with image.arquivo.open('rb') as arquivo:
+                self.assertEqual(arquivo.read(), original)
+
+    def test_rerender_usa_posicao_atual_da_imagem(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            image = self._image(SocialBaseImage.TextPosition.LEFT)
+            content = self._content(image)
+            renderizar_conteudo_social(content)
+            content.refresh_from_db()
+            primeiro = content.final_image.name
+
+            image.text_position = SocialBaseImage.TextPosition.RIGHT
+            image.save(update_fields=['text_position', 'updated_at'])
+            response = self.client.post(reverse('social_automation:content_render', args=[content.id]))
+
+            self.assertRedirects(response, reverse('social_automation:content_detail', args=[content.id]))
+            content.refresh_from_db()
+            self.assertNotEqual(primeiro, content.final_image.name)
+
+    def test_form_salva_posicao_e_choice_invalido_falha(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            response = self.client.post(
+                reverse('social_automation:image_create', args=[self.profile.id]),
+                {
+                    'nome': 'Laila esquerda',
+                    'tags': 'laila',
+                    'text_position': SocialBaseImage.TextPosition.LEFT,
+                    'ativa': 'on',
+                    'arquivo': imagem_social('laila-esquerda.jpg'),
+                },
+            )
+            self.assertRedirects(response, reverse('social_automation:image_list', args=[self.profile.id]))
+            image = SocialBaseImage.objects.get(nome='Laila esquerda')
+            self.assertEqual(image.text_position, SocialBaseImage.TextPosition.LEFT)
+
+            response = self.client.post(
+                reverse('social_automation:image_update', args=[image.id]),
+                {'nome': 'Laila esquerda', 'tags': 'laila', 'text_position': 'centro', 'ativa': 'on'},
+            )
+            self.assertEqual(response.status_code, 200)
+            image.refresh_from_db()
+            self.assertEqual(image.text_position, SocialBaseImage.TextPosition.LEFT)

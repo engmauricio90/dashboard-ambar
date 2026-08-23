@@ -15,6 +15,7 @@ urlpatterns = [
     path('perfis/<int:profile_id>/gerar/', views.profile_generate, name='profile_generate'),
     path('perfis/<int:profile_id>/imagens/', views.image_list, name='image_list'),
     path('perfis/<int:profile_id>/imagens/nova/', views.image_create, name='image_create'),
+    path('imagens/<int:image_id>/editar/', views.image_update, name='image_update'),
     path('imagens/<int:image_id>/toggle/', views.image_toggle, name='image_toggle'),
     path('conteudos/', views.content_list, name='content_list'),
     path('perfis/<int:profile_id>/conteudos/', views.content_list, name='profile_content_list'),

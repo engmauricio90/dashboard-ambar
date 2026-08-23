@@ -147,6 +147,20 @@ def image_create(request, profile_id):
 
 
 @staff_required
+def image_update(request, image_id):
+    image = get_object_or_404(SocialBaseImage.objects.select_related('profile'), pk=image_id)
+    if request.method == 'POST':
+        form = SocialBaseImageForm(request.POST, request.FILES, instance=image)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Imagem-base atualizada com sucesso.')
+            return redirect('social_automation:image_list', profile_id=image.profile_id)
+    else:
+        form = SocialBaseImageForm(instance=image)
+    return render(request, 'social_automation/image_form.html', {'form': form, 'profile': image.profile, 'image': image})
+
+
+@staff_required
 @require_POST
 def image_toggle(request, image_id):
     image = get_object_or_404(SocialBaseImage.objects.select_related('profile'), pk=image_id)

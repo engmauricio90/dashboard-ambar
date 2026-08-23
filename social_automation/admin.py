@@ -6,7 +6,7 @@ from .models import SocialBaseImage, SocialContent, SocialContentEvent, SocialPr
 class SocialBaseImageInline(admin.TabularInline):
     model = SocialBaseImage
     extra = 0
-    fields = ['nome', 'ativa', 'tags', 'vezes_usada', 'ultima_utilizacao']
+    fields = ['nome', 'ativa', 'text_position', 'tags', 'vezes_usada', 'ultima_utilizacao']
     readonly_fields = ['vezes_usada', 'ultima_utilizacao']
 
 
@@ -20,8 +20,8 @@ class SocialProfileAdmin(admin.ModelAdmin):
 
 @admin.register(SocialBaseImage)
 class SocialBaseImageAdmin(admin.ModelAdmin):
-    list_display = ['nome', 'profile', 'ativa', 'vezes_usada', 'ultima_utilizacao', 'created_at']
-    list_filter = ['ativa', 'profile']
+    list_display = ['nome', 'profile', 'ativa', 'text_position', 'vezes_usada', 'ultima_utilizacao', 'created_at']
+    list_filter = ['ativa', 'text_position', 'profile']
     search_fields = ['nome', 'tags', 'profile__nome', 'profile__username']
     readonly_fields = ['vezes_usada', 'ultima_utilizacao', 'created_at', 'updated_at']
 
