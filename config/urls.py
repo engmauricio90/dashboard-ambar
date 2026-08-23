@@ -6,11 +6,13 @@ from django.contrib.auth import views as auth_views
 
 from empresas import views as empresas_views
 from usuarios.auth_views import RateLimitedLoginView, RateLimitedPasswordResetView
+from social_automation import views as social_automation_views
 
 from .views import protected_media
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('social-media/public/<path:token>/', social_automation_views.public_final_image, name='social_public_final_image'),
     path('media/<path:path>', protected_media, name='protected_media'),
     path('login/', RateLimitedLoginView.as_view(), name='login'),
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),

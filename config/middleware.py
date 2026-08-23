@@ -19,6 +19,7 @@ class LoginRequiredMiddleware:
             reverse('logout'),
             reverse('healthz'),
             '/senha/',
+            '/social-media/public/',
             '/admin/',
             settings.STATIC_URL,
             settings.MEDIA_URL,

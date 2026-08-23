@@ -22,3 +22,36 @@ Sem `OPENAI_API_KEY`, a tela de geracao com IA permanece acessivel, mas o sistem
 6. Revise a fila antes de aprovar ou agendar.
 
 Nesta fase nao ha publicacao automatica, API do Instagram, cron, Celery ou agendamento real externo.
+
+## Instagram API
+
+Variaveis exigidas em producao para publicacao manual:
+
+```env
+INSTAGRAM_ACCESS_TOKEN=
+INSTAGRAM_USER_ID=
+INSTAGRAM_API_VERSION=v23.0
+INSTAGRAM_EXPECTED_USERNAME=lailapistola
+INSTAGRAM_MEDIA_URL_TTL_SECONDS=3600
+INSTAGRAM_API_TIMEOUT_SECONDS=30
+PLATFORM_BASE_URL=https://dashboard-ambar.onrender.com
+```
+
+O token nunca deve ser salvo no banco, exibido em tela ou registrado em log.
+
+Fluxo manual:
+
+1. Aprovar um `SocialContent`.
+2. Garantir que ele tenha `final_image`.
+3. Clicar em `Publicar no Instagram`.
+4. O sistema gera uma URL publica temporaria assinada para a imagem final.
+5. A API oficial do Instagram cria o container de midia.
+6. O sistema publica o container e salva `external_post_id`, `external_permalink` e `published_at`.
+
+Smoke read-only:
+
+```bash
+python manage.py testar_instagram
+```
+
+Esse comando valida configuracao e conta conectada sem publicar nada.

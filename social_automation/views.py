@@ -2,8 +2,9 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
+from django.conf import settings
+from django.http import FileResponse, Http404, HttpResponseForbidden, HttpResponseNotAllowed
 from django.db.models import Count, Q
-from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -11,6 +12,14 @@ from django.views.decorators.http import require_POST
 from .ai import OpenAINotConfigured, OpenAIUnavailable
 from .forms import SocialBaseImageForm, SocialContentForm, SocialGenerateForm, SocialProfileForm, SocialScheduleForm
 from .generation import gerar_lote_conteudos
+from .instagram import (
+    InstagramAPIError,
+    InstagramConfigurationError,
+    InstagramPublishError,
+    obter_conta_instagram,
+    publicar_conteudo_instagram,
+    validar_token_midia_temporaria,
+)
 from .models import SocialBaseImage, SocialContent, SocialProfile
 from .rendering import SocialRenderError, renderizar_conteudo_social
 from .services import (
@@ -108,6 +117,7 @@ def profile_detail(request, profile_id):
         'agendados': profile.contents.filter(status=SocialContent.Status.AGENDADO).count(),
         'erros': profile.contents.filter(status=SocialContent.Status.ERRO).count(),
         'contents': contents,
+        'instagram_configurado': bool(settings.INSTAGRAM_ACCESS_TOKEN and settings.INSTAGRAM_USER_ID),
     }
     return render(request, 'social_automation/profile_detail.html', contexto)
 
@@ -263,7 +273,16 @@ def content_detail(request, content_id):
     content = get_object_or_404(_content_queryset(), pk=content_id)
     schedule_form = SocialScheduleForm(profile=content.profile) if content.status == SocialContent.Status.APROVADO else None
     events = content.events.select_related('usuario')[:20]
-    return render(request, 'social_automation/content_detail.html', {'content': content, 'events': events, 'schedule_form': schedule_form})
+    return render(
+        request,
+        'social_automation/content_detail.html',
+        {
+            'content': content,
+            'events': events,
+            'schedule_form': schedule_form,
+            'instagram_expected_username': settings.INSTAGRAM_EXPECTED_USERNAME or content.profile.username,
+        },
+    )
 
 
 @staff_required
@@ -304,6 +323,43 @@ def content_render(request, content_id):
     except SocialRenderError as exc:
         messages.error(request, str(exc))
     return redirect('social_automation:content_detail', content_id=content.id)
+
+
+def public_final_image(request, token):
+    if request.method not in {'GET', 'HEAD'}:
+        return HttpResponseNotAllowed(['GET', 'HEAD'])
+    try:
+        content = validar_token_midia_temporaria(token)
+    except ValidationError as exc:
+        raise Http404 from exc
+    if not content.final_image:
+        raise Http404
+    response = FileResponse(content.final_image.open('rb'), content_type='image/jpeg')
+    response['Cache-Control'] = 'private, max-age=0, no-store'
+    return response
+
+
+@staff_required
+@require_POST
+def content_publish_instagram(request, content_id):
+    content = get_object_or_404(_content_queryset(), pk=content_id)
+    try:
+        publicar_conteudo_instagram(content, request.user)
+        messages.success(request, 'Conteudo publicado no Instagram com sucesso.')
+    except (InstagramConfigurationError, InstagramAPIError, InstagramPublishError) as exc:
+        messages.error(request, str(exc))
+    return redirect('social_automation:content_detail', content_id=content.id)
+
+
+@staff_required
+def instagram_health(request, profile_id):
+    profile = _profile_or_404(profile_id)
+    try:
+        conta = obter_conta_instagram()
+        messages.success(request, f'Instagram conectado: @{conta.get("username") or "-"}')
+    except (InstagramConfigurationError, InstagramAPIError) as exc:
+        messages.error(request, str(exc))
+    return redirect('social_automation:profile_detail', profile_id=profile.id)
 
 
 @staff_required

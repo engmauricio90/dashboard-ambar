@@ -4,6 +4,8 @@ import tempfile
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.core import signing
+from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import TestCase, override_settings
@@ -17,6 +19,14 @@ from .models import SocialBaseImage, SocialContent, SocialContentEvent, SocialPr
 from .ai import GeneratedContent
 from .generation import gerar_lote_conteudos
 from .image_selection import selecionar_imagem_base
+from .instagram import (
+    InstagramAPIError,
+    MEDIA_SIGNING_SALT,
+    PUBLICADO_INSTAGRAM,
+    gerar_token_midia_temporaria,
+    publicar_conteudo_instagram,
+    validar_token_midia_temporaria,
+)
 from .rendering import SocialRenderError, renderizar_conteudo_social
 
 
@@ -523,3 +533,185 @@ class SocialAutomationRenderingPositionTests(TestCase):
             self.assertEqual(response.status_code, 200)
             image.refresh_from_db()
             self.assertEqual(image.text_position, SocialBaseImage.TextPosition.LEFT)
+
+
+class SocialAutomationInstagramIntegrationTests(TestCase):
+    def setUp(self):
+        self.staff = User.objects.create_user(username='staff-instagram-social', password='senha', is_staff=True)
+        self.client.force_login(self.staff)
+        self.profile = SocialProfile.objects.create(nome='Laila Pistola', username='@lailapistola', horarios_publicacao=['12:00'])
+
+    def _content_ready(self, status=SocialContent.Status.APROVADO, username='@lailapistola'):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        media_override = override_settings(MEDIA_ROOT=tmp.name)
+        media_override.enable()
+        self.addCleanup(media_override.disable)
+        self.profile.username = username
+        self.profile.save(update_fields=['username', 'updated_at'])
+        image = SocialBaseImage.objects.create(
+            profile=self.profile,
+            nome='Base Instagram',
+            tags='laila',
+            arquivo=imagem_social('instagram-base.jpg'),
+        )
+        content = SocialContent.objects.create(
+            profile=self.profile,
+            base_image=image,
+            frase='Segunda-feira chegou com personalidade',
+            legenda='Legenda curta',
+            hashtags='#laila #humor',
+            status=status,
+        )
+        renderizar_conteudo_social(content)
+        content.refresh_from_db()
+        return content
+
+    @override_settings(INSTAGRAM_MEDIA_URL_TTL_SECONDS=3600)
+    def test_signed_url_valida_serve_imagem_e_rejeita_token_invalido(self):
+        content = self._content_ready()
+        token = gerar_token_midia_temporaria(content)
+        response = self.client.get(reverse('social_public_final_image', args=[token]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'image/jpeg')
+        self.assertEqual(response['Cache-Control'], 'private, max-age=0, no-store')
+        b''.join(response.streaming_content)
+        response.close()
+
+        response = self.client.get(reverse('social_public_final_image', args=['token-invalido']))
+        self.assertEqual(response.status_code, 404)
+
+    @override_settings(INSTAGRAM_MEDIA_URL_TTL_SECONDS=-1)
+    def test_signed_url_expirada_nao_acessa(self):
+        content = self._content_ready()
+        token = gerar_token_midia_temporaria(content)
+        with self.assertRaises(ValidationError):
+            validar_token_midia_temporaria(token)
+
+    def test_assinatura_vincula_content_e_arquivo_atual(self):
+        content = self._content_ready()
+        token = gerar_token_midia_temporaria(content)
+        content.final_image.name = 'social/outro/posts/outro.jpg'
+        content.save(update_fields=['final_image', 'updated_at'])
+
+        with self.assertRaises(ValidationError):
+            validar_token_midia_temporaria(token)
+
+    @override_settings(
+        INSTAGRAM_ACCESS_TOKEN='token-teste',
+        INSTAGRAM_USER_ID='178000000000',
+        INSTAGRAM_EXPECTED_USERNAME='lailapistola',
+        PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com',
+    )
+    def test_publicacao_mockada_marca_publicado(self):
+        content = self._content_ready()
+        with mock.patch('social_automation.instagram.obter_conta_instagram', return_value={'username': 'lailapistola'}), mock.patch(
+            'social_automation.instagram.criar_container_imagem',
+            return_value='container-1',
+        ), mock.patch('social_automation.instagram.aguardar_container_pronto', return_value={'status_code': 'FINISHED'}), mock.patch(
+            'social_automation.instagram.publicar_container',
+            return_value='media-1',
+        ), mock.patch('social_automation.instagram.obter_midia_publicada', return_value={'id': 'media-1', 'permalink': 'https://instagram.com/p/teste/'}):
+            publicar_conteudo_instagram(content, self.staff)
+
+        content.refresh_from_db()
+        self.assertEqual(content.status, SocialContent.Status.PUBLICADO)
+        self.assertEqual(content.external_post_id, 'media-1')
+        self.assertEqual(content.external_permalink, 'https://instagram.com/p/teste/')
+        self.assertIsNotNone(content.published_at)
+        self.assertTrue(content.events.filter(acao=PUBLICADO_INSTAGRAM).exists())
+
+    @override_settings(
+        INSTAGRAM_ACCESS_TOKEN='token-teste',
+        INSTAGRAM_USER_ID='178000000000',
+        INSTAGRAM_EXPECTED_USERNAME='lailapistola',
+        PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com',
+    )
+    def test_falha_container_vai_para_erro(self):
+        content = self._content_ready()
+        with mock.patch('social_automation.instagram.obter_conta_instagram', return_value={'username': 'lailapistola'}), mock.patch(
+            'social_automation.instagram.criar_container_imagem',
+            side_effect=InstagramAPIError('Container recusado', status=400, code=10),
+        ):
+            with self.assertRaises(InstagramAPIError):
+                publicar_conteudo_instagram(content, self.staff)
+
+        content.refresh_from_db()
+        self.assertEqual(content.status, SocialContent.Status.ERRO)
+        self.assertIn('Container recusado', content.erro)
+
+    @override_settings(
+        INSTAGRAM_ACCESS_TOKEN='token-teste',
+        INSTAGRAM_USER_ID='178000000000',
+        INSTAGRAM_EXPECTED_USERNAME='lailapistola',
+        PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com',
+    )
+    def test_falha_media_publish_vai_para_erro(self):
+        content = self._content_ready()
+        with mock.patch('social_automation.instagram.obter_conta_instagram', return_value={'username': 'lailapistola'}), mock.patch(
+            'social_automation.instagram.criar_container_imagem',
+            return_value='container-1',
+        ), mock.patch('social_automation.instagram.aguardar_container_pronto', return_value={'status_code': 'FINISHED'}), mock.patch(
+            'social_automation.instagram.publicar_container',
+            side_effect=InstagramAPIError('Publish recusado', status=400, code=20),
+        ):
+            with self.assertRaises(InstagramAPIError):
+                publicar_conteudo_instagram(content, self.staff)
+
+        content.refresh_from_db()
+        self.assertEqual(content.status, SocialContent.Status.ERRO)
+        self.assertFalse(content.external_post_id)
+
+    @override_settings(INSTAGRAM_ACCESS_TOKEN='', INSTAGRAM_USER_ID='', PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com')
+    def test_configuracao_ausente_nao_gera_500(self):
+        content = self._content_ready()
+        response = self.client.post(reverse('social_automation:content_publish_instagram', args=[content.id]))
+
+        self.assertRedirects(response, reverse('social_automation:content_detail', args=[content.id]))
+        content.refresh_from_db()
+        self.assertEqual(content.status, SocialContent.Status.ERRO)
+        self.assertIn('INSTAGRAM_ACCESS_TOKEN', content.erro)
+
+    @override_settings(
+        INSTAGRAM_ACCESS_TOKEN='token-teste',
+        INSTAGRAM_USER_ID='178000000000',
+        INSTAGRAM_EXPECTED_USERNAME='lailapistola',
+        PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com',
+    )
+    def test_status_nao_aprovado_nao_publica(self):
+        for status in [SocialContent.Status.RASCUNHO, SocialContent.Status.REJEITADO, SocialContent.Status.PUBLICADO]:
+            content = self._content_ready(status=status)
+            with self.assertRaisesMessage(Exception, 'Somente conteudos aprovados'):
+                publicar_conteudo_instagram(content, self.staff)
+
+    @override_settings(
+        INSTAGRAM_ACCESS_TOKEN='token-teste',
+        INSTAGRAM_USER_ID='178000000000',
+        INSTAGRAM_EXPECTED_USERNAME='lailapistola',
+        PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com',
+    )
+    def test_username_de_outro_perfil_bloqueia_publicacao(self):
+        content = self._content_ready(username='@outroperfil')
+        with self.assertRaisesMessage(Exception, 'outro perfil social'):
+            publicar_conteudo_instagram(content, self.staff)
+
+    @override_settings(
+        INSTAGRAM_ACCESS_TOKEN='token-teste',
+        INSTAGRAM_USER_ID='178000000000',
+        INSTAGRAM_EXPECTED_USERNAME='lailapistola',
+        PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com',
+    )
+    def test_duplo_clique_nao_publica_duas_vezes(self):
+        content = self._content_ready()
+        with mock.patch('social_automation.instagram.obter_conta_instagram', return_value={'username': 'lailapistola'}), mock.patch(
+            'social_automation.instagram.criar_container_imagem',
+            return_value='container-1',
+        ), mock.patch('social_automation.instagram.aguardar_container_pronto', return_value={'status_code': 'FINISHED'}), mock.patch(
+            'social_automation.instagram.publicar_container',
+            return_value='media-1',
+        ), mock.patch('social_automation.instagram.obter_midia_publicada', return_value={'id': 'media-1'}):
+            publicar_conteudo_instagram(content, self.staff)
+
+            with self.assertRaisesMessage(Exception, 'Somente conteudos aprovados'):
+                publicar_conteudo_instagram(content, self.staff)

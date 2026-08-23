@@ -53,6 +53,10 @@
                     <form method="post" action="{% url 'social_automation:content_approve' content.id %}">{% csrf_token %}<button class="btn btn-success w-100" type="submit">Aprovar</button></form>
                     <form method="post" action="{% url 'social_automation:content_reject' content.id %}">{% csrf_token %}<button class="btn btn-outline-danger w-100" type="submit">Rejeitar</button></form>
                 {% elif content.status == 'aprovado' %}
+                    <form method="post" action="{% url 'social_automation:content_publish_instagram' content.id %}" onsubmit="return confirm('Este conteudo sera publicado agora em @{{ instagram_expected_username|default:content.profile.username }}. Confirmar?');">
+                        {% csrf_token %}
+                        <button class="btn btn-primary w-100" type="submit">Publicar no Instagram</button>
+                    </form>
                     <form method="post" action="{% url 'social_automation:content_reject' content.id %}">{% csrf_token %}<button class="btn btn-outline-danger w-100" type="submit">Rejeitar</button></form>
                     <hr>
                     <form method="post" action="{% url 'social_automation:content_schedule' content.id %}" class="d-grid gap-2">
@@ -67,6 +71,8 @@
                     <form method="post" action="{% url 'social_automation:content_unschedule' content.id %}">{% csrf_token %}<button class="btn btn-outline-warning w-100" type="submit">Desagendar</button></form>
                 {% elif content.status == 'rejeitado' %}
                     <form method="post" action="{% url 'social_automation:content_restore' content.id %}">{% csrf_token %}<button class="btn btn-outline-primary w-100" type="submit">Restaurar rascunho</button></form>
+                {% elif content.status == 'erro' %}
+                    <form method="post" action="{% url 'social_automation:content_publish_instagram' content.id %}">{% csrf_token %}<button class="btn btn-outline-primary w-100" type="submit">Tentar publicar novamente</button></form>
                 {% endif %}
                 {% if content.base_image %}
                 <form method="post" action="{% url 'social_automation:content_render' content.id %}">{% csrf_token %}<button class="btn btn-outline-secondary w-100" type="submit">Renderizar novamente</button></form>
@@ -82,7 +88,9 @@
                 <div><strong>Criado:</strong> {{ content.created_at|date:'d/m/Y H:i' }}</div>
                 <div><strong>Agendado:</strong> {{ content.scheduled_at|date:'d/m/Y H:i'|default:'-' }}</div>
                 <div><strong>Publicado:</strong> {{ content.published_at|date:'d/m/Y H:i'|default:'-' }}</div>
+                <div><strong>ID externo:</strong> {{ content.external_post_id|default:'-' }}</div>
                 <div><strong>Permalink:</strong> {% if content.external_permalink %}<a href="{{ content.external_permalink }}" target="_blank">abrir</a>{% else %}-{% endif %}</div>
+                {% if content.erro %}<div class="mt-2 text-danger"><strong>Erro:</strong> {{ content.erro }}</div>{% endif %}
             </div>
         </div>
     </div>

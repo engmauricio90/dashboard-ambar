@@ -50,6 +50,20 @@ services:
         value: "20"
       - key: INVITE_RATE_LIMIT_WINDOW
         value: "3600"
+      - key: PLATFORM_BASE_URL
+        value: https://dashboard-ambar.onrender.com
+      - key: INSTAGRAM_API_VERSION
+        value: v23.0
+      - key: INSTAGRAM_EXPECTED_USERNAME
+        value: lailapistola
+      - key: INSTAGRAM_MEDIA_URL_TTL_SECONDS
+        value: "3600"
+      - key: INSTAGRAM_API_TIMEOUT_SECONDS
+        value: "30"
+      - key: INSTAGRAM_ACCESS_TOKEN
+        sync: false
+      - key: INSTAGRAM_USER_ID
+        sync: false
       - key: SENTRY_ENVIRONMENT
         value: production
       - key: SENTRY_TRACES_SAMPLE_RATE
