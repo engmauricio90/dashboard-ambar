@@ -13,7 +13,44 @@
             <div class="col-md-6"><label class="form-label">{{ form.nome.label }}</label>{{ form.nome }}{{ form.nome.errors }}</div>
             <div class="col-md-6"><label class="form-label">{{ form.tags.label }}</label>{{ form.tags }}</div>
             <div class="col-md-3"><label class="form-label">{{ form.text_position.label }}</label>{{ form.text_position }}</div>
+            <div class="col-md-3"><label class="form-label">{{ form.text_box_preset.label }}</label>{{ form.text_box_preset }}<div class="form-text">{{ form.text_box_preset.help_text }}</div></div>
             <div class="col-md-3 d-flex align-items-end"><div class="form-check mb-2">{{ form.ativa }} <label class="form-check-label">{{ form.ativa.label }}</label></div></div>
+        </div>
+
+        <hr>
+        <div class="row g-3">
+            <div class="col-lg-8">
+                <h6>Caixa principal</h6>
+                <div class="row g-2">
+                    <div class="col-md-3"><label class="form-label">{{ form.primary_text_box_x.label }}</label>{{ form.primary_text_box_x }}{{ form.primary_text_box_x.errors }}</div>
+                    <div class="col-md-3"><label class="form-label">{{ form.primary_text_box_y.label }}</label>{{ form.primary_text_box_y }}{{ form.primary_text_box_y.errors }}</div>
+                    <div class="col-md-3"><label class="form-label">{{ form.primary_text_box_width.label }}</label>{{ form.primary_text_box_width }}{{ form.primary_text_box_width.errors }}</div>
+                    <div class="col-md-3"><label class="form-label">{{ form.primary_text_box_height.label }}</label>{{ form.primary_text_box_height }}{{ form.primary_text_box_height.errors }}</div>
+                    <div class="col-md-6"><label class="form-label">{{ form.text_align_horizontal.label }}</label>{{ form.text_align_horizontal }}</div>
+                    <div class="col-md-6"><label class="form-label">{{ form.text_align_vertical.label }}</label>{{ form.text_align_vertical }}</div>
+                </div>
+
+                <h6 class="mt-4">Caixa secundaria opcional</h6>
+                <div class="row g-2">
+                    <div class="col-md-3"><label class="form-label">{{ form.secondary_text_box_x.label }}</label>{{ form.secondary_text_box_x }}{{ form.secondary_text_box_x.errors }}</div>
+                    <div class="col-md-3"><label class="form-label">{{ form.secondary_text_box_y.label }}</label>{{ form.secondary_text_box_y }}{{ form.secondary_text_box_y.errors }}</div>
+                    <div class="col-md-3"><label class="form-label">{{ form.secondary_text_box_width.label }}</label>{{ form.secondary_text_box_width }}{{ form.secondary_text_box_width.errors }}</div>
+                    <div class="col-md-3"><label class="form-label">{{ form.secondary_text_box_height.label }}</label>{{ form.secondary_text_box_height }}{{ form.secondary_text_box_height.errors }}</div>
+                    <div class="col-md-6"><label class="form-label">{{ form.secondary_text_align_horizontal.label }}</label>{{ form.secondary_text_align_horizontal }}</div>
+                    <div class="col-md-6"><label class="form-label">{{ form.secondary_text_align_vertical.label }}</label>{{ form.secondary_text_align_vertical }}</div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <h6>Preview da area</h6>
+                <div class="social-textbox-preview border rounded position-relative overflow-hidden bg-light">
+                    {% if image and image.arquivo %}
+                        <img src="{{ image.arquivo.url }}" alt="{{ image.nome }}" class="w-100 h-100 object-fit-cover">
+                    {% endif %}
+                    <div class="social-textbox-preview-box social-textbox-preview-primary"></div>
+                    <div class="social-textbox-preview-box social-textbox-preview-secondary"></div>
+                </div>
+                <div class="form-text">A caixa principal e onde o texto sera testado primeiro. A secundaria entra como alternativa.</div>
+            </div>
         </div>
     </div>
     <div class="card-footer d-flex gap-2">
@@ -21,4 +58,79 @@
         <a href="{% url 'social_automation:image_list' profile.id %}" class="btn btn-outline-secondary">Cancelar</a>
     </div>
 </form>
+
+<style>
+.social-textbox-preview {
+    aspect-ratio: 1 / 1;
+}
+.social-textbox-preview-box {
+    position: absolute;
+    display: none;
+    border: 2px solid #0d6efd;
+    background: rgba(13, 110, 253, .14);
+}
+.social-textbox-preview-secondary {
+    border-color: #fd7e14;
+    background: rgba(253, 126, 20, .14);
+}
+</style>
+<script>
+(function() {
+    const fields = {
+        primary: {
+            x: document.getElementById('id_primary_text_box_x'),
+            y: document.getElementById('id_primary_text_box_y'),
+            w: document.getElementById('id_primary_text_box_width'),
+            h: document.getElementById('id_primary_text_box_height'),
+            el: document.querySelector('.social-textbox-preview-primary')
+        },
+        secondary: {
+            x: document.getElementById('id_secondary_text_box_x'),
+            y: document.getElementById('id_secondary_text_box_y'),
+            w: document.getElementById('id_secondary_text_box_width'),
+            h: document.getElementById('id_secondary_text_box_height'),
+            el: document.querySelector('.social-textbox-preview-secondary')
+        }
+    };
+    const presets = {
+        top_left: [7, 8, 43, 32],
+        top_right: [50, 8, 43, 32],
+        middle_left: [7, 34, 43, 32],
+        middle_right: [50, 34, 43, 32],
+        bottom_left: [7, 60, 43, 32],
+        bottom_right: [50, 60, 43, 32]
+    };
+    function draw(group) {
+        const box = fields[group];
+        const values = [box.x, box.y, box.w, box.h].map(input => parseFloat((input && input.value || '').replace(',', '.')));
+        if (values.some(value => Number.isNaN(value))) {
+            box.el.style.display = 'none';
+            return;
+        }
+        box.el.style.display = 'block';
+        box.el.style.left = values[0] + '%';
+        box.el.style.top = values[1] + '%';
+        box.el.style.width = values[2] + '%';
+        box.el.style.height = values[3] + '%';
+    }
+    function refresh() {
+        draw('primary');
+        draw('secondary');
+    }
+    Object.values(fields).forEach(group => {
+        ['x', 'y', 'w', 'h'].forEach(key => group[key] && group[key].addEventListener('input', refresh));
+    });
+    const preset = document.getElementById('id_text_box_preset');
+    preset && preset.addEventListener('change', function() {
+        const values = presets[preset.value];
+        if (!values) return;
+        fields.primary.x.value = values[0];
+        fields.primary.y.value = values[1];
+        fields.primary.w.value = values[2];
+        fields.primary.h.value = values[3];
+        refresh();
+    });
+    refresh();
+})();
+</script>
 {% endblock %}

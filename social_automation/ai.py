@@ -75,17 +75,33 @@ def _schema():
     }
 
 
-def gerar_conteudos_ia(profile, quantidade, tema, historico):
+def gerar_conteudos_ia(profile, quantidade, tema, historico, image_contexts=None):
+    image_contexts = image_contexts or []
+    image_guidance = []
+    for context in image_contexts:
+        image_guidance.append(
+            {
+                'imagem': context.get('nome'),
+                'tags': context.get('tags'),
+                'posicao_texto': context.get('posicao_texto'),
+                'area_disponivel_percentual': context.get('area_disponivel_percentual'),
+                'tamanho_recomendado_frase': context.get('tamanho_recomendado_frase'),
+            }
+        )
     prompt = (
         'Voce gera rascunhos para Instagram de um perfil interno. '
         'Responda somente no JSON solicitado. '
         'Crie frases curtas para card, legenda complementar e hashtags. '
+        'Considere as imagens-base disponiveis e o espaco de texto delas. '
+        'Quando a area disponivel for pequena, gere frase curta; quando for media, frase media; quando for grande, a frase pode ser um pouco maior. '
+        'Priorize frases que caibam sem cobrir rosto/corpo da pessoa da foto. '
         'Evite repetir ideias, palavras e estruturas do historico. '
         f'Perfil: {profile.nome} ({profile.username}). '
         f'Estilo: {profile.estilo or "sem estilo cadastrado"}. '
         f'Instrucoes: {profile.instrucoes_ia or "sem instrucoes adicionais"}. '
         f'Tema opcional: {tema or "livre"}. '
         f'Quantidade: {quantidade}. '
+        f'Imagens e areas de texto: {image_guidance}. '
         f'Historico recente: {historico or []}.'
     )
     try:

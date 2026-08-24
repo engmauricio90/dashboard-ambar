@@ -8,7 +8,7 @@ from django.utils import timezone
 from .ai import OpenAINotConfigured, formatar_hashtags, gerar_conteudos_ia, moderar_conteudo, normalizar_frase
 from .image_selection import selecionar_imagem_base
 from .models import SocialBaseImage, SocialContent
-from .rendering import SocialRenderError, renderizar_conteudo_social
+from .rendering import CANVAS_SIZE, SocialRenderError, _text_boxes, renderizar_conteudo_social
 from .services import registrar_evento
 
 
@@ -31,6 +31,32 @@ def _historico(profile):
     return list(profile.contents.order_by('-created_at').values_list('frase', flat=True)[:50])
 
 
+def _phrase_size(area_percent):
+    if area_percent < 13:
+        return 'curta, preferencialmente ate 55 caracteres'
+    if area_percent < 22:
+        return 'media, preferencialmente ate 90 caracteres'
+    return 'um pouco maior, ainda objetiva, preferencialmente ate 130 caracteres'
+
+
+def _image_contexts(profile):
+    contexts = []
+    for image in SocialBaseImage.objects.filter(profile=profile, ativa=True).order_by('vezes_usada', 'id')[:12]:
+        box = _text_boxes(image)[0]
+        region = box['region']
+        area_percent = round((region[2] * region[3]) / (CANVAS_SIZE[0] * CANVAS_SIZE[1]) * 100, 2)
+        contexts.append(
+            {
+                'nome': image.nome,
+                'tags': image.tags,
+                'posicao_texto': f"{box['name']} {box['align_vertical']} {box['align_horizontal']}",
+                'area_disponivel_percentual': area_percent,
+                'tamanho_recomendado_frase': _phrase_size(area_percent),
+            }
+        )
+    return contexts
+
+
 def _duplicado(frase_normalizada, historico_normalizado, vistos):
     if frase_normalizada in historico_normalizado or frase_normalizada in vistos:
         return True
@@ -45,7 +71,7 @@ def gerar_lote_conteudos(profile, quantidade, tema, usuario):
     historico = _historico(profile)
     historico_normalizado = {normalizar_frase(item) for item in historico}
     result = GenerationResult(solicitados=quantidade)
-    gerados = gerar_conteudos_ia(profile, quantidade, tema, historico)
+    gerados = gerar_conteudos_ia(profile, quantidade, tema, historico, image_contexts=_image_contexts(profile))
     vistos = set()
 
     for item in gerados:

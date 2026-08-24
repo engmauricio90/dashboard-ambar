@@ -6,7 +6,7 @@ from .models import SocialBaseImage, SocialContent, SocialContentEvent, SocialPr
 class SocialBaseImageInline(admin.TabularInline):
     model = SocialBaseImage
     extra = 0
-    fields = ['nome', 'ativa', 'text_position', 'tags', 'vezes_usada', 'ultima_utilizacao']
+    fields = ['nome', 'ativa', 'text_position', 'text_box_preset', 'tags', 'vezes_usada', 'ultima_utilizacao']
     readonly_fields = ['vezes_usada', 'ultima_utilizacao']
 
 
@@ -20,10 +20,17 @@ class SocialProfileAdmin(admin.ModelAdmin):
 
 @admin.register(SocialBaseImage)
 class SocialBaseImageAdmin(admin.ModelAdmin):
-    list_display = ['nome', 'profile', 'ativa', 'text_position', 'vezes_usada', 'ultima_utilizacao', 'created_at']
-    list_filter = ['ativa', 'text_position', 'profile']
+    list_display = ['nome', 'profile', 'ativa', 'text_position', 'text_box_preset', 'vezes_usada', 'ultima_utilizacao', 'created_at']
+    list_filter = ['ativa', 'text_position', 'text_box_preset', 'profile']
     search_fields = ['nome', 'tags', 'profile__nome', 'profile__username']
     readonly_fields = ['vezes_usada', 'ultima_utilizacao', 'created_at', 'updated_at']
+    fieldsets = (
+        (None, {'fields': ('profile', 'arquivo', 'nome', 'tags', 'ativa')}),
+        ('Texto', {'fields': ('text_position', 'text_box_preset', 'text_align_horizontal', 'text_align_vertical')}),
+        ('Caixa principal (%)', {'fields': ('primary_text_box_x', 'primary_text_box_y', 'primary_text_box_width', 'primary_text_box_height')}),
+        ('Caixa secundaria (%)', {'fields': ('secondary_text_box_x', 'secondary_text_box_y', 'secondary_text_box_width', 'secondary_text_box_height', 'secondary_text_align_horizontal', 'secondary_text_align_vertical')}),
+        ('Uso', {'fields': ('vezes_usada', 'ultima_utilizacao', 'created_at', 'updated_at')}),
+    )
 
 
 class SocialContentEventInline(admin.TabularInline):

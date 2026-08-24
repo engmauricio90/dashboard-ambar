@@ -71,16 +71,48 @@ class SocialProfile(models.Model):
 class SocialBaseImage(models.Model):
     class TextPosition(models.TextChoices):
         AUTO = 'auto', 'Automatica'
+        AUTO_SMART = 'auto_smart', 'Automatica inteligente'
         LEFT = 'left', 'Esquerda'
         RIGHT = 'right', 'Direita'
         TOP = 'top', 'Superior'
         BOTTOM = 'bottom', 'Inferior'
+
+    class TextBoxPreset(models.TextChoices):
+        TOP_LEFT = 'top_left', 'Superior esquerda'
+        TOP_RIGHT = 'top_right', 'Superior direita'
+        MIDDLE_LEFT = 'middle_left', 'Meio esquerda'
+        MIDDLE_RIGHT = 'middle_right', 'Meio direita'
+        BOTTOM_LEFT = 'bottom_left', 'Inferior esquerda'
+        BOTTOM_RIGHT = 'bottom_right', 'Inferior direita'
+
+    class TextAlignHorizontal(models.TextChoices):
+        LEFT = 'left', 'Esquerda'
+        CENTER = 'center', 'Centro'
+        RIGHT = 'right', 'Direita'
+
+    class TextAlignVertical(models.TextChoices):
+        TOP = 'top', 'Topo'
+        MIDDLE = 'middle', 'Meio'
+        BOTTOM = 'bottom', 'Base'
 
     profile = models.ForeignKey(SocialProfile, on_delete=models.CASCADE, related_name='base_images')
     arquivo = models.ImageField(upload_to=social_base_image_upload_to)
     nome = models.CharField(max_length=120)
     tags = models.CharField(max_length=255, blank=True)
     text_position = models.CharField(max_length=10, choices=TextPosition.choices, default=TextPosition.AUTO)
+    text_box_preset = models.CharField(max_length=20, choices=TextBoxPreset.choices, blank=True)
+    primary_text_box_x = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    primary_text_box_y = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    primary_text_box_width = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    primary_text_box_height = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    text_align_horizontal = models.CharField(max_length=10, choices=TextAlignHorizontal.choices, default=TextAlignHorizontal.CENTER)
+    text_align_vertical = models.CharField(max_length=10, choices=TextAlignVertical.choices, default=TextAlignVertical.MIDDLE)
+    secondary_text_box_x = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    secondary_text_box_y = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    secondary_text_box_width = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    secondary_text_box_height = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    secondary_text_align_horizontal = models.CharField(max_length=10, choices=TextAlignHorizontal.choices, default=TextAlignHorizontal.CENTER)
+    secondary_text_align_vertical = models.CharField(max_length=10, choices=TextAlignVertical.choices, default=TextAlignVertical.MIDDLE)
     ativa = models.BooleanField(default=True)
     vezes_usada = models.PositiveIntegerField(default=0)
     ultima_utilizacao = models.DateTimeField(blank=True, null=True)
@@ -95,6 +127,36 @@ class SocialBaseImage(models.Model):
 
     def __str__(self):
         return f'{self.profile.username} - {self.nome}'
+
+    @property
+    def primary_text_box_configured(self):
+        return all(
+            value is not None
+            for value in [
+                self.primary_text_box_x,
+                self.primary_text_box_y,
+                self.primary_text_box_width,
+                self.primary_text_box_height,
+            ]
+        )
+
+    @property
+    def secondary_text_box_configured(self):
+        return all(
+            value is not None
+            for value in [
+                self.secondary_text_box_x,
+                self.secondary_text_box_y,
+                self.secondary_text_box_width,
+                self.secondary_text_box_height,
+            ]
+        )
+
+    @property
+    def primary_text_box_area_percent(self):
+        if not self.primary_text_box_configured:
+            return None
+        return float(self.primary_text_box_width) * float(self.primary_text_box_height) / 100
 
 
 class SocialContent(models.Model):

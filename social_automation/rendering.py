@@ -17,6 +17,7 @@ MAX_FONT_SIZE = 72
 MIN_FONT_SIZE = 28
 IDEAL_MAX_LINES = 4
 ACCEPTABLE_MAX_LINES = 5
+TEXT_BOX_PADDING = 24
 
 
 def _font(size):
@@ -111,7 +112,7 @@ def _layout_text(draw, text, max_width, max_height):
 
 def _region(position):
     position = position or AUTO_POSITION
-    if position == 'auto':
+    if position in {'auto', 'auto_smart'}:
         position = AUTO_POSITION
     if position == 'left':
         return (SAFE_MARGIN, 112, 540, 856), 'left'
@@ -120,6 +121,95 @@ def _region(position):
     if position == 'top':
         return (SAFE_MARGIN, SAFE_MARGIN, 924, 380), 'center'
     return (SAFE_MARGIN, 626, 924, 354), 'center'
+
+
+def _percent_region(x, y, width, height):
+    return (
+        max(0, min(CANVAS_SIZE[0], round(CANVAS_SIZE[0] * float(x) / 100))),
+        max(0, min(CANVAS_SIZE[1], round(CANVAS_SIZE[1] * float(y) / 100))),
+        max(1, min(CANVAS_SIZE[0], round(CANVAS_SIZE[0] * float(width) / 100))),
+        max(1, min(CANVAS_SIZE[1], round(CANVAS_SIZE[1] * float(height) / 100))),
+    )
+
+
+def _normalize_align(value, default='center'):
+    return value if value in {'left', 'center', 'right', 'top', 'middle', 'bottom'} else default
+
+
+def _region_gradient_position(region):
+    x, y, width, height = region
+    center_x = x + width / 2
+    center_y = y + height / 2
+    if center_y < CANVAS_SIZE[1] * 0.35:
+        return 'top'
+    if center_y > CANVAS_SIZE[1] * 0.65:
+        return 'bottom'
+    if center_x < CANVAS_SIZE[0] * 0.5:
+        return 'left'
+    return 'right'
+
+
+def _configured_text_boxes(base_image):
+    boxes = []
+    if getattr(base_image, 'primary_text_box_configured', False):
+        region = _percent_region(
+            base_image.primary_text_box_x,
+            base_image.primary_text_box_y,
+            base_image.primary_text_box_width,
+            base_image.primary_text_box_height,
+        )
+        boxes.append(
+            {
+                'name': 'primary',
+                'region': region,
+                'align_horizontal': _normalize_align(base_image.text_align_horizontal, 'center'),
+                'align_vertical': _normalize_align(base_image.text_align_vertical, 'middle'),
+                'gradient_position': _region_gradient_position(region),
+            }
+        )
+    if getattr(base_image, 'secondary_text_box_configured', False):
+        region = _percent_region(
+            base_image.secondary_text_box_x,
+            base_image.secondary_text_box_y,
+            base_image.secondary_text_box_width,
+            base_image.secondary_text_box_height,
+        )
+        boxes.append(
+            {
+                'name': 'secondary',
+                'region': region,
+                'align_horizontal': _normalize_align(base_image.secondary_text_align_horizontal, 'center'),
+                'align_vertical': _normalize_align(base_image.secondary_text_align_vertical, 'middle'),
+                'gradient_position': _region_gradient_position(region),
+            }
+        )
+    return boxes
+
+
+def _legacy_text_boxes(base_image):
+    position = getattr(base_image, 'text_position', AUTO_POSITION) or AUTO_POSITION
+    region, align = _region(position)
+    gradient_position = AUTO_POSITION if position in {'auto', 'auto_smart'} else position
+    return [
+        {
+            'name': 'legacy',
+            'region': region,
+            'align_horizontal': align,
+            'align_vertical': 'middle',
+            'gradient_position': gradient_position,
+        }
+    ]
+
+
+def _text_boxes(base_image):
+    configured = _configured_text_boxes(base_image)
+    return configured or _legacy_text_boxes(base_image)
+
+
+def _inner_region(region):
+    x, y, width, height = region
+    padding = min(TEXT_BOX_PADDING, max(width // 10, 0), max(height // 10, 0))
+    return (x + padding, y + padding, max(1, width - padding * 2), max(1, height - padding * 2))
 
 
 def _apply_gradient(overlay, position, region):
@@ -152,6 +242,44 @@ def _apply_gradient(overlay, position, region):
             pixels.line((x, 0, x, height), fill=(0, 0, 0, alpha))
 
 
+def _draw_text_box(overlay, text, box):
+    region = box['region']
+    inner = _inner_region(region)
+    draw = ImageDraw.Draw(overlay)
+    font, lines, line_height, text_height = _layout_text(draw, text, inner[2], inner[3])
+
+    if box['align_vertical'] == 'top':
+        y = inner[1]
+    elif box['align_vertical'] == 'bottom':
+        y = inner[1] + max(inner[3] - text_height, 0)
+    else:
+        y = inner[1] + max((inner[3] - text_height) // 2, 0)
+
+    text_layer = Image.new('RGBA', CANVAS_SIZE, (0, 0, 0, 0))
+    text_draw = ImageDraw.Draw(text_layer)
+    for line in lines:
+        width = _text_width(text_draw, line, font)
+        if box['align_horizontal'] == 'left':
+            x = inner[0]
+        elif box['align_horizontal'] == 'right':
+            x = inner[0] + inner[2] - width
+        else:
+            x = inner[0] + (inner[2] - width) // 2
+        text_draw.text((x + 3, y + 4), line, font=font, fill=(0, 0, 0, 150))
+        text_draw.text((x, y), line, font=font, fill=(255, 255, 255, 255), stroke_width=3, stroke_fill=(0, 0, 0, 170))
+        y += line_height
+
+    mask = Image.new('L', CANVAS_SIZE, 0)
+    ImageDraw.Draw(mask).rectangle((region[0], region[1], region[0] + region[2], region[1] + region[3]), fill=255)
+    clipped = Image.composite(text_layer, Image.new('RGBA', CANVAS_SIZE, (0, 0, 0, 0)), mask)
+    overlay.alpha_composite(clipped)
+    return {
+        'box': box['name'],
+        'font_size': getattr(font, 'size', None),
+        'lines': len(lines),
+    }
+
+
 def renderizar_conteudo_social(content):
     if not content.base_image or not content.base_image.arquivo:
         raise SocialRenderError('Selecione uma imagem-base antes de renderizar.')
@@ -166,26 +294,20 @@ def renderizar_conteudo_social(content):
         raise SocialRenderError('Nao foi possivel abrir a imagem-base.') from exc
 
     overlay = Image.new('RGBA', CANVAS_SIZE, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-    position = getattr(content.base_image, 'text_position', AUTO_POSITION) or AUTO_POSITION
-    region, align = _region(position)
-    _apply_gradient(overlay, position, region)
-    max_width = region[2]
-    max_height = region[3]
-    font, lines, line_height, text_height = _layout_text(draw, content.frase, max_width, max_height)
-
-    y = region[1] + max((region[3] - text_height) // 2, 0)
-    for line in lines:
-        width = _text_width(draw, line, font)
-        if align == 'left':
-            x = region[0]
-        elif align == 'right':
-            x = region[0] + region[2] - width
-        else:
-            x = region[0] + (region[2] - width) // 2
-        draw.text((x + 3, y + 4), line, font=font, fill=(0, 0, 0, 150))
-        draw.text((x, y), line, font=font, fill=(255, 255, 255, 255), stroke_width=3, stroke_fill=(0, 0, 0, 170))
-        y += line_height
+    boxes = _text_boxes(content.base_image)
+    last_error = None
+    for box in boxes:
+        candidate_overlay = Image.new('RGBA', CANVAS_SIZE, (0, 0, 0, 0))
+        _apply_gradient(candidate_overlay, box['gradient_position'], box['region'])
+        try:
+            _draw_text_box(candidate_overlay, content.frase, box)
+        except SocialRenderError as exc:
+            last_error = exc
+            continue
+        overlay = candidate_overlay
+        break
+    else:
+        raise last_error or SocialRenderError('Texto grande demais para renderizar com legibilidade.')
 
     final = Image.alpha_composite(image.convert('RGBA'), overlay).convert('RGB')
     buffer = BytesIO()

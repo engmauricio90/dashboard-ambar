@@ -24,7 +24,7 @@ from empresas.models import Empresa, UsuarioEmpresa
 from .models import SocialBaseImage, SocialContent, SocialContentEvent, SocialProfile
 from .ai import GeneratedContent
 from .automation import executar_tick_social
-from .generation import GenerationResult, gerar_lote_conteudos
+from .generation import GenerationResult, _image_contexts, gerar_lote_conteudos
 from .image_selection import selecionar_imagem_base
 from .instagram import (
     InstagramAPIError,
@@ -42,7 +42,7 @@ from .instagram import (
     validar_token_midia_temporaria,
 )
 from .rendering import SocialRenderError, renderizar_conteudo_social
-from .rendering import _layout_text, _region
+from .rendering import _draw_text_box, _layout_text, _region, _text_boxes
 from .scheduler import estoque_pronto, preencher_agenda
 
 
@@ -664,6 +664,72 @@ class SocialAutomationRenderingPositionTests(TestCase):
             content.refresh_from_db()
             self.assertNotEqual(primeiro, content.final_image.name)
 
+    def test_caixa_primaria_configurada_define_regiao_e_alinhamento(self):
+        image = self._image(SocialBaseImage.TextPosition.AUTO_SMART)
+        image.primary_text_box_x = 8
+        image.primary_text_box_y = 52
+        image.primary_text_box_width = 40
+        image.primary_text_box_height = 28
+        image.text_align_horizontal = SocialBaseImage.TextAlignHorizontal.LEFT
+        image.text_align_vertical = SocialBaseImage.TextAlignVertical.BOTTOM
+        image.save()
+
+        boxes = _text_boxes(image)
+
+        self.assertEqual(len(boxes), 1)
+        self.assertEqual(boxes[0]['name'], 'primary')
+        self.assertEqual(boxes[0]['region'], (86, 562, 432, 302))
+        self.assertEqual(boxes[0]['align_horizontal'], 'left')
+        self.assertEqual(boxes[0]['align_vertical'], 'bottom')
+
+    def test_caixa_secundaria_e_usada_quando_primaria_nao_comporta_texto(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            image = self._image(SocialBaseImage.TextPosition.AUTO_SMART)
+            image.primary_text_box_x = 5
+            image.primary_text_box_y = 5
+            image.primary_text_box_width = 4
+            image.primary_text_box_height = 4
+            image.secondary_text_box_x = 50
+            image.secondary_text_box_y = 58
+            image.secondary_text_box_width = 42
+            image.secondary_text_box_height = 30
+            image.secondary_text_align_horizontal = SocialBaseImage.TextAlignHorizontal.RIGHT
+            image.save()
+
+            content = self._content(image, frase='Frase curta para testar fallback visual')
+            renderizar_conteudo_social(content)
+            content.refresh_from_db()
+
+            self.assertTrue(content.final_image.name.endswith('.jpg'))
+
+    def test_sem_caixa_configurada_mantem_fallback_por_text_position(self):
+        image = self._image(SocialBaseImage.TextPosition.LEFT)
+
+        boxes = _text_boxes(image)
+        legacy, align = _region(SocialBaseImage.TextPosition.LEFT)
+
+        self.assertEqual(boxes[0]['name'], 'legacy')
+        self.assertEqual(boxes[0]['region'], legacy)
+        self.assertEqual(boxes[0]['align_horizontal'], align)
+
+    def test_texto_desenhado_nao_ultrapassa_caixa_configurada(self):
+        overlay = Image.new('RGBA', (1080, 1080), (0, 0, 0, 0))
+        box = {
+            'name': 'primary',
+            'region': (100, 200, 360, 220),
+            'align_horizontal': 'center',
+            'align_vertical': 'middle',
+            'gradient_position': 'left',
+        }
+
+        _draw_text_box(overlay, 'Texto curto dentro da caixa permitida', box)
+
+        alpha = overlay.getchannel('A')
+        outside = Image.new('L', (1080, 1080), 255)
+        ImageDraw.Draw(outside).rectangle((100, 200, 460, 420), fill=0)
+        outside_alpha = Image.composite(alpha, Image.new('L', (1080, 1080), 0), outside)
+        self.assertIsNone(outside_alpha.getbbox())
+
     def test_form_salva_posicao_e_choice_invalido_falha(self):
         with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
             response = self.client.post(
@@ -687,6 +753,48 @@ class SocialAutomationRenderingPositionTests(TestCase):
             self.assertEqual(response.status_code, 200)
             image.refresh_from_db()
             self.assertEqual(image.text_position, SocialBaseImage.TextPosition.LEFT)
+
+    def test_form_salva_preset_e_caixa_manual(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            response = self.client.post(
+                reverse('social_automation:image_create', args=[self.profile.id]),
+                {
+                    'nome': 'Laila meio esquerda',
+                    'tags': 'laila',
+                    'text_position': SocialBaseImage.TextPosition.AUTO_SMART,
+                    'text_box_preset': SocialBaseImage.TextBoxPreset.MIDDLE_LEFT,
+                    'primary_text_box_x': '9',
+                    'primary_text_box_y': '38',
+                    'primary_text_box_width': '41',
+                    'primary_text_box_height': '30',
+                    'text_align_horizontal': SocialBaseImage.TextAlignHorizontal.LEFT,
+                    'text_align_vertical': SocialBaseImage.TextAlignVertical.MIDDLE,
+                    'secondary_text_align_horizontal': SocialBaseImage.TextAlignHorizontal.CENTER,
+                    'secondary_text_align_vertical': SocialBaseImage.TextAlignVertical.MIDDLE,
+                    'ativa': 'on',
+                    'arquivo': imagem_social('laila-meio-esquerda.jpg'),
+                },
+            )
+
+            self.assertRedirects(response, reverse('social_automation:image_list', args=[self.profile.id]))
+            image = SocialBaseImage.objects.get(nome='Laila meio esquerda')
+            self.assertEqual(image.text_position, SocialBaseImage.TextPosition.AUTO_SMART)
+            self.assertEqual(float(image.primary_text_box_x), 9)
+            self.assertEqual(image.text_align_horizontal, SocialBaseImage.TextAlignHorizontal.LEFT)
+
+    def test_contexto_de_ia_considera_area_disponivel_da_imagem(self):
+        image = self._image(SocialBaseImage.TextPosition.AUTO_SMART)
+        image.primary_text_box_x = 7
+        image.primary_text_box_y = 60
+        image.primary_text_box_width = 30
+        image.primary_text_box_height = 20
+        image.save()
+
+        contexts = _image_contexts(self.profile)
+
+        self.assertEqual(contexts[0]['nome'], image.nome)
+        self.assertIn('area_disponivel_percentual', contexts[0])
+        self.assertIn('curta', contexts[0]['tamanho_recomendado_frase'])
 
 
 class SocialAutomationFullAutomationTests(TestCase):
