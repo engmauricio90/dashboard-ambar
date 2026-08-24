@@ -1,6 +1,7 @@
 from datetime import timedelta
 from io import BytesIO, StringIO
 from hashlib import sha256
+import importlib.util
 import os
 from pathlib import Path
 import tempfile
@@ -263,6 +264,113 @@ class SocialAutomationCommandTests(TestCase):
         self.assertNotIn('Futuro', texto)
         self.assertNotIn('Rascunho', texto)
         self.assertNotIn('Inativo', texto)
+
+
+class SocialAutomationCronTriggerScriptTests(TestCase):
+    def _script(self):
+        path = Path('scripts/acionar_automacao_social.py').resolve()
+        spec = importlib.util.spec_from_file_location('cron_trigger_script', path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_script_nao_importa_django_nem_app(self):
+        source = Path('scripts/acionar_automacao_social.py').read_text(encoding='utf-8')
+        self.assertNotIn('django', source)
+        self.assertNotIn('social_automation', source)
+
+    def test_env_ausente_falha_sem_secret(self):
+        script = self._script()
+        stderr = StringIO()
+
+        code = script.trigger(env={}, stdout=StringIO(), stderr=stderr)
+
+        self.assertEqual(code, 1)
+        self.assertIn('PLATFORM_BASE_URL', stderr.getvalue())
+
+    def test_secret_ausente_falha(self):
+        script = self._script()
+        stderr = StringIO()
+
+        code = script.trigger(env={'PLATFORM_BASE_URL': 'https://dashboard-ambar.onrender.com'}, stdout=StringIO(), stderr=stderr)
+
+        self.assertEqual(code, 1)
+        self.assertIn('SOCIAL_AUTOMATION_CRON_SECRET', stderr.getvalue())
+
+    def test_post_correto_retorna_zero_sem_expor_secret(self):
+        script = self._script()
+        captured = {}
+
+        class FakeResponse:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return b'{"status": "ok"}'
+
+        def fake_opener(request, timeout):
+            captured['url'] = request.full_url
+            captured['method'] = request.get_method()
+            captured['auth'] = request.headers.get('Authorization')
+            captured['content_type'] = request.headers.get('Content-type')
+            captured['body'] = request.data
+            captured['timeout'] = timeout
+            return FakeResponse()
+
+        stdout = StringIO()
+        stderr = StringIO()
+        env = {'PLATFORM_BASE_URL': 'https://dashboard-ambar.onrender.com', 'SOCIAL_AUTOMATION_CRON_SECRET': 'segredo-cron'}
+
+        code = script.trigger(env=env, opener=fake_opener, stdout=stdout, stderr=stderr)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(captured['url'], 'https://dashboard-ambar.onrender.com/internal/social-automation/tick/')
+        self.assertEqual(captured['method'], 'POST')
+        self.assertEqual(captured['auth'], 'Bearer segredo-cron')
+        self.assertEqual(captured['content_type'], 'application/json')
+        self.assertEqual(captured['body'], b'{}')
+        self.assertEqual(captured['timeout'], 120)
+        self.assertNotIn('segredo-cron', stdout.getvalue())
+        self.assertNotIn('segredo-cron', stderr.getvalue())
+
+    def test_http_403_e_500_retornam_um_e_sanitizam_secret(self):
+        script = self._script()
+        env = {'PLATFORM_BASE_URL': 'https://dashboard-ambar.onrender.com', 'SOCIAL_AUTOMATION_CRON_SECRET': 'segredo-cron'}
+        for status in [403, 500]:
+            with self.subTest(status=status):
+                def fake_opener(request, timeout):
+                    body = BytesIO(f'erro segredo-cron {status}'.encode('utf-8'))
+                    raise urllib.error.HTTPError(request.full_url, status, 'Erro', {}, body)
+
+                stderr = StringIO()
+                code = script.trigger(env=env, opener=fake_opener, stdout=StringIO(), stderr=stderr)
+
+                self.assertEqual(code, 1)
+                self.assertIn(f'HTTP {status}', stderr.getvalue())
+                self.assertNotIn('segredo-cron', stderr.getvalue())
+
+    def test_timeout_retorna_um_sem_secret(self):
+        script = self._script()
+
+        def fake_opener(request, timeout):
+            raise TimeoutError('tempo esgotado')
+
+        stderr = StringIO()
+        code = script.trigger(
+            env={'PLATFORM_BASE_URL': 'https://dashboard-ambar.onrender.com', 'SOCIAL_AUTOMATION_CRON_SECRET': 'segredo-cron'},
+            opener=fake_opener,
+            stdout=StringIO(),
+            stderr=stderr,
+        )
+
+        self.assertEqual(code, 1)
+        self.assertIn('TimeoutError', stderr.getvalue())
+        self.assertNotIn('segredo-cron', stderr.getvalue())
 
 
 class SocialAutomationGenerationTests(TestCase):

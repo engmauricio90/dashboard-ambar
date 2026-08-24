@@ -1,4 +1,8 @@
 services:
+  # Render Cron Job manual recomendado:
+  # schedule: */5 * * * *
+  # command: python scripts/acionar_automacao_social.py
+  # env: PLATFORM_BASE_URL + SOCIAL_AUTOMATION_CRON_SECRET
   - type: web
     runtime: python
     name: dashboard-ambar

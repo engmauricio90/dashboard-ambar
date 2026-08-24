@@ -53,9 +53,16 @@ Retries automaticos sao conservadores. Erros ambiguos ficam em `ERRO` para revis
 Criar um Cron Job no painel Render:
 
 - schedule: `*/5 * * * *`
-- command: `python manage.py acionar_automacao_social --settings=config.settings.prod`
+- command: `python scripts/acionar_automacao_social.py`
 
-O Cron precisa receber `SOCIAL_AUTOMATION_CRON_SECRET` com o mesmo valor do Web Service.
+O Cron precisa receber somente:
+
+- `PLATFORM_BASE_URL`
+- `SOCIAL_AUTOMATION_CRON_SECRET`
+
+O valor de `SOCIAL_AUTOMATION_CRON_SECRET` deve ser o mesmo do Web Service.
+
+O Cron nao precisa de `DATABASE_URL`, `DJANGO_SECRET_KEY`, `OPENAI_API_KEY`, `INSTAGRAM_ACCESS_TOKEN`, `INSTAGRAM_USER_ID`, `MEDIA_ROOT` nem acesso ao Persistent Disk.
 
 ## Variaveis
 
