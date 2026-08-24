@@ -714,7 +714,8 @@ class SocialAutomationInstagramIntegrationTests(TestCase):
         path = reverse('social_public_final_image_meta_compat', args=[content.id, signature])
         self.client.logout()
 
-        response = self.client.get(path, HTTP_USER_AGENT='facebookexternalhit/1.1', follow=False)
+        with self.assertLogs('social_automation.views', level='INFO') as logs:
+            response = self.client.get(path, HTTP_USER_AGENT='facebookexternalhit/1.1', follow=False)
         with content.final_image.storage.open(content.final_image.name, 'rb') as arquivo:
             storage_bytes = arquivo.read()
 
@@ -728,6 +729,8 @@ class SocialAutomationInstagramIntegrationTests(TestCase):
         self.assertEqual(sha256(response.content).hexdigest(), sha256(storage_bytes).hexdigest())
         self.assertTrue(response.content.startswith(b'\xff\xd8\xff'))
         self.assertNotIn(response.status_code, {301, 302})
+        self.assertIn(f'signed_media_fetch content_id={content.id}', '\n'.join(logs.output))
+        self.assertNotIn(signature, '\n'.join(logs.output))
 
         head_response = self.client.head(path, follow=False)
         self.assertEqual(head_response.status_code, 200)
@@ -810,11 +813,13 @@ class SocialAutomationInstagramIntegrationTests(TestCase):
             'social_automation.instagram.publicar_container',
             return_value='media-1',
         ), mock.patch('social_automation.instagram.obter_midia_publicada', return_value={'id': 'media-1'}):
-            publicar_conteudo_instagram(content, self.staff)
+            with self.assertLogs('social_automation.instagram', level='INFO') as logs:
+                publicar_conteudo_instagram(content, self.staff)
 
         self.assertIn(f'/social-media/ig/{content.id}/', captured['image_url'])
         self.assertTrue(captured['image_url'].endswith('.jpg'))
         self.assertNotIn('/social-media/public', captured['image_url'])
+        self.assertIn(f'publication_start content_id={content.id}', '\n'.join(logs.output))
 
     @override_settings(INSTAGRAM_ACCESS_TOKEN='token-teste', INSTAGRAM_USER_ID='178000000000')
     def test_criacao_container_envia_image_url_sem_media_type_video(self):
@@ -827,7 +832,8 @@ class SocialAutomationInstagramIntegrationTests(TestCase):
             return {'id': 'container-1'}
 
         with mock.patch('social_automation.instagram._request', side_effect=fake_request):
-            container_id = criar_container_imagem('https://dashboard-ambar.onrender.com/social-media/public/token/', 'Legenda')
+            with self.assertLogs('social_automation.instagram', level='INFO') as logs:
+                container_id = criar_container_imagem('https://dashboard-ambar.onrender.com/social-media/public/token/', 'Legenda')
 
         self.assertEqual(container_id, 'container-1')
         self.assertEqual(captured['method'], 'POST')
@@ -837,6 +843,18 @@ class SocialAutomationInstagramIntegrationTests(TestCase):
         self.assertNotIn('media_type', captured['params'])
         self.assertNotIn('caption', captured['params']['image_url'])
         self.assertNotIn('%253A', captured['params']['image_url'])
+        texto_logs = '\n'.join(logs.output)
+        self.assertIn('media_container_request_start', texto_logs)
+        self.assertIn('media_container_request_end', texto_logs)
+        self.assertNotIn('token-teste', texto_logs)
+
+    def test_render_yaml_configura_gunicorn_gthread_para_self_fetch(self):
+        render_yaml = Path('render.yaml').read_text(encoding='utf-8')
+        self.assertIn('gunicorn config.wsgi:application', render_yaml)
+        self.assertIn('--worker-class gthread', render_yaml)
+        self.assertIn('--workers 1', render_yaml)
+        self.assertIn('--threads 4', render_yaml)
+        self.assertIn('--timeout 60', render_yaml)
 
     def test_erro_meta_completo_e_sanitizado(self):
         payload = {

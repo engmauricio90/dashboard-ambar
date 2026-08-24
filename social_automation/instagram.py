@@ -310,7 +310,13 @@ def criar_container_imagem(image_url, caption):
         resumo['length'],
         resumo['sha256'],
     )
-    data = _request('POST', f'{_ig_user_id()}/media', payload)
+    start = time.monotonic()
+    logger.info('media_container_request_start image_url_sha256=%s', resumo['sha256'])
+    try:
+        data = _request('POST', f'{_ig_user_id()}/media', payload)
+    finally:
+        duration_ms = int((time.monotonic() - start) * 1000)
+        logger.info('media_container_request_end duration_ms=%s image_url_sha256=%s', duration_ms, resumo['sha256'])
     container_id = data.get('id')
     if not container_id:
         raise InstagramAPIError('A API do Instagram nao retornou o container de midia.')
@@ -400,6 +406,7 @@ def _marcar_erro(content_id, message):
 
 
 def publicar_conteudo_instagram(content, usuario=None):
+    logger.info('publication_start content_id=%s', content.id)
     content = _marcar_publicando(content.id)
     try:
         verificar_configuracao_instagram()

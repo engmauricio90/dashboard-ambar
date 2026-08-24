@@ -1,3 +1,5 @@
+import logging
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
@@ -32,6 +34,9 @@ from .services import (
     rejeitar_conteudo,
     restaurar_rascunho,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def staff_required(view_func):
@@ -357,6 +362,7 @@ def ig_final_image(request, content_id, signature):
         raise Http404
     with content.final_image.storage.open(content.final_image.name, 'rb') as arquivo:
         image_bytes = arquivo.read()
+    logger.info('signed_media_fetch content_id=%s method=%s bytes=%s', content.id, request.method, len(image_bytes))
     body = b'' if request.method == 'HEAD' else image_bytes
     response = HttpResponse(body, content_type='image/jpeg')
     response['Content-Length'] = str(len(image_bytes))
