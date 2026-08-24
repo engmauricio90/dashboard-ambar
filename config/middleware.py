@@ -22,6 +22,7 @@ class LoginRequiredMiddleware:
             '/social-media/public/',
             '/social-media/public-jpg/',
             '/social-media/ig/',
+            '/internal/social-automation/tick/',
             '/admin/',
             settings.STATIC_URL,
             settings.MEDIA_URL,

@@ -367,8 +367,8 @@ def validar_username_profile(content):
 def _marcar_publicando(content_id):
     with transaction.atomic():
         content = SocialContent.objects.select_for_update().select_related('profile').get(pk=content_id)
-        if content.status not in {SocialContent.Status.APROVADO, SocialContent.Status.ERRO}:
-            raise InstagramPublishError('Somente conteudos aprovados ou em erro podem ser publicados manualmente.')
+        if content.status not in {SocialContent.Status.APROVADO, SocialContent.Status.AGENDADO, SocialContent.Status.ERRO}:
+            raise InstagramPublishError('Somente conteudos aprovados, agendados ou em erro podem ser publicados.')
         if not content.final_image:
             raise InstagramPublishError('Renderize o card final antes de publicar.')
         if content.external_post_id:

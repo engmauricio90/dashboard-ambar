@@ -22,7 +22,8 @@ from empresas.models import Empresa, UsuarioEmpresa
 
 from .models import SocialBaseImage, SocialContent, SocialContentEvent, SocialProfile
 from .ai import GeneratedContent
-from .generation import gerar_lote_conteudos
+from .automation import executar_tick_social
+from .generation import GenerationResult, gerar_lote_conteudos
 from .image_selection import selecionar_imagem_base
 from .instagram import (
     InstagramAPIError,
@@ -41,6 +42,7 @@ from .instagram import (
 )
 from .rendering import SocialRenderError, renderizar_conteudo_social
 from .rendering import _layout_text, _region
+from .scheduler import estoque_pronto, preencher_agenda
 
 
 User = get_user_model()
@@ -577,6 +579,185 @@ class SocialAutomationRenderingPositionTests(TestCase):
             self.assertEqual(response.status_code, 200)
             image.refresh_from_db()
             self.assertEqual(image.text_position, SocialBaseImage.TextPosition.LEFT)
+
+
+class SocialAutomationFullAutomationTests(TestCase):
+    def setUp(self):
+        self.staff = User.objects.create_user(username='staff-auto-social', password='senha', is_staff=True)
+        self.client.force_login(self.staff)
+        self.profile = SocialProfile.objects.create(
+            nome='Laila',
+            username='@lailapistola',
+            modo_operacao=SocialProfile.ModoOperacao.AUTOMATICO,
+            posts_por_dia=20,
+            horarios_publicacao=['07:00', '07:50', '08:40'],
+            timezone='America/Sao_Paulo',
+        )
+
+    def _ready_content(self, status=SocialContent.Status.APROVADO, scheduled_at=None, frase='conteudo pronto'):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        media_override = override_settings(MEDIA_ROOT=tmp.name)
+        media_override.enable()
+        self.addCleanup(media_override.disable)
+        image = SocialBaseImage.objects.create(profile=self.profile, nome=f'Base {frase}', tags='laila', arquivo=imagem_social())
+        content = SocialContent.objects.create(
+            profile=self.profile,
+            base_image=image,
+            frase=frase,
+            legenda='Legenda valida',
+            hashtags='#laila',
+            status=status,
+            scheduled_at=scheduled_at,
+        )
+        renderizar_conteudo_social(content)
+        content.refresh_from_db()
+        return content
+
+    @override_settings(INSTAGRAM_EXPECTED_USERNAME='lailapistola')
+    def test_scheduler_cria_slots_futuros_sem_agendar_rascunho_antigo(self):
+        now = timezone.datetime(2026, 1, 1, 8, 0, tzinfo=timezone.get_current_timezone())
+        aprovado = self._ready_content(frase='aprovado')
+        rascunho = self._ready_content(status=SocialContent.Status.RASCUNHO, frase='rascunho antigo')
+
+        result = preencher_agenda(self.profile, now=now, days=2)
+
+        aprovado.refresh_from_db()
+        rascunho.refresh_from_db()
+        self.assertEqual(result.scheduled, 1)
+        self.assertEqual(aprovado.status, SocialContent.Status.AGENDADO)
+        self.assertGreater(aprovado.scheduled_at, now)
+        self.assertEqual(rascunho.status, SocialContent.Status.RASCUNHO)
+
+    @override_settings(
+        INSTAGRAM_EXPECTED_USERNAME='lailapistola',
+        SOCIAL_AUTOMATION_QUEUE_MIN=40,
+        SOCIAL_AUTOMATION_QUEUE_TARGET=60,
+        SOCIAL_AUTOMATION_GENERATION_BATCH=5,
+        OPENAI_API_KEY='test-key',
+    )
+    def test_tick_gera_lote_quando_estoque_baixo_e_autoaprova_somente_gerados(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            SocialBaseImage.objects.create(profile=self.profile, nome='Base', tags='laila', arquivo=imagem_social())
+            antigo = SocialContent.objects.create(profile=self.profile, frase='rascunho antigo', legenda='legenda', status=SocialContent.Status.RASCUNHO)
+            generated = [GeneratedContent(frase=f'Frase evergreen {i}', legenda='Legenda valida', hashtags=['laila'], tags_imagem=['laila']) for i in range(5)]
+            with mock.patch('social_automation.generation.gerar_conteudos_ia', return_value=generated), mock.patch('social_automation.generation.moderar_conteudo', return_value=False):
+                summary = executar_tick_social(use_lock=False, now=timezone.now())
+
+            antigo.refresh_from_db()
+            self.assertEqual(antigo.status, SocialContent.Status.RASCUNHO)
+            self.assertEqual(summary['profiles'][0]['generated'], 5)
+            self.assertEqual(summary['profiles'][0]['approved'], 5)
+            self.assertEqual(self.profile.contents.filter(status__in=[SocialContent.Status.APROVADO, SocialContent.Status.AGENDADO]).count(), 5)
+
+    @override_settings(
+        INSTAGRAM_EXPECTED_USERNAME='lailapistola',
+        SOCIAL_AUTOMATION_QUEUE_MIN=40,
+        SOCIAL_AUTOMATION_QUEUE_TARGET=60,
+        SOCIAL_AUTOMATION_GENERATION_BATCH=5,
+    )
+    def test_politica_estoque_tende_ao_target_sem_ultrapassar_intencionalmente(self):
+        cenarios = [
+            (60, 0),
+            (59, 1),
+            (55, 5),
+            (44, 5),
+            (39, 5),
+        ]
+        for inventory, expected_batch in cenarios:
+            with self.subTest(inventory=inventory):
+                SocialContent.objects.all().delete()
+                for index in range(inventory):
+                    SocialContent.objects.create(
+                        profile=self.profile,
+                        frase=f'Estoque {inventory}-{index}',
+                        legenda='Legenda',
+                        status=SocialContent.Status.APROVADO,
+                        final_image='social/fake.jpg',
+                    )
+
+                calls = []
+
+                def fake_generation(profile, quantidade, tema, usuario):
+                    calls.append(quantidade)
+                    return GenerationResult(solicitados=quantidade, criados=quantidade)
+
+                with mock.patch('social_automation.automation.gerar_lote_conteudos', side_effect=fake_generation):
+                    summary = executar_tick_social(use_lock=False, now=timezone.now())
+
+                if expected_batch:
+                    self.assertEqual(calls, [expected_batch])
+                    self.assertEqual(summary['profiles'][0]['generated'], expected_batch)
+                else:
+                    self.assertEqual(calls, [])
+                    self.assertEqual(summary['profiles'][0]['generated'], 0)
+
+    @override_settings(INSTAGRAM_EXPECTED_USERNAME='lailapistola', SOCIAL_AUTOMATION_MIN_POST_GAP_MINUTES=30, SOCIAL_AUTOMATION_HARD_24H_CAP=30)
+    def test_tick_publica_no_maximo_um_e_respeita_gap(self):
+        now = timezone.now()
+        due_one = self._ready_content(status=SocialContent.Status.AGENDADO, scheduled_at=now - timedelta(minutes=10), frase='due one')
+        due_two = self._ready_content(status=SocialContent.Status.AGENDADO, scheduled_at=now - timedelta(minutes=5), frase='due two')
+        with mock.patch('social_automation.automation.publicar_conteudo_instagram') as publish:
+            def fake_publish(content, usuario=None):
+                content.status = SocialContent.Status.PUBLICADO
+                content.published_at = now
+                content.external_post_id = f'media-{content.id}'
+                content.save(update_fields=['status', 'published_at', 'external_post_id', 'updated_at'])
+                return content
+
+            publish.side_effect = fake_publish
+            summary = executar_tick_social(use_lock=False, now=now)
+
+        due_one.refresh_from_db()
+        due_two.refresh_from_db()
+        self.assertEqual(publish.call_count, 1)
+        self.assertEqual(summary['profiles'][0]['published'], 1)
+        self.assertEqual(due_one.status, SocialContent.Status.PUBLICADO)
+        self.assertNotEqual(due_two.status, SocialContent.Status.PUBLICADO)
+
+    @override_settings(SOCIAL_AUTOMATION_CRON_SECRET='segredo-cron')
+    def test_endpoint_cron_exige_secret_post_e_lock(self):
+        get_response = self.client.get(reverse('social_automation_tick'))
+        self.assertEqual(get_response.status_code, 405)
+
+        forbidden = self.client.post(reverse('social_automation_tick'), HTTP_AUTHORIZATION='Bearer errado')
+        self.assertEqual(forbidden.status_code, 403)
+
+        with mock.patch('social_automation.views.executar_tick_social', return_value={'status': 'ok', 'profiles': []}) as tick:
+            response = self.client.post(reverse('social_automation_tick'), HTTP_AUTHORIZATION='Bearer segredo-cron')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok')
+        tick.assert_called_once()
+
+    @override_settings(SOCIAL_AUTOMATION_CRON_SECRET='')
+    def test_endpoint_cron_indisponivel_sem_secret(self):
+        response = self.client.post(reverse('social_automation_tick'), HTTP_AUTHORIZATION='Bearer qualquer')
+        self.assertEqual(response.status_code, 503)
+
+    def test_lock_impede_tick_concorrente(self):
+        from django.core.cache import cache
+
+        cache.add('social_automation_tick_lock', 'ocupado', 60)
+        result = executar_tick_social()
+        cache.delete('social_automation_tick_lock')
+        self.assertEqual(result['status'], 'already_running')
+
+    def test_botao_staff_executa_mesmo_tick(self):
+        with mock.patch('social_automation.views.executar_tick_social', return_value={'status': 'ok', 'profiles': [{'published': 0, 'scheduled': 1, 'generated': 0}]}):
+            response = self.client.post(reverse('social_automation:automation_run_now', args=[self.profile.id]))
+        self.assertRedirects(response, reverse('social_automation:profile_detail', args=[self.profile.id]))
+
+    def test_configurar_automacao_social_preset_20_dia(self):
+        output = StringIO()
+        call_command('configurar_automacao_social', 'lailapistola', '--preset', '20-dia', '--dry-run', stdout=output)
+        self.assertIn('posts_por_dia=20', output.getvalue())
+
+        call_command('configurar_automacao_social', 'lailapistola', '--preset', '20-dia', '--apply', stdout=StringIO())
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.modo_operacao, SocialProfile.ModoOperacao.AUTOMATICO)
+        self.assertEqual(self.profile.posts_por_dia, 20)
+        self.assertEqual(len(self.profile.horarios_publicacao), 20)
 
 
 class SocialAutomationInstagramIntegrationTests(TestCase):

@@ -60,6 +60,20 @@ services:
         value: "3600"
       - key: INSTAGRAM_API_TIMEOUT_SECONDS
         value: "30"
+      - key: SOCIAL_AUTOMATION_QUEUE_MIN
+        value: "40"
+      - key: SOCIAL_AUTOMATION_QUEUE_TARGET
+        value: "60"
+      - key: SOCIAL_AUTOMATION_GENERATION_BATCH
+        value: "5"
+      - key: SOCIAL_AUTOMATION_MIN_POST_GAP_MINUTES
+        value: "30"
+      - key: SOCIAL_AUTOMATION_MAX_RETRIES
+        value: "3"
+      - key: SOCIAL_AUTOMATION_HARD_24H_CAP
+        value: "30"
+      - key: SOCIAL_AUTOMATION_CRON_SECRET
+        sync: false
       - key: INSTAGRAM_ACCESS_TOKEN
         sync: false
       - key: INSTAGRAM_USER_ID

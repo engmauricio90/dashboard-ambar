@@ -11,6 +11,7 @@ urlpatterns = [
     path('perfis/novo/', views.profile_create, name='profile_create'),
     path('perfis/<int:profile_id>/', views.profile_detail, name='profile_detail'),
     path('perfis/<int:profile_id>/instagram/testar/', views.instagram_health, name='instagram_health'),
+    path('perfis/<int:profile_id>/automacao/executar/', views.automation_run_now, name='automation_run_now'),
     path('perfis/<int:profile_id>/editar/', views.profile_update, name='profile_update'),
     path('perfis/<int:profile_id>/toggle/', views.profile_toggle, name='profile_toggle'),
     path('perfis/<int:profile_id>/gerar/', views.profile_generate, name='profile_generate'),

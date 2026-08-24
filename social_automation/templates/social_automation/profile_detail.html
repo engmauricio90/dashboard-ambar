@@ -7,6 +7,7 @@
 <a href="{% url 'social_automation:image_list' profile.id %}" class="btn btn-outline-secondary">Biblioteca</a>
 <a href="{% url 'social_automation:profile_content_list' profile.id %}" class="btn btn-outline-secondary">Conteudos</a>
 <a href="{% url 'social_automation:profile_generate' profile.id %}" class="btn btn-primary">Gerar com IA</a>
+<form method="post" action="{% url 'social_automation:automation_run_now' profile.id %}" class="d-inline">{% csrf_token %}<button class="btn btn-outline-success" type="submit">Executar automacao agora</button></form>
 <a href="{% url 'social_automation:profile_content_create' profile.id %}" class="btn btn-success">Novo rascunho</a>
 {% endblock %}
 
@@ -16,6 +17,24 @@
     <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>Conteudos</h6><h3>{{ total_conteudos }}</h3></div></div></div>
     <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>Rascunhos</h6><h3>{{ rascunhos }}</h3></div></div></div>
     <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><h6>Agendados</h6><h3>{{ agendados }}</h3></div></div></div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+        <span>Automacao</span>
+        <span class="badge {% if automacao.status == 'SAUDAVEL' %}bg-success{% elif automacao.status == 'ATENCAO' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ automacao.status }}</span>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3"><div class="text-muted small">Modo</div><strong>{{ automacao.modo }}</strong></div>
+            <div class="col-md-3"><div class="text-muted small">Posts/dia</div><strong>{{ automacao.posts_por_dia }}</strong></div>
+            <div class="col-md-3"><div class="text-muted small">Estoque pronto</div><strong>{{ automacao.estoque }} / {{ automacao.alvo }}</strong><div class="small text-muted">Minimo {{ automacao.minimo }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">Agendados 24h</div><strong>{{ automacao.agendados_24h }}</strong></div>
+            <div class="col-md-3"><div class="text-muted small">Proxima publicacao</div><strong>{% if automacao.proxima_publicacao %}{{ automacao.proxima_publicacao|date:'d/m/Y H:i' }}{% else %}-{% endif %}</strong></div>
+            <div class="col-md-3"><div class="text-muted small">Ultima publicacao</div><strong>{% if automacao.ultima_publicacao %}{{ automacao.ultima_publicacao|date:'d/m/Y H:i' }}{% else %}-{% endif %}</strong></div>
+            <div class="col-md-6"><div class="text-muted small">Ultimo erro</div><strong>{% if automacao.ultimo_erro %}{{ automacao.ultimo_erro }}{% else %}-{% endif %}</strong></div>
+        </div>
+    </div>
 </div>
 
 <div class="card shadow-sm mb-4">

@@ -1,17 +1,20 @@
 import logging
+import secrets
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.conf import settings
-from django.http import FileResponse, Http404, HttpResponse, HttpResponseForbidden, HttpResponseNotAllowed
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseForbidden, HttpResponseNotAllowed, JsonResponse
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from .ai import OpenAINotConfigured, OpenAIUnavailable
+from .automation import automacao_status_profile, executar_tick_social
 from .forms import SocialBaseImageForm, SocialContentForm, SocialGenerateForm, SocialProfileForm, SocialScheduleForm
 from .generation import gerar_lote_conteudos
 from .instagram import (
@@ -124,8 +127,38 @@ def profile_detail(request, profile_id):
         'erros': profile.contents.filter(status=SocialContent.Status.ERRO).count(),
         'contents': contents,
         'instagram_configurado': bool(settings.INSTAGRAM_ACCESS_TOKEN and settings.INSTAGRAM_USER_ID),
+        'automacao': automacao_status_profile(profile),
     }
     return render(request, 'social_automation/profile_detail.html', contexto)
+
+
+@staff_required
+@require_POST
+def automation_run_now(request, profile_id=None):
+    summary = executar_tick_social()
+    if summary.get('status') == 'already_running':
+        messages.warning(request, 'A automacao social ja esta em execucao.')
+    else:
+        total_publicados = sum(item.get('published', 0) for item in summary.get('profiles', []))
+        total_agendados = sum(item.get('scheduled', 0) for item in summary.get('profiles', []))
+        total_gerados = sum(item.get('generated', 0) for item in summary.get('profiles', []))
+        messages.success(request, f'Automacao executada. Publicados: {total_publicados}. Agendados: {total_agendados}. Gerados: {total_gerados}.')
+    if profile_id:
+        return redirect('social_automation:profile_detail', profile_id=profile_id)
+    return redirect('social_automation:home')
+
+
+@csrf_exempt
+@require_POST
+def automation_tick_endpoint(request):
+    secret = settings.SOCIAL_AUTOMATION_CRON_SECRET
+    if not secret:
+        return JsonResponse({'status': 'unavailable'}, status=503)
+    authorization = request.headers.get('Authorization', '')
+    expected = f'Bearer {secret}'
+    if not secrets.compare_digest(authorization, expected):
+        return JsonResponse({'status': 'forbidden'}, status=403)
+    return JsonResponse(executar_tick_social())
 
 
 @staff_required
