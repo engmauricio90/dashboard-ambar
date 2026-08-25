@@ -18,6 +18,12 @@ from django.utils import timezone
 from PIL import Image
 
 from .models import SocialContent
+from .container_versioning import (
+    REEL_SHARE_TO_FEED,
+    build_instagram_caption,
+    calculate_instagram_container_fingerprint,
+    invalidate_instagram_container,
+)
 from .services import registrar_evento
 from .video_rendering import auditar_video_reel
 
@@ -343,20 +349,7 @@ def url_midia_temporaria(content, *, com_extensao_jpg=False, legacy=False):
 
 
 def montar_caption(content):
-    partes = []
-    if content.legenda:
-        partes.append(content.legenda.strip())
-    if content.hashtags:
-        hashtags = []
-        for item in content.hashtags.replace('\n', ' ').split():
-            tag = item.strip()
-            if not tag:
-                continue
-            tag = '#' + tag.lstrip('#')
-            hashtags.append(tag)
-        if hashtags:
-            partes.append(' '.join(dict.fromkeys(hashtags)))
-    return '\n\n'.join(partes)
+    return build_instagram_caption(content)
 
 
 def criar_container_imagem(image_url, caption):
@@ -386,7 +379,7 @@ def criar_container_imagem(image_url, caption):
 
 
 def criar_container_reel(video_url, caption):
-    payload = {'media_type': 'REELS', 'video_url': video_url, 'caption': caption, 'share_to_feed': 'true'}
+    payload = {'media_type': 'REELS', 'video_url': video_url, 'caption': caption, 'share_to_feed': REEL_SHARE_TO_FEED}
     resumo = resumir_video_url(video_url)
     logger.info(
         'Instagram creating reel container endpoint=%s content_type=video video_url_scheme=%s video_url_host=%s video_url_path_structure=%s video_url_length=%s video_url_sha256=%s',
@@ -473,11 +466,12 @@ def _marcar_publicando(content_id):
         return content
 
 
-def _salvar_container_reel(content_id, container_id):
+def _salvar_container_reel(content_id, container_id, fingerprint):
     with transaction.atomic():
         content = SocialContent.objects.select_for_update().get(pk=content_id)
         content.instagram_container_id = container_id
-        content.save(update_fields=['instagram_container_id', 'updated_at'])
+        content.instagram_container_fingerprint = fingerprint
+        content.save(update_fields=['instagram_container_id', 'instagram_container_fingerprint', 'updated_at'])
         return content
 
 
@@ -499,10 +493,57 @@ def _marcar_publicado(content_id, media_id, permalink, usuario=None):
         content.external_post_id = media_id
         content.external_permalink = permalink or ''
         content.instagram_container_id = ''
+        content.instagram_container_fingerprint = ''
         content.erro = ''
-        content.save(update_fields=['status', 'published_at', 'external_post_id', 'external_permalink', 'instagram_container_id', 'erro', 'updated_at'])
+        content.save(
+            update_fields=[
+                'status',
+                'published_at',
+                'external_post_id',
+                'external_permalink',
+                'instagram_container_id',
+                'instagram_container_fingerprint',
+                'erro',
+                'updated_at',
+            ]
+        )
         registrar_evento(content, PUBLICADO_INSTAGRAM, usuario, f'Media ID: {media_id}')
         return content
+
+
+def _container_reel_atual_ou_novo(content, caption):
+    current_fingerprint = calculate_instagram_container_fingerprint(content)
+    if content.instagram_container_id:
+        if content.instagram_container_fingerprint == current_fingerprint:
+            logger.info(
+                'instagram_container_reuse content_id=%s media_type=%s container_id=%s fingerprint_prefix=%s',
+                content.id,
+                content.media_type,
+                content.instagram_container_id,
+                current_fingerprint[:12],
+            )
+            return content.instagram_container_id
+        logger.info(
+            'instagram_container_stale content_id=%s media_type=%s old_container_id=%s old_fingerprint_prefix=%s new_fingerprint_prefix=%s',
+            content.id,
+            content.media_type,
+            content.instagram_container_id,
+            (content.instagram_container_fingerprint or '')[:12],
+            current_fingerprint[:12],
+        )
+        invalidate_instagram_container(content, reason='fingerprint_changed')
+
+    video_url = url_video_meta_compat(content)
+    container_id = criar_container_reel(video_url, caption)
+    _salvar_container_reel(content.id, container_id, current_fingerprint)
+    logger.info(
+        'instagram_container_created content_id=%s media_type=%s container_id=%s fingerprint_prefix=%s',
+        content.id,
+        content.media_type,
+        container_id,
+        current_fingerprint[:12],
+    )
+    return container_id
 
 
 def _marcar_erro(content_id, message):
@@ -524,12 +565,7 @@ def publicar_conteudo_instagram(content, usuario=None):
         caption = montar_caption(content)
         if content.is_reel:
             auditar_video_reel(content)
-            if content.instagram_container_id:
-                container_id = content.instagram_container_id
-            else:
-                video_url = url_video_meta_compat(content)
-                container_id = criar_container_reel(video_url, caption)
-                _salvar_container_reel(content.id, container_id)
+            container_id = _container_reel_atual_ou_novo(content, caption)
             if not status_container_pronto(container_id):
                 _marcar_reel_pendente(content.id)
                 raise InstagramContainerPending('Container de Reel ainda em processamento; publicacao sera retomada no proximo tick.')

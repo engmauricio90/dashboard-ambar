@@ -77,8 +77,10 @@
                 {% elif content.status == 'erro' %}
                     <form method="post" action="{% url 'social_automation:content_publish_instagram' content.id %}">{% csrf_token %}<button class="btn btn-outline-primary w-100" type="submit">Tentar publicar novamente</button></form>
                 {% endif %}
-                {% if content.base_image %}
+                {% if content.base_image and content.status != 'publicado' %}
                 <form method="post" action="{% url 'social_automation:content_render' content.id %}">{% csrf_token %}<button class="btn btn-outline-secondary w-100" type="submit">Renderizar novamente</button></form>
+                {% elif content.status == 'publicado' %}
+                <p class="text-muted small mb-0">Conteudo publicado preserva a midia enviada ao Instagram.</p>
                 {% endif %}
                 {% if content.pode_excluir_operacionalmente %}
                 <form method="post" action="{% url 'social_automation:content_delete' content.id %}" onsubmit="return confirm('Excluir este conteudo?');">{% csrf_token %}<button class="btn btn-outline-danger w-100" type="submit">Excluir</button></form>

@@ -366,6 +366,9 @@ def profile_generate(request, profile_id):
 @require_POST
 def content_render(request, content_id):
     content = get_object_or_404(_content_queryset(), pk=content_id)
+    if content.status == SocialContent.Status.PUBLICADO:
+        messages.error(request, 'Conteudo publicado nao pode ser renderizado novamente. Duplique para criar uma nova versao.')
+        return redirect('social_automation:content_detail', content_id=content.id)
     try:
         renderizar_midia_social(content)
         messages.success(request, 'Midia renderizada novamente.')

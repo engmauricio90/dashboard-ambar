@@ -202,6 +202,7 @@ class SocialContent(models.Model):
     external_post_id = models.CharField(max_length=120, blank=True)
     external_permalink = models.URLField(blank=True)
     instagram_container_id = models.CharField(max_length=120, blank=True)
+    instagram_container_fingerprint = models.CharField(max_length=64, blank=True, default='')
     erro = models.TextField(blank=True)
     tentativas = models.PositiveSmallIntegerField(default=0)
     ultima_tentativa = models.DateTimeField(blank=True, null=True)

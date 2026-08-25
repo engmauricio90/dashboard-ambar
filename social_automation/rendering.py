@@ -315,6 +315,10 @@ def renderizar_conteudo_social(content):
     final.save(buffer, format='JPEG', quality=90, optimize=True)
     filename = f'social/{content.profile_id}/posts/{uuid4().hex}.jpg'
     content.final_image.save(filename, ContentFile(buffer.getvalue()), save=True)
+    if content.status != content.Status.PUBLICADO:
+        from .container_versioning import invalidate_instagram_container
+
+        invalidate_instagram_container(content, reason='image_rendered')
     return content
 
 

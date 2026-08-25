@@ -232,6 +232,10 @@ def renderizar_reel_social(content, *, return_diagnostics=False):
     storage_start = time.monotonic()
     logger.info('reel_storage_save_start content_id=%s', content.id)
     content.final_video.save(filename, ContentFile(video_bytes), save=True)
+    if content.status != content.Status.PUBLICADO:
+        from .container_versioning import invalidate_instagram_container
+
+        invalidate_instagram_container(content, reason='reel_rendered')
     diagnostics['storage_ms'] = _elapsed_ms(storage_start)
     diagnostics['total_ms'] = _elapsed_ms(total_start)
     logger.info('reel_storage_save_end content_id=%s duration_ms=%s', content.id, diagnostics['storage_ms'])

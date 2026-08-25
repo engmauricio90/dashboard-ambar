@@ -1,5 +1,6 @@
 from django.core.management.base import BaseCommand, CommandError
 
+from social_automation.container_versioning import calculate_instagram_container_fingerprint
 from social_automation.instagram import criar_container_reel, montar_caption, url_video_meta_compat
 from social_automation.models import SocialContent
 from social_automation.video_rendering import auditar_video_reel
@@ -20,7 +21,10 @@ class Command(BaseCommand):
         auditar_video_reel(content)
         video_url = url_video_meta_compat(content)
         container_id = criar_container_reel(video_url, montar_caption(content))
+        fingerprint = calculate_instagram_container_fingerprint(content)
         content.instagram_container_id = container_id
-        content.save(update_fields=['instagram_container_id', 'updated_at'])
+        content.instagram_container_fingerprint = fingerprint
+        content.save(update_fields=['instagram_container_id', 'instagram_container_fingerprint', 'updated_at'])
         self.stdout.write(f'Container criado: {container_id}')
+        self.stdout.write(f'Fingerprint: {fingerprint[:12]}...')
         self.stdout.write('media_publish: NAO executado')

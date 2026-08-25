@@ -46,7 +46,17 @@ class SocialContentAdmin(admin.ModelAdmin):
     list_display = ['id', 'profile', 'media_type', 'status', 'scheduled_at', 'published_at', 'created_at']
     list_filter = ['status', 'media_type', 'profile']
     search_fields = ['frase', 'legenda', 'hashtags', 'profile__nome', 'profile__username']
-    readonly_fields = ['created_at', 'updated_at', 'published_at', 'external_post_id', 'external_permalink', 'instagram_container_id', 'tentativas', 'ultima_tentativa']
+    readonly_fields = [
+        'created_at',
+        'updated_at',
+        'published_at',
+        'external_post_id',
+        'external_permalink',
+        'instagram_container_id',
+        'instagram_container_fingerprint',
+        'tentativas',
+        'ultima_tentativa',
+    ]
     inlines = [SocialContentEventInline]
 
 

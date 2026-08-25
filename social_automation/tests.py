@@ -25,6 +25,12 @@ from empresas.models import Empresa, UsuarioEmpresa
 from .models import SocialBaseImage, SocialContent, SocialContentEvent, SocialProfile
 from .ai import GeneratedContent
 from .automation import executar_tick_social
+from .container_versioning import (
+    REEL_SHARE_TO_FEED,
+    build_instagram_caption,
+    calculate_instagram_container_fingerprint,
+    invalidate_instagram_container,
+)
 from .generation import GenerationResult, _image_contexts, gerar_lote_conteudos
 from .image_selection import selecionar_imagem_base
 from .instagram import (
@@ -939,6 +945,7 @@ class SocialAutomationReelTests(TestCase):
 
             content.refresh_from_db()
             self.assertEqual(content.instagram_container_id, 'container-123')
+            self.assertTrue(content.instagram_container_fingerprint)
             self.assertEqual(content.status, SocialContent.Status.AGENDADO)
             create_mock.assert_called_once()
             publish_mock.assert_not_called()
@@ -951,6 +958,8 @@ class SocialAutomationReelTests(TestCase):
             content.instagram_container_id = 'container-existente'
             content.final_video = video_mp4_teste()
             content.save(update_fields=['status', 'instagram_container_id', 'final_video'])
+            content.instagram_container_fingerprint = calculate_instagram_container_fingerprint(content)
+            content.save(update_fields=['instagram_container_fingerprint'])
 
             with mock.patch('social_automation.instagram.verificar_configuracao_instagram'), mock.patch(
                 'social_automation.instagram.obter_conta_instagram',
@@ -968,6 +977,78 @@ class SocialAutomationReelTests(TestCase):
             self.assertEqual(content.status, SocialContent.Status.PUBLICADO)
             self.assertEqual(content.external_post_id, 'media-1')
             create_mock.assert_not_called()
+
+    @override_settings(PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com')
+    def test_publicacao_reel_invalida_container_stale_por_nova_legenda(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            content = self._content()
+            content.status = SocialContent.Status.APROVADO
+            content.instagram_container_id = 'container-antigo'
+            content.final_video = video_mp4_teste()
+            content.save(update_fields=['status', 'instagram_container_id', 'final_video'])
+            content.instagram_container_fingerprint = calculate_instagram_container_fingerprint(content)
+            content.legenda = 'Legenda nova'
+            content.save(update_fields=['instagram_container_fingerprint', 'legenda'])
+
+            with mock.patch('social_automation.instagram.verificar_configuracao_instagram'), mock.patch(
+                'social_automation.instagram.obter_conta_instagram',
+                return_value={'username': 'lailapistola'},
+            ), mock.patch('social_automation.instagram.criar_container_reel', return_value='container-novo') as create_mock, mock.patch(
+                'social_automation.instagram.status_container_pronto',
+                return_value=True,
+            ), mock.patch('social_automation.instagram.publicar_container', return_value='media-1') as publish_mock, mock.patch(
+                'social_automation.instagram.obter_midia_publicada',
+                return_value={'id': 'media-1'},
+            ):
+                __import__('social_automation.instagram').instagram.publicar_conteudo_instagram(content)
+
+            create_mock.assert_called_once()
+            publish_mock.assert_called_once_with('container-novo')
+
+    @override_settings(PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com')
+    def test_publicacao_reel_invalida_container_stale_por_novo_mp4(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            content = self._content()
+            content.status = SocialContent.Status.APROVADO
+            content.instagram_container_id = 'container-antigo'
+            content.final_video = video_mp4_teste('reel-antigo.mp4', tamanho=1024)
+            content.save(update_fields=['status', 'instagram_container_id', 'final_video'])
+            old_fingerprint = calculate_instagram_container_fingerprint(content)
+            content.instagram_container_fingerprint = old_fingerprint
+            content.final_video = video_mp4_teste('reel-novo.mp4', tamanho=4096)
+            content.save(update_fields=['instagram_container_fingerprint', 'final_video'])
+
+            with mock.patch('social_automation.instagram.verificar_configuracao_instagram'), mock.patch(
+                'social_automation.instagram.obter_conta_instagram',
+                return_value={'username': 'lailapistola'},
+            ), mock.patch('social_automation.instagram.criar_container_reel', return_value='container-novo') as create_mock, mock.patch(
+                'social_automation.instagram.status_container_pronto',
+                return_value=True,
+            ), mock.patch('social_automation.instagram.publicar_container', return_value='media-1') as publish_mock, mock.patch(
+                'social_automation.instagram.obter_midia_publicada',
+                return_value={'id': 'media-1'},
+            ):
+                __import__('social_automation.instagram').instagram.publicar_conteudo_instagram(content)
+
+            self.assertNotEqual(old_fingerprint, calculate_instagram_container_fingerprint(content))
+            create_mock.assert_called_once()
+            publish_mock.assert_called_once_with('container-novo')
+
+    def test_fingerprint_muda_com_hashtags_e_share_to_feed(self):
+        content = self._content()
+        content.final_video = video_mp4_teste()
+        content.save(update_fields=['final_video'])
+        original = calculate_instagram_container_fingerprint(content)
+        content.hashtags = '#laila #novo'
+        content.save(update_fields=['hashtags'])
+        self.assertNotEqual(original, calculate_instagram_container_fingerprint(content))
+
+        com_hashtags = calculate_instagram_container_fingerprint(content)
+        with mock.patch('social_automation.container_versioning.REEL_SHARE_TO_FEED', 'false'):
+            self.assertNotEqual(com_hashtags, calculate_instagram_container_fingerprint(content))
+
+        self.assertIn('#novo', build_instagram_caption(content))
+        self.assertEqual(REEL_SHARE_TO_FEED, 'true')
 
     def test_auditoria_video_reel_valida_mp4(self):
         with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
@@ -1027,6 +1108,27 @@ class SocialAutomationReelTests(TestCase):
         self.assertEqual(captured['kwargs']['timeout'], 30)
         self.assertFalse(captured['output_path'].exists())
 
+    def test_render_reel_bem_sucedido_invalida_container_antigo(self):
+        content = self._content()
+        content.instagram_container_id = 'container-antigo'
+        content.instagram_container_fingerprint = 'abc123'
+        content.save(update_fields=['instagram_container_id', 'instagram_container_fingerprint'])
+
+        def fake_run(command, **kwargs):
+            Path(command[-1]).write_bytes(b'\x00\x00\x00\x18ftypmp42' + (b'0' * 256))
+            return subprocess.CompletedProcess(command, 0, stdout='', stderr='')
+
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            with mock.patch('social_automation.video_rendering.ffmpeg_path', return_value='/usr/bin/ffmpeg'), mock.patch(
+                'social_automation.video_rendering._compose_reel_frame',
+                return_value=Image.new('RGB', (1080, 1920), color='black'),
+            ), mock.patch('social_automation.video_rendering.subprocess.run', side_effect=fake_run):
+                renderizar_reel_social(content)
+
+            content.refresh_from_db()
+            self.assertEqual(content.instagram_container_id, '')
+            self.assertEqual(content.instagram_container_fingerprint, '')
+
     def test_render_reel_retorna_erro_amigavel_em_timeout(self):
         content = self._content()
 
@@ -1039,6 +1141,8 @@ class SocialAutomationReelTests(TestCase):
         ):
             with self.assertRaisesMessage(SocialVideoRenderError, 'Nao foi possivel gerar o Reel'):
                 renderizar_reel_social(content)
+        content.refresh_from_db()
+        self.assertEqual(content.instagram_container_id, '')
 
     def test_render_reel_retorna_erro_amigavel_em_falha_ffmpeg(self):
         content = self._content()
@@ -1070,6 +1174,21 @@ class SocialAutomationReelTests(TestCase):
             with self.assertRaises(SocialRenderError):
                 renderizar_reel_social(content)
 
+    def test_render_com_falha_preserva_container_anterior(self):
+        content = self._content()
+        content.status = SocialContent.Status.APROVADO
+        content.instagram_container_id = 'container-valido'
+        content.instagram_container_fingerprint = 'fingerprint-valido'
+        content.save(update_fields=['status', 'instagram_container_id', 'instagram_container_fingerprint'])
+
+        with mock.patch('social_automation.views.renderizar_midia_social', side_effect=SocialVideoRenderError('falha controlada')):
+            response = self.client.post(reverse('social_automation:content_render', args=[content.id]))
+
+        self.assertEqual(response.status_code, 302)
+        content.refresh_from_db()
+        self.assertEqual(content.instagram_container_id, 'container-valido')
+        self.assertEqual(content.instagram_container_fingerprint, 'fingerprint-valido')
+
     def test_criacao_manual_de_reel_nao_derruba_interface_quando_render_falha(self):
         image = self._image()
         url = reverse('social_automation:profile_content_create', args=[self.profile.id])
@@ -1093,6 +1212,43 @@ class SocialAutomationReelTests(TestCase):
         self.assertEqual(content.media_type, SocialContent.MediaType.REEL)
         self.assertEqual(content.status, SocialContent.Status.RASCUNHO)
         self.assertFalse(content.final_video)
+
+    def test_conteudo_publicado_nao_exibe_nem_executa_renderizar_novamente(self):
+        content = self._content()
+        content.status = SocialContent.Status.PUBLICADO
+        content.final_video = video_mp4_teste()
+        content.save(update_fields=['status', 'final_video'])
+        original_video_name = content.final_video.name
+
+        detail = self.client.get(reverse('social_automation:content_detail', args=[content.id]))
+        self.assertNotContains(detail, 'Renderizar novamente')
+
+        with mock.patch('social_automation.views.renderizar_midia_social') as render_mock:
+            response = self.client.post(reverse('social_automation:content_render', args=[content.id]))
+
+        self.assertEqual(response.status_code, 302)
+        render_mock.assert_not_called()
+        content.refresh_from_db()
+        self.assertEqual(content.final_video.name, original_video_name)
+
+    @override_settings(INSTAGRAM_ACCESS_TOKEN='token-teste', INSTAGRAM_USER_ID='178000000000', PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com')
+    def test_diagnostico_container_reel_salva_container_e_fingerprint(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            content = self._content()
+            content.final_video = video_mp4_teste()
+            content.save(update_fields=['final_video'])
+            output = StringIO()
+
+            with mock.patch('social_automation.instagram._request', return_value={'id': 'container-reel-1'}), mock.patch(
+                'social_automation.instagram.publicar_container'
+            ) as publish_mock:
+                call_command('diagnosticar_container_reel_instagram', str(content.id), stdout=output)
+
+            content.refresh_from_db()
+            self.assertEqual(content.instagram_container_id, 'container-reel-1')
+            self.assertEqual(content.instagram_container_fingerprint, calculate_instagram_container_fingerprint(content))
+            self.assertIn('Fingerprint:', output.getvalue())
+            publish_mock.assert_not_called()
 
 
 class SocialAutomationFullAutomationTests(TestCase):
