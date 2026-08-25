@@ -1,12 +1,14 @@
+import logging
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from uuid import uuid4
 
 from django.conf import settings
 from django.core.files.base import ContentFile
-from PIL import Image, ImageDraw, ImageFilter, ImageOps
+from PIL import Image, ImageFilter, ImageOps
 
 from .rendering import SocialRenderError, _apply_gradient, _draw_text_box, _text_boxes
 
@@ -14,6 +16,7 @@ from .rendering import SocialRenderError, _apply_gradient, _draw_text_box, _text
 REEL_SIZE = (1080, 1920)
 REEL_FPS = 30
 REEL_CODEC = 'h264'
+logger = logging.getLogger(__name__)
 
 
 class SocialVideoRenderError(SocialRenderError):
@@ -22,6 +25,18 @@ class SocialVideoRenderError(SocialRenderError):
 
 def ffmpeg_path():
     return shutil.which('ffmpeg')
+
+
+def ffprobe_path():
+    return shutil.which('ffprobe')
+
+
+def _elapsed_ms(start):
+    return int((time.monotonic() - start) * 1000)
+
+
+def _sanitize_error(text):
+    return str(text or '').replace('\\', '/')[-800:]
 
 
 def _compose_reel_frame(content):
@@ -81,49 +96,149 @@ def _compose_reel_frame(content):
     return Image.alpha_composite(frame, overlay).convert('RGB')
 
 
-def renderizar_reel_social(content):
+def _ffmpeg_command(ffmpeg, frame_path, output_path, duration):
+    return [
+        ffmpeg,
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-loop',
+        '1',
+        '-framerate',
+        str(REEL_FPS),
+        '-i',
+        str(frame_path),
+        '-t',
+        str(duration),
+        '-r',
+        str(REEL_FPS),
+        '-c:v',
+        'libx264',
+        '-preset',
+        'veryfast',
+        '-tune',
+        'stillimage',
+        '-pix_fmt',
+        'yuv420p',
+        '-threads',
+        '1',
+        '-an',
+        '-movflags',
+        '+faststart',
+        '-y',
+        str(output_path),
+    ]
+
+
+def _validate_output_file(output_path):
+    if not output_path.exists():
+        raise SocialVideoRenderError('FFmpeg nao gerou o arquivo MP4.')
+    size = output_path.stat().st_size
+    if size <= 0:
+        raise SocialVideoRenderError('FFmpeg gerou um arquivo MP4 vazio.')
+    max_bytes = settings.SOCIAL_REEL_MAX_FILE_MB * 1024 * 1024
+    if size > max_bytes:
+        raise SocialVideoRenderError('O Reel gerado ultrapassou o tamanho maximo configurado.')
+    if output_path.suffix.lower() != '.mp4':
+        raise SocialVideoRenderError('O arquivo gerado precisa ter extensao MP4.')
+    return size
+
+
+def _probe_output(output_path):
+    ffprobe = ffprobe_path()
+    if not ffprobe:
+        return {}
+    command = [
+        ffprobe,
+        '-v',
+        'error',
+        '-select_streams',
+        'v:0',
+        '-show_entries',
+        'stream=codec_name,width,height,pix_fmt,duration',
+        '-of',
+        'default=noprint_wrappers=1',
+        str(output_path),
+    ]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=10, check=True)
+    except Exception:
+        return {}
+    data = {}
+    for line in result.stdout.splitlines():
+        if '=' in line:
+            key, value = line.split('=', 1)
+            data[key] = value
+    return data
+
+
+def renderizar_reel_social(content, *, return_diagnostics=False):
+    total_start = time.monotonic()
+    diagnostics = {'content_id': content.id}
+    logger.info('reel_create_start content_id=%s', content.id)
     ffmpeg = ffmpeg_path()
     if not ffmpeg:
+        logger.error('reel_render_error stage=ffmpeg_lookup exception_class=SocialVideoRenderError message=ffmpeg_missing')
         raise SocialVideoRenderError('FFmpeg nao esta disponivel no ambiente para gerar MP4.')
 
-    frame = _compose_reel_frame(content)
     duration = int(settings.SOCIAL_REEL_DURATION_SECONDS)
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_dir = Path(temp_dir)
         frame_path = temp_dir / 'frame.jpg'
         output_path = temp_dir / 'reel.mp4'
-        frame.save(frame_path, format='JPEG', quality=92, optimize=True)
-        command = [
-            ffmpeg,
-            '-y',
-            '-loop',
-            '1',
-            '-i',
-            str(frame_path),
-            '-t',
-            str(duration),
-            '-r',
-            str(REEL_FPS),
-            '-c:v',
-            'libx264',
-            '-pix_fmt',
-            'yuv420p',
-            '-movflags',
-            '+faststart',
-            '-an',
-            str(output_path),
-        ]
-        result = subprocess.run(command, capture_output=True, text=True, timeout=duration + 30, check=False)
-        if result.returncode != 0:
-            raise SocialVideoRenderError('FFmpeg nao conseguiu gerar o Reel MP4.')
+        try:
+            compose_start = time.monotonic()
+            logger.info('reel_compose_start content_id=%s', content.id)
+            frame = _compose_reel_frame(content)
+            frame.save(frame_path, format='JPEG', quality=92, optimize=True)
+            diagnostics['compose_ms'] = _elapsed_ms(compose_start)
+            diagnostics['frame_path'] = 'frame.jpg'
+            logger.info('reel_compose_end content_id=%s duration_ms=%s', content.id, diagnostics['compose_ms'])
+
+            command = _ffmpeg_command(ffmpeg, frame_path, output_path, duration)
+            diagnostics['ffmpeg_command'] = [item if item not in {str(frame_path), str(output_path)} else Path(item).name for item in command]
+            ffmpeg_start = time.monotonic()
+            logger.info('reel_ffmpeg_start content_id=%s', content.id)
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=settings.SOCIAL_REEL_RENDER_TIMEOUT_SECONDS,
+                check=True,
+            )
+            diagnostics['ffmpeg_ms'] = _elapsed_ms(ffmpeg_start)
+            size = _validate_output_file(output_path)
+            diagnostics['output_bytes'] = size
+            diagnostics['probe'] = _probe_output(output_path)
+            logger.info(
+                'reel_ffmpeg_end content_id=%s duration_ms=%s returncode=%s output_bytes=%s',
+                content.id,
+                diagnostics['ffmpeg_ms'],
+                result.returncode,
+                size,
+            )
+        except subprocess.TimeoutExpired as exc:
+            logger.error('reel_render_error stage=ffmpeg exception_class=TimeoutExpired message=timeout_%ss', settings.SOCIAL_REEL_RENDER_TIMEOUT_SECONDS)
+            raise SocialVideoRenderError('Nao foi possivel gerar o Reel. Verifique os logs ou tente novamente.') from exc
+        except subprocess.CalledProcessError as exc:
+            logger.error('reel_render_error stage=ffmpeg exception_class=CalledProcessError message=%s', _sanitize_error(exc.stderr))
+            raise SocialVideoRenderError('Nao foi possivel gerar o Reel. Verifique os logs ou tente novamente.') from exc
+        except SocialRenderError as exc:
+            logger.error('reel_render_error stage=validation exception_class=%s message=%s', type(exc).__name__, _sanitize_error(exc))
+            raise
         video_bytes = output_path.read_bytes()
 
-    max_bytes = settings.SOCIAL_REEL_MAX_FILE_MB * 1024 * 1024
-    if len(video_bytes) > max_bytes:
-        raise SocialVideoRenderError('O Reel gerado ultrapassou o tamanho maximo configurado.')
-
     filename = f'social/{content.profile_id}/reels/{uuid4().hex}.mp4'
+    storage_start = time.monotonic()
+    logger.info('reel_storage_save_start content_id=%s', content.id)
     content.final_video.save(filename, ContentFile(video_bytes), save=True)
+    diagnostics['storage_ms'] = _elapsed_ms(storage_start)
+    diagnostics['total_ms'] = _elapsed_ms(total_start)
+    logger.info('reel_storage_save_end content_id=%s duration_ms=%s', content.id, diagnostics['storage_ms'])
+    logger.info('reel_create_end content_id=%s total_duration_ms=%s', content.id, diagnostics['total_ms'])
+    if return_diagnostics:
+        diagnostics['content'] = content
+        return diagnostics
     return content
 
 

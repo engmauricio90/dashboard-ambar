@@ -273,7 +273,11 @@ def content_create(request, profile_id=None):
                 try:
                     renderizar_midia_social(content)
                 except SocialRenderError as exc:
-                    messages.warning(request, f'Rascunho salvo, mas o card final nao foi renderizado: {exc}')
+                    if content.is_reel:
+                        logger.warning('reel_render_ui_error content_id=%s exception_class=%s message=%s', content.id, type(exc).__name__, str(exc)[:180])
+                        messages.warning(request, 'Rascunho salvo, mas nao foi possivel gerar o Reel. Verifique os logs ou tente novamente.')
+                    else:
+                        messages.warning(request, f'Rascunho salvo, mas o card final nao foi renderizado: {exc}')
             messages.success(request, 'Rascunho criado com sucesso.')
             return redirect('social_automation:content_detail', content_id=content.id)
     else:
@@ -299,7 +303,11 @@ def content_update(request, content_id):
                     renderizar_midia_social(content)
                     messages.success(request, 'Conteudo atualizado e card renderizado novamente.')
                 except SocialRenderError as exc:
-                    messages.warning(request, f'Conteudo atualizado, mas o card final nao foi renderizado: {exc}')
+                    if content.is_reel:
+                        logger.warning('reel_render_ui_error content_id=%s exception_class=%s message=%s', content.id, type(exc).__name__, str(exc)[:180])
+                        messages.warning(request, 'Conteudo atualizado, mas nao foi possivel gerar o Reel. Verifique os logs ou tente novamente.')
+                    else:
+                        messages.warning(request, f'Conteudo atualizado, mas o card final nao foi renderizado: {exc}')
                     return redirect('social_automation:content_detail', content_id=content.id)
             else:
                 messages.success(request, 'Conteudo atualizado com sucesso.')
@@ -362,7 +370,11 @@ def content_render(request, content_id):
         renderizar_midia_social(content)
         messages.success(request, 'Midia renderizada novamente.')
     except SocialRenderError as exc:
-        messages.error(request, str(exc))
+        if content.is_reel:
+            logger.warning('reel_render_ui_error content_id=%s exception_class=%s message=%s', content.id, type(exc).__name__, str(exc)[:180])
+            messages.error(request, 'Nao foi possivel gerar o Reel. Verifique os logs ou tente novamente.')
+        else:
+            messages.error(request, str(exc))
     return redirect('social_automation:content_detail', content_id=content.id)
 
 

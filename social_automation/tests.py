@@ -4,6 +4,7 @@ from hashlib import sha256
 import importlib.util
 import os
 from pathlib import Path
+import subprocess
 import tempfile
 import urllib.error
 import urllib.parse
@@ -49,7 +50,13 @@ from .instagram import (
 from .rendering import SocialRenderError, renderizar_conteudo_social
 from .rendering import _draw_text_box, _layout_text, _region, _text_boxes
 from .scheduler import estoque_pronto, estoque_pronto_por_tipo, media_type_for_slot, plano_geracao_por_deficit, preencher_agenda
-from .video_rendering import auditar_video_reel, renderizar_reel_social
+from .video_rendering import (
+    SocialVideoRenderError,
+    _ffmpeg_command,
+    _validate_output_file,
+    auditar_video_reel,
+    renderizar_reel_social,
+)
 
 
 User = get_user_model()
@@ -977,11 +984,115 @@ class SocialAutomationReelTests(TestCase):
         self.assertEqual(audit['duration'], 7)
         self.assertTrue(resumo['has_mp4'])
 
+    def test_comando_ffmpeg_reel_usa_frame_estatico_otimizado(self):
+        command = _ffmpeg_command('/usr/bin/ffmpeg', Path('/tmp/frame.jpg'), Path('/tmp/reel.mp4'), 7)
+
+        self.assertEqual(command[0], '/usr/bin/ffmpeg')
+        self.assertIn('-loop', command)
+        self.assertEqual(command[command.index('-loop') + 1], '1')
+        self.assertEqual(command[command.index('-framerate') + 1], '30')
+        self.assertEqual(command[command.index('-preset') + 1], 'veryfast')
+        self.assertEqual(command[command.index('-tune') + 1], 'stillimage')
+        self.assertEqual(command[command.index('-threads') + 1], '1')
+        self.assertEqual(Path(command[-1]).name, 'reel.mp4')
+
+    def test_render_reel_gera_um_frame_unico_e_salva_no_storage(self):
+        content = self._content()
+        captured = {}
+
+        def fake_run(command, **kwargs):
+            captured['command'] = command
+            captured['kwargs'] = kwargs
+            output_path = Path(command[-1])
+            output_path.write_bytes(b'\x00\x00\x00\x18ftypmp42' + (b'0' * 256))
+            captured['output_path'] = output_path
+            return subprocess.CompletedProcess(command, 0, stdout='', stderr='')
+
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            with mock.patch('social_automation.video_rendering.ffmpeg_path', return_value='/usr/bin/ffmpeg'), mock.patch(
+                'social_automation.video_rendering._compose_reel_frame',
+                return_value=Image.new('RGB', (1080, 1920), color='black'),
+            ), mock.patch('social_automation.video_rendering.subprocess.run', side_effect=fake_run):
+                renderizar_reel_social(content)
+
+            content.refresh_from_db()
+            self.assertTrue(content.final_video)
+            self.assertTrue(content.final_video.storage.exists(content.final_video.name))
+
+        command = captured['command']
+        self.assertEqual(command[command.index('-i') + 1], str(Path(command[command.index('-i') + 1])))
+        self.assertEqual(Path(command[command.index('-i') + 1]).name, 'frame.jpg')
+        self.assertEqual(Path(command[-1]).name, 'reel.mp4')
+        self.assertTrue(captured['kwargs']['check'])
+        self.assertEqual(captured['kwargs']['timeout'], 30)
+        self.assertFalse(captured['output_path'].exists())
+
+    def test_render_reel_retorna_erro_amigavel_em_timeout(self):
+        content = self._content()
+
+        with mock.patch('social_automation.video_rendering.ffmpeg_path', return_value='/usr/bin/ffmpeg'), mock.patch(
+            'social_automation.video_rendering._compose_reel_frame',
+            return_value=Image.new('RGB', (1080, 1920), color='black'),
+        ), mock.patch(
+            'social_automation.video_rendering.subprocess.run',
+            side_effect=subprocess.TimeoutExpired(cmd='ffmpeg', timeout=30),
+        ):
+            with self.assertRaisesMessage(SocialVideoRenderError, 'Nao foi possivel gerar o Reel'):
+                renderizar_reel_social(content)
+
+    def test_render_reel_retorna_erro_amigavel_em_falha_ffmpeg(self):
+        content = self._content()
+        error = subprocess.CalledProcessError(1, 'ffmpeg', stderr='falha controlada do encoder')
+
+        with mock.patch('social_automation.video_rendering.ffmpeg_path', return_value='/usr/bin/ffmpeg'), mock.patch(
+            'social_automation.video_rendering._compose_reel_frame',
+            return_value=Image.new('RGB', (1080, 1920), color='black'),
+        ), mock.patch('social_automation.video_rendering.subprocess.run', side_effect=error):
+            with self.assertRaisesMessage(SocialVideoRenderError, 'Nao foi possivel gerar o Reel'):
+                renderizar_reel_social(content)
+
+    def test_validacao_rejeita_mp4_vazio_e_acima_do_limite(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            empty_path = Path(temp_dir) / 'reel.mp4'
+            empty_path.write_bytes(b'')
+            with self.assertRaisesMessage(SocialVideoRenderError, 'vazio'):
+                _validate_output_file(empty_path)
+
+            large_path = Path(temp_dir) / 'grande.mp4'
+            large_path.write_bytes(b'123')
+            with override_settings(SOCIAL_REEL_MAX_FILE_MB=0):
+                with self.assertRaisesMessage(SocialVideoRenderError, 'tamanho maximo'):
+                    _validate_output_file(large_path)
+
     def test_render_reel_falha_controlada_sem_ffmpeg(self):
         content = self._content()
         with mock.patch('social_automation.video_rendering.ffmpeg_path', return_value=None):
             with self.assertRaises(SocialRenderError):
                 renderizar_reel_social(content)
+
+    def test_criacao_manual_de_reel_nao_derruba_interface_quando_render_falha(self):
+        image = self._image()
+        url = reverse('social_automation:profile_content_create', args=[self.profile.id])
+        payload = {
+            'profile': self.profile.id,
+            'media_type': SocialContent.MediaType.REEL,
+            'base_image': image.id,
+            'frase': 'Segunda-feira veio sem pedir licenca',
+            'legenda': 'Legenda',
+            'hashtags': '#laila',
+        }
+
+        with mock.patch(
+            'social_automation.views.renderizar_midia_social',
+            side_effect=SocialVideoRenderError('falha controlada'),
+        ):
+            response = self.client.post(url, payload)
+
+        self.assertEqual(response.status_code, 302)
+        content = SocialContent.objects.latest('id')
+        self.assertEqual(content.media_type, SocialContent.MediaType.REEL)
+        self.assertEqual(content.status, SocialContent.Status.RASCUNHO)
+        self.assertFalse(content.final_video)
 
 
 class SocialAutomationFullAutomationTests(TestCase):

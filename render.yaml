@@ -80,6 +80,8 @@ services:
         value: "20"
       - key: SOCIAL_REEL_DURATION_SECONDS
         value: "7"
+      - key: SOCIAL_REEL_RENDER_TIMEOUT_SECONDS
+        value: "30"
       - key: SOCIAL_AUTOMATION_CRON_SECRET
         sync: false
       - key: INSTAGRAM_ACCESS_TOKEN
