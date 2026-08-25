@@ -11,10 +11,11 @@ from django.db import transaction
 from django.utils import timezone
 
 from .generation import gerar_lote_conteudos
-from .instagram import InstagramAPIError, InstagramConfigurationError, InstagramPublishError, auditar_imagem_final, publicar_conteudo_instagram
+from .instagram import InstagramAPIError, InstagramConfigurationError, InstagramContainerPending, InstagramPublishError, auditar_imagem_final, publicar_conteudo_instagram
 from .models import SocialContent, SocialProfile
-from .scheduler import estoque_pronto, preencher_agenda, proxima_publicacao, reagendar_vencidos
+from .scheduler import estoque_pronto, estoque_pronto_por_tipo, plano_geracao_por_deficit, preencher_agenda, proxima_publicacao, reagendar_vencidos
 from .services import registrar_evento
+from .video_rendering import auditar_video_reel
 
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,8 @@ class ProfileTickSummary:
     retries: int = 0
     errors: int = 0
     inventory: int = 0
+    inventory_images: int = 0
+    inventory_reels: int = 0
     next_post: str | None = None
     status: str = 'ok'
     message: str = ''
@@ -120,8 +123,11 @@ def _process_profile(profile, *, now):
         profile_summary.rescheduled = reagendados.rescheduled
         schedule = preencher_agenda(profile, now=now)
         profile_summary.scheduled = schedule.scheduled
-        current_inventory = estoque_pronto(profile)
+        inventory_by_type = estoque_pronto_por_tipo(profile)
+        current_inventory = sum(inventory_by_type.values())
         profile_summary.inventory = current_inventory
+        profile_summary.inventory_images = inventory_by_type[SocialContent.MediaType.IMAGE]
+        profile_summary.inventory_reels = inventory_by_type[SocialContent.MediaType.REEL]
         logger.info(
             'social_automation.inventory profile_id=%s current=%s minimum=%s target=%s',
             profile.id,
@@ -136,9 +142,12 @@ def _process_profile(profile, *, now):
             profile_summary.errors += errors
             schedule_after = preencher_agenda(profile, now=now)
             profile_summary.scheduled += schedule_after.scheduled
-            current_inventory = estoque_pronto(profile)
+            inventory_by_type = estoque_pronto_por_tipo(profile)
+            current_inventory = sum(inventory_by_type.values())
         next_content = proxima_publicacao(profile, now=now)
         profile_summary.inventory = current_inventory
+        profile_summary.inventory_images = inventory_by_type[SocialContent.MediaType.IMAGE]
+        profile_summary.inventory_reels = inventory_by_type[SocialContent.MediaType.REEL]
         profile_summary.next_post = next_content.scheduled_at.isoformat() if next_content and next_content.scheduled_at else None
     except Exception as exc:
         profile_summary.errors += 1
@@ -183,6 +192,9 @@ def _publicar_devido(profile, *, now):
         registrar_evento(due, AutoEvent.PUBLICADO, None, 'Publicacao automatica concluida.')
         logger.info('social_automation.auto_publish_success content_id=%s external_post_id=%s', due.id, _mask(due.external_post_id))
         return True
+    except InstagramContainerPending as exc:
+        registrar_evento(due, AutoEvent.RETRY, None, str(exc)[:180])
+        logger.info('social_automation.auto_publish_pending content_id=%s', due.id)
     except (InstagramConfigurationError, InstagramPublishError) as exc:
         _registrar_erro_auto(due.id, exc, retry=False)
     except InstagramAPIError as exc:
@@ -234,12 +246,12 @@ def _retry_delay(tentativas):
 
 def _gerar_e_aprovar(profile, inventory):
     target_missing = max(0, settings.SOCIAL_AUTOMATION_QUEUE_TARGET - inventory)
-    batch = min(settings.SOCIAL_AUTOMATION_GENERATION_BATCH, target_missing)
-    if batch <= 0:
+    media_plan = plano_geracao_por_deficit(profile, settings.SOCIAL_AUTOMATION_QUEUE_TARGET, min(settings.SOCIAL_AUTOMATION_GENERATION_BATCH, target_missing))
+    if not media_plan:
         return 0, 0, 0
     tema = random.choice(AUTO_THEMES)
-    logger.info('social_automation.auto_generation_start profile_id=%s batch=%s', profile.id, batch)
-    result = gerar_lote_conteudos(profile, batch, tema, None)
+    logger.info('social_automation.auto_generation_start profile_id=%s batch=%s reels=%s images=%s', profile.id, len(media_plan), media_plan.count(SocialContent.MediaType.REEL), media_plan.count(SocialContent.MediaType.IMAGE))
+    result = gerar_lote_conteudos(profile, len(media_plan), tema, None, media_types=media_plan)
     approved = 0
     errors = result.falhas + result.bloqueados
     for content in result.conteudos:
@@ -268,10 +280,13 @@ def _quality_gate(content):
         return False
     if not content.frase.strip() or not content.legenda.strip():
         return False
-    if not content.base_image_id or not content.final_image:
+    if not content.base_image_id or not content.final_media_ready:
         return False
     try:
-        auditar_imagem_final(content)
+        if content.is_reel:
+            auditar_video_reel(content)
+        else:
+            auditar_imagem_final(content)
     except Exception:
         return False
     return True
@@ -280,6 +295,7 @@ def _quality_gate(content):
 def automacao_status_profile(profile):
     now = timezone.now()
     inventory = estoque_pronto(profile)
+    inventory_by_type = estoque_pronto_por_tipo(profile)
     next_content = proxima_publicacao(profile, now=now)
     last_published = profile.contents.filter(status=SocialContent.Status.PUBLICADO).order_by('-published_at').first()
     last_error = profile.contents.filter(status=SocialContent.Status.ERRO).order_by('-updated_at').first()
@@ -292,7 +308,11 @@ def automacao_status_profile(profile):
     return {
         'modo': profile.get_modo_operacao_display(),
         'posts_por_dia': profile.posts_por_dia,
+        'reels_por_dia': profile.reels_por_dia,
+        'fotos_por_dia': profile.fotos_por_dia,
         'estoque': inventory,
+        'estoque_fotos': inventory_by_type[SocialContent.MediaType.IMAGE],
+        'estoque_reels': inventory_by_type[SocialContent.MediaType.REEL],
         'minimo': settings.SOCIAL_AUTOMATION_QUEUE_MIN,
         'alvo': settings.SOCIAL_AUTOMATION_QUEUE_TARGET,
         'agendados_24h': profile.contents.filter(

@@ -15,6 +15,11 @@ def social_final_image_upload_to(instance, filename):
     return f'social/{profile_id}/posts/{filename}'
 
 
+def social_final_video_upload_to(instance, filename):
+    profile_id = instance.profile_id or 'sem-perfil'
+    return f'social/{profile_id}/reels/{filename}'
+
+
 def validate_timezone_name(value):
     if value not in available_timezones():
         raise ValidationError('Timezone invalido.')
@@ -50,6 +55,7 @@ class SocialProfile(models.Model):
     timezone = models.CharField(max_length=80, default='America/Sao_Paulo', validators=[validate_timezone_name])
     modo_operacao = models.CharField(max_length=30, choices=ModoOperacao.choices, default=ModoOperacao.SEMIAUTOMATICO)
     posts_por_dia = models.PositiveSmallIntegerField(default=2)
+    reels_por_dia = models.PositiveSmallIntegerField(default=0)
     horarios_publicacao = models.JSONField(default=list, validators=[validate_horarios_publicacao])
     estilo = models.TextField(blank=True)
     instrucoes_ia = models.TextField(blank=True)
@@ -66,6 +72,15 @@ class SocialProfile(models.Model):
 
     def __str__(self):
         return f'{self.nome} ({self.username})'
+
+    @property
+    def fotos_por_dia(self):
+        return max(0, self.posts_por_dia - self.reels_por_dia)
+
+    def clean(self):
+        super().clean()
+        if self.reels_por_dia > self.posts_por_dia:
+            raise ValidationError('Reels por dia nao pode ser maior que posts por dia.')
 
 
 class SocialBaseImage(models.Model):
@@ -160,6 +175,10 @@ class SocialBaseImage(models.Model):
 
 
 class SocialContent(models.Model):
+    class MediaType(models.TextChoices):
+        IMAGE = 'image', 'Foto'
+        REEL = 'reel', 'Reel'
+
     class Status(models.TextChoices):
         RASCUNHO = 'rascunho', 'Rascunho'
         APROVADO = 'aprovado', 'Aprovado'
@@ -171,7 +190,9 @@ class SocialContent(models.Model):
 
     profile = models.ForeignKey(SocialProfile, on_delete=models.CASCADE, related_name='contents')
     base_image = models.ForeignKey(SocialBaseImage, on_delete=models.SET_NULL, blank=True, null=True, related_name='contents')
+    media_type = models.CharField(max_length=10, choices=MediaType.choices, default=MediaType.IMAGE)
     final_image = models.ImageField(upload_to=social_final_image_upload_to, blank=True, null=True)
+    final_video = models.FileField(upload_to=social_final_video_upload_to, blank=True, null=True)
     frase = models.CharField(max_length=500)
     legenda = models.TextField(blank=True)
     hashtags = models.TextField(blank=True)
@@ -180,6 +201,7 @@ class SocialContent(models.Model):
     published_at = models.DateTimeField(blank=True, null=True)
     external_post_id = models.CharField(max_length=120, blank=True)
     external_permalink = models.URLField(blank=True)
+    instagram_container_id = models.CharField(max_length=120, blank=True)
     erro = models.TextField(blank=True)
     tentativas = models.PositiveSmallIntegerField(default=0)
     ultima_tentativa = models.DateTimeField(blank=True, null=True)
@@ -208,6 +230,16 @@ class SocialContent(models.Model):
     @property
     def pode_excluir_operacionalmente(self):
         return self.status in {self.Status.RASCUNHO, self.Status.REJEITADO, self.Status.APROVADO}
+
+    @property
+    def is_reel(self):
+        return self.media_type == self.MediaType.REEL
+
+    @property
+    def final_media_ready(self):
+        if self.is_reel:
+            return bool(self.final_video)
+        return bool(self.final_image)
 
 
 class SocialContentEvent(models.Model):

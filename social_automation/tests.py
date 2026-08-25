@@ -28,22 +28,28 @@ from .generation import GenerationResult, _image_contexts, gerar_lote_conteudos
 from .image_selection import selecionar_imagem_base
 from .instagram import (
     InstagramAPIError,
+    InstagramContainerPending,
     MEDIA_SIGNING_SALT,
     PUBLICADO_INSTAGRAM,
     auditar_imagem_final,
+    criar_container_reel,
     criar_container_imagem,
     gerar_assinatura_midia_meta,
     gerar_token_midia_temporaria,
     publicar_conteudo_instagram,
     resumir_image_url,
+    resumir_video_url,
     url_midia_meta_compat,
+    url_video_meta_compat,
     url_midia_temporaria,
+    validar_assinatura_video_meta,
     validar_assinatura_midia_meta,
     validar_token_midia_temporaria,
 )
 from .rendering import SocialRenderError, renderizar_conteudo_social
 from .rendering import _draw_text_box, _layout_text, _region, _text_boxes
-from .scheduler import estoque_pronto, preencher_agenda
+from .scheduler import estoque_pronto, estoque_pronto_por_tipo, media_type_for_slot, plano_geracao_por_deficit, preencher_agenda
+from .video_rendering import auditar_video_reel, renderizar_reel_social
 
 
 User = get_user_model()
@@ -62,6 +68,11 @@ def imagem_social(nome='social.jpg', tamanho=(1200, 900), cor='steelblue'):
     bytes_buffer = BytesIO()
     image.save(bytes_buffer, format='JPEG')
     return SimpleUploadedFile(nome, bytes_buffer.getvalue(), content_type='image/jpeg')
+
+
+def video_mp4_teste(nome='reel.mp4', tamanho=2048):
+    payload = b'\x00\x00\x00\x18ftypmp42' + (b'\x00' * max(tamanho - 12, 0))
+    return SimpleUploadedFile(nome, payload, content_type='video/mp4')
 
 
 class SocialAutomationPermissionTests(TestCase):
@@ -797,6 +808,182 @@ class SocialAutomationRenderingPositionTests(TestCase):
         self.assertIn('curta', contexts[0]['tamanho_recomendado_frase'])
 
 
+class SocialAutomationReelTests(TestCase):
+    def setUp(self):
+        self.staff = User.objects.create_user(username='staff-reel-social', password='senha', is_staff=True)
+        self.client.force_login(self.staff)
+        self.profile = SocialProfile.objects.create(
+            nome='Laila',
+            username='@lailapistola',
+            posts_por_dia=20,
+            reels_por_dia=5,
+            horarios_publicacao=[f'{hour:02d}:00' for hour in range(20)],
+        )
+
+    def _image(self):
+        return SocialBaseImage.objects.create(
+            profile=self.profile,
+            nome='Base Reel',
+            tags='laila',
+            text_position=SocialBaseImage.TextPosition.AUTO_SMART,
+            primary_text_box_x=8,
+            primary_text_box_y=58,
+            primary_text_box_width=42,
+            primary_text_box_height=24,
+            arquivo=imagem_social('base-reel.jpg', tamanho=(1400, 1100), cor='plum'),
+        )
+
+    def _content(self, media_type=SocialContent.MediaType.REEL):
+        return SocialContent.objects.create(
+            profile=self.profile,
+            base_image=self._image(),
+            media_type=media_type,
+            frase='Segunda-feira veio sem pedir licenca',
+            legenda='Legenda',
+            hashtags='#laila',
+        )
+
+    def test_media_type_image_default_e_reels_por_dia_valido(self):
+        content = SocialContent.objects.create(profile=self.profile, frase='Foto padrao')
+        self.assertEqual(content.media_type, SocialContent.MediaType.IMAGE)
+        self.assertEqual(self.profile.fotos_por_dia, 15)
+
+        self.profile.reels_por_dia = 21
+        with self.assertRaises(ValidationError):
+            self.profile.full_clean()
+
+    def test_scheduler_distribui_cinco_reels_em_vinte_slots(self):
+        sequence = [media_type_for_slot(index, 20, 5) for index in range(20)]
+        reel_indexes = [index for index, media_type in enumerate(sequence) if media_type == SocialContent.MediaType.REEL]
+
+        self.assertEqual(len(reel_indexes), 5)
+        self.assertEqual(reel_indexes, [3, 7, 11, 15, 19])
+
+    def test_estoque_separado_e_deficit_prioriza_reel(self):
+        image = self._image()
+        for index in range(44):
+            SocialContent.objects.create(
+                profile=self.profile,
+                base_image=image,
+                media_type=SocialContent.MediaType.IMAGE,
+                status=SocialContent.Status.APROVADO,
+                final_image=imagem_social(f'foto-{index}.jpg'),
+            )
+
+        estoque = estoque_pronto_por_tipo(self.profile)
+        plan = plano_geracao_por_deficit(self.profile, 60, 5)
+
+        self.assertEqual(estoque[SocialContent.MediaType.IMAGE], 44)
+        self.assertEqual(estoque[SocialContent.MediaType.REEL], 0)
+        self.assertEqual(len(plan), 5)
+        self.assertEqual(plan.count(SocialContent.MediaType.REEL), 5)
+
+    def test_video_url_assinada_entrega_mp4_com_content_length(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            content = self._content()
+            content.final_video = video_mp4_teste()
+            content.save(update_fields=['final_video'])
+            signature = url_video_meta_compat(content).split('/')[-1].removesuffix('.mp4')
+            expected_size = content.final_video.size
+
+            validado = validar_assinatura_video_meta(content.id, signature)
+            response = self.client.head(reverse('social_public_final_video_meta_compat', args=[content.id, signature]))
+
+        self.assertEqual(validado.id, content.id)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'video/mp4')
+        self.assertEqual(response['Content-Length'], str(expected_size))
+
+    @override_settings(PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com')
+    def test_container_reel_usa_payload_oficial(self):
+        captured = {}
+
+        def fake_request(method, path, params=None):
+            captured['method'] = method
+            captured['path'] = path
+            captured['params'] = params
+            return {'id': 'container-reel-1'}
+
+        with mock.patch('social_automation.instagram._request', side_effect=fake_request):
+            container_id = criar_container_reel('https://dashboard-ambar.onrender.com/social-media/ig-video/1/token.mp4', 'Legenda')
+
+        self.assertEqual(container_id, 'container-reel-1')
+        self.assertEqual(captured['params']['media_type'], 'REELS')
+        self.assertEqual(captured['params']['share_to_feed'], 'true')
+        self.assertIn('video_url', captured['params'])
+
+    @override_settings(PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com')
+    def test_publicacao_reel_pendente_persiste_container_sem_publicar(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            content = self._content()
+            content.status = SocialContent.Status.APROVADO
+            content.final_video = video_mp4_teste()
+            content.save(update_fields=['status', 'final_video'])
+
+            with mock.patch('social_automation.instagram.verificar_configuracao_instagram'), mock.patch(
+                'social_automation.instagram.obter_conta_instagram',
+                return_value={'username': 'lailapistola'},
+            ), mock.patch('social_automation.instagram.criar_container_reel', return_value='container-123') as create_mock, mock.patch(
+                'social_automation.instagram.status_container_pronto',
+                return_value=False,
+            ), mock.patch('social_automation.instagram.publicar_container') as publish_mock:
+                with self.assertRaises(InstagramContainerPending):
+                    __import__('social_automation.instagram').instagram.publicar_conteudo_instagram(content)
+
+            content.refresh_from_db()
+            self.assertEqual(content.instagram_container_id, 'container-123')
+            self.assertEqual(content.status, SocialContent.Status.AGENDADO)
+            create_mock.assert_called_once()
+            publish_mock.assert_not_called()
+
+    @override_settings(PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com')
+    def test_publicacao_reel_reusa_container_existente(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            content = self._content()
+            content.status = SocialContent.Status.APROVADO
+            content.instagram_container_id = 'container-existente'
+            content.final_video = video_mp4_teste()
+            content.save(update_fields=['status', 'instagram_container_id', 'final_video'])
+
+            with mock.patch('social_automation.instagram.verificar_configuracao_instagram'), mock.patch(
+                'social_automation.instagram.obter_conta_instagram',
+                return_value={'username': 'lailapistola'},
+            ), mock.patch('social_automation.instagram.criar_container_reel') as create_mock, mock.patch(
+                'social_automation.instagram.status_container_pronto',
+                return_value=True,
+            ), mock.patch('social_automation.instagram.publicar_container', return_value='media-1'), mock.patch(
+                'social_automation.instagram.obter_midia_publicada',
+                return_value={'id': 'media-1', 'permalink': 'https://instagram.com/reel/1'},
+            ):
+                __import__('social_automation.instagram').instagram.publicar_conteudo_instagram(content)
+
+            content.refresh_from_db()
+            self.assertEqual(content.status, SocialContent.Status.PUBLICADO)
+            self.assertEqual(content.external_post_id, 'media-1')
+            create_mock.assert_not_called()
+
+    def test_auditoria_video_reel_valida_mp4(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            content = self._content()
+            content.final_video = video_mp4_teste()
+            content.save(update_fields=['final_video'])
+
+            audit = auditar_video_reel(content)
+            resumo = resumir_video_url('https://dashboard-ambar.onrender.com/social-media/ig-video/1/token.mp4')
+
+        self.assertEqual(audit['format'], 'MP4')
+        self.assertEqual(audit['width'], 1080)
+        self.assertEqual(audit['height'], 1920)
+        self.assertEqual(audit['duration'], 7)
+        self.assertTrue(resumo['has_mp4'])
+
+    def test_render_reel_falha_controlada_sem_ffmpeg(self):
+        content = self._content()
+        with mock.patch('social_automation.video_rendering.ffmpeg_path', return_value=None):
+            with self.assertRaises(SocialRenderError):
+                renderizar_reel_social(content)
+
+
 class SocialAutomationFullAutomationTests(TestCase):
     def setUp(self):
         self.staff = User.objects.create_user(username='staff-auto-social', password='senha', is_staff=True)
@@ -894,7 +1081,7 @@ class SocialAutomationFullAutomationTests(TestCase):
 
                 calls = []
 
-                def fake_generation(profile, quantidade, tema, usuario):
+                def fake_generation(profile, quantidade, tema, usuario, media_types=None):
                     calls.append(quantidade)
                     return GenerationResult(solicitados=quantidade, criados=quantidade)
 

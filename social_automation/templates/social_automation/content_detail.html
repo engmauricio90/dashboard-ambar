@@ -13,7 +13,9 @@
         <div class="card shadow-sm mb-3">
             <div class="card-body">
                 <div class="d-flex gap-4 align-items-start flex-wrap">
-                    {% if content.final_image %}
+                    {% if content.final_video %}
+                        <video src="{{ content.final_video.url }}" class="social-preview-lg" controls muted playsinline></video>
+                    {% elif content.final_image %}
                         <img src="{{ content.final_image.url }}" class="social-preview-lg" alt="">
                     {% elif content.base_image %}
                         <img src="{{ content.base_image.arquivo.url }}" class="social-preview-lg" alt="">
@@ -22,6 +24,7 @@
                     {% endif %}
                     <div>
                         <span class="badge text-bg-secondary mb-2">{{ content.get_status_display }}</span>
+                        <span class="badge {% if content.media_type == 'reel' %}text-bg-primary{% else %}text-bg-light border{% endif %} mb-2">{{ content.get_media_type_display }}</span>
                         <h5>{{ content.frase }}</h5>
                         {% if content.legenda %}<p class="mb-2">{{ content.legenda|linebreaksbr }}</p>{% endif %}
                         {% if content.hashtags %}<p class="text-muted mb-0">{{ content.hashtags|linebreaksbr }}</p>{% endif %}
@@ -86,8 +89,10 @@
             <div class="card-header fw-bold">Dados</div>
             <div class="card-body small">
                 <div><strong>Criado:</strong> {{ content.created_at|date:'d/m/Y H:i' }}</div>
+                <div><strong>Tipo:</strong> {{ content.get_media_type_display }}</div>
                 <div><strong>Agendado:</strong> {{ content.scheduled_at|date:'d/m/Y H:i'|default:'-' }}</div>
                 <div><strong>Publicado:</strong> {{ content.published_at|date:'d/m/Y H:i'|default:'-' }}</div>
+                <div><strong>Container:</strong> {{ content.instagram_container_id|default:'-' }}</div>
                 <div><strong>ID externo:</strong> {{ content.external_post_id|default:'-' }}</div>
                 <div><strong>Permalink:</strong> {% if content.external_permalink %}<a href="{{ content.external_permalink }}" target="_blank">abrir</a>{% else %}-{% endif %}</div>
                 {% if content.erro %}<div class="mt-2 text-danger"><strong>Erro:</strong> {{ content.erro }}</div>{% endif %}

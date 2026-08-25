@@ -28,7 +28,8 @@
         <div class="row g-3">
             <div class="col-md-3"><div class="text-muted small">Modo</div><strong>{{ automacao.modo }}</strong></div>
             <div class="col-md-3"><div class="text-muted small">Posts/dia</div><strong>{{ automacao.posts_por_dia }}</strong></div>
-            <div class="col-md-3"><div class="text-muted small">Estoque pronto</div><strong>{{ automacao.estoque }} / {{ automacao.alvo }}</strong><div class="small text-muted">Minimo {{ automacao.minimo }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">Reels/dia</div><strong>{{ automacao.reels_por_dia }}</strong><div class="small text-muted">Fotos/dia {{ automacao.fotos_por_dia }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">Estoque pronto</div><strong>{{ automacao.estoque }} / {{ automacao.alvo }}</strong><div class="small text-muted">Fotos {{ automacao.estoque_fotos }} | Reels {{ automacao.estoque_reels }}</div></div>
             <div class="col-md-3"><div class="text-muted small">Agendados 24h</div><strong>{{ automacao.agendados_24h }}</strong></div>
             <div class="col-md-3"><div class="text-muted small">Proxima publicacao</div><strong>{% if automacao.proxima_publicacao %}{{ automacao.proxima_publicacao|date:'d/m/Y H:i' }}{% else %}-{% endif %}</strong></div>
             <div class="col-md-3"><div class="text-muted small">Ultima publicacao</div><strong>{% if automacao.ultima_publicacao %}{{ automacao.ultima_publicacao|date:'d/m/Y H:i' }}{% else %}-{% endif %}</strong></div>
@@ -53,7 +54,7 @@
         {% for content in contents %}
         <a href="{% url 'social_automation:content_detail' content.id %}" class="list-group-item list-group-item-action">
             <div class="d-flex justify-content-between gap-3">
-                <span><strong>{{ content.get_status_display }}</strong> - {{ content.frase|truncatechars:100 }}</span>
+                <span><span class="badge text-bg-light border">{{ content.get_media_type_display }}</span> <strong>{{ content.get_status_display }}</strong> - {{ content.frase|truncatechars:100 }}</span>
                 <span class="text-muted small">{{ content.created_at|date:'d/m/Y H:i' }}</span>
             </div>
         </a>

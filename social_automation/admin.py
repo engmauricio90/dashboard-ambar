@@ -12,7 +12,7 @@ class SocialBaseImageInline(admin.TabularInline):
 
 @admin.register(SocialProfile)
 class SocialProfileAdmin(admin.ModelAdmin):
-    list_display = ['nome', 'username', 'plataforma', 'modo_operacao', 'ativo', 'posts_por_dia', 'updated_at']
+    list_display = ['nome', 'username', 'plataforma', 'modo_operacao', 'ativo', 'posts_por_dia', 'reels_por_dia', 'updated_at']
     list_filter = ['plataforma', 'modo_operacao', 'ativo']
     search_fields = ['nome', 'username', 'estilo', 'instrucoes_ia']
     inlines = [SocialBaseImageInline]
@@ -43,10 +43,10 @@ class SocialContentEventInline(admin.TabularInline):
 
 @admin.register(SocialContent)
 class SocialContentAdmin(admin.ModelAdmin):
-    list_display = ['id', 'profile', 'status', 'scheduled_at', 'published_at', 'created_at']
-    list_filter = ['status', 'profile']
+    list_display = ['id', 'profile', 'media_type', 'status', 'scheduled_at', 'published_at', 'created_at']
+    list_filter = ['status', 'media_type', 'profile']
     search_fields = ['frase', 'legenda', 'hashtags', 'profile__nome', 'profile__username']
-    readonly_fields = ['created_at', 'updated_at', 'published_at', 'external_post_id', 'external_permalink', 'tentativas', 'ultima_tentativa']
+    readonly_fields = ['created_at', 'updated_at', 'published_at', 'external_post_id', 'external_permalink', 'instagram_container_id', 'tentativas', 'ultima_tentativa']
     inlines = [SocialContentEventInline]
 
 

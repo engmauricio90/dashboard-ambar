@@ -94,6 +94,7 @@ def gerar_conteudos_ia(profile, quantidade, tema, historico, image_contexts=None
         'Crie frases curtas para card, legenda complementar e hashtags. '
         'Considere as imagens-base disponiveis e o espaco de texto delas. '
         'Quando a area disponivel for pequena, gere frase curta; quando for media, frase media; quando for grande, a frase pode ser um pouco maior. '
+        'Se tipo_midia for REEL, gere uma unica frase ainda mais curta, sem roteiro, sem cenas e sem chamadas para audio. '
         'Priorize frases que caibam sem cobrir rosto/corpo da pessoa da foto. '
         'Evite repetir ideias, palavras e estruturas do historico. '
         f'Perfil: {profile.nome} ({profile.username}). '

@@ -76,6 +76,10 @@ services:
         value: "3"
       - key: SOCIAL_AUTOMATION_HARD_24H_CAP
         value: "30"
+      - key: SOCIAL_REEL_MAX_FILE_MB
+        value: "20"
+      - key: SOCIAL_REEL_DURATION_SECONDS
+        value: "7"
       - key: SOCIAL_AUTOMATION_CRON_SECRET
         sync: false
       - key: INSTAGRAM_ACCESS_TOKEN

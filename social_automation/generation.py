@@ -8,7 +8,7 @@ from django.utils import timezone
 from .ai import OpenAINotConfigured, formatar_hashtags, gerar_conteudos_ia, moderar_conteudo, normalizar_frase
 from .image_selection import selecionar_imagem_base
 from .models import SocialBaseImage, SocialContent
-from .rendering import CANVAS_SIZE, SocialRenderError, _text_boxes, renderizar_conteudo_social
+from .rendering import CANVAS_SIZE, SocialRenderError, _text_boxes, renderizar_midia_social
 from .services import registrar_evento
 
 
@@ -39,7 +39,7 @@ def _phrase_size(area_percent):
     return 'um pouco maior, ainda objetiva, preferencialmente ate 130 caracteres'
 
 
-def _image_contexts(profile):
+def _image_contexts(profile, media_type=SocialContent.MediaType.IMAGE):
     contexts = []
     for image in SocialBaseImage.objects.filter(profile=profile, ativa=True).order_by('vezes_usada', 'id')[:12]:
         box = _text_boxes(image)[0]
@@ -52,6 +52,7 @@ def _image_contexts(profile):
                 'posicao_texto': f"{box['name']} {box['align_vertical']} {box['align_horizontal']}",
                 'area_disponivel_percentual': area_percent,
                 'tamanho_recomendado_frase': _phrase_size(area_percent),
+                'tipo_midia': media_type,
             }
         )
     return contexts
@@ -63,7 +64,7 @@ def _duplicado(frase_normalizada, historico_normalizado, vistos):
     return any(_similar(frase_normalizada, item) for item in historico_normalizado | vistos)
 
 
-def gerar_lote_conteudos(profile, quantidade, tema, usuario):
+def gerar_lote_conteudos(profile, quantidade, tema, usuario, media_types=None):
     if not SocialBaseImage.objects.filter(profile=profile, ativa=True).exists():
         raise ValidationError('Cadastre ao menos uma imagem-base ativa antes de gerar conteudos.')
 
@@ -71,10 +72,14 @@ def gerar_lote_conteudos(profile, quantidade, tema, usuario):
     historico = _historico(profile)
     historico_normalizado = {normalizar_frase(item) for item in historico}
     result = GenerationResult(solicitados=quantidade)
-    gerados = gerar_conteudos_ia(profile, quantidade, tema, historico, image_contexts=_image_contexts(profile))
+    media_types = list(media_types or [])
+    if not media_types:
+        media_types = [SocialContent.MediaType.IMAGE] * quantidade
+    primary_media_type = 'mixed' if len(set(media_types)) > 1 else (media_types[0] if media_types else SocialContent.MediaType.IMAGE)
+    gerados = gerar_conteudos_ia(profile, quantidade, tema, historico, image_contexts=_image_contexts(profile, primary_media_type))
     vistos = set()
 
-    for item in gerados:
+    for index, item in enumerate(gerados):
         frase_normalizada = normalizar_frase(item.frase)
         if not frase_normalizada or _duplicado(frase_normalizada, historico_normalizado, vistos):
             result.duplicados += 1
@@ -90,16 +95,18 @@ def gerar_lote_conteudos(profile, quantidade, tema, usuario):
                 result.falhas += 1
                 result.mensagens.append('Nao havia imagem-base disponivel para um dos conteudos.')
                 continue
+            media_type = media_types[index] if index < len(media_types) else SocialContent.MediaType.IMAGE
             content = SocialContent.objects.create(
                 profile=profile,
                 base_image=imagem,
+                media_type=media_type,
                 frase=item.frase,
                 legenda=item.legenda,
                 hashtags=formatar_hashtags(item.hashtags),
                 status=SocialContent.Status.RASCUNHO,
             )
             try:
-                renderizar_conteudo_social(content)
+                renderizar_midia_social(content)
             except SocialRenderError as exc:
                 content.delete()
                 result.falhas += 1

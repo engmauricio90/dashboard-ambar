@@ -20,14 +20,16 @@ from .generation import gerar_lote_conteudos
 from .instagram import (
     InstagramAPIError,
     InstagramConfigurationError,
+    InstagramContainerPending,
     InstagramPublishError,
     obter_conta_instagram,
     publicar_conteudo_instagram,
     validar_assinatura_midia_meta,
+    validar_assinatura_video_meta,
     validar_token_midia_temporaria,
 )
 from .models import SocialBaseImage, SocialContent, SocialProfile
-from .rendering import SocialRenderError, renderizar_conteudo_social
+from .rendering import SocialRenderError, renderizar_midia_social
 from .services import (
     agendar_conteudo,
     aprovar_conteudo,
@@ -269,7 +271,7 @@ def content_create(request, profile_id=None):
             criar_evento_criacao(content, request.user)
             if content.base_image:
                 try:
-                    renderizar_conteudo_social(content)
+                    renderizar_midia_social(content)
                 except SocialRenderError as exc:
                     messages.warning(request, f'Rascunho salvo, mas o card final nao foi renderizado: {exc}')
             messages.success(request, 'Rascunho criado com sucesso.')
@@ -294,7 +296,7 @@ def content_update(request, content_id):
             registrar_edicao(content, request.user)
             if content.base_image and (content.frase != frase_original or content.base_image_id != base_image_original_id):
                 try:
-                    renderizar_conteudo_social(content)
+                    renderizar_midia_social(content)
                     messages.success(request, 'Conteudo atualizado e card renderizado novamente.')
                 except SocialRenderError as exc:
                     messages.warning(request, f'Conteudo atualizado, mas o card final nao foi renderizado: {exc}')
@@ -357,8 +359,8 @@ def profile_generate(request, profile_id):
 def content_render(request, content_id):
     content = get_object_or_404(_content_queryset(), pk=content_id)
     try:
-        renderizar_conteudo_social(content)
-        messages.success(request, 'Card renderizado novamente.')
+        renderizar_midia_social(content)
+        messages.success(request, 'Midia renderizada novamente.')
     except SocialRenderError as exc:
         messages.error(request, str(exc))
     return redirect('social_automation:content_detail', content_id=content.id)
@@ -403,6 +405,26 @@ def ig_final_image(request, content_id, signature):
     return response
 
 
+def ig_final_video(request, content_id, signature):
+    if request.method not in {'GET', 'HEAD'}:
+        return HttpResponseNotAllowed(['GET', 'HEAD'])
+    try:
+        content = validar_assinatura_video_meta(content_id, signature)
+    except ValidationError as exc:
+        raise Http404 from exc
+    if not content.final_video:
+        raise Http404
+    with content.final_video.storage.open(content.final_video.name, 'rb') as arquivo:
+        video_bytes = arquivo.read()
+    logger.info('signed_video_fetch content_id=%s method=%s bytes=%s', content.id, request.method, len(video_bytes))
+    body = b'' if request.method == 'HEAD' else video_bytes
+    response = HttpResponse(body, content_type='video/mp4')
+    response['Content-Length'] = str(len(video_bytes))
+    response['Cache-Control'] = 'private, max-age=0, no-store'
+    response['X-Content-Type-Options'] = 'nosniff'
+    return response
+
+
 @staff_required
 @require_POST
 def content_publish_instagram(request, content_id):
@@ -410,6 +432,8 @@ def content_publish_instagram(request, content_id):
     try:
         publicar_conteudo_instagram(content, request.user)
         messages.success(request, 'Conteudo publicado no Instagram com sucesso.')
+    except InstagramContainerPending as exc:
+        messages.warning(request, str(exc))
     except (InstagramConfigurationError, InstagramAPIError, InstagramPublishError) as exc:
         messages.error(request, str(exc))
     return redirect('social_automation:content_detail', content_id=content.id)

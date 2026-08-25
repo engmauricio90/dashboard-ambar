@@ -213,7 +213,7 @@ def _inner_region(region):
 
 
 def _apply_gradient(overlay, position, region):
-    width, height = CANVAS_SIZE
+    width, height = overlay.size
     pixels = ImageDraw.Draw(overlay)
     max_alpha = 120
     if position in {'auto', 'bottom'}:
@@ -255,7 +255,8 @@ def _draw_text_box(overlay, text, box):
     else:
         y = inner[1] + max((inner[3] - text_height) // 2, 0)
 
-    text_layer = Image.new('RGBA', CANVAS_SIZE, (0, 0, 0, 0))
+    canvas_size = overlay.size
+    text_layer = Image.new('RGBA', canvas_size, (0, 0, 0, 0))
     text_draw = ImageDraw.Draw(text_layer)
     for line in lines:
         width = _text_width(text_draw, line, font)
@@ -269,9 +270,9 @@ def _draw_text_box(overlay, text, box):
         text_draw.text((x, y), line, font=font, fill=(255, 255, 255, 255), stroke_width=3, stroke_fill=(0, 0, 0, 170))
         y += line_height
 
-    mask = Image.new('L', CANVAS_SIZE, 0)
+    mask = Image.new('L', canvas_size, 0)
     ImageDraw.Draw(mask).rectangle((region[0], region[1], region[0] + region[2], region[1] + region[3]), fill=255)
-    clipped = Image.composite(text_layer, Image.new('RGBA', CANVAS_SIZE, (0, 0, 0, 0)), mask)
+    clipped = Image.composite(text_layer, Image.new('RGBA', canvas_size, (0, 0, 0, 0)), mask)
     overlay.alpha_composite(clipped)
     return {
         'box': box['name'],
@@ -315,3 +316,11 @@ def renderizar_conteudo_social(content):
     filename = f'social/{content.profile_id}/posts/{uuid4().hex}.jpg'
     content.final_image.save(filename, ContentFile(buffer.getvalue()), save=True)
     return content
+
+
+def renderizar_midia_social(content):
+    if getattr(content, 'is_reel', False):
+        from .video_rendering import renderizar_reel_social
+
+        return renderizar_reel_social(content)
+    return renderizar_conteudo_social(content)

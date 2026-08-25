@@ -39,6 +39,7 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
             'timezone',
             'modo_operacao',
             'posts_por_dia',
+            'reels_por_dia',
             'estilo',
             'instrucoes_ia',
             'responder_comentarios',
@@ -63,6 +64,8 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
         self.fields['plataforma'].widget.attrs['class'] = 'form-select'
         self.fields['modo_operacao'].widget.attrs['class'] = 'form-select'
         self.fields['timezone'].widget.attrs['class'] = 'form-select'
+        self.fields['reels_por_dia'].required = False
+        self.fields['reels_por_dia'].initial = self.instance.reels_por_dia if self.instance and self.instance.pk else 0
 
     def clean_horarios_texto(self):
         raw = self.cleaned_data.get('horarios_texto') or ''
@@ -78,6 +81,17 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
         if valor < 1:
             raise forms.ValidationError('Informe pelo menos 1 post por dia.')
         return valor
+
+    def clean_reels_por_dia(self):
+        return self.cleaned_data.get('reels_por_dia') or 0
+
+    def clean(self):
+        cleaned = super().clean()
+        posts = cleaned.get('posts_por_dia') or 0
+        reels = cleaned.get('reels_por_dia') or 0
+        if reels > posts:
+            raise forms.ValidationError('Reels por dia nao pode ser maior que posts por dia.')
+        return cleaned
 
     def save(self, commit=True):
         instance = super().save(commit=False)
@@ -199,7 +213,7 @@ class SocialBaseImageForm(BootstrapMixin, forms.ModelForm):
 class SocialContentForm(BootstrapMixin, forms.ModelForm):
     class Meta:
         model = SocialContent
-        fields = ['profile', 'base_image', 'frase', 'legenda', 'hashtags']
+        fields = ['profile', 'media_type', 'base_image', 'frase', 'legenda', 'hashtags']
         widgets = {
             'frase': forms.Textarea(attrs={'rows': 3}),
             'legenda': forms.Textarea(attrs={'rows': 4}),
@@ -220,6 +234,9 @@ class SocialContentForm(BootstrapMixin, forms.ModelForm):
         self._apply_bootstrap()
         if not isinstance(self.fields['profile'].widget, forms.HiddenInput):
             self.fields['profile'].widget.attrs['class'] = 'form-select'
+        self.fields['media_type'].required = False
+        self.fields['media_type'].initial = SocialContent.MediaType.IMAGE
+        self.fields['media_type'].widget.attrs['class'] = 'form-select'
         self.fields['base_image'].widget.attrs['class'] = 'form-select'
 
     def clean(self):
@@ -229,6 +246,9 @@ class SocialContentForm(BootstrapMixin, forms.ModelForm):
         if base_image and profile and base_image.profile_id != profile.id:
             raise forms.ValidationError('A imagem-base precisa pertencer ao perfil selecionado.')
         return cleaned
+
+    def clean_media_type(self):
+        return self.cleaned_data.get('media_type') or SocialContent.MediaType.IMAGE
 
 
 class SocialScheduleForm(BootstrapMixin, forms.Form):

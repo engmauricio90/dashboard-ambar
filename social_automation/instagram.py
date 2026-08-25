@@ -5,6 +5,7 @@ import time
 import urllib.parse
 import urllib.request
 import urllib.error
+from datetime import timedelta
 from hashlib import sha256
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from PIL import Image
 
 from .models import SocialContent
 from .services import registrar_evento
+from .video_rendering import auditar_video_reel
 
 
 logger = logging.getLogger(__name__)
@@ -25,6 +27,7 @@ logger = logging.getLogger(__name__)
 GRAPH_HOST = 'https://graph.instagram.com'
 MEDIA_SIGNING_SALT = 'social-automation-instagram-media'
 MEDIA_META_SIGNING_SALT = 'social-automation-instagram-meta-media'
+VIDEO_META_SIGNING_SALT = 'social-automation-instagram-meta-video'
 PUBLICADO_INSTAGRAM = 'publicado_instagram'
 
 
@@ -46,6 +49,10 @@ class InstagramAPIError(Exception):
 
 
 class InstagramPublishError(Exception):
+    pass
+
+
+class InstagramContainerPending(Exception):
     pass
 
 
@@ -142,6 +149,7 @@ def _sanitize_signed_urls(text):
         return ''
     text = str(text)
     text = re.sub(r'(/social-media/ig/\d+/)[^\s"\']+(\.jpg)?', r'\1[signed-token]\2', text)
+    text = re.sub(r'(/social-media/ig-video/\d+/)[^\s"\']+(\.mp4)?', r'\1[signed-token]\2', text)
     text = re.sub(r'(/social-media/public-jpg/)[^\s"\']+(/imagem\.jpg)?', r'\1[signed-token]\2', text)
     text = re.sub(r'(/social-media/public/)[^\s"\']+', r'\1[signed-token]/', text)
     return text
@@ -165,6 +173,23 @@ def resumir_image_url(image_url):
         'length': len(image_url),
         'sha256': sha256(image_url.encode('utf-8')).hexdigest(),
         'has_jpg': path.lower().endswith('.jpg') or path.lower().endswith('.jpeg'),
+    }
+
+
+def resumir_video_url(video_url):
+    parsed = urllib.parse.urlparse(video_url)
+    path = parsed.path or ''
+    if re.search(r'/social-media/ig-video/\d+/', path):
+        path_structure = re.sub(r'(/social-media/ig-video/\d+/).+(\.mp4)$', r'\1[signed-token]\2', path)
+    else:
+        path_structure = path
+    return {
+        'scheme': parsed.scheme,
+        'host': parsed.netloc,
+        'path_structure': path_structure,
+        'length': len(video_url),
+        'sha256': sha256(video_url.encode('utf-8')).hexdigest(),
+        'has_mp4': path.lower().endswith('.mp4'),
     }
 
 
@@ -200,6 +225,16 @@ def gerar_assinatura_midia_meta(content):
     prefix = f'{content.id}:'
     if not signed_value.startswith(prefix):
         raise InstagramPublishError('Nao foi possivel gerar a assinatura temporaria da midia.')
+    return signed_value[len(prefix):]
+
+
+def gerar_assinatura_video_meta(content):
+    if not content.final_video:
+        raise InstagramPublishError('Renderize o Reel antes de publicar.')
+    signed_value = signing.TimestampSigner(salt=VIDEO_META_SIGNING_SALT).sign(str(content.id))
+    prefix = f'{content.id}:'
+    if not signed_value.startswith(prefix):
+        raise InstagramPublishError('Nao foi possivel gerar a assinatura temporaria do video.')
     return signed_value[len(prefix):]
 
 
@@ -260,6 +295,23 @@ def validar_assinatura_midia_meta(content_id, signature):
     return content
 
 
+def validar_assinatura_video_meta(content_id, signature):
+    signed_value = f'{content_id}:{signature}'
+    try:
+        unsigned = signing.TimestampSigner(salt=VIDEO_META_SIGNING_SALT).unsign(
+            signed_value,
+            max_age=settings.INSTAGRAM_MEDIA_URL_TTL_SECONDS,
+        )
+    except signing.BadSignature as exc:
+        raise ValidationError('Assinatura invalida ou expirada.') from exc
+    if str(unsigned) != str(content_id):
+        raise ValidationError('Assinatura invalida ou expirada.')
+    content = SocialContent.objects.filter(pk=content_id).first()
+    if not content or not content.final_video:
+        raise ValidationError('Assinatura invalida ou expirada.')
+    return content
+
+
 def url_midia_meta_compat(content):
     base_url = (settings.PLATFORM_BASE_URL or '').rstrip('/')
     if not base_url.startswith('https://'):
@@ -267,6 +319,15 @@ def url_midia_meta_compat(content):
     auditar_imagem_final(content)
     signature = gerar_assinatura_midia_meta(content)
     return f'{base_url}{reverse("social_public_final_image_meta_compat", args=[content.id, signature])}'
+
+
+def url_video_meta_compat(content):
+    base_url = (settings.PLATFORM_BASE_URL or '').rstrip('/')
+    if not base_url.startswith('https://'):
+        raise InstagramConfigurationError('Configure PLATFORM_BASE_URL com uma URL HTTPS publica antes de publicar.')
+    auditar_video_reel(content)
+    signature = gerar_assinatura_video_meta(content)
+    return f'{base_url}{reverse("social_public_final_video_meta_compat", args=[content.id, signature])}'
 
 
 def url_midia_temporaria(content, *, com_extensao_jpg=False, legacy=False):
@@ -324,6 +385,26 @@ def criar_container_imagem(image_url, caption):
     return container_id
 
 
+def criar_container_reel(video_url, caption):
+    payload = {'media_type': 'REELS', 'video_url': video_url, 'caption': caption, 'share_to_feed': 'true'}
+    resumo = resumir_video_url(video_url)
+    logger.info(
+        'Instagram creating reel container endpoint=%s content_type=video video_url_scheme=%s video_url_host=%s video_url_path_structure=%s video_url_length=%s video_url_sha256=%s',
+        f'{_ig_user_id()}/media',
+        resumo['scheme'],
+        resumo['host'],
+        resumo['path_structure'],
+        resumo['length'],
+        resumo['sha256'],
+    )
+    data = _request('POST', f'{_ig_user_id()}/media', payload)
+    container_id = data.get('id')
+    if not container_id:
+        raise InstagramAPIError('A API do Instagram nao retornou o container de Reel.')
+    logger.info('Instagram reel container created container_id=%s', container_id)
+    return container_id
+
+
 def consultar_container(container_id):
     return _request('GET', container_id, {'fields': 'id,status_code'})
 
@@ -339,6 +420,16 @@ def aguardar_container_pronto(container_id, attempts=5, interval=3):
         if attempt < attempts - 1:
             time.sleep(interval)
     raise InstagramAPIError('Container de midia nao ficou pronto dentro do tempo esperado.')
+
+
+def status_container_pronto(container_id):
+    data = consultar_container(container_id)
+    status_code = data.get('status_code')
+    if status_code in {'FINISHED', 'PUBLISHED'}:
+        return True
+    if status_code in {'ERROR', 'EXPIRED'}:
+        raise InstagramAPIError(f'Container de midia retornou status {status_code}.')
+    return False
 
 
 def publicar_container(container_id):
@@ -369,8 +460,8 @@ def _marcar_publicando(content_id):
         content = SocialContent.objects.select_for_update().select_related('profile').get(pk=content_id)
         if content.status not in {SocialContent.Status.APROVADO, SocialContent.Status.AGENDADO, SocialContent.Status.ERRO}:
             raise InstagramPublishError('Somente conteudos aprovados, agendados ou em erro podem ser publicados.')
-        if not content.final_image:
-            raise InstagramPublishError('Renderize o card final antes de publicar.')
+        if not content.final_media_ready:
+            raise InstagramPublishError('Renderize a midia final antes de publicar.')
         if content.external_post_id:
             raise InstagramPublishError('Este conteudo ja possui publicacao vinculada.')
         validar_username_profile(content)
@@ -382,6 +473,24 @@ def _marcar_publicando(content_id):
         return content
 
 
+def _salvar_container_reel(content_id, container_id):
+    with transaction.atomic():
+        content = SocialContent.objects.select_for_update().get(pk=content_id)
+        content.instagram_container_id = container_id
+        content.save(update_fields=['instagram_container_id', 'updated_at'])
+        return content
+
+
+def _marcar_reel_pendente(content_id, message='Container de Reel ainda em processamento.'):
+    with transaction.atomic():
+        content = SocialContent.objects.select_for_update().get(pk=content_id)
+        content.status = SocialContent.Status.AGENDADO
+        content.scheduled_at = timezone.now() + timedelta(minutes=10)
+        content.erro = message
+        content.save(update_fields=['status', 'scheduled_at', 'erro', 'updated_at'])
+        return content
+
+
 def _marcar_publicado(content_id, media_id, permalink, usuario=None):
     with transaction.atomic():
         content = SocialContent.objects.select_for_update().get(pk=content_id)
@@ -389,8 +498,9 @@ def _marcar_publicado(content_id, media_id, permalink, usuario=None):
         content.published_at = timezone.now()
         content.external_post_id = media_id
         content.external_permalink = permalink or ''
+        content.instagram_container_id = ''
         content.erro = ''
-        content.save(update_fields=['status', 'published_at', 'external_post_id', 'external_permalink', 'erro', 'updated_at'])
+        content.save(update_fields=['status', 'published_at', 'external_post_id', 'external_permalink', 'instagram_container_id', 'erro', 'updated_at'])
         registrar_evento(content, PUBLICADO_INSTAGRAM, usuario, f'Media ID: {media_id}')
         return content
 
@@ -411,14 +521,28 @@ def publicar_conteudo_instagram(content, usuario=None):
     try:
         verificar_configuracao_instagram()
         obter_conta_instagram()
-        auditar_imagem_final(content)
-        image_url = url_midia_temporaria(content)
         caption = montar_caption(content)
-        container_id = criar_container_imagem(image_url, caption)
-        aguardar_container_pronto(container_id)
+        if content.is_reel:
+            auditar_video_reel(content)
+            if content.instagram_container_id:
+                container_id = content.instagram_container_id
+            else:
+                video_url = url_video_meta_compat(content)
+                container_id = criar_container_reel(video_url, caption)
+                _salvar_container_reel(content.id, container_id)
+            if not status_container_pronto(container_id):
+                _marcar_reel_pendente(content.id)
+                raise InstagramContainerPending('Container de Reel ainda em processamento; publicacao sera retomada no proximo tick.')
+        else:
+            auditar_imagem_final(content)
+            image_url = url_midia_temporaria(content)
+            container_id = criar_container_imagem(image_url, caption)
+            aguardar_container_pronto(container_id)
         media_id = publicar_container(container_id)
         media = obter_midia_publicada(media_id)
         return _marcar_publicado(content.id, media_id, media.get('permalink'), usuario)
+    except InstagramContainerPending:
+        raise
     except Exception as exc:
         _marcar_erro(content.id, str(exc))
         if isinstance(exc, (InstagramConfigurationError, InstagramAPIError, InstagramPublishError)):

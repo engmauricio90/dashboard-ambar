@@ -14,6 +14,7 @@
             {% else %}
             {{ form.profile }}
             {% endif %}
+            <div class="col-md-3"><label class="form-label">{{ form.media_type.label }}</label>{{ form.media_type }}{{ form.media_type.errors }}</div>
             <div class="col-md-6"><label class="form-label">{{ form.base_image.label }}</label>{{ form.base_image }}{{ form.base_image.errors }}</div>
             <div class="col-12"><label class="form-label">{{ form.frase.label }}</label>{{ form.frase }}{{ form.frase.errors }}</div>
             <div class="col-md-7"><label class="form-label">{{ form.legenda.label }}</label>{{ form.legenda }}</div>
