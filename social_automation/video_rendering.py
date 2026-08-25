@@ -10,7 +10,7 @@ from django.conf import settings
 from django.core.files.base import ContentFile
 from PIL import Image, ImageFilter, ImageOps
 
-from .rendering import SocialRenderError, _apply_gradient, _draw_text_box, _text_boxes
+from .rendering import CANVAS_SIZE, SocialRenderError, _apply_gradient, _draw_text_box, _reel_text_boxes
 
 
 REEL_SIZE = (1080, 1920)
@@ -60,11 +60,12 @@ def _compose_reel_frame(content):
     y = 170
     frame.alpha_composite(foreground, (x, y))
 
-    scale_x = REEL_SIZE[0] / 1080
-    scale_y = REEL_SIZE[1] / 1080
     boxes = []
-    for box in _text_boxes(content.base_image):
+    for box in _reel_text_boxes(content.base_image):
         region = box['region']
+        source_canvas = box.get('source_canvas') or CANVAS_SIZE
+        scale_x = REEL_SIZE[0] / source_canvas[0]
+        scale_y = REEL_SIZE[1] / source_canvas[1]
         scaled = (
             round(region[0] * scale_x),
             round(region[1] * scale_y),

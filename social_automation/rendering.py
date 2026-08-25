@@ -11,6 +11,7 @@ class SocialRenderError(Exception):
 
 
 CANVAS_SIZE = (1080, 1080)
+REEL_CANVAS_SIZE = (1080, 1920)
 SAFE_MARGIN = 78
 AUTO_POSITION = 'bottom'
 MAX_FONT_SIZE = 72
@@ -123,12 +124,12 @@ def _region(position):
     return (SAFE_MARGIN, 626, 924, 354), 'center'
 
 
-def _percent_region(x, y, width, height):
+def _percent_region(x, y, width, height, canvas_size=CANVAS_SIZE):
     return (
-        max(0, min(CANVAS_SIZE[0], round(CANVAS_SIZE[0] * float(x) / 100))),
-        max(0, min(CANVAS_SIZE[1], round(CANVAS_SIZE[1] * float(y) / 100))),
-        max(1, min(CANVAS_SIZE[0], round(CANVAS_SIZE[0] * float(width) / 100))),
-        max(1, min(CANVAS_SIZE[1], round(CANVAS_SIZE[1] * float(height) / 100))),
+        max(0, min(canvas_size[0], round(canvas_size[0] * float(x) / 100))),
+        max(0, min(canvas_size[1], round(canvas_size[1] * float(y) / 100))),
+        max(1, min(canvas_size[0], round(canvas_size[0] * float(width) / 100))),
+        max(1, min(canvas_size[1], round(canvas_size[1] * float(height) / 100))),
     )
 
 
@@ -136,51 +137,79 @@ def _normalize_align(value, default='center'):
     return value if value in {'left', 'center', 'right', 'top', 'middle', 'bottom'} else default
 
 
-def _region_gradient_position(region):
+def _region_gradient_position(region, canvas_size=CANVAS_SIZE):
     x, y, width, height = region
     center_x = x + width / 2
     center_y = y + height / 2
-    if center_y < CANVAS_SIZE[1] * 0.35:
+    if center_y < canvas_size[1] * 0.35:
         return 'top'
-    if center_y > CANVAS_SIZE[1] * 0.65:
+    if center_y > canvas_size[1] * 0.65:
         return 'bottom'
-    if center_x < CANVAS_SIZE[0] * 0.5:
+    if center_x < canvas_size[0] * 0.5:
         return 'left'
     return 'right'
 
 
-def _configured_text_boxes(base_image):
+def _box_configured(base_image, prefix):
+    return all(
+        getattr(base_image, f'{prefix}_{suffix}', None) is not None
+        for suffix in ['x', 'y', 'width', 'height']
+    )
+
+
+def _configured_text_boxes(base_image, *, media_type='image', canvas_size=CANVAS_SIZE):
     boxes = []
-    if getattr(base_image, 'primary_text_box_configured', False):
+    if media_type == 'reel':
+        primary_prefix = 'reel_primary_text_box'
+        secondary_prefix = 'reel_secondary_text_box'
+        primary_align_h = 'reel_text_align_horizontal'
+        primary_align_v = 'reel_text_align_vertical'
+        secondary_align_h = 'reel_secondary_text_align_horizontal'
+        secondary_align_v = 'reel_secondary_text_align_vertical'
+    else:
+        primary_prefix = 'primary_text_box'
+        secondary_prefix = 'secondary_text_box'
+        primary_align_h = 'text_align_horizontal'
+        primary_align_v = 'text_align_vertical'
+        secondary_align_h = 'secondary_text_align_horizontal'
+        secondary_align_v = 'secondary_text_align_vertical'
+
+    if _box_configured(base_image, primary_prefix):
         region = _percent_region(
-            base_image.primary_text_box_x,
-            base_image.primary_text_box_y,
-            base_image.primary_text_box_width,
-            base_image.primary_text_box_height,
+            getattr(base_image, f'{primary_prefix}_x'),
+            getattr(base_image, f'{primary_prefix}_y'),
+            getattr(base_image, f'{primary_prefix}_width'),
+            getattr(base_image, f'{primary_prefix}_height'),
+            canvas_size,
         )
         boxes.append(
             {
                 'name': 'primary',
                 'region': region,
-                'align_horizontal': _normalize_align(base_image.text_align_horizontal, 'center'),
-                'align_vertical': _normalize_align(base_image.text_align_vertical, 'middle'),
-                'gradient_position': _region_gradient_position(region),
+                'align_horizontal': _normalize_align(getattr(base_image, primary_align_h), 'center'),
+                'align_vertical': _normalize_align(getattr(base_image, primary_align_v), 'middle'),
+                'gradient_position': _region_gradient_position(region, canvas_size),
+                'source_canvas': canvas_size,
+                'layout_media_type': media_type,
             }
         )
-    if getattr(base_image, 'secondary_text_box_configured', False):
+    if _box_configured(base_image, secondary_prefix):
         region = _percent_region(
-            base_image.secondary_text_box_x,
-            base_image.secondary_text_box_y,
-            base_image.secondary_text_box_width,
-            base_image.secondary_text_box_height,
+            getattr(base_image, f'{secondary_prefix}_x'),
+            getattr(base_image, f'{secondary_prefix}_y'),
+            getattr(base_image, f'{secondary_prefix}_width'),
+            getattr(base_image, f'{secondary_prefix}_height'),
+            canvas_size,
         )
         boxes.append(
             {
                 'name': 'secondary',
                 'region': region,
-                'align_horizontal': _normalize_align(base_image.secondary_text_align_horizontal, 'center'),
-                'align_vertical': _normalize_align(base_image.secondary_text_align_vertical, 'middle'),
-                'gradient_position': _region_gradient_position(region),
+                'align_horizontal': _normalize_align(getattr(base_image, secondary_align_h), 'center'),
+                'align_vertical': _normalize_align(getattr(base_image, secondary_align_v), 'middle'),
+                'gradient_position': _region_gradient_position(region, canvas_size),
+                'source_canvas': canvas_size,
+                'layout_media_type': media_type,
             }
         )
     return boxes
@@ -197,13 +226,20 @@ def _legacy_text_boxes(base_image):
             'align_horizontal': align,
             'align_vertical': 'middle',
             'gradient_position': gradient_position,
+            'source_canvas': CANVAS_SIZE,
+            'layout_media_type': 'image',
         }
     ]
 
 
 def _text_boxes(base_image):
-    configured = _configured_text_boxes(base_image)
+    configured = _configured_text_boxes(base_image, media_type='image', canvas_size=CANVAS_SIZE)
     return configured or _legacy_text_boxes(base_image)
+
+
+def _reel_text_boxes(base_image):
+    configured = _configured_text_boxes(base_image, media_type='reel', canvas_size=REEL_CANVAS_SIZE)
+    return configured or _text_boxes(base_image)
 
 
 def _inner_region(region):

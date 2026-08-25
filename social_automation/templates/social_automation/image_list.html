@@ -16,8 +16,8 @@
             <div class="card-body">
                 <h6 class="mb-1">{{ image.nome }}</h6>
                 <p class="text-muted small mb-2">{{ image.tags|default:'Sem tags' }}</p>
-                <div class="small">Texto: {{ image.get_text_position_display }}</div>
-                <div class="small">Caixa: {% if image.primary_text_box_configured %}{{ image.primary_text_box_x }}%, {{ image.primary_text_box_y }}%, {{ image.primary_text_box_width }}% x {{ image.primary_text_box_height }}%{% else %}fallback antigo{% endif %}</div>
+                <div class="small"><strong>Foto:</strong> {% if image.primary_text_box_configured %}{{ image.get_text_position_display }} - {{ image.primary_text_box_x }}%, {{ image.primary_text_box_y }}%, {{ image.primary_text_box_width }}% x {{ image.primary_text_box_height }}%{% else %}automatica{% endif %}</div>
+                <div class="small"><strong>Reel:</strong> {% if image.reel_primary_text_box_configured %}{{ image.get_reel_text_position_display }} - {{ image.reel_primary_text_box_x }}%, {{ image.reel_primary_text_box_y }}%, {{ image.reel_primary_text_box_width }}% x {{ image.reel_primary_text_box_height }}%{% else %}automatico{% endif %}</div>
                 <div class="small">Usos: {{ image.vezes_usada }}</div>
                 <div class="small">Ultimo uso: {{ image.ultima_utilizacao|date:'d/m/Y H:i'|default:'-' }}</div>
             </div>

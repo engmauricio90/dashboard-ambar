@@ -110,6 +110,16 @@ class SocialBaseImageForm(BootstrapMixin, forms.ModelForm):
         SocialBaseImage.TextBoxPreset.BOTTOM_LEFT: (7, 60, 43, 32),
         SocialBaseImage.TextBoxPreset.BOTTOM_RIGHT: (50, 60, 43, 32),
     }
+    REEL_PRESET_BOXES = {
+        SocialBaseImage.ReelTextBoxPreset.TOP_LEFT: (7, 10, 40, 20),
+        SocialBaseImage.ReelTextBoxPreset.TOP_CENTER: (18, 10, 64, 18),
+        SocialBaseImage.ReelTextBoxPreset.TOP_RIGHT: (53, 10, 38, 20),
+        SocialBaseImage.ReelTextBoxPreset.CENTER_LEFT: (7, 38, 40, 22),
+        SocialBaseImage.ReelTextBoxPreset.CENTER_RIGHT: (53, 38, 38, 22),
+        SocialBaseImage.ReelTextBoxPreset.BOTTOM_LEFT: (7, 66, 44, 20),
+        SocialBaseImage.ReelTextBoxPreset.BOTTOM_CENTER: (15, 66, 70, 20),
+        SocialBaseImage.ReelTextBoxPreset.BOTTOM_RIGHT: (51, 66, 40, 20),
+    }
 
     class Meta:
         model = SocialBaseImage
@@ -131,28 +141,57 @@ class SocialBaseImageForm(BootstrapMixin, forms.ModelForm):
             'secondary_text_box_height',
             'secondary_text_align_horizontal',
             'secondary_text_align_vertical',
+            'reel_text_position',
+            'reel_text_box_preset',
+            'reel_primary_text_box_x',
+            'reel_primary_text_box_y',
+            'reel_primary_text_box_width',
+            'reel_primary_text_box_height',
+            'reel_text_align_horizontal',
+            'reel_text_align_vertical',
+            'reel_secondary_text_box_x',
+            'reel_secondary_text_box_y',
+            'reel_secondary_text_box_width',
+            'reel_secondary_text_box_height',
+            'reel_secondary_text_align_horizontal',
+            'reel_secondary_text_align_vertical',
             'ativa',
         ]
         labels = {
-            'text_position': 'Posicao preferencial do texto',
-            'text_box_preset': 'Preset da caixa principal',
-            'primary_text_box_x': 'X principal (%)',
-            'primary_text_box_y': 'Y principal (%)',
-            'primary_text_box_width': 'Largura principal (%)',
-            'primary_text_box_height': 'Altura principal (%)',
+            'text_position': 'Posicao foto',
+            'text_box_preset': 'Preset foto',
+            'primary_text_box_x': 'X (%)',
+            'primary_text_box_y': 'Y (%)',
+            'primary_text_box_width': 'Largura (%)',
+            'primary_text_box_height': 'Altura (%)',
             'text_align_horizontal': 'Alinhamento horizontal',
             'text_align_vertical': 'Alinhamento vertical',
-            'secondary_text_box_x': 'X secundaria (%)',
-            'secondary_text_box_y': 'Y secundaria (%)',
-            'secondary_text_box_width': 'Largura secundaria (%)',
-            'secondary_text_box_height': 'Altura secundaria (%)',
-            'secondary_text_align_horizontal': 'Alinh. horizontal secundaria',
-            'secondary_text_align_vertical': 'Alinh. vertical secundaria',
+            'secondary_text_box_x': 'X (%)',
+            'secondary_text_box_y': 'Y (%)',
+            'secondary_text_box_width': 'Largura (%)',
+            'secondary_text_box_height': 'Altura (%)',
+            'secondary_text_align_horizontal': 'Alinh. horizontal',
+            'secondary_text_align_vertical': 'Alinh. vertical',
+            'reel_text_position': 'Posicao Reel',
+            'reel_text_box_preset': 'Preset Reel',
+            'reel_primary_text_box_x': 'X (%)',
+            'reel_primary_text_box_y': 'Y (%)',
+            'reel_primary_text_box_width': 'Largura (%)',
+            'reel_primary_text_box_height': 'Altura (%)',
+            'reel_text_align_horizontal': 'Alinhamento horizontal',
+            'reel_text_align_vertical': 'Alinhamento vertical',
+            'reel_secondary_text_box_x': 'X (%)',
+            'reel_secondary_text_box_y': 'Y (%)',
+            'reel_secondary_text_box_width': 'Largura (%)',
+            'reel_secondary_text_box_height': 'Altura (%)',
+            'reel_secondary_text_align_horizontal': 'Alinh. horizontal',
+            'reel_secondary_text_align_vertical': 'Alinh. vertical',
         }
         help_texts = {
-            'text_box_preset': 'Preenche a caixa principal quando os percentuais estiverem vazios. Depois e possivel ajustar manualmente.',
+            'text_box_preset': 'Preenche a caixa principal da foto quando os percentuais estiverem vazios.',
+            'reel_text_box_preset': 'Preenche a caixa principal do Reel. Depois e possivel ajustar manualmente.',
             'primary_text_box_x': 'Use valores de 0 a 100. Ex.: 7 posiciona a caixa a 7% da esquerda.',
-            'secondary_text_box_x': 'Opcional. Usada se a frase nao couber bem na caixa principal.',
+            'reel_primary_text_box_x': 'Use valores de 0 a 100 no canvas vertical 1080 x 1920.',
         }
 
     def __init__(self, *args, **kwargs):
@@ -164,11 +203,22 @@ class SocialBaseImageForm(BootstrapMixin, forms.ModelForm):
         self.fields['text_align_vertical'].widget.attrs['class'] = 'form-select'
         self.fields['secondary_text_align_horizontal'].widget.attrs['class'] = 'form-select'
         self.fields['secondary_text_align_vertical'].widget.attrs['class'] = 'form-select'
+        self.fields['reel_text_position'].widget.attrs['class'] = 'form-select'
+        self.fields['reel_text_box_preset'].widget.attrs['class'] = 'form-select'
+        self.fields['reel_text_align_horizontal'].widget.attrs['class'] = 'form-select'
+        self.fields['reel_text_align_vertical'].widget.attrs['class'] = 'form-select'
+        self.fields['reel_secondary_text_align_horizontal'].widget.attrs['class'] = 'form-select'
+        self.fields['reel_secondary_text_align_vertical'].widget.attrs['class'] = 'form-select'
         for field_name in [
+            'reel_text_position',
             'text_align_horizontal',
             'text_align_vertical',
             'secondary_text_align_horizontal',
             'secondary_text_align_vertical',
+            'reel_text_align_horizontal',
+            'reel_text_align_vertical',
+            'reel_secondary_text_align_horizontal',
+            'reel_secondary_text_align_vertical',
         ]:
             self.fields[field_name].required = False
 
@@ -178,6 +228,11 @@ class SocialBaseImageForm(BootstrapMixin, forms.ModelForm):
         cleaned['text_align_vertical'] = cleaned.get('text_align_vertical') or SocialBaseImage.TextAlignVertical.MIDDLE
         cleaned['secondary_text_align_horizontal'] = cleaned.get('secondary_text_align_horizontal') or SocialBaseImage.TextAlignHorizontal.CENTER
         cleaned['secondary_text_align_vertical'] = cleaned.get('secondary_text_align_vertical') or SocialBaseImage.TextAlignVertical.MIDDLE
+        cleaned['reel_text_position'] = cleaned.get('reel_text_position') or SocialBaseImage.TextPosition.AUTO
+        cleaned['reel_text_align_horizontal'] = cleaned.get('reel_text_align_horizontal') or SocialBaseImage.TextAlignHorizontal.CENTER
+        cleaned['reel_text_align_vertical'] = cleaned.get('reel_text_align_vertical') or SocialBaseImage.TextAlignVertical.MIDDLE
+        cleaned['reel_secondary_text_align_horizontal'] = cleaned.get('reel_secondary_text_align_horizontal') or SocialBaseImage.TextAlignHorizontal.CENTER
+        cleaned['reel_secondary_text_align_vertical'] = cleaned.get('reel_secondary_text_align_vertical') or SocialBaseImage.TextAlignVertical.MIDDLE
         preset = cleaned.get('text_box_preset')
         primary_values = [
             cleaned.get('primary_text_box_x'),
@@ -191,9 +246,24 @@ class SocialBaseImageForm(BootstrapMixin, forms.ModelForm):
             cleaned['primary_text_box_y'] = y
             cleaned['primary_text_box_width'] = width
             cleaned['primary_text_box_height'] = height
+        reel_preset = cleaned.get('reel_text_box_preset')
+        reel_primary_values = [
+            cleaned.get('reel_primary_text_box_x'),
+            cleaned.get('reel_primary_text_box_y'),
+            cleaned.get('reel_primary_text_box_width'),
+            cleaned.get('reel_primary_text_box_height'),
+        ]
+        if reel_preset and not any(value is not None for value in reel_primary_values):
+            x, y, width, height = self.REEL_PRESET_BOXES[reel_preset]
+            cleaned['reel_primary_text_box_x'] = x
+            cleaned['reel_primary_text_box_y'] = y
+            cleaned['reel_primary_text_box_width'] = width
+            cleaned['reel_primary_text_box_height'] = height
 
         self._validate_box(cleaned, 'primary_text_box', required=False)
         self._validate_box(cleaned, 'secondary_text_box', required=False)
+        self._validate_box(cleaned, 'reel_primary_text_box', required=False)
+        self._validate_box(cleaned, 'reel_secondary_text_box', required=False)
         return cleaned
 
     def _validate_box(self, cleaned, prefix, required=False):

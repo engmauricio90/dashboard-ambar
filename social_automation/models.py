@@ -100,6 +100,16 @@ class SocialBaseImage(models.Model):
         BOTTOM_LEFT = 'bottom_left', 'Inferior esquerda'
         BOTTOM_RIGHT = 'bottom_right', 'Inferior direita'
 
+    class ReelTextBoxPreset(models.TextChoices):
+        TOP_LEFT = 'top_left', 'Superior esquerda'
+        TOP_CENTER = 'top_center', 'Superior centro'
+        TOP_RIGHT = 'top_right', 'Superior direita'
+        CENTER_LEFT = 'center_left', 'Centro esquerda'
+        CENTER_RIGHT = 'center_right', 'Centro direita'
+        BOTTOM_LEFT = 'bottom_left', 'Inferior esquerda'
+        BOTTOM_CENTER = 'bottom_center', 'Inferior centro'
+        BOTTOM_RIGHT = 'bottom_right', 'Inferior direita'
+
     class TextAlignHorizontal(models.TextChoices):
         LEFT = 'left', 'Esquerda'
         CENTER = 'center', 'Centro'
@@ -128,6 +138,20 @@ class SocialBaseImage(models.Model):
     secondary_text_box_height = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
     secondary_text_align_horizontal = models.CharField(max_length=10, choices=TextAlignHorizontal.choices, default=TextAlignHorizontal.CENTER)
     secondary_text_align_vertical = models.CharField(max_length=10, choices=TextAlignVertical.choices, default=TextAlignVertical.MIDDLE)
+    reel_text_position = models.CharField(max_length=10, choices=TextPosition.choices, default=TextPosition.AUTO)
+    reel_text_box_preset = models.CharField(max_length=20, choices=ReelTextBoxPreset.choices, blank=True)
+    reel_primary_text_box_x = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    reel_primary_text_box_y = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    reel_primary_text_box_width = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    reel_primary_text_box_height = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    reel_text_align_horizontal = models.CharField(max_length=10, choices=TextAlignHorizontal.choices, default=TextAlignHorizontal.CENTER)
+    reel_text_align_vertical = models.CharField(max_length=10, choices=TextAlignVertical.choices, default=TextAlignVertical.MIDDLE)
+    reel_secondary_text_box_x = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    reel_secondary_text_box_y = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    reel_secondary_text_box_width = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    reel_secondary_text_box_height = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    reel_secondary_text_align_horizontal = models.CharField(max_length=10, choices=TextAlignHorizontal.choices, default=TextAlignHorizontal.CENTER)
+    reel_secondary_text_align_vertical = models.CharField(max_length=10, choices=TextAlignVertical.choices, default=TextAlignVertical.MIDDLE)
     ativa = models.BooleanField(default=True)
     vezes_usada = models.PositiveIntegerField(default=0)
     ultima_utilizacao = models.DateTimeField(blank=True, null=True)
@@ -172,6 +196,40 @@ class SocialBaseImage(models.Model):
         if not self.primary_text_box_configured:
             return None
         return float(self.primary_text_box_width) * float(self.primary_text_box_height) / 100
+
+    @property
+    def reel_primary_text_box_configured(self):
+        return all(
+            value is not None
+            for value in [
+                self.reel_primary_text_box_x,
+                self.reel_primary_text_box_y,
+                self.reel_primary_text_box_width,
+                self.reel_primary_text_box_height,
+            ]
+        )
+
+    @property
+    def reel_secondary_text_box_configured(self):
+        return all(
+            value is not None
+            for value in [
+                self.reel_secondary_text_box_x,
+                self.reel_secondary_text_box_y,
+                self.reel_secondary_text_box_width,
+                self.reel_secondary_text_box_height,
+            ]
+        )
+
+    @property
+    def reel_layout_configured(self):
+        return self.reel_primary_text_box_configured or self.reel_secondary_text_box_configured
+
+    @property
+    def reel_primary_text_box_area_percent(self):
+        if not self.reel_primary_text_box_configured:
+            return None
+        return float(self.reel_primary_text_box_width) * float(self.reel_primary_text_box_height) / 100
 
 
 class SocialContent(models.Model):

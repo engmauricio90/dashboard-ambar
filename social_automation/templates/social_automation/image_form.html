@@ -8,48 +8,113 @@
     {% csrf_token %}
     <div class="card-body">
         {{ form.non_field_errors }}
-        <div class="row g-3">
-            <div class="col-md-6"><label class="form-label">{{ form.arquivo.label }}</label>{{ form.arquivo }}{{ form.arquivo.errors }}</div>
-            <div class="col-md-6"><label class="form-label">{{ form.nome.label }}</label>{{ form.nome }}{{ form.nome.errors }}</div>
-            <div class="col-md-6"><label class="form-label">{{ form.tags.label }}</label>{{ form.tags }}</div>
-            <div class="col-md-3"><label class="form-label">{{ form.text_position.label }}</label>{{ form.text_position }}</div>
-            <div class="col-md-3"><label class="form-label">{{ form.text_box_preset.label }}</label>{{ form.text_box_preset }}<div class="form-text">{{ form.text_box_preset.help_text }}</div></div>
-            <div class="col-md-3 d-flex align-items-end"><div class="form-check mb-2">{{ form.ativa }} <label class="form-check-label">{{ form.ativa.label }}</label></div></div>
+        <div class="row g-3 align-items-end">
+            <div class="col-md-5"><label class="form-label">{{ form.arquivo.label }}</label>{{ form.arquivo }}{{ form.arquivo.errors }}</div>
+            <div class="col-md-4"><label class="form-label">{{ form.nome.label }}</label>{{ form.nome }}{{ form.nome.errors }}</div>
+            <div class="col-md-2"><label class="form-label">{{ form.tags.label }}</label>{{ form.tags }}</div>
+            <div class="col-md-1"><div class="form-check mb-2">{{ form.ativa }} <label class="form-check-label">{{ form.ativa.label }}</label></div></div>
         </div>
 
         <hr>
-        <div class="row g-3">
-            <div class="col-lg-8">
-                <h6>Caixa principal</h6>
-                <div class="row g-2">
-                    <div class="col-md-3"><label class="form-label">{{ form.primary_text_box_x.label }}</label>{{ form.primary_text_box_x }}{{ form.primary_text_box_x.errors }}</div>
-                    <div class="col-md-3"><label class="form-label">{{ form.primary_text_box_y.label }}</label>{{ form.primary_text_box_y }}{{ form.primary_text_box_y.errors }}</div>
-                    <div class="col-md-3"><label class="form-label">{{ form.primary_text_box_width.label }}</label>{{ form.primary_text_box_width }}{{ form.primary_text_box_width.errors }}</div>
-                    <div class="col-md-3"><label class="form-label">{{ form.primary_text_box_height.label }}</label>{{ form.primary_text_box_height }}{{ form.primary_text_box_height.errors }}</div>
-                    <div class="col-md-6"><label class="form-label">{{ form.text_align_horizontal.label }}</label>{{ form.text_align_horizontal }}</div>
-                    <div class="col-md-6"><label class="form-label">{{ form.text_align_vertical.label }}</label>{{ form.text_align_vertical }}</div>
-                </div>
-
-                <h6 class="mt-4">Caixa secundaria opcional</h6>
-                <div class="row g-2">
-                    <div class="col-md-3"><label class="form-label">{{ form.secondary_text_box_x.label }}</label>{{ form.secondary_text_box_x }}{{ form.secondary_text_box_x.errors }}</div>
-                    <div class="col-md-3"><label class="form-label">{{ form.secondary_text_box_y.label }}</label>{{ form.secondary_text_box_y }}{{ form.secondary_text_box_y.errors }}</div>
-                    <div class="col-md-3"><label class="form-label">{{ form.secondary_text_box_width.label }}</label>{{ form.secondary_text_box_width }}{{ form.secondary_text_box_width.errors }}</div>
-                    <div class="col-md-3"><label class="form-label">{{ form.secondary_text_box_height.label }}</label>{{ form.secondary_text_box_height }}{{ form.secondary_text_box_height.errors }}</div>
-                    <div class="col-md-6"><label class="form-label">{{ form.secondary_text_align_horizontal.label }}</label>{{ form.secondary_text_align_horizontal }}</div>
-                    <div class="col-md-6"><label class="form-label">{{ form.secondary_text_align_vertical.label }}</label>{{ form.secondary_text_align_vertical }}</div>
-                </div>
+        <div class="row g-4">
+            <div class="col-xl-6">
+                <section class="social-layout-section">
+                    <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                        <div>
+                            <h5 class="mb-1">Layout da foto</h5>
+                            <div class="text-muted small">Canvas 1080 x 1080</div>
+                        </div>
+                        <span class="badge text-bg-light border">1:1</span>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-lg-5">
+                            <div class="social-textbox-preview social-preview-photo border rounded position-relative overflow-hidden bg-light">
+                                {% if image and image.arquivo %}
+                                    <img src="{{ image.arquivo.url }}" alt="{{ image.nome }}" class="w-100 h-100 object-fit-cover">
+                                {% endif %}
+                                <div class="social-textbox-preview-box social-textbox-preview-primary" data-preview="photo-primary"></div>
+                                <div class="social-textbox-preview-box social-textbox-preview-secondary" data-preview="photo-secondary"></div>
+                            </div>
+                        </div>
+                        <div class="col-lg-7">
+                            <div class="row g-2">
+                                <div class="col-md-6"><label class="form-label">{{ form.text_position.label }}</label>{{ form.text_position }}</div>
+                                <div class="col-md-6"><label class="form-label">{{ form.text_box_preset.label }}</label>{{ form.text_box_preset }}<div class="form-text">{{ form.text_box_preset.help_text }}</div></div>
+                            </div>
+                            <h6 class="mt-3">Caixa principal</h6>
+                            <div class="row g-2">
+                                <div class="col-3"><label class="form-label">{{ form.primary_text_box_x.label }}</label>{{ form.primary_text_box_x }}{{ form.primary_text_box_x.errors }}</div>
+                                <div class="col-3"><label class="form-label">{{ form.primary_text_box_y.label }}</label>{{ form.primary_text_box_y }}{{ form.primary_text_box_y.errors }}</div>
+                                <div class="col-3"><label class="form-label">{{ form.primary_text_box_width.label }}</label>{{ form.primary_text_box_width }}{{ form.primary_text_box_width.errors }}</div>
+                                <div class="col-3"><label class="form-label">{{ form.primary_text_box_height.label }}</label>{{ form.primary_text_box_height }}{{ form.primary_text_box_height.errors }}</div>
+                                <div class="col-md-6"><label class="form-label">{{ form.text_align_horizontal.label }}</label>{{ form.text_align_horizontal }}</div>
+                                <div class="col-md-6"><label class="form-label">{{ form.text_align_vertical.label }}</label>{{ form.text_align_vertical }}</div>
+                            </div>
+                            <h6 class="mt-3">Caixa secundaria opcional</h6>
+                            <div class="row g-2">
+                                <div class="col-3"><label class="form-label">{{ form.secondary_text_box_x.label }}</label>{{ form.secondary_text_box_x }}{{ form.secondary_text_box_x.errors }}</div>
+                                <div class="col-3"><label class="form-label">{{ form.secondary_text_box_y.label }}</label>{{ form.secondary_text_box_y }}{{ form.secondary_text_box_y.errors }}</div>
+                                <div class="col-3"><label class="form-label">{{ form.secondary_text_box_width.label }}</label>{{ form.secondary_text_box_width }}{{ form.secondary_text_box_width.errors }}</div>
+                                <div class="col-3"><label class="form-label">{{ form.secondary_text_box_height.label }}</label>{{ form.secondary_text_box_height }}{{ form.secondary_text_box_height.errors }}</div>
+                                <div class="col-md-6"><label class="form-label">{{ form.secondary_text_align_horizontal.label }}</label>{{ form.secondary_text_align_horizontal }}</div>
+                                <div class="col-md-6"><label class="form-label">{{ form.secondary_text_align_vertical.label }}</label>{{ form.secondary_text_align_vertical }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
             </div>
-            <div class="col-lg-4">
-                <h6>Preview da area</h6>
-                <div class="social-textbox-preview border rounded position-relative overflow-hidden bg-light">
-                    {% if image and image.arquivo %}
-                        <img src="{{ image.arquivo.url }}" alt="{{ image.nome }}" class="w-100 h-100 object-fit-cover">
+
+            <div class="col-xl-6">
+                <section class="social-layout-section">
+                    <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                        <div>
+                            <h5 class="mb-1">Layout do Reel</h5>
+                            <div class="text-muted small">Canvas 1080 x 1920</div>
+                        </div>
+                        <span class="badge text-bg-light border">9:16</span>
+                    </div>
+                    {% if image and not image.reel_layout_configured %}
+                    <div class="alert alert-light border py-2 small">Layout Reel ainda nao configurado - usando automatico.</div>
                     {% endif %}
-                    <div class="social-textbox-preview-box social-textbox-preview-primary"></div>
-                    <div class="social-textbox-preview-box social-textbox-preview-secondary"></div>
-                </div>
-                <div class="form-text">A caixa principal e onde o texto sera testado primeiro. A secundaria entra como alternativa.</div>
+                    <div class="row g-3">
+                        <div class="col-lg-5">
+                            <div class="social-textbox-preview social-preview-reel border rounded position-relative overflow-hidden bg-light">
+                                {% if image and image.arquivo %}
+                                    <img src="{{ image.arquivo.url }}" alt="{{ image.nome }}" class="w-100 h-100 object-fit-cover">
+                                {% endif %}
+                                <div class="social-reel-safearea social-reel-safe-top">safe</div>
+                                <div class="social-reel-safearea social-reel-safe-right"></div>
+                                <div class="social-reel-safearea social-reel-safe-bottom">safe</div>
+                                <div class="social-textbox-preview-box social-textbox-preview-primary" data-preview="reel-primary"></div>
+                                <div class="social-textbox-preview-box social-textbox-preview-secondary" data-preview="reel-secondary"></div>
+                            </div>
+                        </div>
+                        <div class="col-lg-7">
+                            <div class="row g-2">
+                                <div class="col-md-6"><label class="form-label">{{ form.reel_text_position.label }}</label>{{ form.reel_text_position }}</div>
+                                <div class="col-md-6"><label class="form-label">{{ form.reel_text_box_preset.label }}</label>{{ form.reel_text_box_preset }}<div class="form-text">{{ form.reel_text_box_preset.help_text }}</div></div>
+                            </div>
+                            <h6 class="mt-3">Caixa principal</h6>
+                            <div class="row g-2">
+                                <div class="col-3"><label class="form-label">{{ form.reel_primary_text_box_x.label }}</label>{{ form.reel_primary_text_box_x }}{{ form.reel_primary_text_box_x.errors }}</div>
+                                <div class="col-3"><label class="form-label">{{ form.reel_primary_text_box_y.label }}</label>{{ form.reel_primary_text_box_y }}{{ form.reel_primary_text_box_y.errors }}</div>
+                                <div class="col-3"><label class="form-label">{{ form.reel_primary_text_box_width.label }}</label>{{ form.reel_primary_text_box_width }}{{ form.reel_primary_text_box_width.errors }}</div>
+                                <div class="col-3"><label class="form-label">{{ form.reel_primary_text_box_height.label }}</label>{{ form.reel_primary_text_box_height }}{{ form.reel_primary_text_box_height.errors }}</div>
+                                <div class="col-md-6"><label class="form-label">{{ form.reel_text_align_horizontal.label }}</label>{{ form.reel_text_align_horizontal }}</div>
+                                <div class="col-md-6"><label class="form-label">{{ form.reel_text_align_vertical.label }}</label>{{ form.reel_text_align_vertical }}</div>
+                            </div>
+                            <h6 class="mt-3">Caixa secundaria opcional</h6>
+                            <div class="row g-2">
+                                <div class="col-3"><label class="form-label">{{ form.reel_secondary_text_box_x.label }}</label>{{ form.reel_secondary_text_box_x }}{{ form.reel_secondary_text_box_x.errors }}</div>
+                                <div class="col-3"><label class="form-label">{{ form.reel_secondary_text_box_y.label }}</label>{{ form.reel_secondary_text_box_y }}{{ form.reel_secondary_text_box_y.errors }}</div>
+                                <div class="col-3"><label class="form-label">{{ form.reel_secondary_text_box_width.label }}</label>{{ form.reel_secondary_text_box_width }}{{ form.reel_secondary_text_box_width.errors }}</div>
+                                <div class="col-3"><label class="form-label">{{ form.reel_secondary_text_box_height.label }}</label>{{ form.reel_secondary_text_box_height }}{{ form.reel_secondary_text_box_height.errors }}</div>
+                                <div class="col-md-6"><label class="form-label">{{ form.reel_secondary_text_align_horizontal.label }}</label>{{ form.reel_secondary_text_align_horizontal }}</div>
+                                <div class="col-md-6"><label class="form-label">{{ form.reel_secondary_text_align_vertical.label }}</label>{{ form.reel_secondary_text_align_vertical }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
             </div>
         </div>
     </div>
@@ -60,76 +125,151 @@
 </form>
 
 <style>
+.social-layout-section {
+    border: 1px solid #dee2e6;
+    border-radius: .5rem;
+    padding: 1rem;
+    height: 100%;
+}
 .social-textbox-preview {
+    max-width: 260px;
+    margin-inline: auto;
+}
+.social-preview-photo {
     aspect-ratio: 1 / 1;
+}
+.social-preview-reel {
+    aspect-ratio: 9 / 16;
 }
 .social-textbox-preview-box {
     position: absolute;
     display: none;
     border: 2px solid #0d6efd;
     background: rgba(13, 110, 253, .14);
+    z-index: 3;
 }
 .social-textbox-preview-secondary {
     border-color: #fd7e14;
     background: rgba(253, 126, 20, .14);
 }
+.social-reel-safearea {
+    position: absolute;
+    z-index: 2;
+    pointer-events: none;
+    color: rgba(33, 37, 41, .45);
+    font-size: .7rem;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+}
+.social-reel-safe-top {
+    inset: 0 0 auto 0;
+    height: 8%;
+    background: rgba(220, 53, 69, .08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.social-reel-safe-bottom {
+    inset: auto 0 0 0;
+    height: 12%;
+    background: rgba(220, 53, 69, .08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.social-reel-safe-right {
+    inset: 16% 0 16% auto;
+    width: 13%;
+    background: rgba(220, 53, 69, .07);
+}
 </style>
 <script>
 (function() {
-    const fields = {
-        primary: {
+    const groups = {
+        photoPrimary: {
             x: document.getElementById('id_primary_text_box_x'),
             y: document.getElementById('id_primary_text_box_y'),
             w: document.getElementById('id_primary_text_box_width'),
             h: document.getElementById('id_primary_text_box_height'),
-            el: document.querySelector('.social-textbox-preview-primary')
+            el: document.querySelector('[data-preview="photo-primary"]')
         },
-        secondary: {
+        photoSecondary: {
             x: document.getElementById('id_secondary_text_box_x'),
             y: document.getElementById('id_secondary_text_box_y'),
             w: document.getElementById('id_secondary_text_box_width'),
             h: document.getElementById('id_secondary_text_box_height'),
-            el: document.querySelector('.social-textbox-preview-secondary')
+            el: document.querySelector('[data-preview="photo-secondary"]')
+        },
+        reelPrimary: {
+            x: document.getElementById('id_reel_primary_text_box_x'),
+            y: document.getElementById('id_reel_primary_text_box_y'),
+            w: document.getElementById('id_reel_primary_text_box_width'),
+            h: document.getElementById('id_reel_primary_text_box_height'),
+            el: document.querySelector('[data-preview="reel-primary"]')
+        },
+        reelSecondary: {
+            x: document.getElementById('id_reel_secondary_text_box_x'),
+            y: document.getElementById('id_reel_secondary_text_box_y'),
+            w: document.getElementById('id_reel_secondary_text_box_width'),
+            h: document.getElementById('id_reel_secondary_text_box_height'),
+            el: document.querySelector('[data-preview="reel-secondary"]')
         }
     };
     const presets = {
-        top_left: [7, 8, 43, 32],
-        top_right: [50, 8, 43, 32],
-        middle_left: [7, 34, 43, 32],
-        middle_right: [50, 34, 43, 32],
-        bottom_left: [7, 60, 43, 32],
-        bottom_right: [50, 60, 43, 32]
+        photo: {
+            top_left: [7, 8, 43, 32],
+            top_right: [50, 8, 43, 32],
+            middle_left: [7, 34, 43, 32],
+            middle_right: [50, 34, 43, 32],
+            bottom_left: [7, 60, 43, 32],
+            bottom_right: [50, 60, 43, 32]
+        },
+        reel: {
+            top_left: [7, 10, 40, 20],
+            top_center: [18, 10, 64, 18],
+            top_right: [53, 10, 38, 20],
+            center_left: [7, 38, 40, 22],
+            center_right: [53, 38, 38, 22],
+            bottom_left: [7, 66, 44, 20],
+            bottom_center: [15, 66, 70, 20],
+            bottom_right: [51, 66, 40, 20]
+        }
     };
+    function numberValue(input) {
+        return parseFloat((input && input.value || '').replace(',', '.'));
+    }
     function draw(group) {
-        const box = fields[group];
-        const values = [box.x, box.y, box.w, box.h].map(input => parseFloat((input && input.value || '').replace(',', '.')));
-        if (values.some(value => Number.isNaN(value))) {
-            box.el.style.display = 'none';
+        const values = [group.x, group.y, group.w, group.h].map(numberValue);
+        if (!group.el || values.some(value => Number.isNaN(value))) {
+            if (group.el) group.el.style.display = 'none';
             return;
         }
-        box.el.style.display = 'block';
-        box.el.style.left = values[0] + '%';
-        box.el.style.top = values[1] + '%';
-        box.el.style.width = values[2] + '%';
-        box.el.style.height = values[3] + '%';
+        group.el.style.display = 'block';
+        group.el.style.left = values[0] + '%';
+        group.el.style.top = values[1] + '%';
+        group.el.style.width = values[2] + '%';
+        group.el.style.height = values[3] + '%';
     }
     function refresh() {
-        draw('primary');
-        draw('secondary');
+        Object.values(groups).forEach(draw);
     }
-    Object.values(fields).forEach(group => {
+    Object.values(groups).forEach(group => {
         ['x', 'y', 'w', 'h'].forEach(key => group[key] && group[key].addEventListener('input', refresh));
     });
-    const preset = document.getElementById('id_text_box_preset');
-    preset && preset.addEventListener('change', function() {
-        const values = presets[preset.value];
-        if (!values) return;
-        fields.primary.x.value = values[0];
-        fields.primary.y.value = values[1];
-        fields.primary.w.value = values[2];
-        fields.primary.h.value = values[3];
-        refresh();
-    });
+    function bindPreset(selectId, target, presetGroup) {
+        const select = document.getElementById(selectId);
+        select && select.addEventListener('change', function() {
+            const values = presets[presetGroup][select.value];
+            if (!values) return;
+            target.x.value = values[0];
+            target.y.value = values[1];
+            target.w.value = values[2];
+            target.h.value = values[3];
+            refresh();
+        });
+    }
+    bindPreset('id_text_box_preset', groups.photoPrimary, 'photo');
+    bindPreset('id_reel_text_box_preset', groups.reelPrimary, 'reel');
     refresh();
 })();
 </script>

@@ -8,7 +8,7 @@ from django.utils import timezone
 from .ai import OpenAINotConfigured, formatar_hashtags, gerar_conteudos_ia, moderar_conteudo, normalizar_frase
 from .image_selection import selecionar_imagem_base
 from .models import SocialBaseImage, SocialContent
-from .rendering import CANVAS_SIZE, SocialRenderError, _text_boxes, renderizar_midia_social
+from .rendering import CANVAS_SIZE, REEL_CANVAS_SIZE, SocialRenderError, _reel_text_boxes, _text_boxes, renderizar_midia_social
 from .services import registrar_evento
 
 
@@ -39,19 +39,35 @@ def _phrase_size(area_percent):
     return 'um pouco maior, ainda objetiva, preferencialmente ate 130 caracteres'
 
 
+def _phrase_size_for_media(area_percent, media_type):
+    if media_type == SocialContent.MediaType.REEL:
+        if area_percent < 10:
+            return 'curta, preferencialmente em 1 linha'
+        if area_percent < 20:
+            return 'media, preferencialmente em 1 a 2 linhas'
+        return 'pode usar ate 3 linhas curtas, mantendo leitura rapida'
+    return _phrase_size(area_percent)
+
+
 def _image_contexts(profile, media_type=SocialContent.MediaType.IMAGE):
     contexts = []
     for image in SocialBaseImage.objects.filter(profile=profile, ativa=True).order_by('vezes_usada', 'id')[:12]:
-        box = _text_boxes(image)[0]
+        if media_type == SocialContent.MediaType.REEL:
+            boxes = _reel_text_boxes(image)
+            canvas_size = boxes[0].get('source_canvas') or REEL_CANVAS_SIZE
+        else:
+            boxes = _text_boxes(image)
+            canvas_size = CANVAS_SIZE
+        box = boxes[0]
         region = box['region']
-        area_percent = round((region[2] * region[3]) / (CANVAS_SIZE[0] * CANVAS_SIZE[1]) * 100, 2)
+        area_percent = round((region[2] * region[3]) / (canvas_size[0] * canvas_size[1]) * 100, 2)
         contexts.append(
             {
                 'nome': image.nome,
                 'tags': image.tags,
                 'posicao_texto': f"{box['name']} {box['align_vertical']} {box['align_horizontal']}",
                 'area_disponivel_percentual': area_percent,
-                'tamanho_recomendado_frase': _phrase_size(area_percent),
+                'tamanho_recomendado_frase': _phrase_size_for_media(area_percent, media_type),
                 'tipo_midia': media_type,
             }
         )

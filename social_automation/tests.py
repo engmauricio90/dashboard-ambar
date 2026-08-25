@@ -53,8 +53,8 @@ from .instagram import (
     validar_assinatura_midia_meta,
     validar_token_midia_temporaria,
 )
-from .rendering import SocialRenderError, renderizar_conteudo_social
-from .rendering import _draw_text_box, _layout_text, _region, _text_boxes
+from .rendering import CANVAS_SIZE, REEL_CANVAS_SIZE, SocialRenderError, renderizar_conteudo_social
+from .rendering import _draw_text_box, _layout_text, _reel_text_boxes, _region, _text_boxes
 from .scheduler import estoque_pronto, estoque_pronto_por_tipo, media_type_for_slot, plano_geracao_por_deficit, preencher_agenda
 from .video_rendering import (
     SocialVideoRenderError,
@@ -199,6 +199,48 @@ class SocialAutomationWorkflowTests(TestCase):
             self.assertRedirects(response, reverse('social_automation:image_list', args=[self.profile.id]))
             image.refresh_from_db()
             self.assertFalse(image.ativa)
+
+    def test_formulario_imagem_base_separa_layout_foto_e_reel(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            response = self.client.post(
+                reverse('social_automation:image_create', args=[self.profile.id]),
+                {
+                    'nome': 'Laila vertical',
+                    'tags': 'laila',
+                    'text_position': SocialBaseImage.TextPosition.RIGHT,
+                    'text_box_preset': SocialBaseImage.TextBoxPreset.BOTTOM_RIGHT,
+                    'primary_text_box_x': '50',
+                    'primary_text_box_y': '60',
+                    'primary_text_box_width': '43',
+                    'primary_text_box_height': '32',
+                    'reel_text_position': SocialBaseImage.TextPosition.AUTO_SMART,
+                    'reel_text_box_preset': SocialBaseImage.ReelTextBoxPreset.BOTTOM_LEFT,
+                    'reel_primary_text_box_x': '7',
+                    'reel_primary_text_box_y': '66',
+                    'reel_primary_text_box_width': '44',
+                    'reel_primary_text_box_height': '20',
+                    'ativa': 'on',
+                    'arquivo': imagem_social('laila-vertical.jpg'),
+                },
+            )
+
+            image = SocialBaseImage.objects.get(nome='Laila vertical')
+            self.assertRedirects(response, reverse('social_automation:image_list', args=[self.profile.id]))
+            self.assertTrue(image.primary_text_box_configured)
+            self.assertTrue(image.reel_primary_text_box_configured)
+            self.assertEqual(float(image.primary_text_box_y), 60)
+            self.assertEqual(float(image.reel_primary_text_box_y), 66)
+
+            edit = self.client.get(reverse('social_automation:image_update', args=[image.id]))
+            self.assertContains(edit, 'Layout da foto')
+            self.assertContains(edit, 'Layout do Reel')
+            self.assertContains(edit, 'social-preview-photo')
+            self.assertContains(edit, 'social-preview-reel')
+            self.assertContains(edit, 'social-reel-safearea')
+
+            listing = self.client.get(reverse('social_automation:image_list', args=[self.profile.id]))
+            self.assertContains(listing, '<strong>Foto:</strong>', html=True)
+            self.assertContains(listing, '<strong>Reel:</strong>', html=True)
 
     def test_cria_edita_aprova_rejeita_restaura_agenda_e_desagenda(self):
         content = SocialContent.objects.create(profile=self.profile, frase='Frase inicial')
@@ -806,6 +848,64 @@ class SocialAutomationRenderingPositionTests(TestCase):
             self.assertEqual(float(image.primary_text_box_x), 9)
             self.assertEqual(image.text_align_horizontal, SocialBaseImage.TextAlignHorizontal.LEFT)
 
+    def test_reel_usa_caixa_vertical_independente_da_foto(self):
+        image = self._image(SocialBaseImage.TextPosition.AUTO_SMART)
+        image.primary_text_box_x = 50
+        image.primary_text_box_y = 60
+        image.primary_text_box_width = 40
+        image.primary_text_box_height = 20
+        image.reel_primary_text_box_x = 7
+        image.reel_primary_text_box_y = 66
+        image.reel_primary_text_box_width = 44
+        image.reel_primary_text_box_height = 20
+        image.reel_text_align_horizontal = SocialBaseImage.TextAlignHorizontal.LEFT
+        image.save()
+
+        photo_box = _text_boxes(image)[0]
+        reel_box = _reel_text_boxes(image)[0]
+
+        self.assertEqual(photo_box['source_canvas'], CANVAS_SIZE)
+        self.assertEqual(reel_box['source_canvas'], REEL_CANVAS_SIZE)
+        self.assertEqual(photo_box['region'], (540, 648, 432, 216))
+        self.assertEqual(reel_box['region'], (76, 1267, 475, 384))
+        self.assertEqual(reel_box['align_horizontal'], 'left')
+
+    def test_reel_sem_layout_configurado_usa_fallback_da_foto(self):
+        image = self._image(SocialBaseImage.TextPosition.LEFT)
+
+        reel_box = _reel_text_boxes(image)[0]
+        legacy, _align = _region(SocialBaseImage.TextPosition.LEFT)
+
+        self.assertEqual(reel_box['name'], 'legacy')
+        self.assertEqual(reel_box['region'], legacy)
+        self.assertEqual(reel_box['source_canvas'], CANVAS_SIZE)
+
+    def test_form_salva_preset_reel_sem_alterar_preset_foto(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            response = self.client.post(
+                reverse('social_automation:image_create', args=[self.profile.id]),
+                {
+                    'nome': 'Laila reel bottom',
+                    'tags': 'laila',
+                    'text_position': SocialBaseImage.TextPosition.LEFT,
+                    'reel_text_position': SocialBaseImage.TextPosition.AUTO_SMART,
+                    'reel_text_box_preset': SocialBaseImage.ReelTextBoxPreset.BOTTOM_CENTER,
+                    'reel_text_align_horizontal': SocialBaseImage.TextAlignHorizontal.CENTER,
+                    'reel_text_align_vertical': SocialBaseImage.TextAlignVertical.MIDDLE,
+                    'reel_secondary_text_align_horizontal': SocialBaseImage.TextAlignHorizontal.CENTER,
+                    'reel_secondary_text_align_vertical': SocialBaseImage.TextAlignVertical.MIDDLE,
+                    'ativa': 'on',
+                    'arquivo': imagem_social('laila-reel-bottom.jpg'),
+                },
+            )
+
+            self.assertRedirects(response, reverse('social_automation:image_list', args=[self.profile.id]))
+            image = SocialBaseImage.objects.get(nome='Laila reel bottom')
+            self.assertFalse(image.primary_text_box_configured)
+            self.assertTrue(image.reel_primary_text_box_configured)
+            self.assertEqual(float(image.reel_primary_text_box_x), 15)
+            self.assertEqual(float(image.reel_primary_text_box_width), 70)
+
     def test_contexto_de_ia_considera_area_disponivel_da_imagem(self):
         image = self._image(SocialBaseImage.TextPosition.AUTO_SMART)
         image.primary_text_box_x = 7
@@ -819,6 +919,20 @@ class SocialAutomationRenderingPositionTests(TestCase):
         self.assertEqual(contexts[0]['nome'], image.nome)
         self.assertIn('area_disponivel_percentual', contexts[0])
         self.assertIn('curta', contexts[0]['tamanho_recomendado_frase'])
+
+    def test_contexto_de_ia_para_reel_usa_layout_vertical_e_ate_tres_linhas(self):
+        image = self._image(SocialBaseImage.TextPosition.AUTO_SMART)
+        image.reel_primary_text_box_x = 10
+        image.reel_primary_text_box_y = 60
+        image.reel_primary_text_box_width = 76
+        image.reel_primary_text_box_height = 30
+        image.save()
+
+        contexts = _image_contexts(self.profile, SocialContent.MediaType.REEL)
+
+        self.assertEqual(contexts[0]['tipo_midia'], SocialContent.MediaType.REEL)
+        self.assertEqual(contexts[0]['area_disponivel_percentual'], 22.81)
+        self.assertIn('ate 3 linhas', contexts[0]['tamanho_recomendado_frase'])
 
 
 class SocialAutomationReelTests(TestCase):
