@@ -3,6 +3,9 @@ from zoneinfo import available_timezones
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
+
+from .token_crypto import decrypt_instagram_token, encrypt_instagram_token
 
 
 def social_base_image_upload_to(instance, filename):
@@ -230,6 +233,80 @@ class SocialBaseImage(models.Model):
         if not self.reel_primary_text_box_configured:
             return None
         return float(self.reel_primary_text_box_width) * float(self.reel_primary_text_box_height) / 100
+
+
+class SocialInstagramConnection(models.Model):
+    class ValidationStatus(models.TextChoices):
+        NAO_VALIDADO = 'nao_validado', 'Nao validado'
+        OK = 'ok', 'OK'
+        ERRO = 'erro', 'Erro'
+
+    class AccountType(models.TextChoices):
+        BUSINESS = 'BUSINESS', 'Business'
+        CREATOR = 'CREATOR', 'Creator'
+        DESCONHECIDO = 'DESCONHECIDO', 'Desconhecido'
+
+    profile = models.OneToOneField(SocialProfile, on_delete=models.CASCADE, related_name='instagram_connection')
+    instagram_user_id = models.CharField(max_length=80)
+    username = models.CharField(max_length=120)
+    account_type = models.CharField(max_length=30, choices=AccountType.choices, default=AccountType.DESCONHECIDO)
+    access_token_encrypted = models.TextField()
+    is_active = models.BooleanField(default=True)
+    connected_at = models.DateTimeField(default=timezone.now)
+    last_validated_at = models.DateTimeField(blank=True, null=True)
+    last_validation_status = models.CharField(max_length=30, choices=ValidationStatus.choices, default=ValidationStatus.NAO_VALIDADO)
+    last_validation_error = models.CharField(max_length=500, blank=True)
+    token_expires_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['profile__nome']
+        indexes = [
+            models.Index(fields=['is_active', 'username']),
+            models.Index(fields=['instagram_user_id']),
+        ]
+
+    def __str__(self):
+        return f'{self.profile.username} -> @{self.username}'
+
+    @property
+    def normalized_username(self):
+        return (self.username or '').strip().lstrip('@').lower()
+
+    @property
+    def masked_instagram_user_id(self):
+        value = str(self.instagram_user_id or '')
+        if len(value) <= 6:
+            return value or '-'
+        return f'{value[:3]}...{value[-3:]}'
+
+    def set_access_token(self, token):
+        self.access_token_encrypted = encrypt_instagram_token(token)
+
+    def get_access_token(self):
+        return decrypt_instagram_token(self.access_token_encrypted)
+
+    def mark_validation(self, *, ok, error=''):
+        self.last_validated_at = timezone.now()
+        self.last_validation_status = self.ValidationStatus.OK if ok else self.ValidationStatus.ERRO
+        self.last_validation_error = '' if ok else str(error or '')[:500]
+        self.save(update_fields=['last_validated_at', 'last_validation_status', 'last_validation_error', 'updated_at'])
+
+    def save(self, *args, **kwargs):
+        old_identity = None
+        if self.pk:
+            old = type(self).objects.filter(pk=self.pk).only('instagram_user_id', 'username', 'is_active').first()
+            if old:
+                old_identity = (old.instagram_user_id, old.normalized_username, old.is_active)
+        super().save(*args, **kwargs)
+        new_identity = (self.instagram_user_id, self.normalized_username, self.is_active)
+        if old_identity and old_identity != new_identity:
+            SocialContent.objects.filter(profile=self.profile).exclude(instagram_container_id='').update(
+                instagram_container_id='',
+                instagram_container_fingerprint='',
+                updated_at=timezone.now(),
+            )
 
 
 class SocialContent(models.Model):

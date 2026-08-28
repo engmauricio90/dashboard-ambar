@@ -60,6 +60,8 @@ services:
         value: v23.0
       - key: INSTAGRAM_EXPECTED_USERNAME
         value: lailapistola
+      - key: SOCIAL_INSTAGRAM_LEGACY_FALLBACK
+        value: "true"
       - key: INSTAGRAM_MEDIA_URL_TTL_SECONDS
         value: "3600"
       - key: INSTAGRAM_API_TIMEOUT_SECONDS
@@ -87,6 +89,14 @@ services:
       - key: INSTAGRAM_ACCESS_TOKEN
         sync: false
       - key: INSTAGRAM_USER_ID
+        sync: false
+      - key: SOCIAL_INSTAGRAM_TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: SOCIAL_INSTAGRAM_CLIENT_ID
+        sync: false
+      - key: SOCIAL_INSTAGRAM_CLIENT_SECRET
+        sync: false
+      - key: SOCIAL_INSTAGRAM_OAUTH_REDIRECT_URI
         sync: false
       - key: SENTRY_ENVIRONMENT
         value: production

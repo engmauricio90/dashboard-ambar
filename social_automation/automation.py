@@ -13,7 +13,7 @@ from django.utils import timezone
 from .generation import gerar_lote_conteudos
 from .instagram import InstagramAPIError, InstagramConfigurationError, InstagramContainerPending, InstagramPublishError, auditar_imagem_final, publicar_conteudo_instagram
 from .models import SocialContent, SocialProfile
-from .scheduler import estoque_pronto, estoque_pronto_por_tipo, plano_geracao_por_deficit, preencher_agenda, proxima_publicacao, reagendar_vencidos
+from .scheduler import estoque_alvo_profile, estoque_minimo_profile, estoque_pronto, estoque_pronto_por_tipo, plano_geracao_por_deficit, preencher_agenda, proxima_publicacao, reagendar_vencidos
 from .services import registrar_evento
 from .video_rendering import auditar_video_reel
 
@@ -132,10 +132,10 @@ def _process_profile(profile, *, now):
             'social_automation.inventory profile_id=%s current=%s minimum=%s target=%s',
             profile.id,
             current_inventory,
-            settings.SOCIAL_AUTOMATION_QUEUE_MIN,
-            settings.SOCIAL_AUTOMATION_QUEUE_TARGET,
+            estoque_minimo_profile(profile),
+            estoque_alvo_profile(profile),
         )
-        if not published and current_inventory < settings.SOCIAL_AUTOMATION_QUEUE_TARGET:
+        if not published and current_inventory < estoque_alvo_profile(profile):
             generated, approved, errors = _gerar_e_aprovar(profile, current_inventory)
             profile_summary.generated = generated
             profile_summary.approved = approved
@@ -158,10 +158,6 @@ def _process_profile(profile, *, now):
 
 
 def _validar_profile_automatico(profile):
-    expected = (settings.INSTAGRAM_EXPECTED_USERNAME or '').strip().lstrip('@').lower()
-    username = (profile.username or '').strip().lstrip('@').lower()
-    if expected and username != expected:
-        raise InstagramConfigurationError('Perfil automatico nao corresponde ao username configurado para a credencial Meta.')
     if not profile.horarios_publicacao:
         raise ValidationError('Perfil automatico sem horarios de publicacao.')
 
@@ -245,8 +241,9 @@ def _retry_delay(tentativas):
 
 
 def _gerar_e_aprovar(profile, inventory):
-    target_missing = max(0, settings.SOCIAL_AUTOMATION_QUEUE_TARGET - inventory)
-    media_plan = plano_geracao_por_deficit(profile, settings.SOCIAL_AUTOMATION_QUEUE_TARGET, min(settings.SOCIAL_AUTOMATION_GENERATION_BATCH, target_missing))
+    target = estoque_alvo_profile(profile)
+    target_missing = max(0, target - inventory)
+    media_plan = plano_geracao_por_deficit(profile, target, min(settings.SOCIAL_AUTOMATION_GENERATION_BATCH, target_missing))
     if not media_plan:
         return 0, 0, 0
     tema = random.choice(AUTO_THEMES)
@@ -299,9 +296,12 @@ def automacao_status_profile(profile):
     next_content = proxima_publicacao(profile, now=now)
     last_published = profile.contents.filter(status=SocialContent.Status.PUBLICADO).order_by('-published_at').first()
     last_error = profile.contents.filter(status=SocialContent.Status.ERRO).order_by('-updated_at').first()
-    if not profile.ativo or profile.modo_operacao != SocialProfile.ModoOperacao.AUTOMATICO:
+    instagram_connection = getattr(profile, 'instagram_connection', None)
+    if profile.plataforma == SocialProfile.Plataforma.INSTAGRAM and (not instagram_connection or not instagram_connection.is_active):
+        status = 'SEM INSTAGRAM'
+    elif not profile.ativo or profile.modo_operacao != SocialProfile.ModoOperacao.AUTOMATICO:
         status = 'PARADO'
-    elif inventory < settings.SOCIAL_AUTOMATION_QUEUE_MIN or not next_content or last_error:
+    elif inventory < estoque_minimo_profile(profile) or not next_content or last_error:
         status = 'ATENCAO'
     else:
         status = 'SAUDAVEL'
@@ -313,8 +313,8 @@ def automacao_status_profile(profile):
         'estoque': inventory,
         'estoque_fotos': inventory_by_type[SocialContent.MediaType.IMAGE],
         'estoque_reels': inventory_by_type[SocialContent.MediaType.REEL],
-        'minimo': settings.SOCIAL_AUTOMATION_QUEUE_MIN,
-        'alvo': settings.SOCIAL_AUTOMATION_QUEUE_TARGET,
+        'minimo': estoque_minimo_profile(profile),
+        'alvo': estoque_alvo_profile(profile),
         'agendados_24h': profile.contents.filter(
             status=SocialContent.Status.AGENDADO,
             scheduled_at__gte=now,

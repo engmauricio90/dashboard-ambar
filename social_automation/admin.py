@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import SocialBaseImage, SocialContent, SocialContentEvent, SocialProfile
+from .models import SocialBaseImage, SocialContent, SocialContentEvent, SocialInstagramConnection, SocialProfile
 
 
 class SocialBaseImageInline(admin.TabularInline):
@@ -10,12 +10,53 @@ class SocialBaseImageInline(admin.TabularInline):
     readonly_fields = ['vezes_usada', 'ultima_utilizacao']
 
 
+class SocialInstagramConnectionInline(admin.StackedInline):
+    model = SocialInstagramConnection
+    extra = 0
+    fields = [
+        'instagram_user_id',
+        'username',
+        'account_type',
+        'is_active',
+        'connected_at',
+        'last_validated_at',
+        'last_validation_status',
+        'last_validation_error',
+        'token_expires_at',
+    ]
+    readonly_fields = ['connected_at', 'last_validated_at', 'last_validation_status', 'last_validation_error']
+    can_delete = False
+
+
 @admin.register(SocialProfile)
 class SocialProfileAdmin(admin.ModelAdmin):
     list_display = ['nome', 'username', 'plataforma', 'modo_operacao', 'ativo', 'posts_por_dia', 'reels_por_dia', 'updated_at']
     list_filter = ['plataforma', 'modo_operacao', 'ativo']
     search_fields = ['nome', 'username', 'estilo', 'instrucoes_ia']
-    inlines = [SocialBaseImageInline]
+    inlines = [SocialInstagramConnectionInline, SocialBaseImageInline]
+
+
+@admin.register(SocialInstagramConnection)
+class SocialInstagramConnectionAdmin(admin.ModelAdmin):
+    list_display = ['profile', 'username', 'instagram_user_id', 'account_type', 'is_active', 'last_validation_status', 'last_validated_at']
+    list_filter = ['is_active', 'account_type', 'last_validation_status']
+    search_fields = ['profile__nome', 'profile__username', 'username', 'instagram_user_id']
+    readonly_fields = ['connected_at', 'last_validated_at', 'created_at', 'updated_at']
+    fields = [
+        'profile',
+        'instagram_user_id',
+        'username',
+        'account_type',
+        'access_token_encrypted',
+        'is_active',
+        'connected_at',
+        'last_validated_at',
+        'last_validation_status',
+        'last_validation_error',
+        'token_expires_at',
+        'created_at',
+        'updated_at',
+    ]
 
 
 @admin.register(SocialBaseImage)

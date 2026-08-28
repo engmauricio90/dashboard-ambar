@@ -1,6 +1,8 @@
 from hashlib import sha256
 import logging
 
+from django.conf import settings
+
 
 logger = logging.getLogger(__name__)
 REEL_SHARE_TO_FEED = 'true'
@@ -37,7 +39,19 @@ def calculate_social_media_hash(content):
     return hasher.hexdigest()
 
 
-def calculate_instagram_container_fingerprint(content):
+def _instagram_user_id_for_fingerprint(content, explicit=''):
+    if explicit:
+        return explicit
+    connection = getattr(content.profile, 'instagram_connection', None)
+    if connection and connection.is_active:
+        return connection.instagram_user_id
+    if settings.SOCIAL_INSTAGRAM_LEGACY_FALLBACK:
+        return settings.INSTAGRAM_USER_ID or ''
+    return ''
+
+
+def calculate_instagram_container_fingerprint(content, instagram_user_id=''):
+    instagram_user_id = _instagram_user_id_for_fingerprint(content, instagram_user_id)
     media_hash = calculate_social_media_hash(content)
     caption = build_instagram_caption(content)
     share_to_feed = REEL_SHARE_TO_FEED if content.is_reel else ''
@@ -47,6 +61,7 @@ def calculate_instagram_container_fingerprint(content):
             f'media_type={content.media_type}',
             f'caption={caption}',
             f'share_to_feed={share_to_feed}',
+            f'instagram_user_id={instagram_user_id or ""}',
         ]
     )
     return sha256(payload.encode('utf-8')).hexdigest()

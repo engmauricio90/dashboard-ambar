@@ -63,6 +63,14 @@ def estoque_pronto_por_tipo(profile: SocialProfile):
     }
 
 
+def estoque_minimo_profile(profile: SocialProfile):
+    return max(0, (profile.posts_por_dia or 0) * 2)
+
+
+def estoque_alvo_profile(profile: SocialProfile):
+    return max(0, (profile.posts_por_dia or 0) * 3)
+
+
 def _ready_media_q():
     return Q(media_type=SocialContent.MediaType.IMAGE, final_image__isnull=False) & ~Q(final_image='') | Q(
         media_type=SocialContent.MediaType.REEL,

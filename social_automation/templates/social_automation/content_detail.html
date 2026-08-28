@@ -50,16 +50,27 @@
     </div>
     <div class="col-lg-4">
         <div class="card shadow-sm mb-3">
+            <div class="card-header fw-bold">Destino</div>
+            <div class="card-body small">
+                <div><strong>Perfil:</strong> {{ content.profile.nome }}</div>
+                <div><strong>Instagram:</strong> {% if instagram_connection and instagram_connection.is_active %}@{{ instagram_connection.username }}{% else %}nao conectado{% endif %}</div>
+            </div>
+        </div>
+        <div class="card shadow-sm mb-3">
             <div class="card-header fw-bold">Acoes</div>
             <div class="card-body d-grid gap-2">
                 {% if content.status == 'rascunho' %}
                     <form method="post" action="{% url 'social_automation:content_approve' content.id %}">{% csrf_token %}<button class="btn btn-success w-100" type="submit">Aprovar</button></form>
                     <form method="post" action="{% url 'social_automation:content_reject' content.id %}">{% csrf_token %}<button class="btn btn-outline-danger w-100" type="submit">Rejeitar</button></form>
                 {% elif content.status == 'aprovado' %}
+                    {% if instagram_connection and instagram_connection.is_active %}
                     <form method="post" action="{% url 'social_automation:content_publish_instagram' content.id %}" onsubmit="return confirm('Este conteudo sera publicado agora em @{{ instagram_expected_username|default:content.profile.username }}. Confirmar?');">
                         {% csrf_token %}
                         <button class="btn btn-primary w-100" type="submit">Publicar no Instagram</button>
                     </form>
+                    {% else %}
+                    <button class="btn btn-primary w-100" type="button" disabled>Instagram nao conectado</button>
+                    {% endif %}
                     <form method="post" action="{% url 'social_automation:content_reject' content.id %}">{% csrf_token %}<button class="btn btn-outline-danger w-100" type="submit">Rejeitar</button></form>
                     <hr>
                     <form method="post" action="{% url 'social_automation:content_schedule' content.id %}" class="d-grid gap-2">
@@ -75,7 +86,11 @@
                 {% elif content.status == 'rejeitado' %}
                     <form method="post" action="{% url 'social_automation:content_restore' content.id %}">{% csrf_token %}<button class="btn btn-outline-primary w-100" type="submit">Restaurar rascunho</button></form>
                 {% elif content.status == 'erro' %}
+                    {% if instagram_connection and instagram_connection.is_active %}
                     <form method="post" action="{% url 'social_automation:content_publish_instagram' content.id %}">{% csrf_token %}<button class="btn btn-outline-primary w-100" type="submit">Tentar publicar novamente</button></form>
+                    {% else %}
+                    <button class="btn btn-outline-primary w-100" type="button" disabled>Instagram nao conectado</button>
+                    {% endif %}
                 {% endif %}
                 {% if content.base_image and content.status != 'publicado' %}
                 <form method="post" action="{% url 'social_automation:content_render' content.id %}">{% csrf_token %}<button class="btn btn-outline-secondary w-100" type="submit">Renderizar novamente</button></form>

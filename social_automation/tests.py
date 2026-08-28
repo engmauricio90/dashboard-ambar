@@ -22,7 +22,7 @@ from PIL import Image, ImageDraw
 
 from empresas.models import Empresa, UsuarioEmpresa
 
-from .models import SocialBaseImage, SocialContent, SocialContentEvent, SocialProfile
+from .models import SocialBaseImage, SocialContent, SocialContentEvent, SocialInstagramConnection, SocialProfile
 from .ai import GeneratedContent
 from .automation import executar_tick_social
 from .container_versioning import (
@@ -55,7 +55,8 @@ from .instagram import (
 )
 from .rendering import CANVAS_SIZE, REEL_CANVAS_SIZE, SocialRenderError, renderizar_conteudo_social
 from .rendering import _draw_text_box, _layout_text, _reel_text_boxes, _region, _text_boxes
-from .scheduler import estoque_pronto, estoque_pronto_por_tipo, media_type_for_slot, plano_geracao_por_deficit, preencher_agenda
+from .scheduler import estoque_alvo_profile, estoque_minimo_profile, estoque_pronto, estoque_pronto_por_tipo, media_type_for_slot, plano_geracao_por_deficit, preencher_agenda
+from .token_crypto import InstagramTokenEncryptionError, decrypt_instagram_token, encrypt_instagram_token
 from .video_rendering import (
     SocialVideoRenderError,
     _ffmpeg_command,
@@ -2050,3 +2051,141 @@ class SocialAutomationMediaRootTests(TestCase):
 
             with self.assertRaisesMessage(Exception, 'Somente conteudos aprovados'):
                 publicar_conteudo_instagram(content, self.staff)
+
+
+@override_settings(
+    PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com',
+    SOCIAL_INSTAGRAM_LEGACY_FALLBACK=False,
+    SOCIAL_INSTAGRAM_TOKEN_ENCRYPTION_KEY='zCqifZSDofMEnNAGXaUnOpI0XzXDy3NCc8RxV9RI3l4=',
+)
+class SocialAutomationMultiProfileInstagramTests(TestCase):
+    def setUp(self):
+        self.profile_a = SocialProfile.objects.create(
+            nome='Perfil A',
+            username='perfil_a',
+            posts_por_dia=20,
+            reels_por_dia=5,
+            horarios_publicacao=['12:00'],
+        )
+        self.profile_b = SocialProfile.objects.create(
+            nome='Perfil B',
+            username='perfil_b',
+            posts_por_dia=10,
+            reels_por_dia=2,
+            horarios_publicacao=['13:00'],
+        )
+        self.connection_a = self._connection(self.profile_a, '178-A', 'perfil_a', 'token-a')
+        self.connection_b = self._connection(self.profile_b, '178-B', 'perfil_b', 'token-b')
+
+    def _connection(self, profile, user_id, username, token):
+        connection = SocialInstagramConnection(
+            profile=profile,
+            instagram_user_id=user_id,
+            username=username,
+            account_type=SocialInstagramConnection.AccountType.BUSINESS,
+        )
+        connection.set_access_token(token)
+        connection.save()
+        return connection
+
+    def _content(self, profile, frase='Frase teste'):
+        content = SocialContent.objects.create(
+            profile=profile,
+            frase=frase,
+            legenda='Legenda',
+            status=SocialContent.Status.APROVADO,
+        )
+        content.final_image.save(f'{profile.username}.jpg', imagem_teste(f'{profile.username}.jpg'))
+        return content
+
+    def test_token_fica_criptografado_no_banco(self):
+        self.assertNotIn('token-a', self.connection_a.access_token_encrypted)
+        self.assertEqual(self.connection_a.get_access_token(), 'token-a')
+        encrypted = encrypt_instagram_token('segredo-extra')
+        self.assertNotEqual(encrypted, 'segredo-extra')
+        self.assertEqual(decrypt_instagram_token(encrypted), 'segredo-extra')
+
+    @override_settings(SOCIAL_INSTAGRAM_TOKEN_ENCRYPTION_KEY='')
+    def test_chave_ausente_bloqueia_criptografia(self):
+        with self.assertRaisesMessage(InstagramTokenEncryptionError, 'SOCIAL_INSTAGRAM_TOKEN_ENCRYPTION_KEY nao configurada.'):
+            encrypt_instagram_token('token-teste')
+
+    @override_settings(SOCIAL_INSTAGRAM_TOKEN_ENCRYPTION_KEY='chave-invalida')
+    def test_chave_invalida_bloqueia_criptografia(self):
+        with self.assertRaisesMessage(InstagramTokenEncryptionError, 'Chave de criptografia do Instagram invalida.'):
+            encrypt_instagram_token('token-teste')
+
+    def test_token_criptografado_com_uma_chave_nao_abre_com_outra(self):
+        encrypted = encrypt_instagram_token('token-teste')
+        with override_settings(SOCIAL_INSTAGRAM_TOKEN_ENCRYPTION_KEY='nFycY45v7D4kR1US9DJy0nXHXTaXpaI80MOTvF4Cy6k='):
+            with self.assertRaisesMessage(InstagramTokenEncryptionError, 'Token Instagram nao pode ser descriptografado.'):
+                decrypt_instagram_token(encrypted)
+
+    def test_publicacao_usa_credencial_do_proprio_perfil(self):
+        content_a = self._content(self.profile_a, 'Conteudo A')
+        content_b = self._content(self.profile_b, 'Conteudo B')
+        chamadas = []
+
+        def fake_request(method, path, params=None, *, credentials=None):
+            chamadas.append((credentials.access_token, credentials.instagram_user_id, method, path))
+            if method == 'GET' and path in {'178-A', '178-B'}:
+                username = 'perfil_a' if path == '178-A' else 'perfil_b'
+                return {'id': path, 'username': username, 'account_type': 'BUSINESS'}
+            if method == 'POST' and path.endswith('/media'):
+                return {'id': f'container-{credentials.instagram_user_id}'}
+            if method == 'GET' and path.startswith('container-'):
+                return {'id': path, 'status_code': 'FINISHED'}
+            if method == 'POST' and path.endswith('/media_publish'):
+                return {'id': f'media-{credentials.instagram_user_id}'}
+            if method == 'GET' and path.startswith('media-'):
+                return {'id': path, 'permalink': f'https://instagram.test/{path}'}
+            return {}
+
+        with mock.patch('social_automation.instagram._request', side_effect=fake_request):
+            publicar_conteudo_instagram(content_a)
+            publicar_conteudo_instagram(content_b)
+
+        tokens_a = [token for token, user_id, _method, _path in chamadas if user_id == '178-A']
+        tokens_b = [token for token, user_id, _method, _path in chamadas if user_id == '178-B']
+        self.assertTrue(tokens_a)
+        self.assertTrue(tokens_b)
+        self.assertEqual(set(tokens_a), {'token-a'})
+        self.assertEqual(set(tokens_b), {'token-b'})
+
+    @override_settings(INSTAGRAM_ACCESS_TOKEN='', INSTAGRAM_USER_ID='', INSTAGRAM_EXPECTED_USERNAME='')
+    def test_perfil_sem_conexao_nao_publica(self):
+        profile = SocialProfile.objects.create(nome='Sem IG', username='semig', horarios_publicacao=['12:00'])
+        content = self._content(profile)
+        with self.assertRaisesMessage(Exception, 'Conecte uma conta Instagram'):
+            publicar_conteudo_instagram(content)
+        content.refresh_from_db()
+        self.assertEqual(content.status, SocialContent.Status.ERRO)
+
+    def test_estoque_minimo_e_alvo_sao_por_volume_do_perfil(self):
+        self.assertEqual(estoque_minimo_profile(self.profile_a), 40)
+        self.assertEqual(estoque_alvo_profile(self.profile_a), 60)
+        self.assertEqual(estoque_minimo_profile(self.profile_b), 20)
+        self.assertEqual(estoque_alvo_profile(self.profile_b), 30)
+
+    def test_troca_de_conexao_invalida_container_do_perfil(self):
+        content_a = self._content(self.profile_a)
+        content_b = self._content(self.profile_b)
+        SocialContent.objects.filter(pk__in=[content_a.pk, content_b.pk]).update(
+            instagram_container_id='container-antigo',
+            instagram_container_fingerprint='abc123',
+        )
+        self.connection_a.instagram_user_id = '178-A-NOVO'
+        self.connection_a.save()
+        content_a.refresh_from_db()
+        content_b.refresh_from_db()
+        self.assertEqual(content_a.instagram_container_id, '')
+        self.assertEqual(content_a.instagram_container_fingerprint, '')
+        self.assertEqual(content_b.instagram_container_id, 'container-antigo')
+
+    def test_ui_mostra_status_e_acoes_da_conexao(self):
+        user = User.objects.create_user('staff-social', password='123', is_staff=True)
+        self.client.force_login(user)
+        response = self.client.get(reverse('social_automation:profile_detail', args=[self.profile_a.id]))
+        self.assertContains(response, '@perfil_a')
+        self.assertContains(response, 'Testar conexao')
+        self.assertContains(response, 'Desconectar')

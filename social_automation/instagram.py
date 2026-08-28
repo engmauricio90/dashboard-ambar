@@ -5,6 +5,7 @@ import time
 import urllib.parse
 import urllib.request
 import urllib.error
+from dataclasses import dataclass
 from datetime import timedelta
 from hashlib import sha256
 from pathlib import Path
@@ -17,7 +18,8 @@ from django.urls import reverse
 from django.utils import timezone
 from PIL import Image
 
-from .models import SocialContent
+from .models import SocialContent, SocialInstagramConnection, SocialProfile
+from .token_crypto import InstagramTokenEncryptionError
 from .container_versioning import (
     REEL_SHARE_TO_FEED,
     build_instagram_caption,
@@ -62,23 +64,90 @@ class InstagramContainerPending(Exception):
     pass
 
 
-def _token():
-    token = settings.INSTAGRAM_ACCESS_TOKEN
+@dataclass(frozen=True)
+class InstagramCredentials:
+    access_token: str
+    instagram_user_id: str
+    username: str = ''
+    connection: SocialInstagramConnection | None = None
+    is_legacy: bool = False
+
+
+def _normalize_username(value):
+    return (value or '').strip().lstrip('@').lower()
+
+
+def _legacy_credentials_for_profile(profile=None):
+    if not settings.SOCIAL_INSTAGRAM_LEGACY_FALLBACK:
+        return None
+    expected = _normalize_username(settings.INSTAGRAM_EXPECTED_USERNAME)
+    profile_username = _normalize_username(profile.username if profile else expected)
+    if profile and expected and profile_username != expected:
+        return None
+    if not settings.INSTAGRAM_ACCESS_TOKEN or not settings.INSTAGRAM_USER_ID:
+        return None
+    return InstagramCredentials(
+        access_token=settings.INSTAGRAM_ACCESS_TOKEN,
+        instagram_user_id=settings.INSTAGRAM_USER_ID,
+        username=expected or profile_username,
+        is_legacy=True,
+    )
+
+
+def get_instagram_credentials(profile=None, *, allow_legacy=True):
+    if isinstance(profile, SocialContent):
+        profile = profile.profile
+    if profile:
+        connection = getattr(profile, 'instagram_connection', None)
+        if connection and connection.is_active:
+            try:
+                token = connection.get_access_token()
+            except InstagramTokenEncryptionError as exc:
+                raise InstagramConfigurationError(str(exc)) from exc
+            return InstagramCredentials(
+                access_token=token,
+                instagram_user_id=connection.instagram_user_id,
+                username=connection.username,
+                connection=connection,
+            )
+        expected = _normalize_username(settings.INSTAGRAM_EXPECTED_USERNAME)
+        profile_username = _normalize_username(profile.username)
+        if allow_legacy and settings.INSTAGRAM_ACCESS_TOKEN and settings.INSTAGRAM_USER_ID and expected and profile_username != expected:
+            raise InstagramPublishError('Este conteudo pertence a outro perfil social e nao pode ser publicado nesta conta Instagram.')
+        if allow_legacy:
+            legacy = _legacy_credentials_for_profile(profile)
+            if legacy:
+                return legacy
+        if allow_legacy:
+            raise InstagramConfigurationError('Conecte uma conta Instagram neste perfil ou configure INSTAGRAM_ACCESS_TOKEN e INSTAGRAM_USER_ID.')
+        raise InstagramConfigurationError('Conecte uma conta Instagram neste perfil antes de publicar.')
+
+    legacy = _legacy_credentials_for_profile(None) if allow_legacy else None
+    if legacy:
+        return legacy
+    raise InstagramConfigurationError('Configure uma conexao Instagram para o perfil.')
+
+
+def _token(credentials=None):
+    credentials = credentials or get_instagram_credentials()
+    token = credentials.access_token
     if not token:
-        raise InstagramConfigurationError('Configure INSTAGRAM_ACCESS_TOKEN para usar a integracao com Instagram.')
+        raise InstagramConfigurationError('Conecte uma conta Instagram para usar a integracao.')
     return token
 
 
-def _ig_user_id():
-    user_id = settings.INSTAGRAM_USER_ID
+def _ig_user_id(credentials=None):
+    credentials = credentials or get_instagram_credentials()
+    user_id = credentials.instagram_user_id
     if not user_id:
-        raise InstagramConfigurationError('Configure INSTAGRAM_USER_ID para usar a integracao com Instagram.')
+        raise InstagramConfigurationError('A conexao Instagram nao possui User ID.')
     return user_id
 
 
-def verificar_configuracao_instagram():
-    _token()
-    _ig_user_id()
+def verificar_configuracao_instagram(profile=None):
+    credentials = get_instagram_credentials(profile)
+    _token(credentials)
+    _ig_user_id(credentials)
     return True
 
 
@@ -87,8 +156,39 @@ def _url(path):
     return f'{GRAPH_HOST}/{version}/{path.lstrip("/")}'
 
 
-def _request(method, path, params=None):
-    token = _token()
+def _decode_response(response):
+    body = response.read().decode('utf-8')
+    return json.loads(body) if body else {}
+
+
+def _request_url(method, url, params=None):
+    params = params or {}
+    data = None
+    headers = {}
+    if method == 'GET':
+        query = urllib.parse.urlencode(params)
+        if query:
+            url = f'{url}?{query}'
+    else:
+        data = urllib.parse.urlencode(params).encode('utf-8')
+        headers['Content-Type'] = 'application/x-www-form-urlencoded'
+    request = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(request, timeout=settings.INSTAGRAM_API_TIMEOUT_SECONDS) as response:
+            return _decode_response(response)
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode('utf-8', errors='replace')
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            payload = {}
+        error = payload.get('error') or {}
+        message = error.get('message') or 'Erro de comunicacao com a API do Instagram.'
+        raise InstagramAPIError(_sanitize_error(message), status=exc.code, code=error.get('code'), error_type=error.get('type')) from exc
+
+
+def _request(method, path, params=None, *, credentials=None):
+    token = _token(credentials)
     params = params or {}
     data = None
     url = _url(path)
@@ -104,8 +204,7 @@ def _request(method, path, params=None):
     request = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(request, timeout=settings.INSTAGRAM_API_TIMEOUT_SECONDS) as response:
-            body = response.read().decode('utf-8')
-            return json.loads(body) if body else {}
+            return _decode_response(response)
     except urllib.error.HTTPError as exc:
         body = exc.read().decode('utf-8', errors='replace')
         try:
@@ -126,19 +225,28 @@ def _request(method, path, params=None):
             path,
         )
         raise InstagramAPIError(
-            _sanitize_error(message),
+            _sanitize_error(message).replace(token, '[token]'),
             status=exc.code,
             code=code,
             error_type=error.get('type'),
             subcode=subcode,
             is_transient=error.get('is_transient'),
-            user_title=_sanitize_error(error.get('error_user_title', '')),
-            user_msg=_sanitize_error(error.get('error_user_msg', '')),
+            user_title=_sanitize_error(error.get('error_user_title', '')).replace(token, '[token]'),
+            user_msg=_sanitize_error(error.get('error_user_msg', '')).replace(token, '[token]'),
             fbtrace_id=error.get('fbtrace_id', ''),
         ) from exc
     except Exception as exc:
         logger.warning('Instagram API unavailable path=%s error=%s', path, type(exc).__name__)
         raise InstagramAPIError('Nao foi possivel comunicar com a API do Instagram agora.') from exc
+
+
+def _request_with_credentials(method, path, params=None, *, credentials=None):
+    try:
+        return _request(method, path, params, credentials=credentials)
+    except TypeError as exc:
+        if 'unexpected keyword argument' in str(exc):
+            return _request(method, path, params)
+        raise
 
 
 def _sanitize_error(message):
@@ -199,20 +307,134 @@ def resumir_video_url(video_url):
     }
 
 
-def obter_conta_instagram():
-    data = _request('GET', _ig_user_id(), {'fields': 'id,username,account_type,media_count'})
-    expected = (settings.INSTAGRAM_EXPECTED_USERNAME or '').strip().lstrip('@').lower()
-    username = (data.get('username') or '').strip().lstrip('@').lower()
+def obter_conta_instagram(profile=None, *, credentials=None):
+    credentials = credentials or get_instagram_credentials(profile)
+    data = _request_with_credentials('GET', _ig_user_id(credentials), {'fields': 'id,username,account_type,media_count'}, credentials=credentials)
+    expected = _normalize_username(credentials.username)
+    username = _normalize_username(data.get('username'))
     if expected and username and username != expected:
         raise InstagramConfigurationError('A conta Instagram conectada nao corresponde ao username esperado.')
     return data
 
 
-def obter_permissoes_instagram():
+def obter_permissoes_instagram(profile=None, *, credentials=None):
+    credentials = credentials or get_instagram_credentials(profile)
     try:
-        return _request('GET', 'me/permissions')
+        return _request_with_credentials('GET', 'me/permissions', credentials=credentials)
     except InstagramAPIError:
         return None
+
+
+def instagram_oauth_redirect_uri(request=None):
+    configured = (settings.SOCIAL_INSTAGRAM_OAUTH_REDIRECT_URI or '').strip()
+    if configured:
+        return configured
+    if request is None:
+        raise InstagramConfigurationError('Configure SOCIAL_INSTAGRAM_OAUTH_REDIRECT_URI.')
+    return request.build_absolute_uri(reverse('social_automation:instagram_callback'))
+
+
+def build_instagram_oauth_url(state, *, request=None):
+    if not settings.SOCIAL_INSTAGRAM_CLIENT_ID:
+        raise InstagramConfigurationError('Configure SOCIAL_INSTAGRAM_CLIENT_ID para conectar o Instagram.')
+    scopes = (settings.SOCIAL_INSTAGRAM_OAUTH_SCOPES or '').replace(' ', '')
+    params = {
+        'client_id': settings.SOCIAL_INSTAGRAM_CLIENT_ID,
+        'redirect_uri': instagram_oauth_redirect_uri(request),
+        'scope': scopes,
+        'response_type': 'code',
+        'state': state,
+        'enable_fb_login': '0',
+        'force_authentication': '1',
+    }
+    return f'https://www.instagram.com/oauth/authorize?{urllib.parse.urlencode(params)}'
+
+
+def exchange_instagram_code(code, *, request=None):
+    if not settings.SOCIAL_INSTAGRAM_CLIENT_ID or not settings.SOCIAL_INSTAGRAM_CLIENT_SECRET:
+        raise InstagramConfigurationError('Configure SOCIAL_INSTAGRAM_CLIENT_ID e SOCIAL_INSTAGRAM_CLIENT_SECRET.')
+    short_lived = _request_url(
+        'POST',
+        'https://api.instagram.com/oauth/access_token',
+        {
+            'client_id': settings.SOCIAL_INSTAGRAM_CLIENT_ID,
+            'client_secret': settings.SOCIAL_INSTAGRAM_CLIENT_SECRET,
+            'grant_type': 'authorization_code',
+            'redirect_uri': instagram_oauth_redirect_uri(request),
+            'code': code,
+        },
+    )
+    access_token = short_lived.get('access_token')
+    if not access_token:
+        raise InstagramAPIError('A Meta nao retornou access token.')
+    long_lived = _request_url(
+        'GET',
+        f'{GRAPH_HOST}/access_token',
+        {
+            'grant_type': 'ig_exchange_token',
+            'client_secret': settings.SOCIAL_INSTAGRAM_CLIENT_SECRET,
+            'access_token': access_token,
+        },
+    )
+    token = long_lived.get('access_token') or access_token
+    expires_in = long_lived.get('expires_in')
+    return {
+        'access_token': token,
+        'expires_in': expires_in,
+        'user_id': str(short_lived.get('user_id') or ''),
+    }
+
+
+def criar_ou_atualizar_conexao_instagram(profile, *, access_token, instagram_user_id='', username='', account_type='', token_expires_at=None):
+    temp_credentials = InstagramCredentials(
+        access_token=access_token,
+        instagram_user_id=instagram_user_id or 'me',
+        username=username,
+    )
+    conta = _request_with_credentials('GET', instagram_user_id or 'me', {'fields': 'id,username,account_type'}, credentials=temp_credentials)
+    ig_user_id = str(conta.get('id') or instagram_user_id or '')
+    if not ig_user_id:
+        raise InstagramAPIError('A Meta nao retornou Instagram User ID.')
+    username = conta.get('username') or username or profile.username
+    account_type = (conta.get('account_type') or account_type or SocialInstagramConnection.AccountType.DESCONHECIDO).upper()
+    if account_type not in {'BUSINESS', 'CREATOR', SocialInstagramConnection.AccountType.DESCONHECIDO}:
+        raise InstagramConfigurationError('A conta Instagram precisa ser Business ou Creator para publicar pela API.')
+    connection, _created = SocialInstagramConnection.objects.get_or_create(
+        profile=profile,
+        defaults={
+            'instagram_user_id': ig_user_id,
+            'username': username,
+            'account_type': account_type,
+            'token_expires_at': token_expires_at,
+        },
+    )
+    connection.instagram_user_id = ig_user_id
+    connection.username = username
+    connection.account_type = account_type
+    connection.token_expires_at = token_expires_at
+    connection.is_active = True
+    connection.set_access_token(access_token)
+    connection.last_validation_status = SocialInstagramConnection.ValidationStatus.OK
+    connection.last_validation_error = ''
+    connection.last_validated_at = timezone.now()
+    connection.save()
+    return connection
+
+
+def validar_conexao_instagram(connection):
+    credentials = get_instagram_credentials(connection.profile, allow_legacy=False)
+    conta = obter_conta_instagram(credentials=credentials)
+    username = _normalize_username(conta.get('username'))
+    if username and username != connection.normalized_username:
+        raise InstagramConfigurationError('A conta retornada pela Meta nao corresponde ao username salvo nesta conexao.')
+    account_type = (conta.get('account_type') or '').upper()
+    if account_type and account_type not in {'BUSINESS', 'CREATOR'}:
+        raise InstagramConfigurationError('A conta Instagram precisa ser Business ou Creator para publicar pela API.')
+    connection.account_type = account_type or connection.account_type
+    connection.mark_validation(ok=True)
+    if account_type:
+        connection.save(update_fields=['account_type', 'updated_at'])
+    return conta
 
 
 def gerar_token_midia_temporaria(content):
@@ -352,12 +574,13 @@ def montar_caption(content):
     return build_instagram_caption(content)
 
 
-def criar_container_imagem(image_url, caption):
+def criar_container_imagem(image_url, caption, *, credentials=None):
+    credentials = credentials or get_instagram_credentials()
     payload = {'image_url': image_url, 'caption': caption}
     resumo = resumir_image_url(image_url)
     logger.info(
         'Instagram creating image container endpoint=%s content_type=image image_url_scheme=%s image_url_host=%s image_url_path_structure=%s image_url_length=%s image_url_sha256=%s',
-        f'{_ig_user_id()}/media',
+        f'{_ig_user_id(credentials)}/media',
         resumo['scheme'],
         resumo['host'],
         resumo['path_structure'],
@@ -367,7 +590,7 @@ def criar_container_imagem(image_url, caption):
     start = time.monotonic()
     logger.info('media_container_request_start image_url_sha256=%s', resumo['sha256'])
     try:
-        data = _request('POST', f'{_ig_user_id()}/media', payload)
+        data = _request_with_credentials('POST', f'{_ig_user_id(credentials)}/media', payload, credentials=credentials)
     finally:
         duration_ms = int((time.monotonic() - start) * 1000)
         logger.info('media_container_request_end duration_ms=%s image_url_sha256=%s', duration_ms, resumo['sha256'])
@@ -378,19 +601,20 @@ def criar_container_imagem(image_url, caption):
     return container_id
 
 
-def criar_container_reel(video_url, caption):
+def criar_container_reel(video_url, caption, *, credentials=None):
+    credentials = credentials or get_instagram_credentials()
     payload = {'media_type': 'REELS', 'video_url': video_url, 'caption': caption, 'share_to_feed': REEL_SHARE_TO_FEED}
     resumo = resumir_video_url(video_url)
     logger.info(
         'Instagram creating reel container endpoint=%s content_type=video video_url_scheme=%s video_url_host=%s video_url_path_structure=%s video_url_length=%s video_url_sha256=%s',
-        f'{_ig_user_id()}/media',
+        f'{_ig_user_id(credentials)}/media',
         resumo['scheme'],
         resumo['host'],
         resumo['path_structure'],
         resumo['length'],
         resumo['sha256'],
     )
-    data = _request('POST', f'{_ig_user_id()}/media', payload)
+    data = _request_with_credentials('POST', f'{_ig_user_id(credentials)}/media', payload, credentials=credentials)
     container_id = data.get('id')
     if not container_id:
         raise InstagramAPIError('A API do Instagram nao retornou o container de Reel.')
@@ -398,13 +622,24 @@ def criar_container_reel(video_url, caption):
     return container_id
 
 
-def consultar_container(container_id):
-    return _request('GET', container_id, {'fields': 'id,status_code'})
+def _call_with_optional_credentials(func, *args, credentials=None):
+    if credentials and credentials.is_legacy:
+        return func(*args)
+    try:
+        return func(*args, credentials=credentials)
+    except TypeError as exc:
+        if 'unexpected keyword argument' in str(exc):
+            return func(*args)
+        raise
 
 
-def aguardar_container_pronto(container_id, attempts=5, interval=3):
+def consultar_container(container_id, *, credentials=None):
+    return _request_with_credentials('GET', container_id, {'fields': 'id,status_code'}, credentials=credentials)
+
+
+def aguardar_container_pronto(container_id, attempts=5, interval=3, *, credentials=None):
     for attempt in range(attempts):
-        data = consultar_container(container_id)
+        data = consultar_container(container_id, credentials=credentials)
         status_code = data.get('status_code')
         if status_code in {'FINISHED', 'PUBLISHED'}:
             return data
@@ -415,8 +650,8 @@ def aguardar_container_pronto(container_id, attempts=5, interval=3):
     raise InstagramAPIError('Container de midia nao ficou pronto dentro do tempo esperado.')
 
 
-def status_container_pronto(container_id):
-    data = consultar_container(container_id)
+def status_container_pronto(container_id, *, credentials=None):
+    data = consultar_container(container_id, credentials=credentials)
     status_code = data.get('status_code')
     if status_code in {'FINISHED', 'PUBLISHED'}:
         return True
@@ -425,8 +660,9 @@ def status_container_pronto(container_id):
     return False
 
 
-def publicar_container(container_id):
-    data = _request('POST', f'{_ig_user_id()}/media_publish', {'creation_id': container_id})
+def publicar_container(container_id, *, credentials=None):
+    credentials = credentials or get_instagram_credentials()
+    data = _request_with_credentials('POST', f'{_ig_user_id(credentials)}/media_publish', {'creation_id': container_id}, credentials=credentials)
     media_id = data.get('id')
     if not media_id:
         raise InstagramAPIError('A API do Instagram nao retornou o ID da publicacao.')
@@ -434,21 +670,22 @@ def publicar_container(container_id):
     return media_id
 
 
-def obter_midia_publicada(media_id):
+def obter_midia_publicada(media_id, *, credentials=None):
     try:
-        return _request('GET', media_id, {'fields': 'id,permalink'})
+        return _request_with_credentials('GET', media_id, {'fields': 'id,permalink'}, credentials=credentials)
     except InstagramAPIError:
         return {'id': media_id}
 
 
-def validar_username_profile(content):
-    expected = (settings.INSTAGRAM_EXPECTED_USERNAME or '').strip().lstrip('@').lower()
-    profile_username = (content.profile.username or '').strip().lstrip('@').lower()
+def validar_username_profile(content, *, credentials=None):
+    credentials = credentials or get_instagram_credentials(content.profile)
+    expected = _normalize_username(credentials.username)
+    profile_username = _normalize_username(content.profile.username)
     if expected and profile_username and profile_username != expected:
         raise InstagramPublishError('Este conteudo pertence a outro perfil social e nao pode ser publicado nesta conta Instagram.')
 
 
-def _marcar_publicando(content_id):
+def _marcar_publicando(content_id, *, credentials=None):
     with transaction.atomic():
         content = SocialContent.objects.select_for_update().select_related('profile').get(pk=content_id)
         if content.status not in {SocialContent.Status.APROVADO, SocialContent.Status.AGENDADO, SocialContent.Status.ERRO}:
@@ -457,7 +694,7 @@ def _marcar_publicando(content_id):
             raise InstagramPublishError('Renderize a midia final antes de publicar.')
         if content.external_post_id:
             raise InstagramPublishError('Este conteudo ja possui publicacao vinculada.')
-        validar_username_profile(content)
+        validar_username_profile(content, credentials=credentials)
         content.status = SocialContent.Status.PUBLICANDO
         content.tentativas += 1
         content.ultima_tentativa = timezone.now()
@@ -511,8 +748,8 @@ def _marcar_publicado(content_id, media_id, permalink, usuario=None):
         return content
 
 
-def _container_reel_atual_ou_novo(content, caption):
-    current_fingerprint = calculate_instagram_container_fingerprint(content)
+def _container_reel_atual_ou_novo(content, caption, *, credentials):
+    current_fingerprint = calculate_instagram_container_fingerprint(content, credentials.instagram_user_id)
     if content.instagram_container_id:
         if content.instagram_container_fingerprint == current_fingerprint:
             logger.info(
@@ -534,7 +771,7 @@ def _container_reel_atual_ou_novo(content, caption):
         invalidate_instagram_container(content, reason='fingerprint_changed')
 
     video_url = url_video_meta_compat(content)
-    container_id = criar_container_reel(video_url, caption)
+    container_id = _call_with_optional_credentials(criar_container_reel, video_url, caption, credentials=credentials)
     _salvar_container_reel(content.id, container_id, current_fingerprint)
     logger.info(
         'instagram_container_created content_id=%s media_type=%s container_id=%s fingerprint_prefix=%s',
@@ -558,24 +795,25 @@ def _marcar_erro(content_id, message):
 
 def publicar_conteudo_instagram(content, usuario=None):
     logger.info('publication_start content_id=%s', content.id)
-    content = _marcar_publicando(content.id)
     try:
-        verificar_configuracao_instagram()
-        obter_conta_instagram()
+        credentials = get_instagram_credentials(content.profile)
+        content = _marcar_publicando(content.id, credentials=credentials)
+        verificar_configuracao_instagram(content.profile)
+        obter_conta_instagram(credentials=credentials)
         caption = montar_caption(content)
         if content.is_reel:
             auditar_video_reel(content)
-            container_id = _container_reel_atual_ou_novo(content, caption)
-            if not status_container_pronto(container_id):
+            container_id = _container_reel_atual_ou_novo(content, caption, credentials=credentials)
+            if not _call_with_optional_credentials(status_container_pronto, container_id, credentials=credentials):
                 _marcar_reel_pendente(content.id)
                 raise InstagramContainerPending('Container de Reel ainda em processamento; publicacao sera retomada no proximo tick.')
         else:
             auditar_imagem_final(content)
             image_url = url_midia_temporaria(content)
-            container_id = criar_container_imagem(image_url, caption)
-            aguardar_container_pronto(container_id)
-        media_id = publicar_container(container_id)
-        media = obter_midia_publicada(media_id)
+            container_id = _call_with_optional_credentials(criar_container_imagem, image_url, caption, credentials=credentials)
+            _call_with_optional_credentials(aguardar_container_pronto, container_id, credentials=credentials)
+        media_id = _call_with_optional_credentials(publicar_container, container_id, credentials=credentials)
+        media = _call_with_optional_credentials(obter_midia_publicada, media_id, credentials=credentials)
         return _marcar_publicado(content.id, media_id, media.get('permalink'), usuario)
     except InstagramContainerPending:
         raise

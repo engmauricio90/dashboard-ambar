@@ -22,13 +22,17 @@ from .instagram import (
     InstagramConfigurationError,
     InstagramContainerPending,
     InstagramPublishError,
+    build_instagram_oauth_url,
+    criar_ou_atualizar_conexao_instagram,
+    exchange_instagram_code,
     obter_conta_instagram,
     publicar_conteudo_instagram,
+    validar_conexao_instagram,
     validar_assinatura_midia_meta,
     validar_assinatura_video_meta,
     validar_token_midia_temporaria,
 )
-from .models import SocialBaseImage, SocialContent, SocialProfile
+from .models import SocialBaseImage, SocialContent, SocialInstagramConnection, SocialProfile
 from .rendering import SocialRenderError, renderizar_midia_social
 from .services import (
     agendar_conteudo,
@@ -73,12 +77,15 @@ def _handle_validation_error(request, exc):
 
 @staff_required
 def home(request):
+    perfis = list(SocialProfile.objects.annotate(total_fila=Count('contents')).order_by('nome')[:6])
+    perfis_status = [(profile, automacao_status_profile(profile)) for profile in perfis]
     contexto = {
         'perfis_ativos': SocialProfile.objects.filter(ativo=True).count(),
         'rascunhos': SocialContent.objects.filter(status=SocialContent.Status.RASCUNHO).count(),
         'agendados': SocialContent.objects.filter(status=SocialContent.Status.AGENDADO).count(),
         'erros': SocialContent.objects.filter(status=SocialContent.Status.ERRO).count(),
-        'perfis': SocialProfile.objects.annotate(total_fila=Count('contents')).order_by('nome')[:6],
+        'perfis': perfis,
+        'perfis_status': perfis_status,
     }
     return render(request, 'social_automation/home.html', contexto)
 
@@ -119,6 +126,7 @@ def profile_update(request, profile_id):
 @staff_required
 def profile_detail(request, profile_id):
     profile = _profile_or_404(profile_id)
+    instagram_connection = getattr(profile, 'instagram_connection', None)
     contents = profile.contents.select_related('base_image').order_by('-created_at')[:8]
     contexto = {
         'profile': profile,
@@ -128,7 +136,8 @@ def profile_detail(request, profile_id):
         'agendados': profile.contents.filter(status=SocialContent.Status.AGENDADO).count(),
         'erros': profile.contents.filter(status=SocialContent.Status.ERRO).count(),
         'contents': contents,
-        'instagram_configurado': bool(settings.INSTAGRAM_ACCESS_TOKEN and settings.INSTAGRAM_USER_ID),
+        'instagram_connection': instagram_connection,
+        'instagram_configurado': bool(instagram_connection and instagram_connection.is_active),
         'automacao': automacao_status_profile(profile),
     }
     return render(request, 'social_automation/profile_detail.html', contexto)
@@ -322,6 +331,7 @@ def content_detail(request, content_id):
     content = get_object_or_404(_content_queryset(), pk=content_id)
     schedule_form = SocialScheduleForm(profile=content.profile) if content.status == SocialContent.Status.APROVADO else None
     events = content.events.select_related('usuario')[:20]
+    instagram_connection = getattr(content.profile, 'instagram_connection', None)
     return render(
         request,
         'social_automation/content_detail.html',
@@ -329,7 +339,8 @@ def content_detail(request, content_id):
             'content': content,
             'events': events,
             'schedule_form': schedule_form,
-            'instagram_expected_username': settings.INSTAGRAM_EXPECTED_USERNAME or content.profile.username,
+            'instagram_expected_username': instagram_connection.username if instagram_connection and instagram_connection.is_active else content.profile.username,
+            'instagram_connection': instagram_connection,
         },
     )
 
@@ -457,11 +468,71 @@ def content_publish_instagram(request, content_id):
 @staff_required
 def instagram_health(request, profile_id):
     profile = _profile_or_404(profile_id)
+    connection = getattr(profile, 'instagram_connection', None)
+    if not connection or not connection.is_active:
+        messages.error(request, 'Instagram nao conectado neste perfil.')
+        return redirect('social_automation:profile_detail', profile_id=profile.id)
     try:
-        conta = obter_conta_instagram()
+        conta = validar_conexao_instagram(connection)
         messages.success(request, f'Instagram conectado: @{conta.get("username") or "-"}')
     except (InstagramConfigurationError, InstagramAPIError) as exc:
+        connection.mark_validation(ok=False, error=str(exc))
         messages.error(request, str(exc))
+    return redirect('social_automation:profile_detail', profile_id=profile.id)
+
+
+@staff_required
+def instagram_connect_start(request, profile_id):
+    profile = _profile_or_404(profile_id)
+    state = secrets.token_urlsafe(32)
+    request.session['social_instagram_oauth_state'] = {
+        'state': state,
+        'profile_id': profile.id,
+        'user_id': request.user.id,
+    }
+    try:
+        return redirect(build_instagram_oauth_url(state, request=request))
+    except InstagramConfigurationError as exc:
+        messages.error(request, str(exc))
+        return redirect('social_automation:profile_detail', profile_id=profile.id)
+
+
+@staff_required
+def instagram_callback(request):
+    expected = request.session.pop('social_instagram_oauth_state', None) or {}
+    state = request.GET.get('state') or ''
+    code = request.GET.get('code') or ''
+    if not expected or not secrets.compare_digest(expected.get('state', ''), state) or expected.get('user_id') != request.user.id:
+        return HttpResponseForbidden('State OAuth invalido.')
+    profile = _profile_or_404(expected.get('profile_id'))
+    if not code:
+        messages.error(request, 'A Meta nao retornou codigo de autorizacao.')
+        return redirect('social_automation:profile_detail', profile_id=profile.id)
+    try:
+        token_data = exchange_instagram_code(code, request=request)
+        connection = criar_ou_atualizar_conexao_instagram(
+            profile,
+            access_token=token_data['access_token'],
+            instagram_user_id=token_data.get('user_id') or '',
+        )
+        messages.success(request, f'Instagram conectado em @{connection.username}.')
+    except (InstagramConfigurationError, InstagramAPIError) as exc:
+        messages.error(request, str(exc))
+    return redirect('social_automation:profile_detail', profile_id=profile.id)
+
+
+@staff_required
+@require_POST
+def instagram_disconnect(request, profile_id):
+    profile = _profile_or_404(profile_id)
+    connection = getattr(profile, 'instagram_connection', None)
+    if connection:
+        connection.is_active = False
+        connection.save(update_fields=['is_active', 'updated_at'])
+        profile.contents.exclude(instagram_container_id='').update(instagram_container_id='', instagram_container_fingerprint='')
+        messages.success(request, 'Instagram desconectado deste perfil.')
+    else:
+        messages.info(request, 'Este perfil ainda nao possui conexao Instagram.')
     return redirect('social_automation:profile_detail', profile_id=profile.id)
 
 

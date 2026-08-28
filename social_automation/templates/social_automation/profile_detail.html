@@ -22,7 +22,7 @@
 <div class="card shadow-sm mb-4">
     <div class="card-header fw-bold d-flex justify-content-between align-items-center">
         <span>Automacao</span>
-        <span class="badge {% if automacao.status == 'SAUDAVEL' %}bg-success{% elif automacao.status == 'ATENCAO' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ automacao.status }}</span>
+        <span class="badge {% if automacao.status == 'SAUDAVEL' %}bg-success{% elif automacao.status == 'ATENCAO' %}bg-warning text-dark{% elif automacao.status == 'SEM INSTAGRAM' %}bg-danger{% else %}bg-secondary{% endif %}">{{ automacao.status }}</span>
     </div>
     <div class="card-body">
         <div class="row g-3">
@@ -39,12 +39,36 @@
 </div>
 
 <div class="card shadow-sm mb-4">
-    <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+        <span>Instagram</span>
+        {% if instagram_connection and instagram_connection.is_active %}
+            <span class="badge {% if instagram_connection.last_validation_status == 'ok' %}bg-success{% elif instagram_connection.last_validation_status == 'erro' %}bg-danger{% else %}bg-secondary{% endif %}">{{ instagram_connection.get_last_validation_status_display }}</span>
+        {% else %}
+            <span class="badge bg-warning text-dark">Nao conectado</span>
+        {% endif %}
+    </div>
+    <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-3">
         <div>
-            <strong>Instagram</strong>
-            <div class="text-muted small">{% if instagram_configurado %}Configurado{% else %}Nao configurado{% endif %}</div>
+            {% if instagram_connection and instagram_connection.is_active %}
+                <strong>@{{ instagram_connection.username }}</strong>
+                <div class="text-muted small">ID {{ instagram_connection.masked_instagram_user_id }} - {{ instagram_connection.get_account_type_display }}</div>
+                <div class="text-muted small">Ultima validacao: {% if instagram_connection.last_validated_at %}{{ instagram_connection.last_validated_at|date:'d/m/Y H:i' }}{% else %}-{% endif %}</div>
+                {% if instagram_connection.last_validation_error %}<div class="text-danger small">{{ instagram_connection.last_validation_error }}</div>{% endif %}
+            {% else %}
+                <strong>Instagram nao conectado</strong>
+                <div class="text-muted small">Este perfil pode gerar e renderizar conteudos, mas nao publica ate conectar uma conta profissional.</div>
+            {% endif %}
         </div>
-        <a href="{% url 'social_automation:instagram_health' profile.id %}" class="btn btn-sm btn-outline-secondary">Testar conexao</a>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="{% url 'social_automation:instagram_connect_start' profile.id %}" class="btn btn-sm btn-outline-primary">{% if instagram_connection %}Reconectar{% else %}Conectar Instagram{% endif %}</a>
+            {% if instagram_connection and instagram_connection.is_active %}
+                <a href="{% url 'social_automation:instagram_health' profile.id %}" class="btn btn-sm btn-outline-secondary">Testar conexao</a>
+                <form method="post" action="{% url 'social_automation:instagram_disconnect' profile.id %}" onsubmit="return confirm('Desconectar o Instagram deste perfil? Conteudos e historico serao preservados.');">
+                    {% csrf_token %}
+                    <button class="btn btn-sm btn-outline-danger" type="submit">Desconectar</button>
+                </form>
+            {% endif %}
+        </div>
     </div>
 </div>
 
