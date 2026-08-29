@@ -26,6 +26,20 @@
             <div class="col-md-4 d-flex align-items-end"><div class="form-check mb-2">{{ form.show_slide_number }} <label class="form-check-label">{{ form.show_slide_number.label }}</label></div></div>
             <div class="col-md-4 d-flex align-items-end"><div class="form-check mb-2">{{ form.show_footer }} <label class="form-check-label">{{ form.show_footer.label }}</label></div></div>
         </div>
+        <hr>
+        <h5 class="mb-3">Familia visual e variants</h5>
+        <div class="row g-3">
+            {% for layout in layout_previews %}
+            <div class="col-md-3">
+                <div class="border rounded p-2 bg-light">
+                    <div class="ratio ratio-1x1 bg-white border rounded position-relative overflow-hidden">
+                        <div class="position-absolute bg-secondary opacity-25" style="{% if layout == 'HERO_LEFT' or layout == 'SPLIT_LEFT' %}left:6%;top:18%;width:43%;height:62%;{% elif layout == 'HERO_RIGHT' or layout == 'SPLIT_RIGHT' %}left:51%;top:18%;width:43%;height:62%;{% elif layout == 'TEXT_TOP' %}left:8%;top:8%;width:84%;height:35%;{% elif layout == 'TEXT_BOTTOM' or layout == 'MINIMAL' %}left:8%;top:58%;width:84%;height:32%;{% elif layout == 'CENTER_CARD' %}left:16%;top:25%;width:68%;height:50%;{% else %}left:10%;top:18%;width:80%;height:62%;{% endif %}"></div>
+                    </div>
+                    <div class="small fw-bold mt-2">{{ layout }}</div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
     </div>
     <div class="card-footer d-flex gap-2">
         <button class="btn btn-primary" type="submit">Salvar</button>

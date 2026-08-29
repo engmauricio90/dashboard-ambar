@@ -24,7 +24,18 @@ from PIL import Image, ImageDraw
 
 from empresas.models import Empresa, UsuarioEmpresa
 
-from .models import SocialBaseImage, SocialCarouselSlide, SocialCarouselTemplate, SocialContent, SocialContentEvent, SocialInstagramConnection, SocialProfile
+from .models import (
+    SocialBaseImage,
+    SocialBaseImageProtectedRegion,
+    SocialCarouselSlide,
+    SocialCarouselTemplate,
+    SocialCarouselTemplateVariant,
+    SocialContent,
+    SocialContentEvent,
+    SocialInstagramConnection,
+    SocialProfile,
+    SocialVisualIdentity,
+)
 from .ai import GeneratedContent
 from .automation import executar_tick_social
 from .container_versioning import (
@@ -78,6 +89,7 @@ from .video_rendering import (
     auditar_video_reel,
     renderizar_reel_social,
 )
+from .visual_composer import compose_carousel_slide, protected_regions_for_image, visual_identity_for_profile
 
 
 User = get_user_model()
@@ -2744,6 +2756,401 @@ class SocialAutomationCarouselFormSetTests(TestCase):
         self.assertTrue(formset.is_valid(), formset.errors or formset.non_form_errors())
         formset.save()
         self.assertEqual(list(content.carousel_slides.order_by('order').values_list('order', flat=True)), [1, 3])
+
+
+@override_settings(PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com')
+class SocialAutomationCarouselVisualComposerTests(TestCase):
+    def setUp(self):
+        self.staff = User.objects.create_user(username='staff-visual-composer', password='senha', is_staff=True)
+        self.client.force_login(self.staff)
+        self.profile_a = SocialProfile.objects.create(nome='Perfil Visual A', username='visual_a', horarios_publicacao=['08:00'])
+        self.profile_b = SocialProfile.objects.create(nome='Perfil Visual B', username='visual_b', horarios_publicacao=['09:00'])
+        self.template_a = SocialCarouselTemplate.objects.create(profile=self.profile_a, name='Familia A', is_default=True)
+        self.template_b = SocialCarouselTemplate.objects.create(profile=self.profile_b, name='Familia B', is_default=True)
+
+    def _image_file(self, name, color):
+        buffer = BytesIO()
+        Image.new('RGB', (1080, 1080), color=color).save(buffer, format='JPEG')
+        return SimpleUploadedFile(name, buffer.getvalue(), content_type='image/jpeg')
+
+    def _base_image(self, profile=None, name='base.jpg', color=(240, 240, 240), **kwargs):
+        profile = profile or self.profile_a
+        return SocialBaseImage.objects.create(
+            profile=profile,
+            nome=name,
+            arquivo=self._image_file(name, color),
+            tags=kwargs.pop('tags', 'teste'),
+            **kwargs,
+        )
+
+    def _content(self, base_image=None):
+        return SocialContent.objects.create(
+            profile=self.profile_a,
+            carousel_template=self.template_a,
+            base_image=base_image,
+            media_type=SocialContent.MediaType.CAROUSEL,
+            frase='Titulo do carrossel',
+            legenda='Legenda',
+            hashtags='#teste',
+        )
+
+    def _slide(self, **kwargs):
+        content = kwargs.pop('content', None)
+        base_image = kwargs.pop('base_image', None)
+        if content is None:
+            content = self._content(base_image)
+        return SocialCarouselSlide.objects.create(
+            content=content,
+            order=kwargs.pop('order', 1),
+            slide_type=kwargs.pop('slide_type', SocialCarouselSlide.SlideType.COVER),
+            title=kwargs.pop('title', 'Titulo'),
+            body=kwargs.pop('body', 'Corpo do slide'),
+            **kwargs,
+        )
+
+    def _overlap_ratio(self, text_box, region):
+        left = max(text_box[0], region[0])
+        right = min(text_box[0] + text_box[2], region[0] + region[2])
+        top = max(text_box[1], region[1])
+        bottom = min(text_box[1] + text_box[3], region[1] + region[3])
+        if right <= left or bottom <= top:
+            return 0
+        text_area = max(text_box[2] * text_box[3], 0.001)
+        return ((right - left) * (bottom - top)) / text_area
+
+    def _assert_no_protected_overlap(self, decision):
+        for region in decision.metadata['protected_regions']:
+            self.assertLessEqual(self._overlap_ratio(decision.metadata['text_zone'], region), 0.02)
+
+    def test_identidade_visual_e_isolada_por_perfil(self):
+        SocialVisualIdentity.objects.create(profile=self.profile_a, name='Marca A', accent_color='#ff0000', brand_name='Marca A')
+        SocialVisualIdentity.objects.create(profile=self.profile_b, name='Marca B', accent_color='#0000ff', brand_name='Marca B')
+
+        self.assertEqual(visual_identity_for_profile(self.profile_a).accent_color, '#ff0000')
+        self.assertEqual(visual_identity_for_profile(self.profile_b).accent_color, '#0000ff')
+
+    def test_render_multi_perfil_nao_mistura_identidade_template_ou_midia(self):
+        from .rendering import renderizar_midia_social
+
+        SocialVisualIdentity.objects.create(profile=self.profile_a, name='Marca A', brand_name='Marca A', accent_color='#ff0000')
+        SocialVisualIdentity.objects.create(profile=self.profile_b, name='Marca B', brand_name='Marca B', accent_color='#0000ff')
+        image_a = self._base_image(profile=self.profile_a, name='perfil-a.jpg', color=(30, 30, 30))
+        image_b = self._base_image(profile=self.profile_b, name='perfil-b.jpg', color=(230, 230, 230))
+        content_a = self._content(base_image=image_a)
+        content_b = SocialContent.objects.create(
+            profile=self.profile_b,
+            carousel_template=self.template_b,
+            base_image=image_b,
+            media_type=SocialContent.MediaType.CAROUSEL,
+            frase='Titulo B',
+            legenda='Legenda B',
+            hashtags='#b',
+        )
+        SocialCarouselSlide.objects.create(content=content_a, order=1, slide_type=SocialCarouselSlide.SlideType.COVER, title='A')
+        SocialCarouselSlide.objects.create(content=content_a, order=2, slide_type=SocialCarouselSlide.SlideType.CONTENT, body='A')
+        SocialCarouselSlide.objects.create(content=content_b, order=1, slide_type=SocialCarouselSlide.SlideType.COVER, title='B')
+        SocialCarouselSlide.objects.create(content=content_b, order=2, slide_type=SocialCarouselSlide.SlideType.CONTENT, body='B')
+
+        renderizar_midia_social(content_a)
+        renderizar_midia_social(content_b)
+
+        slide_a = content_a.carousel_slides.order_by('order').first()
+        slide_b = content_b.carousel_slides.order_by('order').first()
+        slide_a.refresh_from_db()
+        slide_b.refresh_from_db()
+        self.assertEqual(slide_a.render_metadata['brand_name'], 'Marca A')
+        self.assertEqual(slide_b.render_metadata['brand_name'], 'Marca B')
+        self.assertEqual(slide_a.render_metadata['source_base_image_id'], image_a.id)
+        self.assertEqual(slide_b.render_metadata['source_base_image_id'], image_b.id)
+
+    def test_variant_incompativel_rejeitada_e_auto_e_deterministico(self):
+        variant = SocialCarouselTemplateVariant.objects.create(
+            template=self.template_a,
+            name='Somente conteudo',
+            allowed_slide_types=[SocialCarouselSlide.SlideType.CONTENT],
+            layout_type=SocialCarouselTemplateVariant.LayoutType.TEXT_TOP,
+        )
+        slide = self._slide(variant=variant, slide_type=SocialCarouselSlide.SlideType.COVER)
+
+        with self.assertRaises(ValidationError):
+            slide.full_clean()
+
+        slide.variant = None
+        first = compose_carousel_slide(slide, self.template_a, 3)
+        second = compose_carousel_slide(slide, self.template_a, 3)
+        self.assertEqual(first.layout_type, second.layout_type)
+
+    def test_variants_compativeis_por_tipo_de_slide_sao_respeitadas(self):
+        cases = [
+            (SocialCarouselSlide.SlideType.COVER, SocialCarouselTemplateVariant.LayoutType.HERO_LEFT),
+            (SocialCarouselSlide.SlideType.CONTENT, SocialCarouselTemplateVariant.LayoutType.TEXT_TOP),
+            (SocialCarouselSlide.SlideType.CTA, SocialCarouselTemplateVariant.LayoutType.MINIMAL),
+        ]
+        for slide_type, layout in cases:
+            with self.subTest(slide_type=slide_type):
+                variant = SocialCarouselTemplateVariant.objects.create(
+                    template=self.template_a,
+                    name=f'Variant {slide_type}',
+                    allowed_slide_types=[slide_type],
+                    layout_type=layout,
+                )
+                slide = self._slide(slide_type=slide_type)
+                decision = compose_carousel_slide(slide, self.template_a, 3)
+                self.assertEqual(decision.variant_name, variant.name)
+                self.assertEqual(decision.layout_type, layout)
+
+    def test_variant_incompativel_nao_e_selecionada_automaticamente(self):
+        SocialCarouselTemplateVariant.objects.create(
+            template=self.template_a,
+            name='CTA apenas',
+            allowed_slide_types=[SocialCarouselSlide.SlideType.CTA],
+            layout_type=SocialCarouselTemplateVariant.LayoutType.MINIMAL,
+        )
+        slide = self._slide(slide_type=SocialCarouselSlide.SlideType.COVER)
+
+        decision = compose_carousel_slide(slide, self.template_a, 3)
+
+        self.assertNotEqual(decision.variant_name, 'CTA apenas')
+
+    def test_safe_area_evitar_regiao_protegida(self):
+        image = self._base_image(
+            text_safe_zone=SocialBaseImage.TextSafeZone.RIGHT,
+            subject_position=SocialBaseImage.SubjectPosition.RIGHT,
+        )
+        SocialBaseImageProtectedRegion.objects.create(image=image, x=0.50, y=0.10, width=0.48, height=0.80)
+        slide = self._slide(base_image=image, visual_intent=SocialCarouselTemplateVariant.LayoutType.HERO_RIGHT)
+
+        decision = compose_carousel_slide(slide, self.template_a, 3)
+        self.assertNotEqual(decision.layout_type, SocialCarouselTemplateVariant.LayoutType.HERO_RIGHT)
+        if not decision.use_source_photo:
+            self.assertEqual(decision.layout_type, SocialCarouselTemplateVariant.LayoutType.FULL_TEXT)
+            return
+
+        text_box = decision.metadata['text_zone']
+        for region in protected_regions_for_image(image):
+            left = max(text_box[0], region[0])
+            right = min(text_box[0] + text_box[2], region[0] + region[2])
+            top = max(text_box[1], region[1])
+            bottom = min(text_box[1] + text_box[3], region[1] + region[3])
+            self.assertTrue(right <= left or bottom <= top)
+
+    def test_protected_region_centro_direita_escolhe_area_segura_sem_intersecao(self):
+        image = self._base_image(
+            text_safe_zone=SocialBaseImage.TextSafeZone.LEFT,
+            subject_position=SocialBaseImage.SubjectPosition.RIGHT,
+        )
+        SocialBaseImageProtectedRegion.objects.create(image=image, x=0.55, y=0.18, width=0.40, height=0.62)
+        slide = self._slide(base_image=image, title='Titulo grande para validar a caixa de texto protegida')
+
+        decision = compose_carousel_slide(slide, self.template_a, 3)
+
+        self.assertNotIn(decision.layout_type, [SocialCarouselTemplateVariant.LayoutType.HERO_RIGHT, SocialCarouselTemplateVariant.LayoutType.SPLIT_RIGHT])
+        self._assert_no_protected_overlap(decision)
+
+    def test_protected_region_esquerda_nao_usa_hero_left_colidindo(self):
+        image = self._base_image(
+            text_safe_zone=SocialBaseImage.TextSafeZone.RIGHT,
+            subject_position=SocialBaseImage.SubjectPosition.LEFT,
+        )
+        SocialBaseImageProtectedRegion.objects.create(image=image, x=0.04, y=0.15, width=0.48, height=0.70)
+        slide = self._slide(base_image=image)
+
+        decision = compose_carousel_slide(slide, self.template_a, 3)
+
+        self.assertNotEqual(decision.layout_type, SocialCarouselTemplateVariant.LayoutType.HERO_LEFT)
+        self._assert_no_protected_overlap(decision)
+
+    def test_protected_region_central_grande_usa_full_text_quando_nada_e_seguro(self):
+        image = self._base_image()
+        SocialBaseImageProtectedRegion.objects.create(image=image, x=0.02, y=0.02, width=0.96, height=0.96)
+        slide = self._slide(base_image=image)
+
+        decision = compose_carousel_slide(slide, self.template_a, 3)
+
+        self.assertEqual(decision.layout_type, SocialCarouselTemplateVariant.LayoutType.FULL_TEXT)
+        self.assertFalse(decision.use_source_photo)
+        self.assertEqual(decision.metadata['source_base_image_id'], None)
+
+    def test_full_text_e_fallback_real(self):
+        safe_image = self._base_image(text_safe_zone=SocialBaseImage.TextSafeZone.LEFT)
+        safe_decision = compose_carousel_slide(self._slide(base_image=safe_image), self.template_a, 3)
+        self.assertNotEqual(safe_decision.layout_type, SocialCarouselTemplateVariant.LayoutType.FULL_TEXT)
+
+        blocked_image = self._base_image(name='bloqueada.jpg')
+        SocialBaseImageProtectedRegion.objects.create(image=blocked_image, x=0.01, y=0.01, width=0.98, height=0.98)
+        blocked_decision = compose_carousel_slide(self._slide(base_image=blocked_image), self.template_a, 3)
+        self.assertEqual(blocked_decision.layout_type, SocialCarouselTemplateVariant.LayoutType.FULL_TEXT)
+
+    def test_contraste_automatico_em_imagem_clara_e_escura(self):
+        light = self._base_image(name='clara.jpg', color=(245, 245, 245))
+        dark = self._base_image(name='escura.jpg', color=(10, 10, 10))
+        SocialVisualIdentity.objects.create(
+            profile=self.profile_a,
+            name='Contraste',
+            light_text_color='#ffffff',
+            dark_text_color='#111827',
+            accent_color='#22c55e',
+        )
+
+        light_decision = compose_carousel_slide(self._slide(base_image=light), self.template_a, 3)
+        dark_decision = compose_carousel_slide(self._slide(base_image=dark), self.template_a, 3)
+
+        self.assertEqual(light_decision.text_color, (17, 24, 39))
+        self.assertEqual(dark_decision.text_color, (255, 255, 255))
+        self.assertNotEqual(light_decision.overlay_type, SocialCarouselTemplateVariant.OverlayType.NONE)
+        self.assertEqual(dark_decision.overlay_type, SocialCarouselTemplateVariant.OverlayType.LIGHT)
+
+    def test_overlay_respeita_identidade_visual_e_override(self):
+        SocialVisualIdentity.objects.create(profile=self.profile_a, name='Overlay', default_overlay_strength=35)
+        image = self._base_image(color=(140, 140, 140))
+        decision = compose_carousel_slide(self._slide(base_image=image), self.template_a, 3)
+        self.assertEqual(decision.overlay_strength, 35)
+
+        slide = self._slide(base_image=image, overlay_override=SocialCarouselTemplateVariant.OverlayType.NONE)
+        override_decision = compose_carousel_slide(slide, self.template_a, 3)
+        self.assertEqual(override_decision.overlay_type, SocialCarouselTemplateVariant.OverlayType.NONE)
+        self.assertEqual(override_decision.overlay_strength, 0)
+
+    def test_determinismo_mesmo_input_mesma_decisao_e_metadata(self):
+        image = self._base_image(text_safe_zone=SocialBaseImage.TextSafeZone.LEFT)
+        slide = self._slide(base_image=image)
+
+        first = compose_carousel_slide(slide, self.template_a, 4)
+        second = compose_carousel_slide(slide, self.template_a, 4)
+
+        self.assertEqual(first.layout_type, second.layout_type)
+        self.assertEqual(first.metadata, second.metadata)
+
+    def test_selecao_de_midia_considera_safe_zone_e_subject_position(self):
+        image_a = self._base_image(
+            name='texto-esquerda.jpg',
+            subject_position=SocialBaseImage.SubjectPosition.RIGHT,
+            text_safe_zone=SocialBaseImage.TextSafeZone.LEFT,
+        )
+        image_b = self._base_image(
+            name='texto-direita.jpg',
+            subject_position=SocialBaseImage.SubjectPosition.LEFT,
+            text_safe_zone=SocialBaseImage.TextSafeZone.RIGHT,
+        )
+        content = self._content()
+
+        left = SocialCarouselSlide.objects.create(
+            content=content,
+            order=1,
+            slide_type=SocialCarouselSlide.SlideType.COVER,
+            visual_intent=SocialCarouselTemplateVariant.LayoutType.HERO_LEFT,
+            title='Texto esquerda',
+        )
+        right = SocialCarouselSlide.objects.create(
+            content=content,
+            order=2,
+            slide_type=SocialCarouselSlide.SlideType.COVER,
+            visual_intent=SocialCarouselTemplateVariant.LayoutType.HERO_RIGHT,
+            title='Texto direita',
+        )
+
+        self.assertEqual(compose_carousel_slide(left, self.template_a, 2).source_base_image.id, image_a.id)
+        self.assertEqual(compose_carousel_slide(right, self.template_a, 2).source_base_image.id, image_b.id)
+
+    def test_override_manual_respeita_variant_e_imagem_quando_seguro(self):
+        variant = SocialCarouselTemplateVariant.objects.create(
+            template=self.template_a,
+            name='Manual direita',
+            allowed_slide_types=[SocialCarouselSlide.SlideType.COVER],
+            layout_type=SocialCarouselTemplateVariant.LayoutType.HERO_RIGHT,
+        )
+        image = self._base_image(text_safe_zone=SocialBaseImage.TextSafeZone.RIGHT)
+        slide = self._slide(variant=variant, source_base_image=image)
+
+        decision = compose_carousel_slide(slide, self.template_a, 3)
+
+        self.assertEqual(decision.variant_name, variant.name)
+        self.assertEqual(decision.source_base_image.id, image.id)
+        self.assertEqual(decision.layout_type, SocialCarouselTemplateVariant.LayoutType.HERO_RIGHT)
+
+    def test_override_manual_com_conflito_nao_cobre_regiao_protegida(self):
+        image = self._base_image(text_safe_zone=SocialBaseImage.TextSafeZone.LEFT)
+        SocialBaseImageProtectedRegion.objects.create(image=image, x=0.04, y=0.15, width=0.50, height=0.70)
+        slide = self._slide(source_base_image=image, visual_intent=SocialCarouselTemplateVariant.LayoutType.HERO_LEFT)
+
+        decision = compose_carousel_slide(slide, self.template_a, 3)
+
+        self.assertEqual(decision.layout_type, SocialCarouselTemplateVariant.LayoutType.FULL_TEXT)
+        self.assertFalse(decision.use_source_photo)
+
+    def test_template_legado_sem_variants_continua_renderizando(self):
+        from .rendering import renderizar_midia_social
+
+        content = self._content()
+        SocialCarouselSlide.objects.create(content=content, order=1, slide_type=SocialCarouselSlide.SlideType.COVER, title='Capa antiga')
+        SocialCarouselSlide.objects.create(content=content, order=2, slide_type=SocialCarouselSlide.SlideType.CONTENT, body='Conteudo antigo')
+
+        renderizar_midia_social(content)
+
+        self.assertEqual(content.carousel_slides.filter(rendered_image__gt='').count(), 2)
+
+    def test_render_salva_metadata_visual_e_preserva_fluxo_carrossel(self):
+        from .rendering import renderizar_midia_social
+
+        image = self._base_image(name='render.jpg', color=(80, 80, 80))
+        content = self._content(base_image=image)
+        SocialCarouselSlide.objects.create(content=content, order=1, slide_type=SocialCarouselSlide.SlideType.COVER, title='Capa')
+        SocialCarouselSlide.objects.create(content=content, order=2, slide_type=SocialCarouselSlide.SlideType.CONTENT, body='Conteudo')
+
+        renderizar_midia_social(content)
+
+        slide = content.carousel_slides.order_by('order').first()
+        slide.refresh_from_db()
+        self.assertTrue(slide.rendered_image)
+        self.assertIn('layout_type', slide.render_metadata)
+        self.assertIn('text_zone', slide.render_metadata)
+        self.assertIn('text_color', slide.render_metadata)
+        self.assertIn('overlay', slide.render_metadata)
+        self.assertIn('source_base_image_id', slide.render_metadata)
+
+    def test_carrossel_publicado_nao_e_rerenderizado_por_alteracao_visual(self):
+        from .rendering import renderizar_midia_social
+
+        image = self._base_image(name='publicado.jpg')
+        content = self._content(base_image=image)
+        content.status = SocialContent.Status.PUBLICADO
+        content.published_at = timezone.now()
+        content.save(update_fields=['status', 'published_at'])
+        SocialCarouselSlide.objects.create(content=content, order=1, slide_type=SocialCarouselSlide.SlideType.COVER, title='Publicado')
+        SocialCarouselSlide.objects.create(content=content, order=2, slide_type=SocialCarouselSlide.SlideType.CONTENT, body='Publicado')
+        renderizar_midia_social(content)
+        slide = content.carousel_slides.order_by('order').first()
+        original_image = slide.rendered_image.name
+
+        SocialVisualIdentity.objects.create(profile=self.profile_a, name='Nova marca', brand_name='Nova marca', is_default=False)
+        SocialBaseImageProtectedRegion.objects.create(image=image, x=0.20, y=0.20, width=0.20, height=0.20)
+        response = self.client.post(reverse('social_automation:content_update', args=[content.id]), {'frase': 'Tentativa'})
+        slide.refresh_from_db()
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(slide.rendered_image.name, original_image)
+
+    def test_preview_carrossel_tem_imagem_principal_thumbnails_modal_e_rota_autenticada(self):
+        from .rendering import renderizar_midia_social
+
+        content = self._content()
+        SocialCarouselSlide.objects.create(content=content, order=1, slide_type=SocialCarouselSlide.SlideType.COVER, title='Capa')
+        SocialCarouselSlide.objects.create(content=content, order=2, slide_type=SocialCarouselSlide.SlideType.CONTENT, body='Conteudo')
+        renderizar_midia_social(content)
+        slide = content.carousel_slides.order_by('order').first()
+
+        response = self.client.get(reverse('social_automation:content_detail', args=[content.id]))
+        self.assertContains(response, 'data-carousel-main')
+        self.assertContains(response, 'data-carousel-thumb')
+        self.assertContains(response, 'data-carousel-modal')
+        self.assertContains(response, 'data-carousel-counter')
+        self.assertContains(response, 'data-carousel-prev')
+        self.assertContains(response, 'data-carousel-next')
+        self.assertNotContains(response, '/social-media/ig-carousel/')
+
+        preview = self.client.get(reverse('social_automation:carousel_slide_preview', args=[slide.id]))
+        self.assertEqual(preview.status_code, 200)
+        self.assertEqual(preview['Content-Type'], 'image/jpeg')
 
 
 @override_settings(

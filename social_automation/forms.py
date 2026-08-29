@@ -7,7 +7,16 @@ from django.core.exceptions import ValidationError
 from django.forms.models import BaseInlineFormSet
 from django.utils import timezone
 
-from .models import SocialBaseImage, SocialCarouselSlide, SocialCarouselTemplate, SocialContent, SocialProfile, validate_horarios_publicacao
+from .models import (
+    SocialBaseImage,
+    SocialCarouselSlide,
+    SocialCarouselTemplate,
+    SocialCarouselTemplateVariant,
+    SocialContent,
+    SocialProfile,
+    SocialVisualIdentity,
+    validate_horarios_publicacao,
+)
 
 
 class BootstrapMixin:
@@ -185,6 +194,10 @@ class SocialBaseImageForm(BootstrapMixin, forms.ModelForm):
             'reel_secondary_text_box_height',
             'reel_secondary_text_align_horizontal',
             'reel_secondary_text_align_vertical',
+            'subject_position',
+            'text_safe_zone',
+            'focal_x',
+            'focal_y',
             'ativa',
         ]
         labels = {
@@ -216,6 +229,10 @@ class SocialBaseImageForm(BootstrapMixin, forms.ModelForm):
             'reel_secondary_text_box_height': 'Altura (%)',
             'reel_secondary_text_align_horizontal': 'Alinh. horizontal',
             'reel_secondary_text_align_vertical': 'Alinh. vertical',
+            'subject_position': 'Posicao do assunto',
+            'text_safe_zone': 'Area segura para texto',
+            'focal_x': 'Foco X',
+            'focal_y': 'Foco Y',
         }
         help_texts = {
             'text_box_preset': 'Preenche a caixa principal da foto quando os percentuais estiverem vazios.',
@@ -239,6 +256,8 @@ class SocialBaseImageForm(BootstrapMixin, forms.ModelForm):
         self.fields['reel_text_align_vertical'].widget.attrs['class'] = 'form-select'
         self.fields['reel_secondary_text_align_horizontal'].widget.attrs['class'] = 'form-select'
         self.fields['reel_secondary_text_align_vertical'].widget.attrs['class'] = 'form-select'
+        self.fields['subject_position'].widget.attrs['class'] = 'form-select'
+        self.fields['text_safe_zone'].widget.attrs['class'] = 'form-select'
         for field_name in [
             'reel_text_position',
             'text_align_horizontal',
@@ -249,6 +268,10 @@ class SocialBaseImageForm(BootstrapMixin, forms.ModelForm):
             'reel_text_align_vertical',
             'reel_secondary_text_align_horizontal',
             'reel_secondary_text_align_vertical',
+            'subject_position',
+            'text_safe_zone',
+            'focal_x',
+            'focal_y',
         ]:
             self.fields[field_name].required = False
 
@@ -263,6 +286,8 @@ class SocialBaseImageForm(BootstrapMixin, forms.ModelForm):
         cleaned['reel_text_align_vertical'] = cleaned.get('reel_text_align_vertical') or SocialBaseImage.TextAlignVertical.MIDDLE
         cleaned['reel_secondary_text_align_horizontal'] = cleaned.get('reel_secondary_text_align_horizontal') or SocialBaseImage.TextAlignHorizontal.CENTER
         cleaned['reel_secondary_text_align_vertical'] = cleaned.get('reel_secondary_text_align_vertical') or SocialBaseImage.TextAlignVertical.MIDDLE
+        cleaned['subject_position'] = cleaned.get('subject_position') or SocialBaseImage.SubjectPosition.NONE
+        cleaned['text_safe_zone'] = cleaned.get('text_safe_zone') or SocialBaseImage.TextSafeZone.AUTO
         preset = cleaned.get('text_box_preset')
         primary_values = [
             cleaned.get('primary_text_box_x'),
@@ -308,6 +333,45 @@ class SocialBaseImageForm(BootstrapMixin, forms.ModelForm):
             raise forms.ValidationError('A caixa de texto precisa ter valores positivos.')
         if x + width > 100 or y + height > 100:
             raise forms.ValidationError('A caixa de texto nao pode ultrapassar os limites da imagem.')
+
+
+class SocialVisualIdentityForm(BootstrapMixin, forms.ModelForm):
+    class Meta:
+        model = SocialVisualIdentity
+        fields = [
+            'name',
+            'active',
+            'is_default',
+            'primary_color',
+            'secondary_color',
+            'accent_color',
+            'light_text_color',
+            'dark_text_color',
+            'font_primary',
+            'font_secondary',
+            'font_weight_title',
+            'font_weight_body',
+            'brand_name',
+            'brand_logo',
+            'show_brand_name',
+            'show_slide_number',
+            'default_overlay_strength',
+            'default_margin',
+        ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._apply_bootstrap()
+        for field_name in ['font_primary', 'font_secondary']:
+            self.fields[field_name].widget.attrs['class'] = 'form-select'
+        for field_name in [
+            'primary_color',
+            'secondary_color',
+            'accent_color',
+            'light_text_color',
+            'dark_text_color',
+        ]:
+            self.fields[field_name].widget = forms.TextInput(attrs={'type': 'color', 'class': 'form-control form-control-color'})
 
 
 class SocialContentForm(BootstrapMixin, forms.ModelForm):
@@ -445,7 +509,19 @@ class SocialCarouselTemplateForm(BootstrapMixin, forms.ModelForm):
 class SocialCarouselSlideForm(BootstrapMixin, forms.ModelForm):
     class Meta:
         model = SocialCarouselSlide
-        fields = ['order', 'slide_type', 'title', 'body', 'source_image', 'is_active']
+        fields = [
+            'order',
+            'slide_type',
+            'visual_intent',
+            'variant',
+            'source_base_image',
+            'title',
+            'body',
+            'source_image',
+            'text_color_override',
+            'overlay_override',
+            'is_active',
+        ]
         widgets = {
             'body': forms.Textarea(attrs={'rows': 3}),
         }
@@ -453,7 +529,23 @@ class SocialCarouselSlideForm(BootstrapMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._apply_bootstrap()
-        self.fields['slide_type'].widget.attrs['class'] = 'form-select'
+        content = self.instance.content if self.instance and self.instance.content_id else None
+        for field_name in ['slide_type', 'visual_intent', 'variant', 'source_base_image', 'overlay_override']:
+            self.fields[field_name].widget.attrs['class'] = 'form-select'
+        self.fields['visual_intent'].required = False
+        self.fields['variant'].required = False
+        self.fields['source_base_image'].required = False
+        self.fields['overlay_override'].required = False
+        self.fields['text_color_override'].required = False
+        if content:
+            self.fields['variant'].queryset = SocialCarouselTemplateVariant.objects.none()
+            self.fields['source_base_image'].queryset = content.profile.base_images.filter(ativa=True)
+            template = content.carousel_template or content.profile.carousel_templates.filter(active=True, is_default=True).first()
+            if template:
+                self.fields['variant'].queryset = template.variants.filter(active=True)
+        else:
+            self.fields['variant'].queryset = SocialCarouselTemplateVariant.objects.filter(active=True).select_related('template')
+            self.fields['source_base_image'].queryset = SocialBaseImage.objects.filter(ativa=True).select_related('profile')
 
     def has_real_slide_content(self):
         if self.is_bound:
@@ -473,6 +565,7 @@ class SocialCarouselSlideForm(BootstrapMixin, forms.ModelForm):
         if not self.instance.pk and not self.has_real_slide_content():
             cleaned_data['DELETE'] = True
             self.cleaned_data = cleaned_data
+        cleaned_data['visual_intent'] = cleaned_data.get('visual_intent') or SocialCarouselTemplateVariant.LayoutType.AUTO
         return cleaned_data
 
 

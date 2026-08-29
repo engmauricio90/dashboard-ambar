@@ -1,0 +1,43 @@
+{% extends 'social_automation/base.html' %}
+
+{% block social_title %}Identidade visual{% endblock %}
+{% block social_subtitle %}{{ profile.nome }} - marca, cores e padrao visual dos carrosseis.{% endblock %}
+
+{% block social_content %}
+<form method="post" enctype="multipart/form-data" class="card shadow-sm">
+    {% csrf_token %}
+    <div class="card-body">
+        {{ form.non_field_errors }}
+        <div class="row g-3">
+            <div class="col-md-6"><label class="form-label">{{ form.name.label }}</label>{{ form.name }}{{ form.name.errors }}</div>
+            <div class="col-md-3 d-flex align-items-end"><div class="form-check mb-2">{{ form.active }} <label class="form-check-label">{{ form.active.label }}</label></div></div>
+            <div class="col-md-3 d-flex align-items-end"><div class="form-check mb-2">{{ form.is_default }} <label class="form-check-label">{{ form.is_default.label }}</label></div></div>
+
+            <div class="col-12"><h6 class="border-bottom pb-2 mb-0">Marca</h6></div>
+            <div class="col-md-6"><label class="form-label">{{ form.brand_name.label }}</label>{{ form.brand_name }}{{ form.brand_name.errors }}</div>
+            <div class="col-md-6"><label class="form-label">{{ form.brand_logo.label }}</label>{{ form.brand_logo }}{{ form.brand_logo.errors }}</div>
+            <div class="col-md-3 d-flex align-items-end"><div class="form-check mb-2">{{ form.show_brand_name }} <label class="form-check-label">{{ form.show_brand_name.label }}</label></div></div>
+            <div class="col-md-3 d-flex align-items-end"><div class="form-check mb-2">{{ form.show_slide_number }} <label class="form-check-label">{{ form.show_slide_number.label }}</label></div></div>
+
+            <div class="col-12"><h6 class="border-bottom pb-2 mb-0">Cores</h6></div>
+            <div class="col-md-2"><label class="form-label">{{ form.primary_color.label }}</label>{{ form.primary_color }}</div>
+            <div class="col-md-2"><label class="form-label">{{ form.secondary_color.label }}</label>{{ form.secondary_color }}</div>
+            <div class="col-md-2"><label class="form-label">{{ form.accent_color.label }}</label>{{ form.accent_color }}</div>
+            <div class="col-md-2"><label class="form-label">{{ form.light_text_color.label }}</label>{{ form.light_text_color }}</div>
+            <div class="col-md-2"><label class="form-label">{{ form.dark_text_color.label }}</label>{{ form.dark_text_color }}</div>
+
+            <div class="col-12"><h6 class="border-bottom pb-2 mb-0">Tipografia e composicao</h6></div>
+            <div class="col-md-3"><label class="form-label">{{ form.font_primary.label }}</label>{{ form.font_primary }}</div>
+            <div class="col-md-3"><label class="form-label">{{ form.font_secondary.label }}</label>{{ form.font_secondary }}</div>
+            <div class="col-md-2"><label class="form-label">{{ form.font_weight_title.label }}</label>{{ form.font_weight_title }}</div>
+            <div class="col-md-2"><label class="form-label">{{ form.font_weight_body.label }}</label>{{ form.font_weight_body }}</div>
+            <div class="col-md-2"><label class="form-label">{{ form.default_margin.label }}</label>{{ form.default_margin }}</div>
+            <div class="col-md-3"><label class="form-label">{{ form.default_overlay_strength.label }}</label>{{ form.default_overlay_strength }}</div>
+        </div>
+    </div>
+    <div class="card-footer d-flex gap-2">
+        <button class="btn btn-primary" type="submit">Salvar</button>
+        <a href="{% url 'social_automation:profile_detail' profile.id %}" class="btn btn-outline-secondary">Cancelar</a>
+    </div>
+</form>
+{% endblock %}

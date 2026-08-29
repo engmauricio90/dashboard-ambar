@@ -4,6 +4,7 @@
 {% block social_subtitle %}{{ profile.username }} - {{ profile.get_plataforma_display }} - {{ profile.get_modo_operacao_display }}{% endblock %}
 {% block social_actions %}
 <a href="{% url 'social_automation:profile_update' profile.id %}" class="btn btn-outline-primary">Configuracoes</a>
+<a href="{% url 'social_automation:profile_visual_identity' profile.id %}" class="btn btn-outline-secondary">Identidade visual</a>
 <a href="{% url 'social_automation:image_list' profile.id %}" class="btn btn-outline-secondary">Biblioteca</a>
 <a href="{% url 'social_automation:carousel_template_list' profile.id %}" class="btn btn-outline-secondary">Templates carrossel</a>
 <a href="{% url 'social_automation:profile_content_list' profile.id %}" class="btn btn-outline-secondary">Conteudos</a>

@@ -16,12 +16,27 @@
                     {% if content.final_video %}
                         <video src="{{ content.final_video.url }}" class="social-preview-lg" controls muted playsinline></video>
                     {% elif content.is_carousel %}
-                        <div class="d-flex gap-2 flex-wrap">
+                        <div class="social-carousel-viewer" data-carousel-viewer>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <button class="btn btn-sm btn-outline-secondary" type="button" data-carousel-prev>Anterior</button>
+                                <strong data-carousel-counter>1 / {{ content.carousel_slides.all|length }}</strong>
+                                <button class="btn btn-sm btn-outline-secondary" type="button" data-carousel-next>Proximo</button>
+                            </div>
                             {% for slide in content.carousel_slides.all %}
                                 {% if slide.rendered_image %}
-                                    <img src="{{ slide.rendered_image.url }}" style="width:120px;max-height:150px;object-fit:cover" class="border rounded" alt="">
+                                    {% if forloop.first %}
+                                        <img src="{% url 'social_automation:carousel_slide_preview' slide.id %}" class="social-carousel-main" alt="Slide {{ slide.order }}" data-carousel-main data-index="0">
+                                    {% endif %}
                                 {% endif %}
                             {% endfor %}
+                            <div class="d-flex gap-2 flex-wrap mt-3">
+                                {% for slide in content.carousel_slides.all %}
+                                    {% if slide.rendered_image %}
+                                        <img src="{% url 'social_automation:carousel_slide_preview' slide.id %}" class="social-carousel-thumb {% if forloop.first %}active{% endif %}" alt="Slide {{ slide.order }}" data-carousel-thumb data-index="{{ forloop.counter0 }}" data-title="{{ slide.get_slide_type_display }}" data-variant="{{ slide.render_metadata.variant|default:'Auto' }}">
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                            <div class="small text-muted mt-2" data-carousel-caption>Slide 1/{{ content.carousel_slides.all|length }}</div>
                         </div>
                     {% elif content.final_image %}
                         <img src="{{ content.final_image.url }}" class="social-preview-lg" alt="">
@@ -127,4 +142,66 @@
         </div>
     </div>
 </div>
+
+{% if content.is_carousel %}
+<div class="social-carousel-modal" data-carousel-modal aria-hidden="true">
+    <button class="btn btn-light position-absolute top-0 end-0 m-3" type="button" data-carousel-close>Fechar</button>
+    <button class="btn btn-light position-absolute start-0 top-50 translate-middle-y ms-3" type="button" data-carousel-prev>Anterior</button>
+    <img src="" alt="Preview do slide" data-carousel-modal-image>
+    <button class="btn btn-light position-absolute end-0 top-50 translate-middle-y me-3" type="button" data-carousel-next>Proximo</button>
+</div>
+
+<script>
+(function () {
+    const viewer = document.querySelector('[data-carousel-viewer]');
+    if (!viewer) return;
+    const main = viewer.querySelector('[data-carousel-main]');
+    const thumbs = Array.from(viewer.querySelectorAll('[data-carousel-thumb]'));
+    const counter = viewer.querySelector('[data-carousel-counter]');
+    const caption = viewer.querySelector('[data-carousel-caption]');
+    const modal = document.querySelector('[data-carousel-modal]');
+    const modalImage = document.querySelector('[data-carousel-modal-image]');
+    let current = 0;
+
+    function show(index) {
+        if (!thumbs.length || !main) return;
+        current = (index + thumbs.length) % thumbs.length;
+        const thumb = thumbs[current];
+        main.src = thumb.src;
+        main.alt = thumb.alt;
+        thumbs.forEach(item => item.classList.remove('active'));
+        thumb.classList.add('active');
+        if (counter) counter.textContent = `${current + 1} / ${thumbs.length}`;
+        if (caption) caption.textContent = `Slide ${current + 1}/${thumbs.length} - ${thumb.dataset.title || ''} - Variant: ${thumb.dataset.variant || 'Auto'}`;
+        if (modal && modal.classList.contains('active') && modalImage) {
+            modalImage.src = thumb.src;
+        }
+    }
+
+    document.querySelectorAll('[data-carousel-prev]').forEach(button => button.addEventListener('click', () => show(current - 1)));
+    document.querySelectorAll('[data-carousel-next]').forEach(button => button.addEventListener('click', () => show(current + 1)));
+    thumbs.forEach((thumb, index) => thumb.addEventListener('click', () => show(index)));
+    if (main && modal && modalImage) {
+        main.addEventListener('click', () => {
+            modalImage.src = main.src;
+            modal.classList.add('active');
+            modal.setAttribute('aria-hidden', 'false');
+        });
+    }
+    document.querySelectorAll('[data-carousel-close]').forEach(button => button.addEventListener('click', () => {
+        modal.classList.remove('active');
+        modal.setAttribute('aria-hidden', 'true');
+    }));
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && modal && modal.classList.contains('active')) {
+            modal.classList.remove('active');
+            modal.setAttribute('aria-hidden', 'true');
+        }
+        if (event.key === 'ArrowLeft') show(current - 1);
+        if (event.key === 'ArrowRight') show(current + 1);
+    });
+    show(0);
+})();
+</script>
+{% endif %}
 {% endblock %}

@@ -1,6 +1,17 @@
 from django.contrib import admin
 
-from .models import SocialBaseImage, SocialCarouselSlide, SocialCarouselTemplate, SocialContent, SocialContentEvent, SocialInstagramConnection, SocialProfile
+from .models import (
+    SocialBaseImage,
+    SocialBaseImageProtectedRegion,
+    SocialCarouselSlide,
+    SocialCarouselTemplate,
+    SocialCarouselTemplateVariant,
+    SocialContent,
+    SocialContentEvent,
+    SocialInstagramConnection,
+    SocialProfile,
+    SocialVisualIdentity,
+)
 
 
 class SocialBaseImageInline(admin.TabularInline):
@@ -8,6 +19,18 @@ class SocialBaseImageInline(admin.TabularInline):
     extra = 0
     fields = ['nome', 'ativa', 'text_position', 'text_box_preset', 'tags', 'vezes_usada', 'ultima_utilizacao']
     readonly_fields = ['vezes_usada', 'ultima_utilizacao']
+
+
+class SocialBaseImageProtectedRegionInline(admin.TabularInline):
+    model = SocialBaseImageProtectedRegion
+    extra = 0
+    fields = ['region_type', 'x', 'y', 'width', 'height', 'active', 'note']
+
+
+class SocialVisualIdentityInline(admin.StackedInline):
+    model = SocialVisualIdentity
+    extra = 0
+    fields = ['name', 'active', 'is_default', 'brand_name', 'primary_color', 'secondary_color', 'accent_color']
 
 
 class SocialCarouselTemplateInline(admin.TabularInline):
@@ -39,7 +62,7 @@ class SocialProfileAdmin(admin.ModelAdmin):
     list_display = ['nome', 'username', 'plataforma', 'modo_operacao', 'ativo', 'posts_por_dia', 'reels_por_dia', 'carousels_por_dia', 'updated_at']
     list_filter = ['plataforma', 'modo_operacao', 'ativo']
     search_fields = ['nome', 'username', 'estilo', 'instrucoes_ia']
-    inlines = [SocialInstagramConnectionInline, SocialBaseImageInline, SocialCarouselTemplateInline]
+    inlines = [SocialInstagramConnectionInline, SocialVisualIdentityInline, SocialBaseImageInline, SocialCarouselTemplateInline]
 
 
 @admin.register(SocialInstagramConnection)
@@ -67,17 +90,19 @@ class SocialInstagramConnectionAdmin(admin.ModelAdmin):
 
 @admin.register(SocialBaseImage)
 class SocialBaseImageAdmin(admin.ModelAdmin):
-    list_display = ['nome', 'profile', 'ativa', 'text_position', 'text_box_preset', 'vezes_usada', 'ultima_utilizacao', 'created_at']
-    list_filter = ['ativa', 'text_position', 'text_box_preset', 'profile']
+    list_display = ['nome', 'profile', 'ativa', 'text_safe_zone', 'subject_position', 'vezes_usada', 'ultima_utilizacao', 'created_at']
+    list_filter = ['ativa', 'text_position', 'text_box_preset', 'text_safe_zone', 'subject_position', 'profile']
     search_fields = ['nome', 'tags', 'profile__nome', 'profile__username']
     readonly_fields = ['vezes_usada', 'ultima_utilizacao', 'created_at', 'updated_at']
     fieldsets = (
         (None, {'fields': ('profile', 'arquivo', 'nome', 'tags', 'ativa')}),
+        ('Composicao', {'fields': ('subject_position', 'text_safe_zone', 'focal_x', 'focal_y')}),
         ('Texto', {'fields': ('text_position', 'text_box_preset', 'text_align_horizontal', 'text_align_vertical')}),
         ('Caixa principal (%)', {'fields': ('primary_text_box_x', 'primary_text_box_y', 'primary_text_box_width', 'primary_text_box_height')}),
         ('Caixa secundaria (%)', {'fields': ('secondary_text_box_x', 'secondary_text_box_y', 'secondary_text_box_width', 'secondary_text_box_height', 'secondary_text_align_horizontal', 'secondary_text_align_vertical')}),
         ('Uso', {'fields': ('vezes_usada', 'ultima_utilizacao', 'created_at', 'updated_at')}),
     )
+    inlines = [SocialBaseImageProtectedRegionInline]
 
 
 class SocialContentEventInline(admin.TabularInline):
@@ -91,7 +116,7 @@ class SocialContentEventInline(admin.TabularInline):
 class SocialCarouselSlideInline(admin.TabularInline):
     model = SocialCarouselSlide
     extra = 0
-    fields = ['order', 'slide_type', 'title', 'is_active', 'rendered_image', 'instagram_container_id']
+    fields = ['order', 'slide_type', 'visual_intent', 'variant', 'source_base_image', 'title', 'is_active', 'rendered_image', 'instagram_container_id']
     readonly_fields = ['rendered_image', 'instagram_container_id']
 
 
@@ -121,10 +146,31 @@ class SocialCarouselTemplateAdmin(admin.ModelAdmin):
     search_fields = ['name', 'profile__nome', 'profile__username']
 
 
+@admin.register(SocialVisualIdentity)
+class SocialVisualIdentityAdmin(admin.ModelAdmin):
+    list_display = ['name', 'profile', 'active', 'is_default', 'accent_color', 'updated_at']
+    list_filter = ['active', 'is_default', 'profile']
+    search_fields = ['name', 'brand_name', 'profile__nome', 'profile__username']
+
+
+@admin.register(SocialCarouselTemplateVariant)
+class SocialCarouselTemplateVariantAdmin(admin.ModelAdmin):
+    list_display = ['name', 'template', 'layout_type', 'active', 'sort_order', 'updated_at']
+    list_filter = ['active', 'layout_type', 'template__profile']
+    search_fields = ['name', 'template__name', 'template__profile__nome']
+
+
+@admin.register(SocialBaseImageProtectedRegion)
+class SocialBaseImageProtectedRegionAdmin(admin.ModelAdmin):
+    list_display = ['image', 'region_type', 'active', 'x', 'y', 'width', 'height']
+    list_filter = ['active', 'region_type', 'image__profile']
+    search_fields = ['image__nome', 'note']
+
+
 @admin.register(SocialCarouselSlide)
 class SocialCarouselSlideAdmin(admin.ModelAdmin):
-    list_display = ['content', 'order', 'slide_type', 'is_active', 'updated_at']
-    list_filter = ['slide_type', 'is_active', 'content__profile']
+    list_display = ['content', 'order', 'slide_type', 'visual_intent', 'variant', 'is_active', 'updated_at']
+    list_filter = ['slide_type', 'visual_intent', 'is_active', 'content__profile']
     search_fields = ['title', 'body', 'content__frase']
 
 

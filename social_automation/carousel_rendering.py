@@ -6,6 +6,7 @@ from PIL import Image, ImageDraw, ImageOps
 
 from .models import SocialCarouselSlide, SocialCarouselTemplate
 from .rendering import SocialRenderError, _font, _layout_text, _text_width
+from .visual_composer import VisualCompositionError, compose_carousel_slide
 
 
 SLIDE_MIN = 2
@@ -66,6 +67,114 @@ def _draw_label(draw, template, text, y, *, bold=False):
     fill = _hex_to_rgb(template.text_color, (255, 255, 255))
     draw.text((margin, y), text, font=font, fill=fill)
     return y + font_size + 16
+
+
+def _apply_composed_overlay(canvas, decision):
+    overlay_type = decision.overlay_type
+    strength = max(0, min(230, round(255 * decision.overlay_strength / 100)))
+    if not strength or overlay_type == 'NONE':
+        return
+    width, height = canvas.size
+    overlay = Image.new('RGBA', canvas.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    if overlay_type == 'LIGHT':
+        draw.rectangle((0, 0, width, height), fill=(255, 255, 255, strength))
+    elif overlay_type == 'DARK':
+        draw.rectangle((0, 0, width, height), fill=(0, 0, 0, strength))
+    elif overlay_type in {'GRADIENT_LEFT', 'GRADIENT_RIGHT'}:
+        for x in range(width):
+            progress = 1 - (x / max(width - 1, 1)) if overlay_type == 'GRADIENT_LEFT' else x / max(width - 1, 1)
+            draw.line((x, 0, x, height), fill=(0, 0, 0, round(strength * progress)))
+    elif overlay_type in {'GRADIENT_TOP', 'GRADIENT_BOTTOM'}:
+        for y in range(height):
+            progress = 1 - (y / max(height - 1, 1)) if overlay_type == 'GRADIENT_TOP' else y / max(height - 1, 1)
+            draw.line((0, y, width, y), fill=(0, 0, 0, round(strength * progress)))
+    canvas.alpha_composite(overlay)
+
+
+def _draw_composed_text(draw, slide, decision):
+    x, y, width, height = decision.text_box
+    padding = min(34, max(width // 16, 12), max(height // 12, 12))
+    inner_x = x + padding
+    inner_y = y + padding
+    inner_width = max(1, width - padding * 2)
+    inner_height = max(1, height - padding * 2)
+    title = (slide.title or slide.content.frase or '').strip()
+    body = (slide.body or '').strip()
+
+    draw.rectangle((x, y, x + width, y + min(9, max(4, height // 40))), fill=decision.accent_color)
+    cursor_y = inner_y + 18
+    if title:
+        title_height = inner_height if not body else max(120, round(inner_height * 0.42))
+        title_font, title_lines, title_line_height, _ = _layout_text(draw, title, inner_width, title_height)
+        cursor_y = _draw_aligned_lines(
+            draw,
+            title_lines,
+            title_font,
+            x=inner_x,
+            y=cursor_y,
+            width=inner_width,
+            line_height=title_line_height,
+            fill=decision.text_color,
+            align=decision.align,
+        )
+        cursor_y += 24
+    if body:
+        body_height = max(80, inner_y + inner_height - cursor_y)
+        body_font, body_lines, body_line_height, _ = _layout_text(draw, body, inner_width, body_height)
+        _draw_aligned_lines(
+            draw,
+            body_lines,
+            body_font,
+            x=inner_x,
+            y=cursor_y,
+            width=inner_width,
+            line_height=body_line_height,
+            fill=decision.text_color,
+            align=decision.align,
+        )
+
+
+def _paste_source(canvas, slide, decision):
+    source_file = None
+    if slide.source_image:
+        source_file = slide.source_image
+    elif decision.use_source_photo and decision.source_base_image and decision.source_base_image.arquivo:
+        source_file = decision.source_base_image.arquivo
+    if not source_file:
+        return
+    with source_file.open('rb') as arquivo:
+        source = Image.open(arquivo)
+        source = ImageOps.exif_transpose(source)
+        source = ImageOps.fit(source, canvas.size, method=Image.Resampling.LANCZOS).convert('RGB')
+    canvas.paste(source)
+
+
+def _draw_composed_slide(canvas, slide, template, total_slides):
+    try:
+        decision = compose_carousel_slide(slide, template, total_slides)
+    except VisualCompositionError as exc:
+        raise SocialRenderError(str(exc)) from exc
+    _paste_source(canvas, slide, decision)
+    canvas_rgba = canvas.convert('RGBA')
+    _apply_composed_overlay(canvas_rgba, decision)
+    draw = ImageDraw.Draw(canvas_rgba)
+    width, height = template.canvas_size
+    margin = 56
+    if template.show_profile_name:
+        label = decision.metadata.get('brand_name') or slide.content.profile.nome
+        draw.text((margin, margin), label, font=_font(28), fill=decision.text_color)
+    _draw_composed_text(draw, slide, decision)
+    if template.show_slide_number:
+        marker = f'{slide.order}/{total_slides}'
+        font = _font(28)
+        marker_width = _text_width(draw, marker, font)
+        draw.text((width - margin - marker_width, height - margin), marker, font=font, fill=decision.text_color)
+    if template.show_footer:
+        footer = template.footer_text or slide.content.profile.username
+        draw.text((margin, height - margin), footer, font=_font(28), fill=decision.text_color)
+    slide.render_metadata = decision.metadata
+    return canvas_rgba.convert('RGB')
 
 
 def _draw_slide(canvas, slide, template, total_slides):
@@ -161,7 +270,7 @@ def renderizar_carrossel_social(content):
     total_slides = len(slides)
     for slide in slides:
         canvas = _background(template)
-        _draw_slide(canvas, slide, template, total_slides)
+        canvas = _draw_composed_slide(canvas, slide, template, total_slides)
         buffer = BytesIO()
         canvas.save(buffer, format='JPEG', quality=92, optimize=True)
         filename = f'social/{content.profile_id}/carousels/{content.id}/slides/{uuid4().hex}.jpg'

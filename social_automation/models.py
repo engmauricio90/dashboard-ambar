@@ -28,6 +28,11 @@ def social_carousel_template_upload_to(instance, filename):
     return f'social/{profile_id}/carousel_templates/{filename}'
 
 
+def social_visual_identity_logo_upload_to(instance, filename):
+    profile_id = instance.profile_id or 'sem-perfil'
+    return f'social/{profile_id}/identity/{filename}'
+
+
 def social_carousel_slide_source_upload_to(instance, filename):
     profile_id = instance.content.profile_id if instance.content_id else 'sem-perfil'
     content_id = instance.content_id or 'sem-conteudo'
@@ -113,6 +118,62 @@ class SocialProfile(models.Model):
             raise ValidationError('Reels e carrosseis por dia nao podem superar posts por dia.')
 
 
+class SocialVisualIdentity(models.Model):
+    FONT_CHOICES = [
+        ('SYSTEM_BOLD', 'Sistema negrito'),
+        ('SYSTEM_REGULAR', 'Sistema regular'),
+        ('SANS_BOLD', 'Sans negrito'),
+    ]
+
+    profile = models.ForeignKey(SocialProfile, on_delete=models.CASCADE, related_name='visual_identities')
+    name = models.CharField(max_length=120, default='Identidade padrao')
+    active = models.BooleanField(default=True)
+    is_default = models.BooleanField(default=True)
+    primary_color = models.CharField(max_length=20, default='#111827')
+    secondary_color = models.CharField(max_length=20, default='#334155')
+    accent_color = models.CharField(max_length=20, default='#22c55e')
+    light_text_color = models.CharField(max_length=20, default='#ffffff')
+    dark_text_color = models.CharField(max_length=20, default='#111827')
+    font_primary = models.CharField(max_length=40, choices=FONT_CHOICES, default='SYSTEM_BOLD')
+    font_secondary = models.CharField(max_length=40, choices=FONT_CHOICES, default='SYSTEM_REGULAR')
+    font_weight_title = models.PositiveSmallIntegerField(default=700)
+    font_weight_body = models.PositiveSmallIntegerField(default=500)
+    brand_name = models.CharField(max_length=120, blank=True)
+    brand_logo = models.ImageField(upload_to=social_visual_identity_logo_upload_to, blank=True, null=True)
+    show_brand_name = models.BooleanField(default=True)
+    show_slide_number = models.BooleanField(default=True)
+    default_overlay_strength = models.PositiveSmallIntegerField(default=42)
+    default_margin = models.PositiveSmallIntegerField(default=76)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['profile__nome', '-is_default', 'name']
+        indexes = [
+            models.Index(fields=['profile', 'active', 'is_default']),
+        ]
+
+    def __str__(self):
+        return f'{self.profile.username} - {self.name}'
+
+    @property
+    def display_brand_name(self):
+        return self.brand_name or self.profile.nome
+
+    def clean(self):
+        super().clean()
+        if self.default_overlay_strength > 90:
+            raise ValidationError('Overlay padrao deve ficar entre 0 e 90.')
+        if self.default_margin < 24 or self.default_margin > 180:
+            raise ValidationError('Margem padrao deve ficar entre 24 e 180.')
+        if self.is_default:
+            queryset = SocialVisualIdentity.objects.filter(profile=self.profile, is_default=True)
+            if self.pk:
+                queryset = queryset.exclude(pk=self.pk)
+            if queryset.exists():
+                raise ValidationError('Este perfil ja possui uma identidade visual padrao.')
+
+
 class SocialBaseImage(models.Model):
     class Source(models.TextChoices):
         MANUAL = 'manual', 'Manual'
@@ -154,6 +215,23 @@ class SocialBaseImage(models.Model):
         MIDDLE = 'middle', 'Meio'
         BOTTOM = 'bottom', 'Base'
 
+    class SubjectPosition(models.TextChoices):
+        NONE = 'none', 'Sem assunto dominante'
+        LEFT = 'left', 'Esquerda'
+        CENTER = 'center', 'Centro'
+        RIGHT = 'right', 'Direita'
+        BOTTOM_LEFT = 'bottom_left', 'Inferior esquerda'
+        BOTTOM_CENTER = 'bottom_center', 'Inferior centro'
+        BOTTOM_RIGHT = 'bottom_right', 'Inferior direita'
+
+    class TextSafeZone(models.TextChoices):
+        AUTO = 'auto', 'Automatica'
+        LEFT = 'left', 'Esquerda'
+        RIGHT = 'right', 'Direita'
+        TOP = 'top', 'Superior'
+        BOTTOM = 'bottom', 'Inferior'
+        FULL = 'full', 'Imagem toda'
+
     profile = models.ForeignKey(SocialProfile, on_delete=models.CASCADE, related_name='base_images')
     arquivo = models.ImageField(upload_to=social_base_image_upload_to)
     nome = models.CharField(max_length=120)
@@ -189,6 +267,10 @@ class SocialBaseImage(models.Model):
     reel_secondary_text_box_height = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
     reel_secondary_text_align_horizontal = models.CharField(max_length=10, choices=TextAlignHorizontal.choices, default=TextAlignHorizontal.CENTER)
     reel_secondary_text_align_vertical = models.CharField(max_length=10, choices=TextAlignVertical.choices, default=TextAlignVertical.MIDDLE)
+    subject_position = models.CharField(max_length=20, choices=SubjectPosition.choices, default=SubjectPosition.NONE)
+    text_safe_zone = models.CharField(max_length=20, choices=TextSafeZone.choices, default=TextSafeZone.AUTO)
+    focal_x = models.DecimalField(max_digits=4, decimal_places=2, blank=True, null=True)
+    focal_y = models.DecimalField(max_digits=4, decimal_places=2, blank=True, null=True)
     ativa = models.BooleanField(default=True)
     vezes_usada = models.PositiveIntegerField(default=0)
     ultima_utilizacao = models.DateTimeField(blank=True, null=True)
@@ -267,6 +349,52 @@ class SocialBaseImage(models.Model):
         if not self.reel_primary_text_box_configured:
             return None
         return float(self.reel_primary_text_box_width) * float(self.reel_primary_text_box_height) / 100
+
+    def clean(self):
+        super().clean()
+        for field_name in ['focal_x', 'focal_y']:
+            value = getattr(self, field_name)
+            if value is not None and (value < 0 or value > 1):
+                raise ValidationError(f'{field_name} deve ficar entre 0 e 1.')
+
+
+class SocialBaseImageProtectedRegion(models.Model):
+    class RegionType(models.TextChoices):
+        SUBJECT = 'subject', 'Assunto'
+        FACE = 'face', 'Rosto'
+        LOGO = 'logo', 'Logo'
+        PRODUCT = 'product', 'Produto'
+        CUSTOM = 'custom', 'Personalizada'
+
+    image = models.ForeignKey(SocialBaseImage, on_delete=models.CASCADE, related_name='protected_regions')
+    x = models.DecimalField(max_digits=4, decimal_places=2)
+    y = models.DecimalField(max_digits=4, decimal_places=2)
+    width = models.DecimalField(max_digits=4, decimal_places=2)
+    height = models.DecimalField(max_digits=4, decimal_places=2)
+    region_type = models.CharField(max_length=20, choices=RegionType.choices, default=RegionType.SUBJECT)
+    active = models.BooleanField(default=True)
+    note = models.CharField(max_length=160, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['image', 'id']
+        indexes = [
+            models.Index(fields=['image', 'active']),
+        ]
+
+    def __str__(self):
+        return f'{self.image_id} - {self.region_type}'
+
+    def clean(self):
+        super().clean()
+        for field_name in ['x', 'y', 'width', 'height']:
+            value = getattr(self, field_name)
+            if value < 0 or value > 1:
+                raise ValidationError('Regioes protegidas usam valores normalizados entre 0 e 1.')
+        if self.width <= 0 or self.height <= 0:
+            raise ValidationError('A regiao protegida precisa ter largura e altura positivas.')
+        if self.x + self.width > 1 or self.y + self.height > 1:
+            raise ValidationError('A regiao protegida nao pode ultrapassar os limites da imagem.')
 
 
 class SocialInstagramConnection(models.Model):
@@ -404,6 +532,75 @@ class SocialCarouselTemplate(models.Model):
                 raise ValidationError('Este perfil ja possui um template de carrossel padrao.')
 
 
+class SocialCarouselTemplateVariant(models.Model):
+    class LayoutType(models.TextChoices):
+        AUTO = 'AUTO', 'Automatico'
+        HERO_LEFT = 'HERO_LEFT', 'Hero esquerda'
+        HERO_RIGHT = 'HERO_RIGHT', 'Hero direita'
+        TEXT_TOP = 'TEXT_TOP', 'Texto superior'
+        TEXT_BOTTOM = 'TEXT_BOTTOM', 'Texto inferior'
+        CENTER_CARD = 'CENTER_CARD', 'Card central'
+        SPLIT_LEFT = 'SPLIT_LEFT', 'Dividido esquerda'
+        SPLIT_RIGHT = 'SPLIT_RIGHT', 'Dividido direita'
+        MINIMAL = 'MINIMAL', 'Minimal'
+        FULL_TEXT = 'FULL_TEXT', 'Texto completo'
+
+    class OverlayType(models.TextChoices):
+        AUTO = 'AUTO', 'Automatico'
+        NONE = 'NONE', 'Sem overlay'
+        DARK = 'DARK', 'Escuro'
+        LIGHT = 'LIGHT', 'Claro'
+        GRADIENT_LEFT = 'GRADIENT_LEFT', 'Gradiente esquerda'
+        GRADIENT_RIGHT = 'GRADIENT_RIGHT', 'Gradiente direita'
+        GRADIENT_TOP = 'GRADIENT_TOP', 'Gradiente superior'
+        GRADIENT_BOTTOM = 'GRADIENT_BOTTOM', 'Gradiente inferior'
+
+    template = models.ForeignKey(SocialCarouselTemplate, on_delete=models.CASCADE, related_name='variants')
+    name = models.CharField(max_length=120)
+    active = models.BooleanField(default=True)
+    allowed_slide_types = models.JSONField(default=list, blank=True)
+    aspect_ratio = models.CharField(max_length=20, choices=SocialCarouselTemplate.AspectRatio.choices, blank=True)
+    layout_type = models.CharField(max_length=30, choices=LayoutType.choices, default=LayoutType.AUTO)
+    title_alignment = models.CharField(max_length=10, choices=SocialCarouselTemplate.TextAlignment.choices, default=SocialCarouselTemplate.TextAlignment.LEFT)
+    body_alignment = models.CharField(max_length=10, choices=SocialCarouselTemplate.TextAlignment.choices, default=SocialCarouselTemplate.TextAlignment.LEFT)
+    title_max_lines = models.PositiveSmallIntegerField(default=3)
+    body_max_lines = models.PositiveSmallIntegerField(default=5)
+    overlay_enabled = models.BooleanField(default=True)
+    overlay_type = models.CharField(max_length=30, choices=OverlayType.choices, default=OverlayType.AUTO)
+    overlay_strength = models.PositiveSmallIntegerField(default=42)
+    show_footer = models.BooleanField(default=True)
+    show_slide_number = models.BooleanField(default=True)
+    show_brand = models.BooleanField(default=True)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['template', 'sort_order', 'name']
+        indexes = [
+            models.Index(fields=['template', 'active', 'layout_type']),
+        ]
+
+    def __str__(self):
+        return f'{self.template.name} - {self.name}'
+
+    @property
+    def effective_aspect_ratio(self):
+        return self.aspect_ratio or self.template.aspect_ratio
+
+    def allows_slide_type(self, slide_type):
+        return not self.allowed_slide_types or slide_type in self.allowed_slide_types
+
+    def clean(self):
+        super().clean()
+        valid_types = {choice[0] for choice in SocialCarouselSlide.SlideType.choices} if 'SocialCarouselSlide' in globals() else {'COVER', 'CONTENT', 'CTA'}
+        invalid = [item for item in self.allowed_slide_types if item not in valid_types]
+        if invalid:
+            raise ValidationError('Tipos de slide invalidos na variante.')
+        if self.overlay_strength > 90:
+            raise ValidationError('Overlay da variante deve ficar entre 0 e 90.')
+
+
 class SocialContent(models.Model):
     class MediaType(models.TextChoices):
         IMAGE = 'image', 'Foto'
@@ -494,12 +691,18 @@ class SocialCarouselSlide(models.Model):
         CTA = 'CTA', 'CTA'
 
     content = models.ForeignKey(SocialContent, on_delete=models.CASCADE, related_name='carousel_slides')
+    variant = models.ForeignKey(SocialCarouselTemplateVariant, on_delete=models.SET_NULL, blank=True, null=True, related_name='slides')
+    source_base_image = models.ForeignKey(SocialBaseImage, on_delete=models.SET_NULL, blank=True, null=True, related_name='carousel_slides')
     order = models.PositiveSmallIntegerField(default=1)
     slide_type = models.CharField(max_length=20, choices=SlideType.choices, default=SlideType.CONTENT)
+    visual_intent = models.CharField(max_length=30, choices=SocialCarouselTemplateVariant.LayoutType.choices, default=SocialCarouselTemplateVariant.LayoutType.AUTO)
     title = models.CharField(max_length=180, blank=True)
     body = models.TextField(blank=True)
     source_image = models.ImageField(upload_to=social_carousel_slide_source_upload_to, blank=True, null=True)
     rendered_image = models.ImageField(upload_to=social_carousel_slide_rendered_upload_to, blank=True, null=True)
+    text_color_override = models.CharField(max_length=20, blank=True)
+    overlay_override = models.CharField(max_length=30, choices=SocialCarouselTemplateVariant.OverlayType.choices, blank=True)
+    render_metadata = models.JSONField(default=dict, blank=True)
     instagram_container_id = models.CharField(max_length=120, blank=True)
     instagram_container_fingerprint = models.CharField(max_length=64, blank=True, default='')
     is_active = models.BooleanField(default=True)
@@ -522,6 +725,12 @@ class SocialCarouselSlide(models.Model):
         super().clean()
         if self.content and self.content.media_type != SocialContent.MediaType.CAROUSEL:
             raise ValidationError('Slides so podem ser vinculados a conteudos do tipo carrossel.')
+        if self.variant and self.content and self.variant.template.profile_id != self.content.profile_id:
+            raise ValidationError('A variante precisa pertencer ao perfil do conteudo.')
+        if self.variant and not self.variant.allows_slide_type(self.slide_type):
+            raise ValidationError('A variante selecionada nao aceita este tipo de slide.')
+        if self.source_base_image and self.content and self.source_base_image.profile_id != self.content.profile_id:
+            raise ValidationError('A imagem-base do slide precisa pertencer ao perfil do conteudo.')
         if not self.title and not self.body and not self.source_image:
             raise ValidationError('Informe titulo, texto ou imagem para o slide.')
 

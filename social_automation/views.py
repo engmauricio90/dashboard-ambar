@@ -15,7 +15,16 @@ from django.views.decorators.http import require_POST
 
 from .ai import OpenAINotConfigured, OpenAIUnavailable
 from .automation import automacao_status_profile, executar_tick_social
-from .forms import SocialBaseImageForm, SocialCarouselSlideFormSet, SocialCarouselTemplateForm, SocialContentForm, SocialGenerateForm, SocialProfileForm, SocialScheduleForm
+from .forms import (
+    SocialBaseImageForm,
+    SocialCarouselSlideFormSet,
+    SocialCarouselTemplateForm,
+    SocialContentForm,
+    SocialGenerateForm,
+    SocialProfileForm,
+    SocialScheduleForm,
+    SocialVisualIdentityForm,
+)
 from .generation import gerar_lote_conteudos
 from .instagram import (
     InstagramAPIError,
@@ -33,7 +42,7 @@ from .instagram import (
     validar_assinatura_video_meta,
     validar_token_midia_temporaria,
 )
-from .models import SocialBaseImage, SocialCarouselSlide, SocialCarouselTemplate, SocialContent, SocialInstagramConnection, SocialProfile
+from .models import SocialBaseImage, SocialCarouselSlide, SocialCarouselTemplate, SocialContent, SocialInstagramConnection, SocialProfile, SocialVisualIdentity
 from .rendering import SocialRenderError, renderizar_midia_social
 from .services import (
     agendar_conteudo,
@@ -47,6 +56,8 @@ from .services import (
 
 
 logger = logging.getLogger(__name__)
+
+CAROUSEL_LAYOUT_PREVIEWS = ['HERO_LEFT', 'HERO_RIGHT', 'TEXT_TOP', 'TEXT_BOTTOM', 'CENTER_CARD', 'SPLIT_LEFT', 'SPLIT_RIGHT', 'MINIMAL', 'FULL_TEXT']
 
 
 def staff_required(view_func):
@@ -122,6 +133,24 @@ def profile_update(request, profile_id):
     else:
         form = SocialProfileForm(instance=profile)
     return render(request, 'social_automation/profile_form.html', {'form': form, 'profile': profile, 'titulo': 'Editar perfil social'})
+
+
+@staff_required
+def profile_visual_identity(request, profile_id):
+    profile = _profile_or_404(profile_id)
+    identity = profile.visual_identities.filter(is_default=True).first() or profile.visual_identities.first()
+    if request.method == 'POST':
+        form = SocialVisualIdentityForm(request.POST, request.FILES, instance=identity)
+        if form.is_valid():
+            identity = form.save(commit=False)
+            identity.profile = profile
+            identity.save()
+            messages.success(request, 'Identidade visual atualizada com sucesso.')
+            return redirect('social_automation:profile_detail', profile_id=profile.id)
+    else:
+        initial = {'brand_name': profile.nome}
+        form = SocialVisualIdentityForm(instance=identity, initial=initial)
+    return render(request, 'social_automation/profile_visual_identity_form.html', {'form': form, 'profile': profile})
 
 
 @staff_required
@@ -251,7 +280,11 @@ def carousel_template_create(request, profile_id):
             return redirect('social_automation:carousel_template_list', profile_id=profile.id)
     else:
         form = SocialCarouselTemplateForm()
-    return render(request, 'social_automation/carousel_template_form.html', {'form': form, 'profile': profile, 'titulo': 'Novo template de carrossel'})
+    return render(
+        request,
+        'social_automation/carousel_template_form.html',
+        {'form': form, 'profile': profile, 'titulo': 'Novo template de carrossel', 'layout_previews': CAROUSEL_LAYOUT_PREVIEWS},
+    )
 
 
 @staff_required
@@ -265,7 +298,11 @@ def carousel_template_update(request, template_id):
             return redirect('social_automation:carousel_template_list', profile_id=template.profile_id)
     else:
         form = SocialCarouselTemplateForm(instance=template)
-    return render(request, 'social_automation/carousel_template_form.html', {'form': form, 'profile': template.profile, 'template': template, 'titulo': 'Editar template de carrossel'})
+    return render(
+        request,
+        'social_automation/carousel_template_form.html',
+        {'form': form, 'profile': template.profile, 'template': template, 'titulo': 'Editar template de carrossel', 'layout_previews': CAROUSEL_LAYOUT_PREVIEWS},
+    )
 
 
 @staff_required
@@ -524,6 +561,19 @@ def ig_carousel_slide(request, content_id, slide_id, signature):
     response['Cache-Control'] = 'private, max-age=0, no-store'
     response['X-Content-Type-Options'] = 'nosniff'
     return response
+
+
+@staff_required
+def carousel_slide_preview(request, slide_id):
+    slide = get_object_or_404(SocialCarouselSlide.objects.select_related('content', 'content__profile'), pk=slide_id)
+    if not slide.rendered_image:
+        raise Http404
+    return FileResponse(
+        slide.rendered_image.storage.open(slide.rendered_image.name, 'rb'),
+        content_type='image/jpeg',
+        as_attachment=False,
+        filename=f'carousel-slide-{slide.order}.jpg',
+    )
 
 
 @staff_required

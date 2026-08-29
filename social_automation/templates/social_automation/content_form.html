@@ -33,9 +33,14 @@
                 <div class="row g-2">
                     <div class="col-md-1"><label class="form-label">{{ slide_form.order.label }}</label>{{ slide_form.order }}</div>
                     <div class="col-md-2"><label class="form-label">{{ slide_form.slide_type.label }}</label>{{ slide_form.slide_type }}</div>
+                    <div class="col-md-3"><label class="form-label">{{ slide_form.visual_intent.label }}</label>{{ slide_form.visual_intent }}</div>
+                    <div class="col-md-3"><label class="form-label">{{ slide_form.variant.label }}</label>{{ slide_form.variant }}</div>
+                    <div class="col-md-3"><label class="form-label">{{ slide_form.source_base_image.label }}</label>{{ slide_form.source_base_image }}</div>
                     <div class="col-md-4"><label class="form-label">{{ slide_form.title.label }}</label>{{ slide_form.title }}</div>
                     <div class="col-md-5"><label class="form-label">{{ slide_form.source_image.label }}</label>{{ slide_form.source_image }}</div>
                     <div class="col-12"><label class="form-label">{{ slide_form.body.label }}</label>{{ slide_form.body }}</div>
+                    <div class="col-md-3"><label class="form-label">{{ slide_form.text_color_override.label }}</label>{{ slide_form.text_color_override }}</div>
+                    <div class="col-md-3"><label class="form-label">{{ slide_form.overlay_override.label }}</label>{{ slide_form.overlay_override }}</div>
                     <div class="col-md-3 d-flex align-items-end"><div class="form-check">{{ slide_form.is_active }} <label class="form-check-label">{{ slide_form.is_active.label }}</label></div></div>
                     {% if slide_form.DELETE %}<div class="col-md-3 d-flex align-items-end"><div class="form-check">{{ slide_form.DELETE }} <label class="form-check-label">Excluir</label></div></div>{% endif %}
                 </div>

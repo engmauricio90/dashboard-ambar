@@ -16,6 +16,7 @@ urlpatterns = [
     path('perfis/<int:profile_id>/instagram/desconectar/', views.instagram_disconnect, name='instagram_disconnect'),
     path('perfis/<int:profile_id>/automacao/executar/', views.automation_run_now, name='automation_run_now'),
     path('perfis/<int:profile_id>/editar/', views.profile_update, name='profile_update'),
+    path('perfis/<int:profile_id>/identidade-visual/', views.profile_visual_identity, name='profile_visual_identity'),
     path('perfis/<int:profile_id>/toggle/', views.profile_toggle, name='profile_toggle'),
     path('perfis/<int:profile_id>/gerar/', views.profile_generate, name='profile_generate'),
     path('perfis/<int:profile_id>/imagens/', views.image_list, name='image_list'),
@@ -40,5 +41,6 @@ urlpatterns = [
     path('conteudos/<int:content_id>/desagendar/', views.content_unschedule, name='content_unschedule'),
     path('conteudos/<int:content_id>/excluir/', views.content_delete, name='content_delete'),
     path('conteudos/aprovar-lote/', views.content_bulk_approve, name='content_bulk_approve'),
+    path('carrosseis/slides/<int:slide_id>/preview/', views.carousel_slide_preview, name='carousel_slide_preview'),
     path('public/<path:token>/', views.public_final_image, name='public_final_image'),
 ]
