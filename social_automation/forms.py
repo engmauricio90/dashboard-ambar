@@ -6,7 +6,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
-from .models import SocialBaseImage, SocialContent, SocialProfile, validate_horarios_publicacao
+from .models import SocialBaseImage, SocialCarouselSlide, SocialCarouselTemplate, SocialContent, SocialProfile, validate_horarios_publicacao
 
 
 class BootstrapMixin:
@@ -40,6 +40,14 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
             'modo_operacao',
             'posts_por_dia',
             'reels_por_dia',
+            'carousels_por_dia',
+            'carousel_default_slide_count',
+            'carousel_ai_instructions',
+            'carousel_cta_enabled',
+            'carousel_default_cta',
+            'ai_image_generation_enabled',
+            'ai_image_mode',
+            'image_ai_instructions',
             'estilo',
             'instrucoes_ia',
             'responder_comentarios',
@@ -48,6 +56,8 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
         widgets = {
             'estilo': forms.Textarea(attrs={'rows': 3}),
             'instrucoes_ia': forms.Textarea(attrs={'rows': 5}),
+            'carousel_ai_instructions': forms.Textarea(attrs={'rows': 3}),
+            'image_ai_instructions': forms.Textarea(attrs={'rows': 3}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -66,6 +76,15 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
         self.fields['timezone'].widget.attrs['class'] = 'form-select'
         self.fields['reels_por_dia'].required = False
         self.fields['reels_por_dia'].initial = self.instance.reels_por_dia if self.instance and self.instance.pk else 0
+        self.fields['carousels_por_dia'].required = False
+        self.fields['carousels_por_dia'].initial = self.instance.carousels_por_dia if self.instance and self.instance.pk else 0
+        self.fields['carousel_default_slide_count'].required = False
+        self.fields['carousel_default_slide_count'].initial = self.instance.carousel_default_slide_count if self.instance and self.instance.pk else 6
+        self.fields['carousel_ai_instructions'].required = False
+        self.fields['carousel_default_cta'].required = False
+        self.fields['ai_image_mode'].required = False
+        self.fields['ai_image_mode'].initial = self.instance.ai_image_mode if self.instance and self.instance.pk else 'NONE'
+        self.fields['image_ai_instructions'].required = False
 
     def clean_horarios_texto(self):
         raw = self.cleaned_data.get('horarios_texto') or ''
@@ -85,12 +104,22 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
     def clean_reels_por_dia(self):
         return self.cleaned_data.get('reels_por_dia') or 0
 
+    def clean_carousels_por_dia(self):
+        return self.cleaned_data.get('carousels_por_dia') or 0
+
+    def clean_carousel_default_slide_count(self):
+        return self.cleaned_data.get('carousel_default_slide_count') or 6
+
+    def clean_ai_image_mode(self):
+        return self.cleaned_data.get('ai_image_mode') or 'NONE'
+
     def clean(self):
         cleaned = super().clean()
         posts = cleaned.get('posts_por_dia') or 0
         reels = cleaned.get('reels_por_dia') or 0
-        if reels > posts:
-            raise forms.ValidationError('Reels por dia nao pode ser maior que posts por dia.')
+        carousels = cleaned.get('carousels_por_dia') or 0
+        if reels + carousels > posts:
+            raise forms.ValidationError('Reels e carrosseis por dia nao podem superar posts por dia.')
         return cleaned
 
     def save(self, commit=True):
@@ -283,7 +312,7 @@ class SocialBaseImageForm(BootstrapMixin, forms.ModelForm):
 class SocialContentForm(BootstrapMixin, forms.ModelForm):
     class Meta:
         model = SocialContent
-        fields = ['profile', 'media_type', 'base_image', 'frase', 'legenda', 'hashtags']
+        fields = ['profile', 'media_type', 'base_image', 'carousel_template', 'frase', 'legenda', 'hashtags']
         widgets = {
             'frase': forms.Textarea(attrs={'rows': 3}),
             'legenda': forms.Textarea(attrs={'rows': 4}),
@@ -298,9 +327,11 @@ class SocialContentForm(BootstrapMixin, forms.ModelForm):
             self.fields['profile'].queryset = SocialProfile.objects.filter(pk=profile.pk)
             self.fields['profile'].widget = forms.HiddenInput()
             self.fields['base_image'].queryset = SocialBaseImage.objects.filter(profile=profile, ativa=True)
+            self.fields['carousel_template'].queryset = SocialCarouselTemplate.objects.filter(profile=profile, active=True)
         else:
             self.fields['profile'].queryset = SocialProfile.objects.order_by('nome')
             self.fields['base_image'].queryset = SocialBaseImage.objects.filter(ativa=True).select_related('profile')
+            self.fields['carousel_template'].queryset = SocialCarouselTemplate.objects.filter(active=True).select_related('profile')
         self._apply_bootstrap()
         if not isinstance(self.fields['profile'].widget, forms.HiddenInput):
             self.fields['profile'].widget.attrs['class'] = 'form-select'
@@ -308,13 +339,22 @@ class SocialContentForm(BootstrapMixin, forms.ModelForm):
         self.fields['media_type'].initial = SocialContent.MediaType.IMAGE
         self.fields['media_type'].widget.attrs['class'] = 'form-select'
         self.fields['base_image'].widget.attrs['class'] = 'form-select'
+        self.fields['base_image'].required = False
+        self.fields['carousel_template'].required = False
+        self.fields['carousel_template'].widget.attrs['class'] = 'form-select'
 
     def clean(self):
         cleaned = super().clean()
         profile = cleaned.get('profile')
         base_image = cleaned.get('base_image')
+        carousel_template = cleaned.get('carousel_template')
         if base_image and profile and base_image.profile_id != profile.id:
             raise forms.ValidationError('A imagem-base precisa pertencer ao perfil selecionado.')
+        if carousel_template and profile and carousel_template.profile_id != profile.id:
+            raise forms.ValidationError('O template de carrossel precisa pertencer ao perfil selecionado.')
+        media_type = cleaned.get('media_type') or SocialContent.MediaType.IMAGE
+        if media_type != SocialContent.MediaType.CAROUSEL and not base_image:
+            raise forms.ValidationError('Selecione uma imagem-base para foto ou Reel.')
         return cleaned
 
     def clean_media_type(self):
@@ -370,3 +410,57 @@ class SocialGenerateForm(BootstrapMixin, forms.Form):
         if quantidade > limite:
             raise forms.ValidationError(f'Informe no maximo {limite} conteudos por lote.')
         return quantidade
+
+
+class SocialCarouselTemplateForm(BootstrapMixin, forms.ModelForm):
+    class Meta:
+        model = SocialCarouselTemplate
+        fields = [
+            'name',
+            'active',
+            'is_default',
+            'aspect_ratio',
+            'background_type',
+            'background_image',
+            'background_color',
+            'secondary_background_color',
+            'text_color',
+            'accent_color',
+            'title_alignment',
+            'body_alignment',
+            'show_profile_name',
+            'show_slide_number',
+            'show_footer',
+            'footer_text',
+        ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._apply_bootstrap()
+        for field_name in ['aspect_ratio', 'background_type', 'title_alignment', 'body_alignment']:
+            self.fields[field_name].widget.attrs['class'] = 'form-select'
+
+
+class SocialCarouselSlideForm(BootstrapMixin, forms.ModelForm):
+    class Meta:
+        model = SocialCarouselSlide
+        fields = ['order', 'slide_type', 'title', 'body', 'source_image', 'is_active']
+        widgets = {
+            'body': forms.Textarea(attrs={'rows': 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._apply_bootstrap()
+        self.fields['slide_type'].widget.attrs['class'] = 'form-select'
+
+
+SocialCarouselSlideFormSet = forms.inlineformset_factory(
+    SocialContent,
+    SocialCarouselSlide,
+    form=SocialCarouselSlideForm,
+    extra=6,
+    can_delete=True,
+    min_num=0,
+    validate_min=False,
+)

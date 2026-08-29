@@ -12,6 +12,7 @@ from unittest import mock
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth import get_user_model
+from django.conf import settings
 from django.core import signing
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -23,36 +24,44 @@ from PIL import Image, ImageDraw
 
 from empresas.models import Empresa, UsuarioEmpresa
 
-from .models import SocialBaseImage, SocialContent, SocialContentEvent, SocialInstagramConnection, SocialProfile
+from .models import SocialBaseImage, SocialCarouselSlide, SocialCarouselTemplate, SocialContent, SocialContentEvent, SocialInstagramConnection, SocialProfile
 from .ai import GeneratedContent
 from .automation import executar_tick_social
 from .container_versioning import (
     REEL_SHARE_TO_FEED,
     build_instagram_caption,
+    calculate_instagram_carousel_slide_fingerprint,
     calculate_instagram_container_fingerprint,
     invalidate_instagram_container,
 )
 from .generation import GenerationResult, _image_contexts, gerar_lote_conteudos
 from .image_selection import selecionar_imagem_base
+from .image_generation import SocialImageGenerationDisabled, SocialImagePrompt, build_image_generation_prompt, generate_social_image, image_generation_available
 from .instagram import (
     InstagramAPIError,
     InstagramContainerPending,
+    InstagramPublishError,
     MEDIA_SIGNING_SALT,
     PUBLICADO_INSTAGRAM,
     auditar_imagem_final,
+    auditar_imagem_slide_carrossel,
     criar_container_reel,
     criar_container_imagem,
+    gerar_assinatura_carousel_slide_meta,
     display_instagram_account_type,
     gerar_assinatura_midia_meta,
     gerar_token_midia_temporaria,
     is_publishable_instagram_account_type,
+    montar_caption,
     normalize_instagram_account_type,
     publicar_conteudo_instagram,
     resumir_image_url,
     resumir_video_url,
     url_midia_meta_compat,
     url_video_meta_compat,
+    url_carousel_slide_meta_compat,
     url_midia_temporaria,
+    validar_assinatura_carousel_slide_meta,
     validar_assinatura_video_meta,
     validar_assinatura_midia_meta,
     validar_token_midia_temporaria,
@@ -2441,3 +2450,640 @@ class SocialAutomationMultiProfileInstagramTests(TestCase):
         self.assertContains(response, '@perfil_a')
         self.assertContains(response, 'Testar conexao')
         self.assertContains(response, 'Desconectar')
+
+
+@override_settings(
+    SOCIAL_INSTAGRAM_TOKEN_ENCRYPTION_KEY='zCqifZSDofMEnNAGXaUnOpI0XzXDy3NCc8RxV9RI3l4=',
+    PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com',
+    INSTAGRAM_ACCESS_TOKEN='',
+    INSTAGRAM_USER_ID='',
+    INSTAGRAM_EXPECTED_USERNAME='',
+)
+class SocialAutomationCarouselTests(TestCase):
+    def setUp(self):
+        self.profile = SocialProfile.objects.create(
+            nome='Perfil Carrossel',
+            username='perfil_carrossel',
+            posts_por_dia=20,
+            reels_por_dia=6,
+            carousels_por_dia=0,
+            horarios_publicacao=['08:00', '12:00'],
+        )
+        self.connection = SocialInstagramConnection.objects.create(
+            profile=self.profile,
+            instagram_user_id='178-CAROUSEL',
+            username='perfil_carrossel',
+            account_type=SocialInstagramConnection.AccountType.BUSINESS,
+        )
+        self.connection.set_access_token('token-carousel')
+        self.connection.save()
+        self.template = SocialCarouselTemplate.objects.create(profile=self.profile, name='Padrao', is_default=True)
+
+    def _content(self):
+        content = SocialContent.objects.create(
+            profile=self.profile,
+            carousel_template=self.template,
+            media_type=SocialContent.MediaType.CAROUSEL,
+            frase='Capa do carrossel',
+            legenda='Legenda do carrossel',
+            hashtags='#teste',
+            status=SocialContent.Status.APROVADO,
+        )
+        SocialCarouselSlide.objects.create(content=content, order=1, slide_type=SocialCarouselSlide.SlideType.COVER, title='Capa')
+        SocialCarouselSlide.objects.create(content=content, order=2, slide_type=SocialCarouselSlide.SlideType.CONTENT, title='Ponto 1', body='Texto curto do primeiro slide.')
+        SocialCarouselSlide.objects.create(content=content, order=3, slide_type=SocialCarouselSlide.SlideType.CTA, title='Chamada final')
+        return content
+
+    def test_mix_antigo_sem_carrossel_permanece_20_6_14(self):
+        plan = build_daily_media_plan(20, 6, 0)
+        self.assertEqual(len(plan), 20)
+        self.assertEqual(plan.count(SocialContent.MediaType.REEL), 6)
+        self.assertEqual(plan.count(SocialContent.MediaType.CAROUSEL), 0)
+        self.assertEqual(plan.count(SocialContent.MediaType.IMAGE), 14)
+
+    def test_mix_com_carrossel_distribui_tres_tipos(self):
+        plan = build_daily_media_plan(12, 3, 2)
+        self.assertEqual(plan.count(SocialContent.MediaType.REEL), 3)
+        self.assertEqual(plan.count(SocialContent.MediaType.CAROUSEL), 2)
+        self.assertEqual(plan.count(SocialContent.MediaType.IMAGE), 7)
+
+    def test_renderiza_carrossel_em_slides_jpeg(self):
+        content = self._content()
+        from .rendering import renderizar_midia_social
+
+        renderizar_midia_social(content)
+        slides = list(content.carousel_slides.order_by('order'))
+        self.assertTrue(content.final_media_ready)
+        for slide in slides:
+            self.assertTrue(slide.rendered_image)
+            audit = auditar_imagem_slide_carrossel(slide)
+            self.assertEqual(audit['format'], 'JPEG')
+            self.assertIn((audit['width'], audit['height']), {(1080, 1080), (1080, 1350)})
+
+    def test_assinatura_de_slide_usa_rota_protegida(self):
+        content = self._content()
+        from .rendering import renderizar_midia_social
+
+        renderizar_midia_social(content)
+        slide = content.carousel_slides.order_by('order').first()
+        signature = gerar_assinatura_carousel_slide_meta(slide)
+        self.assertEqual(validar_assinatura_carousel_slide_meta(content.id, slide.id, signature), slide)
+        url = url_carousel_slide_meta_compat(slide)
+        self.assertIn('/social-media/ig-carousel/', url)
+        response = self.client.get(reverse('social_public_carousel_slide_meta_compat', args=[content.id, slide.id, signature]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'image/jpeg')
+
+    def test_fingerprint_muda_quando_slide_muda(self):
+        content = self._content()
+        from .rendering import renderizar_midia_social
+
+        renderizar_midia_social(content)
+        slide = content.carousel_slides.order_by('order').first()
+        original = calculate_instagram_carousel_slide_fingerprint(slide, '178-CAROUSEL')
+        slide.title = 'Capa alterada'
+        slide.save(update_fields=['title', 'updated_at'])
+        renderizar_midia_social(content)
+        slide.refresh_from_db()
+        self.assertNotEqual(original, calculate_instagram_carousel_slide_fingerprint(slide, '178-CAROUSEL'))
+
+    def test_publicacao_carrossel_cria_filhos_pai_e_publica(self):
+        content = self._content()
+        from .rendering import renderizar_midia_social
+
+        renderizar_midia_social(content)
+        calls = []
+
+        def fake_request(method, path, params=None, *, credentials=None):
+            params = params or {}
+            calls.append((method, path, params.copy()))
+            if method == 'GET' and path == '178-CAROUSEL':
+                return {'id': '178-CAROUSEL', 'username': 'perfil_carrossel', 'account_type': 'BUSINESS'}
+            if method == 'POST' and path.endswith('/media') and params.get('is_carousel_item') == 'true':
+                return {'id': f'child-{len([call for call in calls if call[2].get("is_carousel_item") == "true"])}'}
+            if method == 'POST' and path.endswith('/media') and params.get('media_type') == 'CAROUSEL':
+                return {'id': 'parent-1'}
+            if method == 'GET' and (path.startswith('child-') or path == 'parent-1'):
+                return {'id': path, 'status_code': 'FINISHED'}
+            if method == 'POST' and path.endswith('/media_publish'):
+                return {'id': 'media-carousel'}
+            if method == 'GET' and path == 'media-carousel':
+                return {'id': 'media-carousel', 'permalink': 'https://instagram.test/media-carousel'}
+            return {}
+
+        with mock.patch('social_automation.instagram._request', side_effect=fake_request):
+            publicar_conteudo_instagram(content)
+
+        content.refresh_from_db()
+        self.assertEqual(content.status, SocialContent.Status.PUBLICADO)
+        self.assertEqual(content.external_post_id, 'media-carousel')
+        parent_payloads = [params for method, path, params in calls if method == 'POST' and path.endswith('/media') and params.get('media_type') == 'CAROUSEL']
+        self.assertEqual(parent_payloads[0]['children'], 'child-1,child-2,child-3')
+
+
+@override_settings(
+    SOCIAL_INSTAGRAM_TOKEN_ENCRYPTION_KEY='zCqifZSDofMEnNAGXaUnOpI0XzXDy3NCc8RxV9RI3l4=',
+    PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com',
+    INSTAGRAM_ACCESS_TOKEN='',
+    INSTAGRAM_USER_ID='',
+    INSTAGRAM_EXPECTED_USERNAME='',
+)
+class SocialAutomationCarouselHardeningTests(TestCase):
+    def setUp(self):
+        self.profile_a = SocialProfile.objects.create(
+            nome='Perfil A',
+            username='perfil_a_carrossel',
+            posts_por_dia=8,
+            reels_por_dia=2,
+            carousels_por_dia=2,
+            carousel_default_slide_count=4,
+            carousel_default_cta='CTA A',
+            carousel_ai_instructions='Instrucoes A',
+            image_ai_instructions='Visual A',
+            horarios_publicacao=['08:00', '10:00', '12:00', '14:00'],
+        )
+        self.profile_b = SocialProfile.objects.create(
+            nome='Perfil B',
+            username='perfil_b_carrossel',
+            posts_por_dia=4,
+            reels_por_dia=0,
+            carousels_por_dia=1,
+            carousel_ai_instructions='Instrucoes B',
+            image_ai_instructions='Visual B',
+            horarios_publicacao=['09:00', '11:00'],
+        )
+        self.template_a = SocialCarouselTemplate.objects.create(profile=self.profile_a, name='Template A', is_default=True)
+        self.template_b = SocialCarouselTemplate.objects.create(
+            profile=self.profile_b,
+            name='Template B',
+            aspect_ratio=SocialCarouselTemplate.AspectRatio.PORTRAIT,
+            is_default=True,
+        )
+        self.base_a = SocialBaseImage.objects.create(profile=self.profile_a, nome='Base A', arquivo=imagem_social('base-a.jpg'))
+        self.base_b = SocialBaseImage.objects.create(profile=self.profile_b, nome='Base B', arquivo=imagem_social('base-b.jpg'))
+        self.connection_a = SocialInstagramConnection.objects.create(
+            profile=self.profile_a,
+            instagram_user_id='178-A-CAROUSEL',
+            username='perfil_a_carrossel',
+            account_type=SocialInstagramConnection.AccountType.BUSINESS,
+        )
+        self.connection_a.set_access_token('token-a-carousel')
+        self.connection_a.save()
+        self.connection_b = SocialInstagramConnection.objects.create(
+            profile=self.profile_b,
+            instagram_user_id='178-B-CAROUSEL',
+            username='perfil_b_carrossel',
+            account_type=SocialInstagramConnection.AccountType.BUSINESS,
+        )
+        self.connection_b.set_access_token('token-b-carousel')
+        self.connection_b.save()
+
+    def _carousel(self, profile=None, template=None, slide_count=3, status=SocialContent.Status.APROVADO):
+        profile = profile or self.profile_a
+        template = template or (self.template_a if profile == self.profile_a else self.template_b)
+        content = SocialContent.objects.create(
+            profile=profile,
+            carousel_template=template,
+            media_type=SocialContent.MediaType.CAROUSEL,
+            frase='Capa operacional',
+            legenda='Legenda final',
+            hashtags='#obra #teste',
+            status=status,
+        )
+        for order in range(1, slide_count + 1):
+            slide_type = SocialCarouselSlide.SlideType.COVER if order == 1 else SocialCarouselSlide.SlideType.CONTENT
+            if order == slide_count:
+                slide_type = SocialCarouselSlide.SlideType.CTA
+            SocialCarouselSlide.objects.create(
+                content=content,
+                order=order,
+                slide_type=slide_type,
+                title=f'Slide {order}',
+                body=f'Descricao do slide {order}',
+            )
+        return content
+
+    def _fake_meta(self, calls, fail_child_index=None, publish_error=None):
+        def fake_request(method, path, params=None, *, credentials=None):
+            params = params or {}
+            calls.append((credentials.instagram_user_id if credentials else '', method, path, params.copy()))
+            if method == 'GET' and path in {'178-A-CAROUSEL', '178-B-CAROUSEL'}:
+                username = 'perfil_a_carrossel' if path == '178-A-CAROUSEL' else 'perfil_b_carrossel'
+                return {'id': path, 'username': username, 'account_type': 'BUSINESS'}
+            if method == 'POST' and path.endswith('/media') and params.get('is_carousel_item') == 'true':
+                child_number = len([call for call in calls if call[3].get('is_carousel_item') == 'true'])
+                if fail_child_index and child_number == fail_child_index:
+                    raise InstagramAPIError('falha child', status=500, is_transient=True)
+                return {'id': f'child-{child_number}'}
+            if method == 'GET' and path.startswith('child-'):
+                return {'id': path, 'status_code': 'FINISHED'}
+            if method == 'POST' and path.endswith('/media') and params.get('media_type') == 'CAROUSEL':
+                return {'id': 'parent-1'}
+            if method == 'GET' and path == 'parent-1':
+                return {'id': 'parent-1', 'status_code': 'FINISHED'}
+            if method == 'POST' and path.endswith('/media_publish'):
+                if publish_error:
+                    raise publish_error
+                return {'id': 'media-parent'}
+            if method == 'GET' and path == 'media-parent':
+                return {'id': 'media-parent', 'permalink': 'https://instagram.test/media-parent'}
+            return {}
+
+        return fake_request
+
+    def test_model_defaults_e_validacoes_do_mix(self):
+        profile = SocialProfile.objects.create(nome='Antigo', username='antigo', posts_por_dia=20, reels_por_dia=6)
+        self.assertEqual(profile.carousels_por_dia, 0)
+        self.assertEqual(build_daily_media_plan(20, 6, 0).count(SocialContent.MediaType.IMAGE), 14)
+        self.assertEqual(build_daily_media_plan(20, 6, 0).count(SocialContent.MediaType.REEL), 6)
+        self.assertEqual(build_daily_media_plan(8, 2, 2).count(SocialContent.MediaType.IMAGE), 4)
+        with self.assertRaises(ValidationError):
+            SocialProfile(nome='Invalido', username='x', posts_por_dia=2, reels_por_dia=2, carousels_por_dia=1).full_clean()
+        SocialProfile(nome='Valido', username='y', posts_por_dia=2, reels_por_dia=1, carousels_por_dia=1, horarios_publicacao=['08:00']).full_clean()
+        with self.assertRaises(ValidationError):
+            SocialProfile(nome='Negativo', username='z', posts_por_dia=2, carousels_por_dia=-1).full_clean()
+
+    def test_social_content_aceita_tres_tipos_de_midia(self):
+        for media_type in [SocialContent.MediaType.IMAGE, SocialContent.MediaType.REEL, SocialContent.MediaType.CAROUSEL]:
+            with self.subTest(media_type=media_type):
+                content = SocialContent(profile=self.profile_a, media_type=media_type, frase='Teste')
+                content.full_clean(exclude=['base_image', 'carousel_template'])
+
+    def test_quantidade_de_slides_e_prontidao_final(self):
+        for count, expected_ready_after_render in [(2, True), (10, True), (1, False), (11, False)]:
+            with self.subTest(count=count):
+                content = self._carousel(slide_count=count)
+                if 2 <= count <= 10:
+                    from .rendering import renderizar_midia_social
+
+                    renderizar_midia_social(content)
+                self.assertEqual(content.final_media_ready, expected_ready_after_render)
+
+    def test_ordem_de_slides_preservada_e_pk_nao_define_publicacao(self):
+        content = SocialContent.objects.create(
+            profile=self.profile_a,
+            carousel_template=self.template_a,
+            media_type=SocialContent.MediaType.CAROUSEL,
+            frase='Ordenacao',
+            legenda='Legenda',
+            status=SocialContent.Status.APROVADO,
+        )
+        slide_b = SocialCarouselSlide.objects.create(content=content, order=2, title='Segundo')
+        slide_a = SocialCarouselSlide.objects.create(content=content, order=1, title='Primeiro')
+        from .rendering import renderizar_midia_social
+
+        renderizar_midia_social(content)
+        self.assertLess(slide_b.id, slide_a.id)
+        self.assertEqual(list(content.carousel_slides.order_by('order').values_list('title', flat=True)), ['Primeiro', 'Segundo'])
+
+    def test_slide_de_outro_conteudo_e_rejeitado_por_assinatura(self):
+        content_a = self._carousel()
+        content_b = self._carousel()
+        from .rendering import renderizar_midia_social
+
+        renderizar_midia_social(content_a)
+        renderizar_midia_social(content_b)
+        slide_b = content_b.carousel_slides.first()
+        signature = gerar_assinatura_carousel_slide_meta(slide_b)
+        with self.assertRaises(ValidationError):
+            validar_assinatura_carousel_slide_meta(content_a.id, slide_b.id, signature)
+
+    def test_template_e_form_filtram_por_perfil(self):
+        self.assertIn(self.template_a, self.profile_a.carousel_templates.all())
+        self.assertNotIn(self.template_b, self.profile_a.carousel_templates.all())
+        from .forms import SocialContentForm
+
+        form = SocialContentForm(profile=self.profile_a)
+        self.assertIn(self.template_a, form.fields['carousel_template'].queryset)
+        self.assertNotIn(self.template_b, form.fields['carousel_template'].queryset)
+
+    def test_conteudo_nao_aceita_template_de_outro_perfil(self):
+        content = SocialContent(
+            profile=self.profile_b,
+            carousel_template=self.template_a,
+            media_type=SocialContent.MediaType.CAROUSEL,
+            frase='Tenant errado',
+        )
+        with self.assertRaises(ValidationError):
+            content.full_clean(exclude=['base_image'])
+
+    def test_render_square_portrait_tipos_e_storage(self):
+        for template, expected_size in [(self.template_a, (1080, 1080)), (self.template_b, (1080, 1350))]:
+            with self.subTest(template=template.name):
+                content = self._carousel(profile=template.profile, template=template)
+                from .rendering import renderizar_midia_social
+
+                renderizar_midia_social(content)
+                sizes = []
+                types = set()
+                for slide in content.carousel_slides.order_by('order'):
+                    audit = auditar_imagem_slide_carrossel(slide)
+                    sizes.append((audit['width'], audit['height']))
+                    types.add(slide.slide_type)
+                    self.assertTrue(slide.rendered_image.storage.exists(slide.rendered_image.name))
+                self.assertEqual(set(sizes), {expected_size})
+                self.assertEqual(types, {SocialCarouselSlide.SlideType.COVER, SocialCarouselSlide.SlideType.CONTENT, SocialCarouselSlide.SlideType.CTA})
+
+    def test_carrossel_sem_cta_renderiza(self):
+        self.profile_a.carousel_cta_enabled = False
+        self.profile_a.save(update_fields=['carousel_cta_enabled', 'updated_at'])
+        content = self._carousel(slide_count=2)
+        from .rendering import renderizar_midia_social
+
+        renderizar_midia_social(content)
+        self.assertTrue(content.final_media_ready)
+
+    def test_texto_longo_demais_falha_sem_apagar_render_anterior(self):
+        content = self._carousel(slide_count=2)
+        from .rendering import renderizar_midia_social
+
+        renderizar_midia_social(content)
+        slide = content.carousel_slides.order_by('order').first()
+        old_file = slide.rendered_image.name
+        slide.instagram_container_id = 'child-valido'
+        slide.instagram_container_fingerprint = 'fingerprint-valido'
+        slide.title = 'X' * 3000
+        slide.save(update_fields=['title', 'instagram_container_id', 'instagram_container_fingerprint', 'updated_at'])
+        with self.assertRaises(SocialRenderError):
+            renderizar_midia_social(content)
+        slide.refresh_from_db()
+        self.assertEqual(slide.rendered_image.name, old_file)
+        self.assertEqual(slide.instagram_container_id, 'child-valido')
+
+    def test_signed_url_blindagem(self):
+        content = self._carousel()
+        from .rendering import renderizar_midia_social
+
+        renderizar_midia_social(content)
+        slide = content.carousel_slides.order_by('order').first()
+        signature = gerar_assinatura_carousel_slide_meta(slide)
+        response = self.client.head(reverse('social_public_carousel_slide_meta_compat', args=[content.id, slide.id, signature]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'image/jpeg')
+        self.assertGreater(int(response['Content-Length']), 0)
+        self.assertNotIn(str(settings.MEDIA_ROOT), response.get('Content-Disposition', ''))
+        for args in [
+            [content.id, slide.id, signature + 'x'],
+            [content.id + 999, slide.id, signature],
+            [content.id, slide.id + 999, signature],
+        ]:
+            with self.subTest(args=args):
+                self.assertEqual(self.client.get(reverse('social_public_carousel_slide_meta_compat', args=args)).status_code, 404)
+        with override_settings(INSTAGRAM_MEDIA_URL_TTL_SECONDS=-1):
+            self.assertEqual(self.client.get(reverse('social_public_carousel_slide_meta_compat', args=[content.id, slide.id, signature])).status_code, 404)
+
+    def test_meta_children_parent_ordem_e_media_publish(self):
+        content = self._carousel(slide_count=4)
+        from .rendering import renderizar_midia_social
+
+        renderizar_midia_social(content)
+        calls = []
+        with mock.patch('social_automation.instagram._request', side_effect=self._fake_meta(calls)):
+            publicar_conteudo_instagram(content)
+        child_payloads = [params for _uid, method, path, params in calls if method == 'POST' and path.endswith('/media') and params.get('is_carousel_item') == 'true']
+        parent_payloads = [params for _uid, method, path, params in calls if method == 'POST' and path.endswith('/media') and params.get('media_type') == 'CAROUSEL']
+        publish_payloads = [params for _uid, method, path, params in calls if method == 'POST' and path.endswith('/media_publish')]
+        self.assertEqual(len(child_payloads), 4)
+        self.assertTrue(all(payload['is_carousel_item'] == 'true' for payload in child_payloads))
+        self.assertTrue(all('/social-media/ig-carousel/' in payload['image_url'] for payload in child_payloads))
+        self.assertEqual(parent_payloads[0]['children'], 'child-1,child-2,child-3,child-4')
+        self.assertEqual(parent_payloads[0]['caption'], montar_caption(content))
+        self.assertEqual(publish_payloads[0]['creation_id'], 'parent-1')
+        self.assertNotIn('child-', publish_payloads[0]['creation_id'])
+
+    def test_child_reutilizado_e_falha_parcial_retomada(self):
+        content = self._carousel(slide_count=6)
+        from .rendering import renderizar_midia_social
+
+        renderizar_midia_social(content)
+        calls = []
+        with mock.patch('social_automation.instagram._request', side_effect=self._fake_meta(calls, fail_child_index=4)):
+            with self.assertRaises(InstagramAPIError):
+                publicar_conteudo_instagram(content)
+        self.assertEqual(content.carousel_slides.exclude(instagram_container_id='').count(), 3)
+        self.assertFalse(any(params.get('media_type') == 'CAROUSEL' for _uid, method, path, params in calls if method == 'POST' and path.endswith('/media')))
+        content.refresh_from_db()
+        content.status = SocialContent.Status.APROVADO
+        content.erro = ''
+        content.save(update_fields=['status', 'erro', 'updated_at'])
+        calls.clear()
+        with mock.patch('social_automation.instagram._request', side_effect=self._fake_meta(calls)):
+            publicar_conteudo_instagram(content)
+        child_payloads = [params for _uid, method, path, params in calls if method == 'POST' and path.endswith('/media') and params.get('is_carousel_item') == 'true']
+        self.assertEqual(len(child_payloads), 3)
+        self.assertEqual(content.carousel_slides.exclude(instagram_container_id='').count(), 0)
+
+    def test_fingerprints_child_e_parent_mudam_com_midia_ordem_caption_e_conta(self):
+        content = self._carousel(slide_count=3)
+        from .rendering import renderizar_midia_social
+
+        renderizar_midia_social(content)
+        slide = content.carousel_slides.order_by('order').first()
+        child_a = calculate_instagram_carousel_slide_fingerprint(slide, '178-A-CAROUSEL')
+        parent_a = calculate_instagram_container_fingerprint(content, '178-A-CAROUSEL')
+        self.assertNotEqual(child_a, calculate_instagram_carousel_slide_fingerprint(slide, '178-B-CAROUSEL'))
+        self.assertNotEqual(parent_a, calculate_instagram_container_fingerprint(content, '178-B-CAROUSEL'))
+        slide.order = 9
+        slide.save(update_fields=['order', 'updated_at'])
+        self.assertNotEqual(child_a, calculate_instagram_carousel_slide_fingerprint(slide, '178-A-CAROUSEL'))
+        self.assertNotEqual(parent_a, calculate_instagram_container_fingerprint(content, '178-A-CAROUSEL'))
+        slide.order = 1
+        slide.save(update_fields=['order', 'updated_at'])
+        content.hashtags = '#alterada'
+        content.save(update_fields=['hashtags', 'updated_at'])
+        self.assertNotEqual(parent_a, calculate_instagram_container_fingerprint(content, '178-A-CAROUSEL'))
+
+    def test_render_novo_bem_sucedido_invalida_child_antigo(self):
+        content = self._carousel()
+        from .rendering import renderizar_midia_social
+
+        renderizar_midia_social(content)
+        slide = content.carousel_slides.order_by('order').first()
+        slide.instagram_container_id = 'child-antigo'
+        slide.instagram_container_fingerprint = 'hash-antigo'
+        slide.save(update_fields=['instagram_container_id', 'instagram_container_fingerprint', 'updated_at'])
+        renderizar_midia_social(content)
+        slide.refresh_from_db()
+        self.assertEqual(slide.instagram_container_id, '')
+        self.assertEqual(slide.instagram_container_fingerprint, '')
+
+    def test_media_publish_ambiguo_preserva_parent_e_publicado_nao_republica(self):
+        content = self._carousel()
+        from .rendering import renderizar_midia_social
+
+        renderizar_midia_social(content)
+        calls = []
+        error = InstagramAPIError('timeout ambiguo', is_transient=True)
+        with mock.patch('social_automation.instagram._request', side_effect=self._fake_meta(calls, publish_error=error)):
+            with self.assertRaises(InstagramAPIError):
+                publicar_conteudo_instagram(content)
+        content.refresh_from_db()
+        self.assertEqual(content.status, SocialContent.Status.ERRO)
+        self.assertEqual(content.instagram_container_id, 'parent-1')
+        content.status = SocialContent.Status.PUBLICADO
+        content.external_post_id = 'media-ja-publicada'
+        content.save(update_fields=['status', 'external_post_id', 'updated_at'])
+        with self.assertRaises(InstagramPublishError):
+            publicar_conteudo_instagram(content)
+
+    def test_scheduler_tres_tipos_e_sem_fallback(self):
+        expected_laila = [
+            'image', 'image', 'image', 'reel', 'image', 'image', 'reel', 'image', 'image', 'reel',
+            'image', 'image', 'image', 'reel', 'image', 'image', 'reel', 'image', 'image', 'reel',
+        ]
+        self.assertEqual(build_daily_media_plan(20, 6, 0), expected_laila)
+        cases = [(8, 2, 2, 4, 2, 2), (10, 0, 3, 7, 0, 3), (10, 3, 0, 7, 3, 0), (5, 0, 0, 5, 0, 0)]
+        for posts, reels, carousels, images, expected_reels, expected_carousels in cases:
+            with self.subTest(posts=posts, reels=reels, carousels=carousels):
+                plan = build_daily_media_plan(posts, reels, carousels)
+                self.assertEqual(plan.count(SocialContent.MediaType.IMAGE), images)
+                self.assertEqual(plan.count(SocialContent.MediaType.REEL), expected_reels)
+                self.assertEqual(plan.count(SocialContent.MediaType.CAROUSEL), expected_carousels)
+                self.assertEqual(plan, build_daily_media_plan(posts, reels, carousels))
+        self.assertEqual(media_type_for_slot(0, 8, 2, 2), build_daily_media_plan(8, 2, 2)[0])
+
+    def test_preencher_agenda_respeita_tipo_e_nao_altera_agendado_existente(self):
+        now = timezone.datetime(2026, 8, 29, 7, 0, tzinfo=timezone.get_current_timezone())
+        self.profile_a.horarios_publicacao = ['08:00', '10:00', '12:00', '14:00']
+        self.profile_a.save(update_fields=['horarios_publicacao', 'updated_at'])
+        existing = self._carousel(status=SocialContent.Status.AGENDADO)
+        existing.scheduled_at = now + timedelta(hours=1)
+        existing.save(update_fields=['scheduled_at', 'updated_at'])
+        ready_image = SocialContent.objects.create(profile=self.profile_a, base_image=self.base_a, media_type=SocialContent.MediaType.IMAGE, frase='Imagem', status=SocialContent.Status.APROVADO)
+        ready_image.final_image.save('ready-image.jpg', imagem_social('ready-image.jpg'), save=True)
+        ready_carousel = self._carousel(status=SocialContent.Status.APROVADO)
+        from .rendering import renderizar_midia_social
+
+        renderizar_midia_social(ready_carousel)
+        preencher_agenda(self.profile_a, now=now, days=1)
+        existing.refresh_from_db()
+        ready_image.refresh_from_db()
+        ready_carousel.refresh_from_db()
+        self.assertEqual(existing.scheduled_at, now + timedelta(hours=1))
+        agendados = list(self.profile_a.contents.filter(status=SocialContent.Status.AGENDADO).order_by('scheduled_at'))
+        self.assertIn(existing, agendados)
+        self.assertTrue(all(content.scheduled_at for content in agendados))
+
+    def test_estoque_deficit_e_isolamento_por_perfil(self):
+        draft = self._carousel(status=SocialContent.Status.APROVADO)
+        self.assertFalse(draft.final_media_ready)
+        self.assertEqual(estoque_pronto_por_tipo(self.profile_a)[SocialContent.MediaType.CAROUSEL], 0)
+        from .rendering import renderizar_midia_social
+
+        renderizar_midia_social(draft)
+        self.assertEqual(estoque_pronto_por_tipo(self.profile_a)[SocialContent.MediaType.CAROUSEL], 1)
+        self.assertEqual(estoque_pronto(self.profile_a), 1)
+        target = estoque_alvo_profile(self.profile_a)
+        plan = plano_geracao_por_deficit(self.profile_a, target, 30)
+        self.assertIn(SocialContent.MediaType.CAROUSEL, plan)
+        self.assertEqual(estoque_pronto(self.profile_b), 0)
+
+    @override_settings(SOCIAL_AUTOMATION_MAX_CAROUSELS_PER_TICK=1)
+    def test_tick_respeita_maximo_de_carrosseis_por_lote(self):
+        self.profile_a.modo_operacao = SocialProfile.ModoOperacao.AUTOMATICO
+        self.profile_a.posts_por_dia = 6
+        self.profile_a.reels_por_dia = 0
+        self.profile_a.carousels_por_dia = 3
+        self.profile_a.save(update_fields=['modo_operacao', 'posts_por_dia', 'reels_por_dia', 'carousels_por_dia', 'updated_at'])
+        with mock.patch('social_automation.automation.gerar_lote_conteudos', return_value=GenerationResult(solicitados=1)) as mocked_generate:
+            executar_tick_social(use_lock=False)
+        media_types = mocked_generate.call_args.kwargs['media_types']
+        self.assertLessEqual(media_types.count(SocialContent.MediaType.CAROUSEL), 1)
+
+    def test_multi_perfil_publica_carrossel_com_credencial_correta_e_isola_erro(self):
+        content_a = self._carousel(profile=self.profile_a, template=self.template_a)
+        content_b = self._carousel(profile=self.profile_b, template=self.template_b)
+        from .rendering import renderizar_midia_social
+
+        renderizar_midia_social(content_a)
+        renderizar_midia_social(content_b)
+        calls = []
+        with mock.patch('social_automation.instagram._request', side_effect=self._fake_meta(calls)):
+            publicar_conteudo_instagram(content_a)
+            publicar_conteudo_instagram(content_b)
+        self.assertIn('178-A-CAROUSEL', {uid for uid, _method, _path, _params in calls})
+        self.assertIn('178-B-CAROUSEL', {uid for uid, _method, _path, _params in calls})
+
+    def test_geracao_ia_texto_cria_slides_caption_hashtags_e_usa_perfil_correto(self):
+        item = GeneratedContent(
+            frase='Capa curta',
+            legenda='Primeiro ponto. Segundo ponto. Terceiro ponto.',
+            hashtags=['obra', 'rotina'],
+            tags_imagem=['carrossel'],
+        )
+        with mock.patch('social_automation.generation.gerar_conteudos_ia', return_value=[item]), mock.patch('social_automation.generation.moderar_conteudo', return_value=False):
+            result = gerar_lote_conteudos(self.profile_a, 1, 'tema', None, media_types=[SocialContent.MediaType.CAROUSEL])
+        self.assertEqual(result.criados, 1)
+        content = result.conteudos[0]
+        self.assertEqual(content.carousel_slides.filter(is_active=True).count(), self.profile_a.carousel_default_slide_count)
+        self.assertEqual(content.carousel_slides.order_by('order').first().slide_type, SocialCarouselSlide.SlideType.COVER)
+        self.assertEqual(content.carousel_slides.order_by('-order').first().slide_type, SocialCarouselSlide.SlideType.CTA)
+        self.assertIn('#obra', content.hashtags)
+        self.assertEqual(content.profile, self.profile_a)
+
+    def test_image_generation_foundation(self):
+        self.assertFalse(image_generation_available(self.profile_a))
+        self.profile_a.ai_image_generation_enabled = True
+        self.profile_a.save(update_fields=['ai_image_generation_enabled', 'updated_at'])
+        with override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test'):
+            self.assertTrue(image_generation_available(self.profile_a))
+            self.assertFalse(image_generation_available(self.profile_b))
+            prompt = build_image_generation_prompt(self.profile_a, 'Base')
+            self.assertIn('Visual A', prompt)
+            with self.assertRaises(SocialImageGenerationDisabled):
+                generate_social_image(SocialImagePrompt(profile_id=self.profile_a.id, prompt=prompt))
+
+    def test_regressao_image_reel_scheduler_publicacao_e_fingerprint(self):
+        image_content = SocialContent.objects.create(profile=self.profile_a, base_image=self.base_a, media_type=SocialContent.MediaType.IMAGE, frase='Imagem', legenda='Legenda', status=SocialContent.Status.APROVADO)
+        reel_content = SocialContent.objects.create(profile=self.profile_a, base_image=self.base_a, media_type=SocialContent.MediaType.REEL, frase='Reel', legenda='Legenda', status=SocialContent.Status.APROVADO)
+        image_content.final_image.save('image-ready.jpg', imagem_social('image-ready.jpg'), save=True)
+        reel_content.final_video.save('reel-ready.mp4', video_mp4_teste('reel-ready.mp4'), save=True)
+        self.assertTrue(calculate_instagram_container_fingerprint(image_content, '178-A-CAROUSEL'))
+        self.assertTrue(calculate_instagram_container_fingerprint(reel_content, '178-A-CAROUSEL'))
+        plan = build_daily_media_plan(10, 3, 0)
+        self.assertEqual(plan.count(SocialContent.MediaType.IMAGE), 7)
+        self.assertEqual(plan.count(SocialContent.MediaType.REEL), 3)
+        calls = []
+
+        def fake_request(method, path, params=None, *, credentials=None):
+            params = params or {}
+            calls.append((method, path, params.copy()))
+            if method == 'GET' and path == '178-A-CAROUSEL':
+                return {'id': path, 'username': 'perfil_a_carrossel', 'account_type': 'BUSINESS'}
+            if method == 'POST' and path.endswith('/media'):
+                return {'id': 'container-image'}
+            if method == 'GET' and path == 'container-image':
+                return {'id': path, 'status_code': 'FINISHED'}
+            if method == 'POST' and path.endswith('/media_publish'):
+                return {'id': 'media-image'}
+            if method == 'GET' and path == 'media-image':
+                return {'id': 'media-image', 'permalink': 'https://instagram.test/image'}
+            return {}
+
+        with mock.patch('social_automation.instagram._request', side_effect=fake_request):
+            publicar_conteudo_instagram(image_content)
+        image_content.refresh_from_db()
+        self.assertEqual(image_content.status, SocialContent.Status.PUBLICADO)
+
+    def test_carrossel_publicado_nao_rerenderiza_pela_view(self):
+        user = User.objects.create_user(username='staff-carousel-hardening', password='senha', is_staff=True)
+        self.client.force_login(user)
+        content = self._carousel(status=SocialContent.Status.PUBLICADO)
+        response = self.client.post(reverse('social_automation:content_render', args=[content.id]))
+        self.assertRedirects(response, reverse('social_automation:content_detail', args=[content.id]))
+        self.assertContains(self.client.get(reverse('social_automation:content_detail', args=[content.id])), 'Conteudo publicado preserva a midia enviada ao Instagram.')
+
+    def test_management_commands_de_carrossel(self):
+        content = self._carousel()
+        output = StringIO()
+        with mock.patch('social_automation.instagram._request') as mocked_meta:
+            call_command('diagnosticar_render_carrossel', content.id, stdout=output)
+        self.assertFalse(mocked_meta.called)
+        self.assertIn('renderizado', output.getvalue())
+        output = StringIO()
+        call_command('diagnosticar_mix_diario', 'perfil_a_carrossel', '2026-08-29', stdout=output)
+        self.assertIn('Carrosseis planejados', output.getvalue())
+        output = StringIO()
+        with mock.patch('social_automation.instagram._request', side_effect=self._fake_meta([])):
+            call_command('diagnosticar_container_carrossel_instagram', content.id, stdout=output)
+        self.assertIn('Containers criados sem publicar', output.getvalue())

@@ -23,11 +23,23 @@
             <div class="col-md-2"><label class="form-label">{{ form.posts_por_dia.label }}</label>{{ form.posts_por_dia }}</div>
             <div class="col-md-2"><label class="form-label">{{ form.reels_por_dia.label }}</label>{{ form.reels_por_dia }}</div>
             <div class="col-md-4"><label class="form-label">{{ form.horarios_texto.label }}</label>{{ form.horarios_texto }}<div class="form-text">{{ form.horarios_texto.help_text }}</div>{{ form.horarios_texto.errors }}</div>
+            <div class="col-md-2"><label class="form-label">{{ form.carousels_por_dia.label }}</label>{{ form.carousels_por_dia }}</div>
+            <div class="col-md-2"><label class="form-label">{{ form.carousel_default_slide_count.label }}</label>{{ form.carousel_default_slide_count }}</div>
+        </div>
+        <div class="row g-3 mt-1">
+            <div class="col-md-4 d-flex align-items-end"><div class="form-check mb-2">{{ form.carousel_cta_enabled }} <label class="form-check-label">{{ form.carousel_cta_enabled.label }}</label></div></div>
+            <div class="col-md-8"><label class="form-label">{{ form.carousel_default_cta.label }}</label>{{ form.carousel_default_cta }}</div>
+            <div class="col-12"><label class="form-label">{{ form.carousel_ai_instructions.label }}</label>{{ form.carousel_ai_instructions }}</div>
         </div>
         <hr>
         <h5 class="mb-3">Conteudo</h5>
         <div class="mb-3"><label class="form-label">{{ form.estilo.label }}</label>{{ form.estilo }}</div>
         <div class="mb-3"><label class="form-label">{{ form.instrucoes_ia.label }}</label>{{ form.instrucoes_ia }}</div>
+        <div class="row g-3">
+            <div class="col-md-4 d-flex align-items-end"><div class="form-check mb-2">{{ form.ai_image_generation_enabled }} <label class="form-check-label">{{ form.ai_image_generation_enabled.label }}</label></div></div>
+            <div class="col-md-4"><label class="form-label">{{ form.ai_image_mode.label }}</label>{{ form.ai_image_mode }}</div>
+            <div class="col-md-12"><label class="form-label">{{ form.image_ai_instructions.label }}</label>{{ form.image_ai_instructions }}</div>
+        </div>
         <hr>
         <h5 class="mb-3">Comentarios futuros</h5>
         <div class="row g-3">

@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from .ai import OpenAINotConfigured, formatar_hashtags, gerar_conteudos_ia, moderar_conteudo, normalizar_frase
 from .image_selection import selecionar_imagem_base
-from .models import SocialBaseImage, SocialContent
+from .models import SocialBaseImage, SocialCarouselSlide, SocialCarouselTemplate, SocialContent
 from .rendering import CANVAS_SIZE, REEL_CANVAS_SIZE, SocialRenderError, _reel_text_boxes, _text_boxes, renderizar_midia_social
 from .services import registrar_evento
 
@@ -50,6 +50,29 @@ def _phrase_size_for_media(area_percent, media_type):
 
 
 def _image_contexts(profile, media_type=SocialContent.MediaType.IMAGE):
+    if media_type == SocialContent.MediaType.CAROUSEL:
+        area = 'carrossel com multiplos slides'
+        size_hint = 'frase de capa curta e legenda objetiva; dividir a ideia em 3 a 8 pontos simples'
+        return [
+            {
+                'nome': template.name,
+                'tags': 'carrossel',
+                'posicao_texto': area,
+                'area_disponivel_percentual': 70,
+                'tamanho_recomendado_frase': size_hint,
+                'tipo_midia': media_type,
+            }
+            for template in profile.carousel_templates.filter(active=True).order_by('-is_default', 'name')[:6]
+        ] or [
+            {
+                'nome': 'Template padrao de carrossel',
+                'tags': 'carrossel',
+                'posicao_texto': area,
+                'area_disponivel_percentual': 70,
+                'tamanho_recomendado_frase': size_hint,
+                'tipo_midia': media_type,
+            }
+        ]
     contexts = []
     for image in SocialBaseImage.objects.filter(profile=profile, ativa=True).order_by('vezes_usada', 'id')[:12]:
         if media_type == SocialContent.MediaType.REEL:
@@ -80,17 +103,66 @@ def _duplicado(frase_normalizada, historico_normalizado, vistos):
     return any(_similar(frase_normalizada, item) for item in historico_normalizado | vistos)
 
 
+def _carousel_template(profile):
+    template = profile.carousel_templates.filter(active=True, is_default=True).first()
+    if template:
+        return template
+    template = profile.carousel_templates.filter(active=True).order_by('name').first()
+    if template:
+        return template
+    return SocialCarouselTemplate.objects.create(profile=profile, name='Template padrao', is_default=True)
+
+
+def _split_carousel_body(text, count):
+    source = (text or '').replace('\r', '\n')
+    parts = [part.strip(' -\t') for line in source.splitlines() for part in line.split('.') if part.strip(' -\t')]
+    if not parts:
+        parts = ['Uma ideia simples para guardar.', 'O detalhe muda a forma de olhar.', 'Compartilhe com quem vai entender.']
+    while len(parts) < count:
+        parts.append(parts[-1])
+    return parts[:count]
+
+
+def _criar_slides_carrossel(content, item):
+    total = max(2, min(10, content.profile.carousel_default_slide_count or 6))
+    body_count = total - (2 if content.profile.carousel_cta_enabled else 1)
+    SocialCarouselSlide.objects.create(
+        content=content,
+        order=1,
+        slide_type=SocialCarouselSlide.SlideType.COVER,
+        title=item.frase,
+        body='',
+    )
+    for index, part in enumerate(_split_carousel_body(item.legenda, body_count), start=2):
+        SocialCarouselSlide.objects.create(
+            content=content,
+            order=index,
+            slide_type=SocialCarouselSlide.SlideType.CONTENT,
+            title=f'{index - 1}.',
+            body=part,
+        )
+    if content.profile.carousel_cta_enabled:
+        SocialCarouselSlide.objects.create(
+            content=content,
+            order=total,
+            slide_type=SocialCarouselSlide.SlideType.CTA,
+            title=content.profile.carousel_default_cta or 'Salva para lembrar depois.',
+            body='',
+        )
+
+
 def gerar_lote_conteudos(profile, quantidade, tema, usuario, media_types=None):
-    if not SocialBaseImage.objects.filter(profile=profile, ativa=True).exists():
+    media_types = list(media_types or [])
+    if not media_types:
+        media_types = [SocialContent.MediaType.IMAGE] * quantidade
+    needs_base_image = any(media_type != SocialContent.MediaType.CAROUSEL for media_type in media_types)
+    if needs_base_image and not SocialBaseImage.objects.filter(profile=profile, ativa=True).exists():
         raise ValidationError('Cadastre ao menos uma imagem-base ativa antes de gerar conteudos.')
 
     quantidade = max(1, int(quantidade))
     historico = _historico(profile)
     historico_normalizado = {normalizar_frase(item) for item in historico}
     result = GenerationResult(solicitados=quantidade)
-    media_types = list(media_types or [])
-    if not media_types:
-        media_types = [SocialContent.MediaType.IMAGE] * quantidade
     primary_media_type = 'mixed' if len(set(media_types)) > 1 else (media_types[0] if media_types else SocialContent.MediaType.IMAGE)
     gerados = gerar_conteudos_ia(profile, quantidade, tema, historico, image_contexts=_image_contexts(profile, primary_media_type))
     vistos = set()
@@ -106,21 +178,29 @@ def gerar_lote_conteudos(profile, quantidade, tema, usuario, media_types=None):
             if moderar_conteudo(texto_moderacao):
                 result.bloqueados += 1
                 continue
-            imagem = selecionar_imagem_base(profile, item.tags_imagem)
-            if not imagem:
-                result.falhas += 1
-                result.mensagens.append('Nao havia imagem-base disponivel para um dos conteudos.')
-                continue
             media_type = media_types[index] if index < len(media_types) else SocialContent.MediaType.IMAGE
+            imagem = None
+            carousel_template = None
+            if media_type == SocialContent.MediaType.CAROUSEL:
+                carousel_template = _carousel_template(profile)
+            else:
+                imagem = selecionar_imagem_base(profile, item.tags_imagem)
+                if not imagem:
+                    result.falhas += 1
+                    result.mensagens.append('Nao havia imagem-base disponivel para um dos conteudos.')
+                    continue
             content = SocialContent.objects.create(
                 profile=profile,
                 base_image=imagem,
+                carousel_template=carousel_template,
                 media_type=media_type,
                 frase=item.frase,
                 legenda=item.legenda,
                 hashtags=formatar_hashtags(item.hashtags),
                 status=SocialContent.Status.RASCUNHO,
             )
+            if media_type == SocialContent.MediaType.CAROUSEL:
+                _criar_slides_carrossel(content, item)
             try:
                 renderizar_midia_social(content)
             except SocialRenderError as exc:
@@ -128,10 +208,11 @@ def gerar_lote_conteudos(profile, quantidade, tema, usuario, media_types=None):
                 result.falhas += 1
                 result.mensagens.append(str(exc))
                 continue
-            SocialBaseImage.objects.filter(pk=imagem.pk).update(
-                vezes_usada=F('vezes_usada') + 1,
-                ultima_utilizacao=timezone.now(),
-            )
+            if imagem:
+                SocialBaseImage.objects.filter(pk=imagem.pk).update(
+                    vezes_usada=F('vezes_usada') + 1,
+                    ultima_utilizacao=timezone.now(),
+                )
             registrar_evento(content, 'gerado_ia', usuario, f'Modelo: {profile.nome}')
             result.criados += 1
             result.conteudos.append(content)

@@ -23,6 +23,23 @@ def social_final_video_upload_to(instance, filename):
     return f'social/{profile_id}/reels/{filename}'
 
 
+def social_carousel_template_upload_to(instance, filename):
+    profile_id = instance.profile_id or 'sem-perfil'
+    return f'social/{profile_id}/carousel_templates/{filename}'
+
+
+def social_carousel_slide_source_upload_to(instance, filename):
+    profile_id = instance.content.profile_id if instance.content_id else 'sem-perfil'
+    content_id = instance.content_id or 'sem-conteudo'
+    return f'social/{profile_id}/carousels/{content_id}/sources/{filename}'
+
+
+def social_carousel_slide_rendered_upload_to(instance, filename):
+    profile_id = instance.content.profile_id if instance.content_id else 'sem-perfil'
+    content_id = instance.content_id or 'sem-conteudo'
+    return f'social/{profile_id}/carousels/{content_id}/slides/{filename}'
+
+
 def validate_timezone_name(value):
     if value not in available_timezones():
         raise ValidationError('Timezone invalido.')
@@ -59,6 +76,14 @@ class SocialProfile(models.Model):
     modo_operacao = models.CharField(max_length=30, choices=ModoOperacao.choices, default=ModoOperacao.SEMIAUTOMATICO)
     posts_por_dia = models.PositiveSmallIntegerField(default=2)
     reels_por_dia = models.PositiveSmallIntegerField(default=0)
+    carousels_por_dia = models.PositiveSmallIntegerField(default=0)
+    carousel_default_slide_count = models.PositiveSmallIntegerField(default=6)
+    carousel_ai_instructions = models.TextField(blank=True)
+    carousel_cta_enabled = models.BooleanField(default=True)
+    carousel_default_cta = models.CharField(max_length=255, blank=True)
+    ai_image_generation_enabled = models.BooleanField(default=False)
+    ai_image_mode = models.CharField(max_length=30, default='NONE')
+    image_ai_instructions = models.TextField(blank=True)
     horarios_publicacao = models.JSONField(default=list, validators=[validate_horarios_publicacao])
     estilo = models.TextField(blank=True)
     instrucoes_ia = models.TextField(blank=True)
@@ -78,15 +103,21 @@ class SocialProfile(models.Model):
 
     @property
     def fotos_por_dia(self):
-        return max(0, self.posts_por_dia - self.reels_por_dia)
+        return max(0, self.posts_por_dia - self.reels_por_dia - self.carousels_por_dia)
 
     def clean(self):
         super().clean()
-        if self.reels_por_dia > self.posts_por_dia:
-            raise ValidationError('Reels por dia nao pode ser maior que posts por dia.')
+        if self.carousel_default_slide_count < 2 or self.carousel_default_slide_count > 10:
+            raise ValidationError('Slides padrao do carrossel deve ficar entre 2 e 10.')
+        if self.reels_por_dia + self.carousels_por_dia > self.posts_por_dia:
+            raise ValidationError('Reels e carrosseis por dia nao podem superar posts por dia.')
 
 
 class SocialBaseImage(models.Model):
+    class Source(models.TextChoices):
+        MANUAL = 'manual', 'Manual'
+        AI = 'ai', 'IA'
+
     class TextPosition(models.TextChoices):
         AUTO = 'auto', 'Automatica'
         AUTO_SMART = 'auto_smart', 'Automatica inteligente'
@@ -127,6 +158,9 @@ class SocialBaseImage(models.Model):
     arquivo = models.ImageField(upload_to=social_base_image_upload_to)
     nome = models.CharField(max_length=120)
     tags = models.CharField(max_length=255, blank=True)
+    source = models.CharField(max_length=20, choices=Source.choices, default=Source.MANUAL)
+    ai_model = models.CharField(max_length=120, blank=True)
+    ai_prompt = models.TextField(blank=True)
     text_position = models.CharField(max_length=10, choices=TextPosition.choices, default=TextPosition.AUTO)
     text_box_preset = models.CharField(max_length=20, choices=TextBoxPreset.choices, blank=True)
     primary_text_box_x = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
@@ -309,10 +343,72 @@ class SocialInstagramConnection(models.Model):
             )
 
 
+class SocialCarouselTemplate(models.Model):
+    class AspectRatio(models.TextChoices):
+        SQUARE = 'SQUARE', 'Quadrado 1:1'
+        PORTRAIT = 'PORTRAIT', 'Retrato 4:5'
+
+    class BackgroundType(models.TextChoices):
+        SOLID = 'SOLID', 'Cor solida'
+        GRADIENT = 'GRADIENT', 'Gradiente'
+        IMAGE = 'IMAGE', 'Imagem'
+
+    class TextAlignment(models.TextChoices):
+        LEFT = 'left', 'Esquerda'
+        CENTER = 'center', 'Centro'
+        RIGHT = 'right', 'Direita'
+
+    profile = models.ForeignKey(SocialProfile, on_delete=models.CASCADE, related_name='carousel_templates')
+    name = models.CharField(max_length=120)
+    active = models.BooleanField(default=True)
+    is_default = models.BooleanField(default=False)
+    aspect_ratio = models.CharField(max_length=20, choices=AspectRatio.choices, default=AspectRatio.SQUARE)
+    background_type = models.CharField(max_length=20, choices=BackgroundType.choices, default=BackgroundType.GRADIENT)
+    background_image = models.ImageField(upload_to=social_carousel_template_upload_to, blank=True, null=True)
+    background_color = models.CharField(max_length=20, default='#111827')
+    secondary_background_color = models.CharField(max_length=20, default='#334155')
+    text_color = models.CharField(max_length=20, default='#ffffff')
+    accent_color = models.CharField(max_length=20, default='#22c55e')
+    font_family = models.CharField(max_length=80, blank=True)
+    title_alignment = models.CharField(max_length=10, choices=TextAlignment.choices, default=TextAlignment.LEFT)
+    body_alignment = models.CharField(max_length=10, choices=TextAlignment.choices, default=TextAlignment.LEFT)
+    show_profile_name = models.BooleanField(default=True)
+    show_slide_number = models.BooleanField(default=True)
+    show_footer = models.BooleanField(default=True)
+    footer_text = models.CharField(max_length=160, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['profile__nome', '-is_default', 'name']
+        indexes = [
+            models.Index(fields=['profile', 'active']),
+        ]
+
+    def __str__(self):
+        return f'{self.profile.username} - {self.name}'
+
+    @property
+    def canvas_size(self):
+        if self.aspect_ratio == self.AspectRatio.PORTRAIT:
+            return (1080, 1350)
+        return (1080, 1080)
+
+    def clean(self):
+        super().clean()
+        if self.is_default:
+            queryset = SocialCarouselTemplate.objects.filter(profile=self.profile, is_default=True)
+            if self.pk:
+                queryset = queryset.exclude(pk=self.pk)
+            if queryset.exists():
+                raise ValidationError('Este perfil ja possui um template de carrossel padrao.')
+
+
 class SocialContent(models.Model):
     class MediaType(models.TextChoices):
         IMAGE = 'image', 'Foto'
         REEL = 'reel', 'Reel'
+        CAROUSEL = 'carousel', 'Carrossel'
 
     class Status(models.TextChoices):
         RASCUNHO = 'rascunho', 'Rascunho'
@@ -325,6 +421,7 @@ class SocialContent(models.Model):
 
     profile = models.ForeignKey(SocialProfile, on_delete=models.CASCADE, related_name='contents')
     base_image = models.ForeignKey(SocialBaseImage, on_delete=models.SET_NULL, blank=True, null=True, related_name='contents')
+    carousel_template = models.ForeignKey(SocialCarouselTemplate, on_delete=models.SET_NULL, blank=True, null=True, related_name='contents')
     media_type = models.CharField(max_length=10, choices=MediaType.choices, default=MediaType.IMAGE)
     final_image = models.ImageField(upload_to=social_final_image_upload_to, blank=True, null=True)
     final_video = models.FileField(upload_to=social_final_video_upload_to, blank=True, null=True)
@@ -372,10 +469,61 @@ class SocialContent(models.Model):
         return self.media_type == self.MediaType.REEL
 
     @property
+    def is_carousel(self):
+        return self.media_type == self.MediaType.CAROUSEL
+
+    @property
     def final_media_ready(self):
+        if self.is_carousel:
+            slides = list(self.carousel_slides.filter(is_active=True))
+            return 2 <= len(slides) <= 10 and all(bool(slide.rendered_image) for slide in slides)
         if self.is_reel:
             return bool(self.final_video)
         return bool(self.final_image)
+
+    def clean(self):
+        super().clean()
+        if self.carousel_template and self.carousel_template.profile_id != self.profile_id:
+            raise ValidationError('O template de carrossel precisa pertencer ao perfil do conteudo.')
+
+
+class SocialCarouselSlide(models.Model):
+    class SlideType(models.TextChoices):
+        COVER = 'COVER', 'Capa'
+        CONTENT = 'CONTENT', 'Conteudo'
+        CTA = 'CTA', 'CTA'
+
+    content = models.ForeignKey(SocialContent, on_delete=models.CASCADE, related_name='carousel_slides')
+    order = models.PositiveSmallIntegerField(default=1)
+    slide_type = models.CharField(max_length=20, choices=SlideType.choices, default=SlideType.CONTENT)
+    title = models.CharField(max_length=180, blank=True)
+    body = models.TextField(blank=True)
+    source_image = models.ImageField(upload_to=social_carousel_slide_source_upload_to, blank=True, null=True)
+    rendered_image = models.ImageField(upload_to=social_carousel_slide_rendered_upload_to, blank=True, null=True)
+    instagram_container_id = models.CharField(max_length=120, blank=True)
+    instagram_container_fingerprint = models.CharField(max_length=64, blank=True, default='')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['content', 'order', 'id']
+        indexes = [
+            models.Index(fields=['content', 'order']),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=['content', 'order'], name='unique_social_carousel_slide_order'),
+        ]
+
+    def __str__(self):
+        return f'{self.content_id} - slide {self.order}'
+
+    def clean(self):
+        super().clean()
+        if self.content and self.content.media_type != SocialContent.MediaType.CAROUSEL:
+            raise ValidationError('Slides so podem ser vinculados a conteudos do tipo carrossel.')
+        if not self.title and not self.body and not self.source_image:
+            raise ValidationError('Informe titulo, texto ou imagem para o slide.')
 
 
 class SocialContentEvent(models.Model):

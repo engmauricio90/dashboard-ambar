@@ -8,7 +8,7 @@ from social_automation.scheduler import build_daily_media_plan, parse_horarios, 
 
 
 class Command(BaseCommand):
-    help = 'Diagnostica o plano diario Foto/Reel de um perfil social, sem alterar agenda.'
+    help = 'Diagnostica o plano diario Foto/Reel/Carrossel de um perfil social, sem alterar agenda.'
 
     def add_arguments(self, parser):
         parser.add_argument('username')
@@ -28,7 +28,7 @@ class Command(BaseCommand):
         zone = profile_zone(profile)
         horarios = parse_horarios(profile)
         total_slots = max(len(horarios), profile.posts_por_dia or 0)
-        plan = build_daily_media_plan(total_slots, profile.reels_por_dia)
+        plan = build_daily_media_plan(total_slots, profile.reels_por_dia, profile.carousels_por_dia)
         planned_counts = self._counts(plan)
 
         self.stdout.write(f'Perfil: {profile.nome}')
@@ -37,6 +37,7 @@ class Command(BaseCommand):
         self.stdout.write(f'Posts/dia: {profile.posts_por_dia}')
         self.stdout.write(f'Fotos planejadas: {planned_counts[SocialContent.MediaType.IMAGE]}')
         self.stdout.write(f'Reels planejados: {planned_counts[SocialContent.MediaType.REEL]}')
+        self.stdout.write(f'Carrosseis planejados: {planned_counts[SocialContent.MediaType.CAROUSEL]}')
         self.stdout.write('')
 
         scheduled = self._scheduled_by_local_time(profile, data, zone)
@@ -53,6 +54,7 @@ class Command(BaseCommand):
         scheduled_counts = {
             SocialContent.MediaType.IMAGE: 0,
             SocialContent.MediaType.REEL: 0,
+            SocialContent.MediaType.CAROUSEL: 0,
         }
         for index, horario in enumerate(horarios):
             content = scheduled.get(horario)
@@ -68,8 +70,16 @@ class Command(BaseCommand):
 
         self.stdout.write('')
         self.stdout.write('Resumo:')
-        self.stdout.write(f'Planejado: {planned_counts[SocialContent.MediaType.IMAGE]} IMAGE / {planned_counts[SocialContent.MediaType.REEL]} REEL')
-        self.stdout.write(f'Agendado: {scheduled_counts[SocialContent.MediaType.IMAGE]} IMAGE / {scheduled_counts[SocialContent.MediaType.REEL]} REEL')
+        self.stdout.write(
+            f'Planejado: {planned_counts[SocialContent.MediaType.IMAGE]} IMAGE / '
+            f'{planned_counts[SocialContent.MediaType.REEL]} REEL / '
+            f'{planned_counts[SocialContent.MediaType.CAROUSEL]} CAROUSEL'
+        )
+        self.stdout.write(
+            f'Agendado: {scheduled_counts[SocialContent.MediaType.IMAGE]} IMAGE / '
+            f'{scheduled_counts[SocialContent.MediaType.REEL]} REEL / '
+            f'{scheduled_counts[SocialContent.MediaType.CAROUSEL]} CAROUSEL'
+        )
         self.stdout.write(f'Desvios: {desvios}')
 
     def _scheduled_by_local_time(self, profile, data, zone):
@@ -82,4 +92,5 @@ class Command(BaseCommand):
         return {
             SocialContent.MediaType.IMAGE: plan.count(SocialContent.MediaType.IMAGE),
             SocialContent.MediaType.REEL: plan.count(SocialContent.MediaType.REEL),
+            SocialContent.MediaType.CAROUSEL: plan.count(SocialContent.MediaType.CAROUSEL),
         }

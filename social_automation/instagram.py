@@ -18,11 +18,12 @@ from django.urls import reverse
 from django.utils import timezone
 from PIL import Image
 
-from .models import SocialContent, SocialInstagramConnection, SocialProfile
+from .models import SocialCarouselSlide, SocialContent, SocialInstagramConnection, SocialProfile
 from .token_crypto import InstagramTokenEncryptionError
 from .container_versioning import (
     REEL_SHARE_TO_FEED,
     build_instagram_caption,
+    calculate_instagram_carousel_slide_fingerprint,
     calculate_instagram_container_fingerprint,
     invalidate_instagram_container,
 )
@@ -36,6 +37,7 @@ GRAPH_HOST = 'https://graph.instagram.com'
 MEDIA_SIGNING_SALT = 'social-automation-instagram-media'
 MEDIA_META_SIGNING_SALT = 'social-automation-instagram-meta-media'
 VIDEO_META_SIGNING_SALT = 'social-automation-instagram-meta-video'
+CAROUSEL_META_SIGNING_SALT = 'social-automation-instagram-meta-carousel'
 PUBLICADO_INSTAGRAM = 'publicado_instagram'
 
 
@@ -295,6 +297,7 @@ def _sanitize_signed_urls(text):
     text = str(text)
     text = re.sub(r'(/social-media/ig/\d+/)[^\s"\']+(\.jpg)?', r'\1[signed-token]\2', text)
     text = re.sub(r'(/social-media/ig-video/\d+/)[^\s"\']+(\.mp4)?', r'\1[signed-token]\2', text)
+    text = re.sub(r'(/social-media/ig-carousel/\d+/\d+/)[^\s"\']+(\.jpg)?', r'\1[signed-token]\2', text)
     text = re.sub(r'(/social-media/public-jpg/)[^\s"\']+(/imagem\.jpg)?', r'\1[signed-token]\2', text)
     text = re.sub(r'(/social-media/public/)[^\s"\']+', r'\1[signed-token]/', text)
     return text
@@ -335,6 +338,23 @@ def resumir_video_url(video_url):
         'length': len(video_url),
         'sha256': sha256(video_url.encode('utf-8')).hexdigest(),
         'has_mp4': path.lower().endswith('.mp4'),
+    }
+
+
+def resumir_carousel_slide_url(image_url):
+    parsed = urllib.parse.urlparse(image_url)
+    path = parsed.path or ''
+    if re.search(r'/social-media/ig-carousel/\d+/\d+/', path):
+        path_structure = re.sub(r'(/social-media/ig-carousel/\d+/\d+/).+(\.jpg)$', r'\1[signed-token]\2', path)
+    else:
+        path_structure = path
+    return {
+        'scheme': parsed.scheme,
+        'host': parsed.netloc,
+        'path_structure': path_structure,
+        'length': len(image_url),
+        'sha256': sha256(image_url.encode('utf-8')).hexdigest(),
+        'has_jpg': path.lower().endswith('.jpg') or path.lower().endswith('.jpeg'),
     }
 
 
@@ -497,6 +517,16 @@ def gerar_assinatura_video_meta(content):
     return signed_value[len(prefix):]
 
 
+def gerar_assinatura_carousel_slide_meta(slide):
+    if not slide.rendered_image:
+        raise InstagramPublishError('Renderize o slide antes de publicar.')
+    signed_value = signing.TimestampSigner(salt=CAROUSEL_META_SIGNING_SALT).sign(f'{slide.content_id}:{slide.id}')
+    prefix = f'{slide.content_id}:{slide.id}:'
+    if not signed_value.startswith(prefix):
+        raise InstagramPublishError('Nao foi possivel gerar a assinatura temporaria do slide.')
+    return signed_value[len(prefix):]
+
+
 def auditar_imagem_final(content):
     if not content.final_image:
         raise InstagramPublishError('Renderize o card final antes de publicar.')
@@ -523,6 +553,35 @@ def auditar_imagem_final(content):
         'height': image.height,
         'bytes': size,
         'jpeg_signature': header == b'\xff\xd8\xff',
+    }
+
+
+def auditar_imagem_slide_carrossel(slide):
+    if not slide.rendered_image:
+        raise InstagramPublishError('Renderize o slide antes de publicar.')
+    with slide.rendered_image.storage.open(slide.rendered_image.name, 'rb') as arquivo:
+        header = arquivo.read(3)
+        arquivo.seek(0, 2)
+        size = arquivo.tell()
+        arquivo.seek(0)
+        try:
+            image = Image.open(arquivo)
+            image.load()
+        except Exception as exc:
+            raise InstagramPublishError('O slide renderizado nao e um arquivo de imagem valido.') from exc
+    if image.format != 'JPEG' or header != b'\xff\xd8\xff':
+        raise InstagramPublishError('O slide precisa ser JPEG valido para publicacao no Instagram.')
+    if image.mode != 'RGB':
+        raise InstagramPublishError('O slide precisa estar em RGB.')
+    if (image.width, image.height) not in {(1080, 1080), (1080, 1350)}:
+        raise InstagramPublishError('O slide precisa estar em 1080x1080 ou 1080x1350.')
+    return {
+        'name': slide.rendered_image.name,
+        'format': image.format,
+        'mode': image.mode,
+        'width': image.width,
+        'height': image.height,
+        'bytes': size,
     }
 
 
@@ -571,6 +630,23 @@ def validar_assinatura_video_meta(content_id, signature):
     return content
 
 
+def validar_assinatura_carousel_slide_meta(content_id, slide_id, signature):
+    signed_value = f'{content_id}:{slide_id}:{signature}'
+    try:
+        unsigned = signing.TimestampSigner(salt=CAROUSEL_META_SIGNING_SALT).unsign(
+            signed_value,
+            max_age=settings.INSTAGRAM_MEDIA_URL_TTL_SECONDS,
+        )
+    except signing.BadSignature as exc:
+        raise ValidationError('Assinatura invalida ou expirada.') from exc
+    if str(unsigned) != f'{content_id}:{slide_id}':
+        raise ValidationError('Assinatura invalida ou expirada.')
+    slide = SocialCarouselSlide.objects.select_related('content').filter(pk=slide_id, content_id=content_id, is_active=True).first()
+    if not slide or not slide.rendered_image:
+        raise ValidationError('Assinatura invalida ou expirada.')
+    return slide
+
+
 def url_midia_meta_compat(content):
     base_url = (settings.PLATFORM_BASE_URL or '').rstrip('/')
     if not base_url.startswith('https://'):
@@ -587,6 +663,15 @@ def url_video_meta_compat(content):
     auditar_video_reel(content)
     signature = gerar_assinatura_video_meta(content)
     return f'{base_url}{reverse("social_public_final_video_meta_compat", args=[content.id, signature])}'
+
+
+def url_carousel_slide_meta_compat(slide):
+    base_url = (settings.PLATFORM_BASE_URL or '').rstrip('/')
+    if not base_url.startswith('https://'):
+        raise InstagramConfigurationError('Configure PLATFORM_BASE_URL com uma URL HTTPS publica antes de publicar.')
+    auditar_imagem_slide_carrossel(slide)
+    signature = gerar_assinatura_carousel_slide_meta(slide)
+    return f'{base_url}{reverse("social_public_carousel_slide_meta_compat", args=[slide.content_id, slide.id, signature])}'
 
 
 def url_midia_temporaria(content, *, com_extensao_jpg=False, legacy=False):
@@ -650,6 +735,37 @@ def criar_container_reel(video_url, caption, *, credentials=None):
     if not container_id:
         raise InstagramAPIError('A API do Instagram nao retornou o container de Reel.')
     logger.info('Instagram reel container created container_id=%s', container_id)
+    return container_id
+
+
+def criar_container_carousel_child(image_url, *, credentials=None):
+    credentials = credentials or get_instagram_credentials()
+    payload = {'image_url': image_url, 'is_carousel_item': 'true'}
+    resumo = resumir_carousel_slide_url(image_url)
+    logger.info(
+        'Instagram creating carousel child endpoint=%s image_url_scheme=%s image_url_host=%s image_url_path_structure=%s image_url_sha256=%s',
+        f'{_ig_user_id(credentials)}/media',
+        resumo['scheme'],
+        resumo['host'],
+        resumo['path_structure'],
+        resumo['sha256'],
+    )
+    data = _request_with_credentials('POST', f'{_ig_user_id(credentials)}/media', payload, credentials=credentials)
+    container_id = data.get('id')
+    if not container_id:
+        raise InstagramAPIError('A API do Instagram nao retornou o container filho do carrossel.')
+    logger.info('Instagram carousel child created container_id=%s', container_id)
+    return container_id
+
+
+def criar_container_carousel_parent(children, caption, *, credentials=None):
+    credentials = credentials or get_instagram_credentials()
+    payload = {'media_type': 'CAROUSEL', 'children': ','.join(children), 'caption': caption}
+    data = _request_with_credentials('POST', f'{_ig_user_id(credentials)}/media', payload, credentials=credentials)
+    container_id = data.get('id')
+    if not container_id:
+        raise InstagramAPIError('A API do Instagram nao retornou o container pai do carrossel.')
+    logger.info('Instagram carousel parent created container_id=%s children=%s', container_id, len(children))
     return container_id
 
 
@@ -743,6 +859,19 @@ def _salvar_container_reel(content_id, container_id, fingerprint):
         return content
 
 
+def _salvar_container_carrossel(content_id, container_id, fingerprint):
+    return _salvar_container_reel(content_id, container_id, fingerprint)
+
+
+def _salvar_container_slide(slide_id, container_id, fingerprint):
+    with transaction.atomic():
+        slide = SocialCarouselSlide.objects.select_for_update().get(pk=slide_id)
+        slide.instagram_container_id = container_id
+        slide.instagram_container_fingerprint = fingerprint
+        slide.save(update_fields=['instagram_container_id', 'instagram_container_fingerprint', 'updated_at'])
+        return slide
+
+
 def _marcar_reel_pendente(content_id, message='Container de Reel ainda em processamento.'):
     with transaction.atomic():
         content = SocialContent.objects.select_for_update().get(pk=content_id)
@@ -775,6 +904,12 @@ def _marcar_publicado(content_id, media_id, permalink, usuario=None):
                 'updated_at',
             ]
         )
+        if content.is_carousel:
+            content.carousel_slides.exclude(instagram_container_id='').update(
+                instagram_container_id='',
+                instagram_container_fingerprint='',
+                updated_at=timezone.now(),
+            )
         registrar_evento(content, PUBLICADO_INSTAGRAM, usuario, f'Media ID: {media_id}')
         return content
 
@@ -814,6 +949,39 @@ def _container_reel_atual_ou_novo(content, caption, *, credentials):
     return container_id
 
 
+def _container_carrossel_atual_ou_novo(content, caption, *, credentials):
+    current_fingerprint = calculate_instagram_container_fingerprint(content, credentials.instagram_user_id)
+    if content.instagram_container_id and content.instagram_container_fingerprint == current_fingerprint:
+        logger.info('instagram_carousel_parent_reuse content_id=%s container_id=%s', content.id, content.instagram_container_id)
+        return content.instagram_container_id
+    if content.instagram_container_id:
+        invalidate_instagram_container(content, reason='carousel_fingerprint_changed')
+
+    slides = list(content.carousel_slides.filter(is_active=True).order_by('order', 'id'))
+    if len(slides) < 2 or len(slides) > 10:
+        raise InstagramPublishError('Carrossel precisa ter entre 2 e 10 slides ativos.')
+
+    child_ids = []
+    for slide in slides:
+        slide_fingerprint = calculate_instagram_carousel_slide_fingerprint(slide, credentials.instagram_user_id)
+        if slide.instagram_container_id and slide.instagram_container_fingerprint == slide_fingerprint:
+            child_ids.append(slide.instagram_container_id)
+            continue
+        if slide.instagram_container_id:
+            slide.instagram_container_id = ''
+            slide.instagram_container_fingerprint = ''
+            slide.save(update_fields=['instagram_container_id', 'instagram_container_fingerprint', 'updated_at'])
+        image_url = url_carousel_slide_meta_compat(slide)
+        child_id = _call_with_optional_credentials(criar_container_carousel_child, image_url, credentials=credentials)
+        _call_with_optional_credentials(aguardar_container_pronto, child_id, credentials=credentials)
+        _salvar_container_slide(slide.id, child_id, slide_fingerprint)
+        child_ids.append(child_id)
+
+    parent_id = _call_with_optional_credentials(criar_container_carousel_parent, child_ids, caption, credentials=credentials)
+    _salvar_container_carrossel(content.id, parent_id, current_fingerprint)
+    return parent_id
+
+
 def _marcar_erro(content_id, message):
     with transaction.atomic():
         content = SocialContent.objects.select_for_update().get(pk=content_id)
@@ -838,6 +1006,11 @@ def publicar_conteudo_instagram(content, usuario=None):
             if not _call_with_optional_credentials(status_container_pronto, container_id, credentials=credentials):
                 _marcar_reel_pendente(content.id)
                 raise InstagramContainerPending('Container de Reel ainda em processamento; publicacao sera retomada no proximo tick.')
+        elif content.is_carousel:
+            for slide in content.carousel_slides.filter(is_active=True):
+                auditar_imagem_slide_carrossel(slide)
+            container_id = _container_carrossel_atual_ou_novo(content, caption, credentials=credentials)
+            _call_with_optional_credentials(aguardar_container_pronto, container_id, credentials=credentials)
         else:
             auditar_imagem_final(content)
             image_url = url_midia_temporaria(content)

@@ -67,6 +67,7 @@ class ProfileTickSummary:
     inventory: int = 0
     inventory_images: int = 0
     inventory_reels: int = 0
+    inventory_carousels: int = 0
     next_post: str | None = None
     status: str = 'ok'
     message: str = ''
@@ -128,6 +129,7 @@ def _process_profile(profile, *, now):
         profile_summary.inventory = current_inventory
         profile_summary.inventory_images = inventory_by_type[SocialContent.MediaType.IMAGE]
         profile_summary.inventory_reels = inventory_by_type[SocialContent.MediaType.REEL]
+        profile_summary.inventory_carousels = inventory_by_type[SocialContent.MediaType.CAROUSEL]
         logger.info(
             'social_automation.inventory profile_id=%s current=%s minimum=%s target=%s',
             profile.id,
@@ -148,6 +150,7 @@ def _process_profile(profile, *, now):
         profile_summary.inventory = current_inventory
         profile_summary.inventory_images = inventory_by_type[SocialContent.MediaType.IMAGE]
         profile_summary.inventory_reels = inventory_by_type[SocialContent.MediaType.REEL]
+        profile_summary.inventory_carousels = inventory_by_type[SocialContent.MediaType.CAROUSEL]
         profile_summary.next_post = next_content.scheduled_at.isoformat() if next_content and next_content.scheduled_at else None
     except Exception as exc:
         profile_summary.errors += 1
@@ -244,10 +247,27 @@ def _gerar_e_aprovar(profile, inventory):
     target = estoque_alvo_profile(profile)
     target_missing = max(0, target - inventory)
     media_plan = plano_geracao_por_deficit(profile, target, min(settings.SOCIAL_AUTOMATION_GENERATION_BATCH, target_missing))
+    max_carousels = max(0, settings.SOCIAL_AUTOMATION_MAX_CAROUSELS_PER_TICK)
+    carousel_seen = 0
+    capped_plan = []
+    for media_type in media_plan:
+        if media_type == SocialContent.MediaType.CAROUSEL:
+            carousel_seen += 1
+            if carousel_seen > max_carousels:
+                continue
+        capped_plan.append(media_type)
+    media_plan = capped_plan
     if not media_plan:
         return 0, 0, 0
     tema = random.choice(AUTO_THEMES)
-    logger.info('social_automation.auto_generation_start profile_id=%s batch=%s reels=%s images=%s', profile.id, len(media_plan), media_plan.count(SocialContent.MediaType.REEL), media_plan.count(SocialContent.MediaType.IMAGE))
+    logger.info(
+        'social_automation.auto_generation_start profile_id=%s batch=%s reels=%s carousels=%s images=%s',
+        profile.id,
+        len(media_plan),
+        media_plan.count(SocialContent.MediaType.REEL),
+        media_plan.count(SocialContent.MediaType.CAROUSEL),
+        media_plan.count(SocialContent.MediaType.IMAGE),
+    )
     result = gerar_lote_conteudos(profile, len(media_plan), tema, None, media_types=media_plan)
     approved = 0
     errors = result.falhas + result.bloqueados
@@ -277,11 +297,18 @@ def _quality_gate(content):
         return False
     if not content.frase.strip() or not content.legenda.strip():
         return False
-    if not content.base_image_id or not content.final_media_ready:
+    if not content.is_carousel and not content.base_image_id:
+        return False
+    if not content.final_media_ready:
         return False
     try:
         if content.is_reel:
             auditar_video_reel(content)
+        elif content.is_carousel:
+            from .instagram import auditar_imagem_slide_carrossel
+
+            for slide in content.carousel_slides.filter(is_active=True):
+                auditar_imagem_slide_carrossel(slide)
         else:
             auditar_imagem_final(content)
     except Exception:
@@ -309,10 +336,12 @@ def automacao_status_profile(profile):
         'modo': profile.get_modo_operacao_display(),
         'posts_por_dia': profile.posts_por_dia,
         'reels_por_dia': profile.reels_por_dia,
+        'carousels_por_dia': profile.carousels_por_dia,
         'fotos_por_dia': profile.fotos_por_dia,
         'estoque': inventory,
         'estoque_fotos': inventory_by_type[SocialContent.MediaType.IMAGE],
         'estoque_reels': inventory_by_type[SocialContent.MediaType.REEL],
+        'estoque_carousels': inventory_by_type[SocialContent.MediaType.CAROUSEL],
         'minimo': estoque_minimo_profile(profile),
         'alvo': estoque_alvo_profile(profile),
         'agendados_24h': profile.contents.filter(

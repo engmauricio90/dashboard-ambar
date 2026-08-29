@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import SocialBaseImage, SocialContent, SocialContentEvent, SocialInstagramConnection, SocialProfile
+from .models import SocialBaseImage, SocialCarouselSlide, SocialCarouselTemplate, SocialContent, SocialContentEvent, SocialInstagramConnection, SocialProfile
 
 
 class SocialBaseImageInline(admin.TabularInline):
@@ -8,6 +8,12 @@ class SocialBaseImageInline(admin.TabularInline):
     extra = 0
     fields = ['nome', 'ativa', 'text_position', 'text_box_preset', 'tags', 'vezes_usada', 'ultima_utilizacao']
     readonly_fields = ['vezes_usada', 'ultima_utilizacao']
+
+
+class SocialCarouselTemplateInline(admin.TabularInline):
+    model = SocialCarouselTemplate
+    extra = 0
+    fields = ['name', 'active', 'is_default', 'aspect_ratio', 'background_type']
 
 
 class SocialInstagramConnectionInline(admin.StackedInline):
@@ -30,10 +36,10 @@ class SocialInstagramConnectionInline(admin.StackedInline):
 
 @admin.register(SocialProfile)
 class SocialProfileAdmin(admin.ModelAdmin):
-    list_display = ['nome', 'username', 'plataforma', 'modo_operacao', 'ativo', 'posts_por_dia', 'reels_por_dia', 'updated_at']
+    list_display = ['nome', 'username', 'plataforma', 'modo_operacao', 'ativo', 'posts_por_dia', 'reels_por_dia', 'carousels_por_dia', 'updated_at']
     list_filter = ['plataforma', 'modo_operacao', 'ativo']
     search_fields = ['nome', 'username', 'estilo', 'instrucoes_ia']
-    inlines = [SocialInstagramConnectionInline, SocialBaseImageInline]
+    inlines = [SocialInstagramConnectionInline, SocialBaseImageInline, SocialCarouselTemplateInline]
 
 
 @admin.register(SocialInstagramConnection)
@@ -82,6 +88,13 @@ class SocialContentEventInline(admin.TabularInline):
     can_delete = False
 
 
+class SocialCarouselSlideInline(admin.TabularInline):
+    model = SocialCarouselSlide
+    extra = 0
+    fields = ['order', 'slide_type', 'title', 'is_active', 'rendered_image', 'instagram_container_id']
+    readonly_fields = ['rendered_image', 'instagram_container_id']
+
+
 @admin.register(SocialContent)
 class SocialContentAdmin(admin.ModelAdmin):
     list_display = ['id', 'profile', 'media_type', 'status', 'scheduled_at', 'published_at', 'created_at']
@@ -98,7 +111,21 @@ class SocialContentAdmin(admin.ModelAdmin):
         'tentativas',
         'ultima_tentativa',
     ]
-    inlines = [SocialContentEventInline]
+    inlines = [SocialCarouselSlideInline, SocialContentEventInline]
+
+
+@admin.register(SocialCarouselTemplate)
+class SocialCarouselTemplateAdmin(admin.ModelAdmin):
+    list_display = ['name', 'profile', 'aspect_ratio', 'background_type', 'is_default', 'active', 'updated_at']
+    list_filter = ['active', 'is_default', 'aspect_ratio', 'background_type', 'profile']
+    search_fields = ['name', 'profile__nome', 'profile__username']
+
+
+@admin.register(SocialCarouselSlide)
+class SocialCarouselSlideAdmin(admin.ModelAdmin):
+    list_display = ['content', 'order', 'slide_type', 'is_active', 'updated_at']
+    list_filter = ['slide_type', 'is_active', 'content__profile']
+    search_fields = ['title', 'body', 'content__frase']
 
 
 @admin.register(SocialContentEvent)

@@ -15,6 +15,14 @@
                 <div class="d-flex gap-4 align-items-start flex-wrap">
                     {% if content.final_video %}
                         <video src="{{ content.final_video.url }}" class="social-preview-lg" controls muted playsinline></video>
+                    {% elif content.is_carousel %}
+                        <div class="d-flex gap-2 flex-wrap">
+                            {% for slide in content.carousel_slides.all %}
+                                {% if slide.rendered_image %}
+                                    <img src="{{ slide.rendered_image.url }}" style="width:120px;max-height:150px;object-fit:cover" class="border rounded" alt="">
+                                {% endif %}
+                            {% endfor %}
+                        </div>
                     {% elif content.final_image %}
                         <img src="{{ content.final_image.url }}" class="social-preview-lg" alt="">
                     {% elif content.base_image %}
@@ -94,6 +102,8 @@
                 {% endif %}
                 {% if content.base_image and content.status != 'publicado' %}
                 <form method="post" action="{% url 'social_automation:content_render' content.id %}">{% csrf_token %}<button class="btn btn-outline-secondary w-100" type="submit">Renderizar novamente</button></form>
+                {% elif content.is_carousel and content.status != 'publicado' %}
+                <form method="post" action="{% url 'social_automation:content_render' content.id %}">{% csrf_token %}<button class="btn btn-outline-secondary w-100" type="submit">Renderizar carrossel</button></form>
                 {% elif content.status == 'publicado' %}
                 <p class="text-muted small mb-0">Conteudo publicado preserva a midia enviada ao Instagram.</p>
                 {% endif %}

@@ -15,7 +15,7 @@ from django.views.decorators.http import require_POST
 
 from .ai import OpenAINotConfigured, OpenAIUnavailable
 from .automation import automacao_status_profile, executar_tick_social
-from .forms import SocialBaseImageForm, SocialContentForm, SocialGenerateForm, SocialProfileForm, SocialScheduleForm
+from .forms import SocialBaseImageForm, SocialCarouselSlideFormSet, SocialCarouselTemplateForm, SocialContentForm, SocialGenerateForm, SocialProfileForm, SocialScheduleForm
 from .generation import gerar_lote_conteudos
 from .instagram import (
     InstagramAPIError,
@@ -29,10 +29,11 @@ from .instagram import (
     publicar_conteudo_instagram,
     validar_conexao_instagram,
     validar_assinatura_midia_meta,
+    validar_assinatura_carousel_slide_meta,
     validar_assinatura_video_meta,
     validar_token_midia_temporaria,
 )
-from .models import SocialBaseImage, SocialContent, SocialInstagramConnection, SocialProfile
+from .models import SocialBaseImage, SocialCarouselSlide, SocialCarouselTemplate, SocialContent, SocialInstagramConnection, SocialProfile
 from .rendering import SocialRenderError, renderizar_midia_social
 from .services import (
     agendar_conteudo,
@@ -64,7 +65,7 @@ def _paginate(request, queryset, per_page=25):
 
 
 def _content_queryset():
-    return SocialContent.objects.select_related('profile', 'base_image')
+    return SocialContent.objects.select_related('profile', 'base_image', 'carousel_template').prefetch_related('carousel_slides')
 
 
 def _profile_or_404(profile_id):
@@ -231,6 +232,43 @@ def image_toggle(request, image_id):
 
 
 @staff_required
+def carousel_template_list(request, profile_id):
+    profile = _profile_or_404(profile_id)
+    templates = profile.carousel_templates.order_by('-is_default', 'name')
+    return render(request, 'social_automation/carousel_template_list.html', {'profile': profile, 'templates': templates})
+
+
+@staff_required
+def carousel_template_create(request, profile_id):
+    profile = _profile_or_404(profile_id)
+    if request.method == 'POST':
+        form = SocialCarouselTemplateForm(request.POST, request.FILES)
+        if form.is_valid():
+            template = form.save(commit=False)
+            template.profile = profile
+            template.save()
+            messages.success(request, 'Template de carrossel criado com sucesso.')
+            return redirect('social_automation:carousel_template_list', profile_id=profile.id)
+    else:
+        form = SocialCarouselTemplateForm()
+    return render(request, 'social_automation/carousel_template_form.html', {'form': form, 'profile': profile, 'titulo': 'Novo template de carrossel'})
+
+
+@staff_required
+def carousel_template_update(request, template_id):
+    template = get_object_or_404(SocialCarouselTemplate.objects.select_related('profile'), pk=template_id)
+    if request.method == 'POST':
+        form = SocialCarouselTemplateForm(request.POST, request.FILES, instance=template)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Template de carrossel atualizado com sucesso.')
+            return redirect('social_automation:carousel_template_list', profile_id=template.profile_id)
+    else:
+        form = SocialCarouselTemplateForm(instance=template)
+    return render(request, 'social_automation/carousel_template_form.html', {'form': form, 'profile': template.profile, 'template': template, 'titulo': 'Editar template de carrossel'})
+
+
+@staff_required
 def content_list(request, profile_id=None):
     profile = _profile_or_404(profile_id) if profile_id else None
     queryset = _content_queryset()
@@ -277,8 +315,14 @@ def content_create(request, profile_id=None):
         form = SocialContentForm(request.POST, request.FILES, profile=profile)
         if form.is_valid():
             content = form.save()
+            slide_formset = SocialCarouselSlideFormSet(request.POST, request.FILES, instance=content)
+            if content.is_carousel and not slide_formset.is_valid():
+                content.delete()
+                return render(request, 'social_automation/content_form.html', {'form': form, 'slide_formset': slide_formset, 'profile': profile, 'titulo': 'Novo rascunho'})
+            if content.is_carousel:
+                slide_formset.save()
             criar_evento_criacao(content, request.user)
-            if content.base_image:
+            if content.is_carousel or content.base_image:
                 try:
                     renderizar_midia_social(content)
                 except SocialRenderError as exc:
@@ -291,7 +335,8 @@ def content_create(request, profile_id=None):
             return redirect('social_automation:content_detail', content_id=content.id)
     else:
         form = SocialContentForm(profile=profile)
-    return render(request, 'social_automation/content_form.html', {'form': form, 'profile': profile, 'titulo': 'Novo rascunho'})
+        slide_formset = SocialCarouselSlideFormSet()
+    return render(request, 'social_automation/content_form.html', {'form': form, 'slide_formset': slide_formset, 'profile': profile, 'titulo': 'Novo rascunho'})
 
 
 @staff_required
@@ -303,11 +348,20 @@ def content_update(request, content_id):
     if request.method == 'POST':
         frase_original = content.frase
         base_image_original_id = content.base_image_id
+        template_original_id = content.carousel_template_id
         form = SocialContentForm(request.POST, request.FILES, instance=content)
-        if form.is_valid():
+        slide_formset = SocialCarouselSlideFormSet(request.POST, request.FILES, instance=content)
+        if form.is_valid() and (form.cleaned_data.get('media_type') != SocialContent.MediaType.CAROUSEL or slide_formset.is_valid()):
             content = form.save()
+            if content.is_carousel:
+                slide_formset.save()
             registrar_edicao(content, request.user)
-            if content.base_image and (content.frase != frase_original or content.base_image_id != base_image_original_id):
+            should_render = content.is_carousel or (
+                content.base_image and (content.frase != frase_original or content.base_image_id != base_image_original_id)
+            )
+            if content.is_carousel and content.carousel_template_id == template_original_id and content.frase == frase_original:
+                should_render = True
+            if should_render:
                 try:
                     renderizar_midia_social(content)
                     messages.success(request, 'Conteudo atualizado e card renderizado novamente.')
@@ -323,7 +377,8 @@ def content_update(request, content_id):
             return redirect('social_automation:content_detail', content_id=content.id)
     else:
         form = SocialContentForm(instance=content)
-    return render(request, 'social_automation/content_form.html', {'form': form, 'content': content, 'titulo': 'Editar conteudo'})
+        slide_formset = SocialCarouselSlideFormSet(instance=content)
+    return render(request, 'social_automation/content_form.html', {'form': form, 'slide_formset': slide_formset, 'content': content, 'titulo': 'Editar conteudo'})
 
 
 @staff_required
@@ -446,6 +501,26 @@ def ig_final_video(request, content_id, signature):
     body = b'' if request.method == 'HEAD' else video_bytes
     response = HttpResponse(body, content_type='video/mp4')
     response['Content-Length'] = str(len(video_bytes))
+    response['Cache-Control'] = 'private, max-age=0, no-store'
+    response['X-Content-Type-Options'] = 'nosniff'
+    return response
+
+
+def ig_carousel_slide(request, content_id, slide_id, signature):
+    if request.method not in {'GET', 'HEAD'}:
+        return HttpResponseNotAllowed(['GET', 'HEAD'])
+    try:
+        slide = validar_assinatura_carousel_slide_meta(content_id, slide_id, signature)
+    except ValidationError as exc:
+        raise Http404 from exc
+    if not slide.rendered_image:
+        raise Http404
+    with slide.rendered_image.storage.open(slide.rendered_image.name, 'rb') as arquivo:
+        image_bytes = arquivo.read()
+    logger.info('signed_carousel_slide_fetch content_id=%s slide_id=%s method=%s bytes=%s', content_id, slide.id, request.method, len(image_bytes))
+    body = b'' if request.method == 'HEAD' else image_bytes
+    response = HttpResponse(body, content_type='image/jpeg')
+    response['Content-Length'] = str(len(image_bytes))
     response['Cache-Control'] = 'private, max-age=0, no-store'
     response['X-Content-Type-Options'] = 'nosniff'
     return response

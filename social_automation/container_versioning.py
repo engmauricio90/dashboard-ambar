@@ -28,7 +28,23 @@ def _media_field(content):
     return content.final_video if content.is_reel else content.final_image
 
 
+def calculate_slide_media_hash(slide):
+    media = slide.rendered_image
+    if not media:
+        return ''
+    hasher = sha256()
+    with media.storage.open(media.name, 'rb') as arquivo:
+        for chunk in iter(lambda: arquivo.read(1024 * 1024), b''):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
 def calculate_social_media_hash(content):
+    if content.is_carousel:
+        payload = []
+        for slide in content.carousel_slides.filter(is_active=True).order_by('order', 'id'):
+            payload.append(f'{slide.id}:{slide.order}:{calculate_slide_media_hash(slide)}')
+        return sha256('\n'.join(payload).encode('utf-8')).hexdigest()
     media = _media_field(content)
     if not media:
         return ''
@@ -61,6 +77,18 @@ def calculate_instagram_container_fingerprint(content, instagram_user_id=''):
             f'media_type={content.media_type}',
             f'caption={caption}',
             f'share_to_feed={share_to_feed}',
+            f'instagram_user_id={instagram_user_id or ""}',
+        ]
+    )
+    return sha256(payload.encode('utf-8')).hexdigest()
+
+
+def calculate_instagram_carousel_slide_fingerprint(slide, instagram_user_id=''):
+    payload = '\n'.join(
+        [
+            f'slide_id={slide.id}',
+            f'order={slide.order}',
+            f'media_sha256={calculate_slide_media_hash(slide)}',
             f'instagram_user_id={instagram_user_id or ""}',
         ]
     )

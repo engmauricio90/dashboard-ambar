@@ -49,40 +49,58 @@ def iter_slots(profile: SocialProfile, now=None, days=4):
                 yield slot
 
 
-def build_daily_media_plan(posts_per_day, reels_per_day):
+def build_daily_media_plan(posts_per_day, reels_per_day, carousels_per_day=0):
     total = max(0, int(posts_per_day or 0))
     reels = min(max(0, int(reels_per_day or 0)), total)
+    carousels = min(max(0, int(carousels_per_day or 0)), max(0, total - reels))
     if total <= 0:
         return []
-    plan = []
+    non_images = []
     for index in range(1, total + 1):
         current_quota = (index * reels) // total
         previous_quota = ((index - 1) * reels) // total
         if current_quota > previous_quota:
-            plan.append(SocialContent.MediaType.REEL)
-        else:
-            plan.append(SocialContent.MediaType.IMAGE)
+            non_images.append((index - 1, SocialContent.MediaType.REEL))
+    for index in range(1, total + 1):
+        current_quota = (index * carousels) // total
+        previous_quota = ((index - 1) * carousels) // total
+        if current_quota > previous_quota:
+            slot = index - 1
+            while any(existing_slot == slot for existing_slot, _media in non_images) and slot + 1 < total:
+                slot += 1
+            if any(existing_slot == slot for existing_slot, _media in non_images):
+                slot = next((candidate for candidate in range(total) if not any(existing_slot == candidate for existing_slot, _media in non_images)), index - 1)
+            non_images.append((slot, SocialContent.MediaType.CAROUSEL))
+    plan = [SocialContent.MediaType.IMAGE] * total
+    for slot, media_type in sorted(non_images):
+        plan[slot] = media_type
     return plan
 
 
-def media_type_for_slot(index, total_slots, reels_por_dia):
-    plan = build_daily_media_plan(total_slots, reels_por_dia)
+def media_type_for_slot(index, total_slots, reels_por_dia, carousels_por_dia=0):
+    plan = build_daily_media_plan(total_slots, reels_por_dia, carousels_por_dia)
     if not plan:
         return SocialContent.MediaType.IMAGE
     return plan[index % len(plan)]
 
 
 def estoque_pronto(profile: SocialProfile):
-    return profile.contents.filter(
-        status__in=[SocialContent.Status.APROVADO, SocialContent.Status.AGENDADO],
-    ).filter(_ready_media_q()).count()
+    by_type = estoque_pronto_por_tipo(profile)
+    return sum(by_type.values())
 
 
 def estoque_pronto_por_tipo(profile: SocialProfile):
-    ready = profile.contents.filter(status__in=[SocialContent.Status.APROVADO, SocialContent.Status.AGENDADO]).filter(_ready_media_q())
+    approved_or_scheduled = profile.contents.filter(status__in=[SocialContent.Status.APROVADO, SocialContent.Status.AGENDADO])
+    ready = approved_or_scheduled.filter(_ready_media_q()).distinct()
+    ready_carousels = sum(
+        1
+        for content in approved_or_scheduled.filter(media_type=SocialContent.MediaType.CAROUSEL).prefetch_related('carousel_slides')
+        if content.final_media_ready
+    )
     return {
         SocialContent.MediaType.IMAGE: ready.filter(media_type=SocialContent.MediaType.IMAGE).count(),
         SocialContent.MediaType.REEL: ready.filter(media_type=SocialContent.MediaType.REEL).count(),
+        SocialContent.MediaType.CAROUSEL: ready_carousels,
     }
 
 
@@ -95,19 +113,26 @@ def estoque_alvo_profile(profile: SocialProfile):
 
 
 def _ready_media_q():
-    return Q(media_type=SocialContent.MediaType.IMAGE, final_image__isnull=False) & ~Q(final_image='') | Q(
-        media_type=SocialContent.MediaType.REEL,
-        final_video__isnull=False,
-    ) & ~Q(final_video='')
+    return (
+        Q(media_type=SocialContent.MediaType.IMAGE, final_image__isnull=False)
+        & ~Q(final_image='')
+        | Q(media_type=SocialContent.MediaType.REEL, final_video__isnull=False)
+        & ~Q(final_video='')
+        | Q(media_type=SocialContent.MediaType.CAROUSEL, carousel_slides__rendered_image__isnull=False)
+        & ~Q(carousel_slides__rendered_image='')
+    )
 
 
 def _target_counts(profile, target_total):
     posts = max(1, profile.posts_por_dia or 1)
     reels = min(profile.reels_por_dia or 0, posts)
+    carousels = min(profile.carousels_por_dia or 0, max(0, posts - reels))
     reel_target = round(target_total * reels / posts)
+    carousel_target = round(target_total * carousels / posts)
     return {
         SocialContent.MediaType.REEL: reel_target,
-        SocialContent.MediaType.IMAGE: target_total - reel_target,
+        SocialContent.MediaType.CAROUSEL: carousel_target,
+        SocialContent.MediaType.IMAGE: max(0, target_total - reel_target - carousel_target),
     }
 
 
@@ -116,12 +141,13 @@ def plano_geracao_por_deficit(profile, target_total, batch_limit):
     target = _target_counts(profile, target_total)
     missing = {
         SocialContent.MediaType.REEL: max(0, target[SocialContent.MediaType.REEL] - current[SocialContent.MediaType.REEL]),
+        SocialContent.MediaType.CAROUSEL: max(0, target[SocialContent.MediaType.CAROUSEL] - current[SocialContent.MediaType.CAROUSEL]),
         SocialContent.MediaType.IMAGE: max(0, target[SocialContent.MediaType.IMAGE] - current[SocialContent.MediaType.IMAGE]),
     }
     plan = []
     for _ in range(min(batch_limit, sum(missing.values()))):
         media_type = max(
-            [SocialContent.MediaType.REEL, SocialContent.MediaType.IMAGE],
+            [SocialContent.MediaType.REEL, SocialContent.MediaType.CAROUSEL, SocialContent.MediaType.IMAGE],
             key=lambda item: (missing[item], item == SocialContent.MediaType.REEL),
         )
         if missing[media_type] <= 0:
@@ -154,6 +180,7 @@ def preencher_agenda(profile: SocialProfile, now=None, days=4):
             scheduled_at__isnull=True,
         )
         .filter(_ready_media_q())
+        .distinct()
         .order_by('created_at', 'id')
     )
     if not aprovados:
@@ -165,7 +192,12 @@ def preencher_agenda(profile: SocialProfile, now=None, days=4):
     for slot_index, slot in enumerate(iter_slots(profile, now=now, days=days)):
         if slot in slots_ocupados:
             continue
-        preferred_type = media_type_for_slot(slot_index % max(total_slots_day, 1), max(total_slots_day, 1), profile.reels_por_dia)
+        preferred_type = media_type_for_slot(
+            slot_index % max(total_slots_day, 1),
+            max(total_slots_day, 1),
+            profile.reels_por_dia,
+            profile.carousels_por_dia,
+        )
         content = next((item for item in remaining if item.media_type == preferred_type), None)
         if not content:
             result.skipped += 1

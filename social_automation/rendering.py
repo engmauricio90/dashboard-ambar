@@ -359,6 +359,10 @@ def renderizar_conteudo_social(content):
 
 
 def renderizar_midia_social(content):
+    if getattr(content, 'is_carousel', False):
+        from .carousel_rendering import renderizar_carrossel_social
+
+        return renderizar_carrossel_social(content)
     if getattr(content, 'is_reel', False):
         from .video_rendering import renderizar_reel_social
 

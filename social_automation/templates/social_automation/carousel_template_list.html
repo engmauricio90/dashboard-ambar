@@ -1,0 +1,41 @@
+{% extends 'social_automation/base.html' %}
+
+{% block social_title %}Templates de carrossel{% endblock %}
+{% block social_subtitle %}{{ profile.nome }}{% endblock %}
+{% block social_actions %}
+<a href="{% url 'social_automation:carousel_template_create' profile.id %}" class="btn btn-primary">Novo template</a>
+<a href="{% url 'social_automation:profile_detail' profile.id %}" class="btn btn-outline-secondary">Voltar</a>
+{% endblock %}
+
+{% block social_content %}
+<div class="card shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>Formato</th>
+                    <th>Fundo</th>
+                    <th>Padrao</th>
+                    <th>Status</th>
+                    <th class="text-end">Acoes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for template in templates %}
+                <tr>
+                    <td><strong>{{ template.name }}</strong></td>
+                    <td>{{ template.get_aspect_ratio_display }}</td>
+                    <td>{{ template.get_background_type_display }}</td>
+                    <td>{% if template.is_default %}Sim{% else %}-{% endif %}</td>
+                    <td>{% if template.active %}Ativo{% else %}Inativo{% endif %}</td>
+                    <td class="text-end"><a href="{% url 'social_automation:carousel_template_update' template.id %}" class="btn btn-sm btn-outline-primary">Editar</a></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-muted py-4">Nenhum template cadastrado.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

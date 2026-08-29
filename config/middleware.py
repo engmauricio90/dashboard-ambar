@@ -23,6 +23,7 @@ class LoginRequiredMiddleware:
             '/social-media/public-jpg/',
             '/social-media/ig/',
             '/social-media/ig-video/',
+            '/social-media/ig-carousel/',
             '/internal/social-automation/tick/',
             '/admin/',
             settings.STATIC_URL,

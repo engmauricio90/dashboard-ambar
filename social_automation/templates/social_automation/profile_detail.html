@@ -5,6 +5,7 @@
 {% block social_actions %}
 <a href="{% url 'social_automation:profile_update' profile.id %}" class="btn btn-outline-primary">Configuracoes</a>
 <a href="{% url 'social_automation:image_list' profile.id %}" class="btn btn-outline-secondary">Biblioteca</a>
+<a href="{% url 'social_automation:carousel_template_list' profile.id %}" class="btn btn-outline-secondary">Templates carrossel</a>
 <a href="{% url 'social_automation:profile_content_list' profile.id %}" class="btn btn-outline-secondary">Conteudos</a>
 <a href="{% url 'social_automation:profile_generate' profile.id %}" class="btn btn-primary">Gerar com IA</a>
 <form method="post" action="{% url 'social_automation:automation_run_now' profile.id %}" class="d-inline">{% csrf_token %}<button class="btn btn-outline-success" type="submit">Executar automacao agora</button></form>
@@ -28,8 +29,8 @@
         <div class="row g-3">
             <div class="col-md-3"><div class="text-muted small">Modo</div><strong>{{ automacao.modo }}</strong></div>
             <div class="col-md-3"><div class="text-muted small">Posts/dia</div><strong>{{ automacao.posts_por_dia }}</strong></div>
-            <div class="col-md-3"><div class="text-muted small">Reels/dia</div><strong>{{ automacao.reels_por_dia }}</strong><div class="small text-muted">Fotos/dia {{ automacao.fotos_por_dia }}</div></div>
-            <div class="col-md-3"><div class="text-muted small">Estoque pronto</div><strong>{{ automacao.estoque }} / {{ automacao.alvo }}</strong><div class="small text-muted">Fotos {{ automacao.estoque_fotos }} | Reels {{ automacao.estoque_reels }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">Mix diario</div><strong>{{ automacao.reels_por_dia }} reels / {{ automacao.carousels_por_dia }} carrosseis</strong><div class="small text-muted">Fotos/dia {{ automacao.fotos_por_dia }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">Estoque pronto</div><strong>{{ automacao.estoque }} / {{ automacao.alvo }}</strong><div class="small text-muted">Fotos {{ automacao.estoque_fotos }} | Reels {{ automacao.estoque_reels }} | Carrosseis {{ automacao.estoque_carousels }}</div></div>
             <div class="col-md-3"><div class="text-muted small">Agendados 24h</div><strong>{{ automacao.agendados_24h }}</strong></div>
             <div class="col-md-3"><div class="text-muted small">Proxima publicacao</div><strong>{% if automacao.proxima_publicacao %}{{ automacao.proxima_publicacao|date:'d/m/Y H:i' }}{% else %}-{% endif %}</strong></div>
             <div class="col-md-3"><div class="text-muted small">Ultima publicacao</div><strong>{% if automacao.ultima_publicacao %}{{ automacao.ultima_publicacao|date:'d/m/Y H:i' }}{% else %}-{% endif %}</strong></div>

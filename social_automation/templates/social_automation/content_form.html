@@ -4,7 +4,7 @@
 {% block social_subtitle %}{% if profile %}{{ profile.nome }}{% else %}Conteudo manual para a fila social.{% endif %}{% endblock %}
 
 {% block social_content %}
-<form method="post" class="card shadow-sm">
+<form method="post" enctype="multipart/form-data" class="card shadow-sm">
     {% csrf_token %}
     <div class="card-body">
         {{ form.non_field_errors }}
@@ -16,10 +16,36 @@
             {% endif %}
             <div class="col-md-3"><label class="form-label">{{ form.media_type.label }}</label>{{ form.media_type }}{{ form.media_type.errors }}</div>
             <div class="col-md-6"><label class="form-label">{{ form.base_image.label }}</label>{{ form.base_image }}{{ form.base_image.errors }}</div>
+            <div class="col-md-6"><label class="form-label">{{ form.carousel_template.label }}</label>{{ form.carousel_template }}{{ form.carousel_template.errors }}</div>
             <div class="col-12"><label class="form-label">{{ form.frase.label }}</label>{{ form.frase }}{{ form.frase.errors }}</div>
             <div class="col-md-7"><label class="form-label">{{ form.legenda.label }}</label>{{ form.legenda }}</div>
             <div class="col-md-5"><label class="form-label">{{ form.hashtags.label }}</label>{{ form.hashtags }}</div>
         </div>
+        {% if slide_formset %}
+        <hr>
+        <h5 class="mb-3">Slides do carrossel</h5>
+        {{ slide_formset.management_form }}
+        {{ slide_formset.non_form_errors }}
+        <div class="vstack gap-3">
+            {% for slide_form in slide_formset %}
+            <div class="border rounded p-3">
+                {{ slide_form.id }}
+                <div class="row g-2">
+                    <div class="col-md-1"><label class="form-label">{{ slide_form.order.label }}</label>{{ slide_form.order }}</div>
+                    <div class="col-md-2"><label class="form-label">{{ slide_form.slide_type.label }}</label>{{ slide_form.slide_type }}</div>
+                    <div class="col-md-4"><label class="form-label">{{ slide_form.title.label }}</label>{{ slide_form.title }}</div>
+                    <div class="col-md-5"><label class="form-label">{{ slide_form.source_image.label }}</label>{{ slide_form.source_image }}</div>
+                    <div class="col-12"><label class="form-label">{{ slide_form.body.label }}</label>{{ slide_form.body }}</div>
+                    <div class="col-md-3 d-flex align-items-end"><div class="form-check">{{ slide_form.is_active }} <label class="form-check-label">{{ slide_form.is_active.label }}</label></div></div>
+                    {% if slide_form.DELETE %}<div class="col-md-3 d-flex align-items-end"><div class="form-check">{{ slide_form.DELETE }} <label class="form-check-label">Excluir</label></div></div>{% endif %}
+                </div>
+                {{ slide_form.errors }}
+            </div>
+            {% empty %}
+            <p class="text-muted mb-0">Para carrossel, salve o rascunho e depois adicione os slides nesta tela de edicao.</p>
+            {% endfor %}
+        </div>
+        {% endif %}
     </div>
     <div class="card-footer d-flex gap-2">
         <button class="btn btn-primary" type="submit">Salvar</button>
