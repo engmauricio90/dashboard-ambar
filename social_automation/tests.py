@@ -9,6 +9,7 @@ import tempfile
 import urllib.error
 import urllib.parse
 from unittest import mock
+from zoneinfo import ZoneInfo
 
 from django.contrib.auth import get_user_model
 from django.core import signing
@@ -58,7 +59,7 @@ from .instagram import (
 )
 from .rendering import CANVAS_SIZE, REEL_CANVAS_SIZE, SocialRenderError, renderizar_conteudo_social
 from .rendering import _draw_text_box, _layout_text, _reel_text_boxes, _region, _text_boxes
-from .scheduler import estoque_alvo_profile, estoque_minimo_profile, estoque_pronto, estoque_pronto_por_tipo, media_type_for_slot, plano_geracao_por_deficit, preencher_agenda
+from .scheduler import build_daily_media_plan, estoque_alvo_profile, estoque_minimo_profile, estoque_pronto, estoque_pronto_por_tipo, media_type_for_slot, plano_geracao_por_deficit, preencher_agenda
 from .token_crypto import InstagramTokenEncryptionError, decrypt_instagram_token, encrypt_instagram_token
 from .video_rendering import (
     SocialVideoRenderError,
@@ -939,6 +940,12 @@ class SocialAutomationRenderingPositionTests(TestCase):
         self.assertIn('ate 3 linhas', contexts[0]['tamanho_recomendado_frase'])
 
 
+@override_settings(
+    INSTAGRAM_ACCESS_TOKEN='token-teste',
+    INSTAGRAM_USER_ID='178000000000',
+    INSTAGRAM_EXPECTED_USERNAME='lailapistola',
+    PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com',
+)
 class SocialAutomationReelTests(TestCase):
     def setUp(self):
         self.staff = User.objects.create_user(username='staff-reel-social', password='senha', is_staff=True)
@@ -974,6 +981,24 @@ class SocialAutomationReelTests(TestCase):
             hashtags='#laila',
         )
 
+    def _ready_content_for_schedule(self, media_type, index, scheduled_at=None, status=SocialContent.Status.APROVADO):
+        content = SocialContent.objects.create(
+            profile=self.profile,
+            base_image=self._image(),
+            media_type=media_type,
+            frase=f'Conteudo {media_type} {index}',
+            legenda='Legenda',
+            hashtags='#laila',
+            status=status,
+            scheduled_at=scheduled_at,
+        )
+        if media_type == SocialContent.MediaType.REEL:
+            content.final_video = video_mp4_teste(f'reel-{index}.mp4')
+        else:
+            content.final_image = imagem_social(f'foto-{index}.jpg')
+        content.save(update_fields=['final_image', 'final_video'])
+        return content
+
     def test_media_type_image_default_e_reels_por_dia_valido(self):
         content = SocialContent.objects.create(profile=self.profile, frase='Foto padrao')
         self.assertEqual(content.media_type, SocialContent.MediaType.IMAGE)
@@ -989,6 +1014,148 @@ class SocialAutomationReelTests(TestCase):
 
         self.assertEqual(len(reel_indexes), 5)
         self.assertEqual(reel_indexes, [3, 7, 11, 15, 19])
+
+    def test_plano_diario_vinte_posts_seis_reels_distribuidos(self):
+        sequence = build_daily_media_plan(20, 6)
+        reel_indexes = [index for index, media_type in enumerate(sequence) if media_type == SocialContent.MediaType.REEL]
+
+        self.assertEqual(len(sequence), 20)
+        self.assertEqual(sequence.count(SocialContent.MediaType.IMAGE), 14)
+        self.assertEqual(sequence.count(SocialContent.MediaType.REEL), 6)
+        self.assertEqual(reel_indexes, [3, 6, 9, 13, 16, 19])
+        for previous, current in zip(sequence, sequence[1:]):
+            self.assertFalse(previous == current == SocialContent.MediaType.REEL)
+
+    def test_plano_diario_casos_importantes(self):
+        cases = [
+            (20, 0, 20, 0),
+            (20, 5, 15, 5),
+            (20, 10, 10, 10),
+            (10, 3, 7, 3),
+            (5, 1, 4, 1),
+            (20, 20, 0, 20),
+        ]
+        for posts, reels, expected_images, expected_reels in cases:
+            with self.subTest(posts=posts, reels=reels):
+                sequence = build_daily_media_plan(posts, reels)
+                self.assertEqual(len(sequence), posts)
+                self.assertEqual(sequence.count(SocialContent.MediaType.IMAGE), expected_images)
+                self.assertEqual(sequence.count(SocialContent.MediaType.REEL), expected_reels)
+                self.assertEqual(sequence, build_daily_media_plan(posts, reels))
+
+    def test_scheduler_escolhe_tipo_do_slot_sem_fallback_silencioso(self):
+        self.profile.reels_por_dia = 6
+        self.profile.save(update_fields=['reels_por_dia'])
+        now = timezone.datetime(2025, 12, 31, 23, 59, tzinfo=ZoneInfo('America/Sao_Paulo')).astimezone(timezone.get_current_timezone())
+        for index in range(14):
+            self._ready_content_for_schedule(SocialContent.MediaType.IMAGE, index)
+        result = preencher_agenda(self.profile, now=now, days=2)
+
+        agendados = list(self.profile.contents.filter(status=SocialContent.Status.AGENDADO).order_by('scheduled_at'))
+        self.assertEqual(result.scheduled, 14)
+        self.assertGreaterEqual(result.skipped, 6)
+        self.assertTrue(all(content.media_type == SocialContent.MediaType.IMAGE for content in agendados))
+        self.assertEqual(
+            [content.scheduled_at.astimezone(ZoneInfo('America/Sao_Paulo')).strftime('%H:%M') for content in agendados],
+            ['00:00', '01:00', '02:00', '04:00', '05:00', '07:00', '08:00', '10:00', '11:00', '12:00', '14:00', '15:00', '17:00', '18:00'],
+        )
+
+    def test_scheduler_nao_preenche_foto_com_reel_quando_falta_image(self):
+        self.profile.reels_por_dia = 6
+        self.profile.save(update_fields=['reels_por_dia'])
+        now = timezone.datetime(2025, 12, 31, 23, 59, tzinfo=ZoneInfo('America/Sao_Paulo')).astimezone(timezone.get_current_timezone())
+        for index in range(6):
+            self._ready_content_for_schedule(SocialContent.MediaType.REEL, index)
+        result = preencher_agenda(self.profile, now=now, days=2)
+
+        agendados = list(self.profile.contents.filter(status=SocialContent.Status.AGENDADO).order_by('scheduled_at'))
+        self.assertEqual(result.scheduled, 6)
+        self.assertGreaterEqual(result.skipped, 14)
+        self.assertTrue(all(content.media_type == SocialContent.MediaType.REEL for content in agendados))
+        self.assertEqual(
+            [content.scheduled_at.astimezone(ZoneInfo('America/Sao_Paulo')).strftime('%H:%M') for content in agendados],
+            ['03:00', '06:00', '09:00', '13:00', '16:00', '19:00'],
+        )
+
+    def test_scheduler_respeita_dia_parcialmente_agendado_por_posicao(self):
+        self.profile.reels_por_dia = 6
+        self.profile.save(update_fields=['reels_por_dia'])
+        zone = ZoneInfo('America/Sao_Paulo')
+        now = timezone.datetime(2025, 12, 31, 23, 59, tzinfo=zone).astimezone(timezone.get_current_timezone())
+        existentes = []
+        for index in range(8):
+            scheduled_at = timezone.datetime(2026, 1, 1, index, 0, tzinfo=zone).astimezone(timezone.get_current_timezone())
+            existentes.append(
+                self._ready_content_for_schedule(SocialContent.MediaType.IMAGE, index, scheduled_at=scheduled_at, status=SocialContent.Status.AGENDADO).id
+            )
+        for index in range(8):
+            self._ready_content_for_schedule(SocialContent.MediaType.IMAGE, 100 + index)
+        for index in range(4):
+            self._ready_content_for_schedule(SocialContent.MediaType.REEL, 200 + index)
+
+        result = preencher_agenda(self.profile, now=now, days=2)
+        novos = self.profile.contents.filter(status=SocialContent.Status.AGENDADO).exclude(id__in=existentes).order_by('scheduled_at')
+        self.assertEqual(result.scheduled, 12)
+        self.assertEqual(
+            [(content.scheduled_at.astimezone(zone).strftime('%H:%M'), content.media_type) for content in novos],
+            [
+                ('08:00', SocialContent.MediaType.IMAGE),
+                ('09:00', SocialContent.MediaType.REEL),
+                ('10:00', SocialContent.MediaType.IMAGE),
+                ('11:00', SocialContent.MediaType.IMAGE),
+                ('12:00', SocialContent.MediaType.IMAGE),
+                ('13:00', SocialContent.MediaType.REEL),
+                ('14:00', SocialContent.MediaType.IMAGE),
+                ('15:00', SocialContent.MediaType.IMAGE),
+                ('16:00', SocialContent.MediaType.REEL),
+                ('17:00', SocialContent.MediaType.IMAGE),
+                ('18:00', SocialContent.MediaType.IMAGE),
+                ('19:00', SocialContent.MediaType.REEL),
+            ],
+        )
+
+    def test_agendamentos_existentes_e_alteracao_manual_nao_sao_revertidos(self):
+        self.profile.reels_por_dia = 6
+        self.profile.save(update_fields=['reels_por_dia'])
+        zone = ZoneInfo('America/Sao_Paulo')
+        now = timezone.datetime(2025, 12, 31, 23, 59, tzinfo=zone).astimezone(timezone.get_current_timezone())
+        manual_slot = timezone.datetime(2026, 1, 1, 3, 0, tzinfo=zone).astimezone(timezone.get_current_timezone())
+        manual = self._ready_content_for_schedule(SocialContent.MediaType.IMAGE, 1, scheduled_at=manual_slot, status=SocialContent.Status.AGENDADO)
+        for index in range(4):
+            self._ready_content_for_schedule(SocialContent.MediaType.REEL, index)
+
+        preencher_agenda(self.profile, now=now, days=2)
+
+        manual.refresh_from_db()
+        self.assertEqual(manual.media_type, SocialContent.MediaType.IMAGE)
+        self.assertEqual(manual.scheduled_at, manual_slot)
+
+    def test_perfis_diferentes_possuem_planos_independentes(self):
+        outro = SocialProfile.objects.create(
+            nome='Perfil menor',
+            username='perfil_menor',
+            posts_por_dia=10,
+            reels_por_dia=2,
+            horarios_publicacao=[f'{hour:02d}:30' for hour in range(10)],
+        )
+        self.assertEqual(build_daily_media_plan(self.profile.posts_por_dia, 6).count(SocialContent.MediaType.REEL), 6)
+        self.assertEqual(build_daily_media_plan(outro.posts_por_dia, outro.reels_por_dia).count(SocialContent.MediaType.REEL), 2)
+
+    def test_diagnostico_mix_diario_lista_planejado_e_agendado(self):
+        self.profile.reels_por_dia = 6
+        self.profile.save(update_fields=['reels_por_dia'])
+        zone = ZoneInfo('America/Sao_Paulo')
+        scheduled_at = timezone.datetime(2026, 8, 29, 3, 0, tzinfo=zone).astimezone(timezone.get_current_timezone())
+        self._ready_content_for_schedule(SocialContent.MediaType.REEL, 1, scheduled_at=scheduled_at, status=SocialContent.Status.AGENDADO)
+        output = StringIO()
+
+        call_command('diagnosticar_mix_diario', 'lailapistola', '2026-08-29', stdout=output)
+
+        texto = output.getvalue()
+        self.assertIn('Fotos planejadas: 14', texto)
+        self.assertIn('Reels planejados: 6', texto)
+        self.assertIn('03:00 REEL', texto)
+        self.assertIn('03:00 REEL #', texto)
 
     def test_estoque_separado_e_deficit_prioriza_reel(self):
         image = self._image()

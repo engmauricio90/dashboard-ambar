@@ -49,6 +49,29 @@ def iter_slots(profile: SocialProfile, now=None, days=4):
                 yield slot
 
 
+def build_daily_media_plan(posts_per_day, reels_per_day):
+    total = max(0, int(posts_per_day or 0))
+    reels = min(max(0, int(reels_per_day or 0)), total)
+    if total <= 0:
+        return []
+    plan = []
+    for index in range(1, total + 1):
+        current_quota = (index * reels) // total
+        previous_quota = ((index - 1) * reels) // total
+        if current_quota > previous_quota:
+            plan.append(SocialContent.MediaType.REEL)
+        else:
+            plan.append(SocialContent.MediaType.IMAGE)
+    return plan
+
+
+def media_type_for_slot(index, total_slots, reels_por_dia):
+    plan = build_daily_media_plan(total_slots, reels_por_dia)
+    if not plan:
+        return SocialContent.MediaType.IMAGE
+    return plan[index % len(plan)]
+
+
 def estoque_pronto(profile: SocialProfile):
     return profile.contents.filter(
         status__in=[SocialContent.Status.APROVADO, SocialContent.Status.AGENDADO],
@@ -108,15 +131,6 @@ def plano_geracao_por_deficit(profile, target_total, batch_limit):
     return plan
 
 
-def media_type_for_slot(index, total_slots, reels_por_dia):
-    if reels_por_dia <= 0 or total_slots <= 0:
-        return SocialContent.MediaType.IMAGE
-    reels = min(reels_por_dia, total_slots)
-    interval = total_slots / reels
-    reel_positions = {min(total_slots - 1, round((item + 1) * interval) - 1) for item in range(reels)}
-    return SocialContent.MediaType.REEL if index in reel_positions else SocialContent.MediaType.IMAGE
-
-
 def proxima_publicacao(profile: SocialProfile, now=None):
     now = now or timezone.now()
     return (
@@ -147,15 +161,15 @@ def preencher_agenda(profile: SocialProfile, now=None, days=4):
         return result
 
     remaining = list(aprovados)
-    slot_index = 0
     total_slots_day = max(len(parse_horarios(profile)), profile.posts_por_dia or 0)
-    for slot in iter_slots(profile, now=now, days=days):
+    for slot_index, slot in enumerate(iter_slots(profile, now=now, days=days)):
         if slot in slots_ocupados:
             continue
         preferred_type = media_type_for_slot(slot_index % max(total_slots_day, 1), max(total_slots_day, 1), profile.reels_por_dia)
-        content = next((item for item in remaining if item.media_type == preferred_type), None) or (remaining[0] if remaining else None)
+        content = next((item for item in remaining if item.media_type == preferred_type), None)
         if not content:
-            break
+            result.skipped += 1
+            continue
         remaining.remove(content)
         with transaction.atomic():
             locked = SocialContent.objects.select_for_update().get(pk=content.pk)
@@ -168,7 +182,6 @@ def preencher_agenda(profile: SocialProfile, now=None, days=4):
             registrar_evento(locked, SocialContentEventAction.AGENDADO_AUTOMATICO, None, f'Agendado automaticamente para {slot.isoformat()}')
         result.scheduled += 1
         slots_ocupados.add(slot)
-        slot_index += 1
 
     result.next_post = proxima_publicacao(profile, now)
     return result
