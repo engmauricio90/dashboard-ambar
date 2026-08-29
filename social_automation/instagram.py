@@ -77,6 +77,37 @@ def _normalize_username(value):
     return (value or '').strip().lstrip('@').lower()
 
 
+def normalize_instagram_account_type(value):
+    account_type = (value or '').strip().upper()
+    aliases = {
+        'MEDIA_CREATOR': SocialInstagramConnection.AccountType.CREATOR,
+        'CREATOR': SocialInstagramConnection.AccountType.CREATOR,
+        'MEDIA_BUSINESS': SocialInstagramConnection.AccountType.BUSINESS,
+        'BUSINESS': SocialInstagramConnection.AccountType.BUSINESS,
+        SocialInstagramConnection.AccountType.DESCONHECIDO: SocialInstagramConnection.AccountType.DESCONHECIDO,
+    }
+    return aliases.get(account_type, account_type)
+
+
+def is_publishable_instagram_account_type(value):
+    return normalize_instagram_account_type(value) in {
+        SocialInstagramConnection.AccountType.BUSINESS,
+        SocialInstagramConnection.AccountType.CREATOR,
+    }
+
+
+def display_instagram_account_type(value):
+    normalized = normalize_instagram_account_type(value)
+    labels = {
+        SocialInstagramConnection.AccountType.BUSINESS: 'Business',
+        SocialInstagramConnection.AccountType.CREATOR: 'Creator',
+        SocialInstagramConnection.AccountType.DESCONHECIDO: 'Desconhecido',
+    }
+    if normalized in labels:
+        return labels[normalized]
+    return value or 'acessivel'
+
+
 def _legacy_credentials_for_profile(profile=None):
     if not settings.SOCIAL_INSTAGRAM_LEGACY_FALLBACK:
         return None
@@ -396,8 +427,8 @@ def criar_ou_atualizar_conexao_instagram(profile, *, access_token, instagram_use
     if not ig_user_id:
         raise InstagramAPIError('A Meta nao retornou Instagram User ID.')
     username = conta.get('username') or username or profile.username
-    account_type = (conta.get('account_type') or account_type or SocialInstagramConnection.AccountType.DESCONHECIDO).upper()
-    if account_type not in {'BUSINESS', 'CREATOR', SocialInstagramConnection.AccountType.DESCONHECIDO}:
+    account_type = normalize_instagram_account_type(conta.get('account_type') or account_type or SocialInstagramConnection.AccountType.DESCONHECIDO)
+    if account_type != SocialInstagramConnection.AccountType.DESCONHECIDO and not is_publishable_instagram_account_type(account_type):
         raise InstagramConfigurationError('A conta Instagram precisa ser Business ou Creator para publicar pela API.')
     connection, _created = SocialInstagramConnection.objects.get_or_create(
         profile=profile,
@@ -427,8 +458,8 @@ def validar_conexao_instagram(connection):
     username = _normalize_username(conta.get('username'))
     if username and username != connection.normalized_username:
         raise InstagramConfigurationError('A conta retornada pela Meta nao corresponde ao username salvo nesta conexao.')
-    account_type = (conta.get('account_type') or '').upper()
-    if account_type and account_type not in {'BUSINESS', 'CREATOR'}:
+    account_type = normalize_instagram_account_type(conta.get('account_type') or '')
+    if account_type and not is_publishable_instagram_account_type(account_type):
         raise InstagramConfigurationError('A conta Instagram precisa ser Business ou Creator para publicar pela API.')
     connection.account_type = account_type or connection.account_type
     connection.mark_validation(ok=True)

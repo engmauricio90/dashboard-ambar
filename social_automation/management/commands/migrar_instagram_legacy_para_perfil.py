@@ -4,7 +4,16 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
-from social_automation.instagram import InstagramAPIError, InstagramConfigurationError, criar_ou_atualizar_conexao_instagram
+from social_automation.instagram import (
+    InstagramAPIError,
+    InstagramConfigurationError,
+    InstagramCredentials,
+    criar_ou_atualizar_conexao_instagram,
+    display_instagram_account_type,
+    is_publishable_instagram_account_type,
+    normalize_instagram_account_type,
+    obter_conta_instagram,
+)
 from social_automation.models import SocialProfile
 
 
@@ -39,6 +48,20 @@ class Command(BaseCommand):
         self.stdout.write(f'Instagram User ID: {self._mask(user_id)}')
         self.stdout.write(f'Username esperado: @{expected}')
         self.stdout.write('Token: presente, nao exibido')
+
+        try:
+            credentials = InstagramCredentials(access_token=token, instagram_user_id=user_id, username=expected, is_legacy=True)
+            conta = obter_conta_instagram(credentials=credentials)
+            raw_account_type = conta.get('account_type') or ''
+            account_type = normalize_instagram_account_type(raw_account_type)
+            if account_type and not is_publishable_instagram_account_type(account_type):
+                raise InstagramConfigurationError('A conta Instagram precisa ser Business ou Creator para publicar pela API.')
+        except (InstagramConfigurationError, InstagramAPIError) as exc:
+            raise CommandError(str(exc)) from exc
+
+        self.stdout.write(f'Username validado: @{conta.get("username") or expected}')
+        self.stdout.write(f'Conta: {display_instagram_account_type(raw_account_type)}')
+        self.stdout.write(f'Publicavel: {"SIM" if is_publishable_instagram_account_type(account_type) else "NAO"}')
 
         if not options['apply']:
             self.stdout.write(self.style.WARNING('Dry-run: nenhuma conexao foi criada ou atualizada.'))

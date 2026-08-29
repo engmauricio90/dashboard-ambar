@@ -41,8 +41,11 @@ from .instagram import (
     auditar_imagem_final,
     criar_container_reel,
     criar_container_imagem,
+    display_instagram_account_type,
     gerar_assinatura_midia_meta,
     gerar_token_midia_temporaria,
+    is_publishable_instagram_account_type,
+    normalize_instagram_account_type,
     publicar_conteudo_instagram,
     resumir_image_url,
     resumir_video_url,
@@ -2121,6 +2124,88 @@ class SocialAutomationMultiProfileInstagramTests(TestCase):
             with self.assertRaisesMessage(InstagramTokenEncryptionError, 'Token Instagram nao pode ser descriptografado.'):
                 decrypt_instagram_token(encrypted)
 
+    def test_account_type_media_creator_e_publicavel(self):
+        self.assertEqual(normalize_instagram_account_type('MEDIA_CREATOR'), SocialInstagramConnection.AccountType.CREATOR)
+        self.assertTrue(is_publishable_instagram_account_type('MEDIA_CREATOR'))
+
+    def test_account_type_media_business_e_publicavel(self):
+        self.assertEqual(normalize_instagram_account_type('MEDIA_BUSINESS'), SocialInstagramConnection.AccountType.BUSINESS)
+        self.assertTrue(is_publishable_instagram_account_type('MEDIA_BUSINESS'))
+
+    def test_account_type_creator_business_legados_permanecem_publicaveis(self):
+        self.assertTrue(is_publishable_instagram_account_type('CREATOR'))
+        self.assertTrue(is_publishable_instagram_account_type('BUSINESS'))
+
+    def test_account_type_personal_vazio_e_desconhecido_nao_sao_publicaveis(self):
+        self.assertFalse(is_publishable_instagram_account_type('PERSONAL'))
+        self.assertFalse(is_publishable_instagram_account_type(''))
+        self.assertFalse(is_publishable_instagram_account_type('OUTRO'))
+
+    def test_display_instagram_account_type_usa_normalizacao_compartilhada(self):
+        self.assertEqual(display_instagram_account_type('MEDIA_CREATOR'), 'Creator')
+        self.assertEqual(display_instagram_account_type('MEDIA_BUSINESS'), 'Business')
+
+    def test_migracao_legacy_media_creator_cria_conexao_normalizada(self):
+        output = StringIO()
+
+        def fake_request(method, path, params=None, *, credentials=None):
+            self.assertEqual(credentials.access_token, 'token-legacy')
+            self.assertEqual(path, '178-LEGACY')
+            return {'id': '178-LEGACY', 'username': 'perfil_a', 'account_type': 'MEDIA_CREATOR'}
+
+        with override_settings(
+            INSTAGRAM_ACCESS_TOKEN='token-legacy',
+            INSTAGRAM_USER_ID='178-LEGACY',
+            INSTAGRAM_EXPECTED_USERNAME='perfil_a',
+        ), mock.patch('social_automation.instagram._request', side_effect=fake_request):
+            call_command('migrar_instagram_legacy_para_perfil', 'perfil_a', '--apply', stdout=output)
+
+        self.connection_a.refresh_from_db()
+        texto = output.getvalue()
+        self.assertIn('Conta: Creator', texto)
+        self.assertIn('Publicavel: SIM', texto)
+        self.assertEqual(self.connection_a.account_type, SocialInstagramConnection.AccountType.CREATOR)
+        self.assertEqual(self.connection_a.instagram_user_id, '178-LEGACY')
+        self.assertEqual(self.connection_a.username, 'perfil_a')
+        self.assertNotIn('token-legacy', self.connection_a.access_token_encrypted)
+        self.assertEqual(self.connection_a.get_access_token(), 'token-legacy')
+
+    def test_migracao_legacy_media_creator_dry_run_nao_cria_conexao(self):
+        self.connection_a.delete()
+        output = StringIO()
+
+        def fake_request(method, path, params=None, *, credentials=None):
+            return {'id': '178-LEGACY', 'username': 'perfil_a', 'account_type': 'MEDIA_CREATOR'}
+
+        with override_settings(
+            INSTAGRAM_ACCESS_TOKEN='token-legacy',
+            INSTAGRAM_USER_ID='178-LEGACY',
+            INSTAGRAM_EXPECTED_USERNAME='perfil_a',
+        ), mock.patch('social_automation.instagram._request', side_effect=fake_request):
+            call_command('migrar_instagram_legacy_para_perfil', 'perfil_a', '--dry-run', stdout=output)
+
+        texto = output.getvalue()
+        self.assertIn('Conta: Creator', texto)
+        self.assertIn('Publicavel: SIM', texto)
+        self.assertFalse(SocialInstagramConnection.objects.filter(profile=self.profile_a).exists())
+
+    def test_testar_instagram_mostra_conta_normalizada(self):
+        output = StringIO()
+
+        def fake_request(method, path, params=None, *, credentials=None):
+            if path == '178-A':
+                return {'id': '178-A', 'username': 'perfil_a', 'account_type': 'MEDIA_CREATOR'}
+            if path == 'me/permissions':
+                return {'data': [{'permission': 'instagram_business_content_publish', 'status': 'granted'}]}
+            return {}
+
+        with mock.patch('social_automation.instagram._request', side_effect=fake_request):
+            call_command('testar_instagram', '--perfil', 'perfil_a', stdout=output)
+
+        texto = output.getvalue()
+        self.assertIn('Instagram API: OK', texto)
+        self.assertIn('Conta: Creator', texto)
+
     def test_publicacao_usa_credencial_do_proprio_perfil(self):
         content_a = self._content(self.profile_a, 'Conteudo A')
         content_b = self._content(self.profile_b, 'Conteudo B')
@@ -2130,7 +2215,7 @@ class SocialAutomationMultiProfileInstagramTests(TestCase):
             chamadas.append((credentials.access_token, credentials.instagram_user_id, method, path))
             if method == 'GET' and path in {'178-A', '178-B'}:
                 username = 'perfil_a' if path == '178-A' else 'perfil_b'
-                return {'id': path, 'username': username, 'account_type': 'BUSINESS'}
+                return {'id': path, 'username': username, 'account_type': 'MEDIA_BUSINESS'}
             if method == 'POST' and path.endswith('/media'):
                 return {'id': f'container-{credentials.instagram_user_id}'}
             if method == 'GET' and path.startswith('container-'):

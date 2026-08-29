@@ -3,6 +3,7 @@ from django.core.management.base import BaseCommand, CommandError
 from social_automation.instagram import (
     InstagramAPIError,
     InstagramConfigurationError,
+    display_instagram_account_type,
     obter_conta_instagram,
     obter_permissoes_instagram,
     verificar_configuracao_instagram,
@@ -34,7 +35,7 @@ class Command(BaseCommand):
         self.stdout.write(f'Perfil: {profile.nome if profile else "legacy"}')
         self.stdout.write('User ID: configurado')
         self.stdout.write(f'Username: {conta.get("username") or "-"}')
-        self.stdout.write(f'Conta: {conta.get("account_type") or "acessivel"}')
+        self.stdout.write(f'Conta: {display_instagram_account_type(conta.get("account_type"))}')
         self.stdout.write('Token: aceito')
         if permissoes is not None:
             scopes = [item.get('permission') for item in permissoes.get('data', [])]
