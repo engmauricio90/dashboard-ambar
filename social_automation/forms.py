@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 from django import forms
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.forms.models import BaseInlineFormSet
 from django.utils import timezone
 
 from .models import SocialBaseImage, SocialCarouselSlide, SocialCarouselTemplate, SocialContent, SocialProfile, validate_horarios_publicacao
@@ -454,11 +455,61 @@ class SocialCarouselSlideForm(BootstrapMixin, forms.ModelForm):
         self._apply_bootstrap()
         self.fields['slide_type'].widget.attrs['class'] = 'form-select'
 
+    def has_real_slide_content(self):
+        if self.is_bound:
+            title = (self.data.get(f'{self.prefix}-title') or '').strip()
+            body = (self.data.get(f'{self.prefix}-body') or '').strip()
+            uploaded = bool(self.files.get(f'{self.prefix}-source_image'))
+            existing = bool(getattr(self.instance, 'source_image', None))
+            return bool(title or body or uploaded or existing)
+        return bool(self.instance.pk and (self.instance.title or self.instance.body or self.instance.source_image))
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data.get('DELETE'):
+            return cleaned_data
+        if self.instance.pk and not self.has_real_slide_content():
+            raise forms.ValidationError('Informe titulo, texto ou imagem para o slide.')
+        if not self.instance.pk and not self.has_real_slide_content():
+            cleaned_data['DELETE'] = True
+            self.cleaned_data = cleaned_data
+        return cleaned_data
+
+
+class BaseSocialCarouselSlideFormSet(BaseInlineFormSet):
+    def clean(self):
+        if any(self.errors):
+            return
+
+        active_orders = set()
+        active_count = 0
+        for form in self.forms:
+            if not hasattr(form, 'cleaned_data'):
+                continue
+            if self.can_delete and self._should_delete_form(form):
+                continue
+            if not form.has_real_slide_content():
+                continue
+            if not form.cleaned_data.get('is_active', True):
+                continue
+
+            order = form.cleaned_data.get('order')
+            if order in active_orders:
+                raise forms.ValidationError('Cada slide ativo precisa ter uma ordem unica.')
+            active_orders.add(order)
+            active_count += 1
+
+        if active_count and active_count < 2:
+            raise forms.ValidationError('Carrossel precisa ter no minimo 2 slides ativos.')
+        if active_count > 10:
+            raise forms.ValidationError('Carrossel permite no maximo 10 slides ativos.')
+
 
 SocialCarouselSlideFormSet = forms.inlineformset_factory(
     SocialContent,
     SocialCarouselSlide,
     form=SocialCarouselSlideForm,
+    formset=BaseSocialCarouselSlideFormSet,
     extra=6,
     can_delete=True,
     min_num=0,

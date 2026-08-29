@@ -34,6 +34,7 @@ from .container_versioning import (
     calculate_instagram_container_fingerprint,
     invalidate_instagram_container,
 )
+from .forms import SocialCarouselSlideFormSet
 from .generation import GenerationResult, _image_contexts, gerar_lote_conteudos
 from .image_selection import selecionar_imagem_base
 from .image_generation import SocialImageGenerationDisabled, SocialImagePrompt, build_image_generation_prompt, generate_social_image, image_generation_available
@@ -2579,6 +2580,170 @@ class SocialAutomationCarouselTests(TestCase):
         self.assertEqual(content.external_post_id, 'media-carousel')
         parent_payloads = [params for method, path, params in calls if method == 'POST' and path.endswith('/media') and params.get('media_type') == 'CAROUSEL']
         self.assertEqual(parent_payloads[0]['children'], 'child-1,child-2,child-3')
+
+
+class SocialAutomationCarouselFormSetTests(TestCase):
+    def setUp(self):
+        self.profile = SocialProfile.objects.create(
+            nome='Perfil Formset',
+            username='perfil_formset',
+            horarios_publicacao=['08:00'],
+        )
+        self.template = SocialCarouselTemplate.objects.create(profile=self.profile, name='Template', is_default=True)
+
+    def _content(self):
+        return SocialContent.objects.create(
+            profile=self.profile,
+            carousel_template=self.template,
+            media_type=SocialContent.MediaType.CAROUSEL,
+            frase='Carrossel manual',
+            legenda='Legenda',
+            hashtags='#teste',
+        )
+
+    def _payload(self, content, rows, total_forms=6, initial_forms=0, existing_slides=None):
+        prefix = SocialCarouselSlideFormSet(instance=content).prefix
+        payload = {
+            f'{prefix}-TOTAL_FORMS': str(total_forms),
+            f'{prefix}-INITIAL_FORMS': str(initial_forms),
+            f'{prefix}-MIN_NUM_FORMS': '0',
+            f'{prefix}-MAX_NUM_FORMS': '1000',
+        }
+        existing_slides = existing_slides or []
+        for index in range(total_forms):
+            payload[f'{prefix}-{index}-id'] = ''
+            payload[f'{prefix}-{index}-order'] = '1'
+            payload[f'{prefix}-{index}-slide_type'] = SocialCarouselSlide.SlideType.CONTENT
+            payload[f'{prefix}-{index}-title'] = ''
+            payload[f'{prefix}-{index}-body'] = ''
+            payload[f'{prefix}-{index}-is_active'] = 'on'
+            if index < len(existing_slides):
+                payload[f'{prefix}-{index}-id'] = str(existing_slides[index].id)
+        for index, values in rows.items():
+            for field, value in values.items():
+                payload[f'{prefix}-{index}-{field}'] = value
+        return payload
+
+    def _formset(self, content, rows, total_forms=6, initial_forms=0, existing_slides=None):
+        return SocialCarouselSlideFormSet(
+            self._payload(content, rows, total_forms=total_forms, initial_forms=initial_forms, existing_slides=existing_slides),
+            instance=content,
+        )
+
+    def test_carrossel_novo_com_tres_slides_e_extras_vazios_e_valido(self):
+        content = self._content()
+        formset = self._formset(
+            content,
+            {
+                0: {'order': '1', 'slide_type': SocialCarouselSlide.SlideType.COVER, 'title': 'Capa'},
+                1: {'order': '2', 'slide_type': SocialCarouselSlide.SlideType.CONTENT, 'body': 'Conteudo'},
+                2: {'order': '3', 'slide_type': SocialCarouselSlide.SlideType.CTA, 'body': 'CTA'},
+            },
+            total_forms=6,
+        )
+
+        self.assertTrue(formset.is_valid(), formset.errors or formset.non_form_errors())
+        formset.save()
+        self.assertEqual(content.carousel_slides.count(), 3)
+
+    def test_duplicidade_real_de_order_continua_invalida(self):
+        content = self._content()
+        formset = self._formset(
+            content,
+            {
+                0: {'order': '1', 'slide_type': SocialCarouselSlide.SlideType.COVER, 'title': 'Capa'},
+                1: {'order': '1', 'slide_type': SocialCarouselSlide.SlideType.CONTENT, 'body': 'Conteudo'},
+            },
+        )
+
+        self.assertFalse(formset.is_valid())
+        self.assertIn('ordem unica', str(formset.non_form_errors()))
+
+    def test_defaults_de_extra_nao_criam_slide_vazio(self):
+        content = self._content()
+        formset = self._formset(content, {}, total_forms=6)
+
+        self.assertTrue(formset.is_valid(), formset.errors or formset.non_form_errors())
+        formset.save()
+        self.assertEqual(content.carousel_slides.count(), 0)
+
+    def test_minimo_de_slides_ativos_e_preservado(self):
+        content = self._content()
+        um_slide = self._formset(content, {0: {'order': '1', 'slide_type': SocialCarouselSlide.SlideType.COVER, 'title': 'Capa'}})
+        self.assertFalse(um_slide.is_valid())
+        self.assertIn('minimo 2', str(um_slide.non_form_errors()))
+
+        dois_slides = self._formset(
+            content,
+            {
+                0: {'order': '1', 'slide_type': SocialCarouselSlide.SlideType.COVER, 'title': 'Capa'},
+                1: {'order': '2', 'slide_type': SocialCarouselSlide.SlideType.CONTENT, 'body': 'Conteudo'},
+            },
+        )
+        self.assertTrue(dois_slides.is_valid(), dois_slides.errors or dois_slides.non_form_errors())
+
+    def test_maximo_de_dez_slides_ativos_e_preservado(self):
+        content = self._content()
+        dez = {
+            index: {'order': str(index + 1), 'slide_type': SocialCarouselSlide.SlideType.CONTENT, 'body': f'Slide {index + 1}'}
+            for index in range(10)
+        }
+        formset_dez = self._formset(content, dez, total_forms=10)
+        self.assertTrue(formset_dez.is_valid(), formset_dez.errors or formset_dez.non_form_errors())
+
+        onze = {
+            index: {'order': str(index + 1), 'slide_type': SocialCarouselSlide.SlideType.CONTENT, 'body': f'Slide {index + 1}'}
+            for index in range(11)
+        }
+        formset_onze = self._formset(content, onze, total_forms=11)
+        self.assertFalse(formset_onze.is_valid())
+        self.assertIn('maximo 10', str(formset_onze.non_form_errors()))
+
+    def test_edicao_com_extras_vazios_nao_cria_slides_nem_duplica_order(self):
+        content = self._content()
+        slides = [
+            SocialCarouselSlide.objects.create(content=content, order=1, slide_type=SocialCarouselSlide.SlideType.COVER, title='Capa'),
+            SocialCarouselSlide.objects.create(content=content, order=2, slide_type=SocialCarouselSlide.SlideType.CONTENT, body='Conteudo'),
+            SocialCarouselSlide.objects.create(content=content, order=3, slide_type=SocialCarouselSlide.SlideType.CTA, body='CTA'),
+        ]
+        formset = self._formset(
+            content,
+            {
+                0: {'order': '1', 'slide_type': SocialCarouselSlide.SlideType.COVER, 'title': 'Capa'},
+                1: {'order': '2', 'slide_type': SocialCarouselSlide.SlideType.CONTENT, 'body': 'Conteudo'},
+                2: {'order': '3', 'slide_type': SocialCarouselSlide.SlideType.CTA, 'body': 'CTA'},
+            },
+            total_forms=9,
+            initial_forms=3,
+            existing_slides=slides,
+        )
+
+        self.assertTrue(formset.is_valid(), formset.errors or formset.non_form_errors())
+        formset.save()
+        self.assertEqual(content.carousel_slides.count(), 3)
+
+    def test_delete_ignora_slide_removido_em_quantidade_e_order(self):
+        content = self._content()
+        slides = [
+            SocialCarouselSlide.objects.create(content=content, order=1, slide_type=SocialCarouselSlide.SlideType.COVER, title='Capa'),
+            SocialCarouselSlide.objects.create(content=content, order=2, slide_type=SocialCarouselSlide.SlideType.CONTENT, body='Conteudo'),
+            SocialCarouselSlide.objects.create(content=content, order=3, slide_type=SocialCarouselSlide.SlideType.CTA, body='CTA'),
+        ]
+        formset = self._formset(
+            content,
+            {
+                0: {'order': '1', 'slide_type': SocialCarouselSlide.SlideType.COVER, 'title': 'Capa'},
+                1: {'order': '2', 'slide_type': SocialCarouselSlide.SlideType.CONTENT, 'body': 'Conteudo', 'DELETE': 'on'},
+                2: {'order': '3', 'slide_type': SocialCarouselSlide.SlideType.CTA, 'body': 'CTA'},
+            },
+            total_forms=9,
+            initial_forms=3,
+            existing_slides=slides,
+        )
+
+        self.assertTrue(formset.is_valid(), formset.errors or formset.non_form_errors())
+        formset.save()
+        self.assertEqual(list(content.carousel_slides.order_by('order').values_list('order', flat=True)), [1, 3])
 
 
 @override_settings(
