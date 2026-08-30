@@ -73,6 +73,12 @@ class SocialProfile(models.Model):
         SEMIAUTOMATICO = 'semiautomatico', 'Semiautomatico'
         AUTOMATICO = 'automatico', 'Automatico'
 
+    class AIImagePolicy(models.TextChoices):
+        NONE = 'NONE', 'Sem IA visual'
+        BANK_ONLY = 'BANK_ONLY', 'Somente banco de midia'
+        AI_WHEN_NEEDED = 'AI_WHEN_NEEDED', 'IA quando necessario'
+        AI_ALWAYS = 'AI_ALWAYS', 'IA sempre'
+
     nome = models.CharField(max_length=120)
     username = models.CharField(max_length=120)
     plataforma = models.CharField(max_length=30, choices=Plataforma.choices, default=Plataforma.INSTAGRAM)
@@ -87,7 +93,9 @@ class SocialProfile(models.Model):
     carousel_cta_enabled = models.BooleanField(default=True)
     carousel_default_cta = models.CharField(max_length=255, blank=True)
     ai_image_generation_enabled = models.BooleanField(default=False)
-    ai_image_mode = models.CharField(max_length=30, default='NONE')
+    ai_image_mode = models.CharField(max_length=30, choices=AIImagePolicy.choices, default=AIImagePolicy.NONE)
+    ai_image_daily_limit = models.PositiveSmallIntegerField(default=0)
+    ai_generated_images_reusable = models.BooleanField(default=True)
     image_ai_instructions = models.TextField(blank=True)
     horarios_publicacao = models.JSONField(default=list, validators=[validate_horarios_publicacao])
     estilo = models.TextField(blank=True)
@@ -109,6 +117,14 @@ class SocialProfile(models.Model):
     @property
     def fotos_por_dia(self):
         return max(0, self.posts_por_dia - self.reels_por_dia - self.carousels_por_dia)
+
+    @property
+    def ai_image_policy(self):
+        return self.ai_image_mode or self.AIImagePolicy.NONE
+
+    @ai_image_policy.setter
+    def ai_image_policy(self, value):
+        self.ai_image_mode = value or self.AIImagePolicy.NONE
 
     def clean(self):
         super().clean()
@@ -235,10 +251,14 @@ class SocialBaseImage(models.Model):
     profile = models.ForeignKey(SocialProfile, on_delete=models.CASCADE, related_name='base_images')
     arquivo = models.ImageField(upload_to=social_base_image_upload_to)
     nome = models.CharField(max_length=120)
+    descricao = models.TextField(blank=True)
     tags = models.CharField(max_length=255, blank=True)
     source = models.CharField(max_length=20, choices=Source.choices, default=Source.MANUAL)
     ai_model = models.CharField(max_length=120, blank=True)
     ai_prompt = models.TextField(blank=True)
+    ai_generation_id = models.CharField(max_length=120, blank=True)
+    generation_purpose = models.CharField(max_length=40, blank=True)
+    generated_at = models.DateTimeField(blank=True, null=True)
     text_position = models.CharField(max_length=10, choices=TextPosition.choices, default=TextPosition.AUTO)
     text_box_preset = models.CharField(max_length=20, choices=TextBoxPreset.choices, blank=True)
     primary_text_box_x = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
@@ -271,6 +291,11 @@ class SocialBaseImage(models.Model):
     text_safe_zone = models.CharField(max_length=20, choices=TextSafeZone.choices, default=TextSafeZone.AUTO)
     focal_x = models.DecimalField(max_digits=4, decimal_places=2, blank=True, null=True)
     focal_y = models.DecimalField(max_digits=4, decimal_places=2, blank=True, null=True)
+    analysis_metadata = models.JSONField(default=dict, blank=True)
+    analysis_model = models.CharField(max_length=120, blank=True)
+    analysis_version = models.CharField(max_length=40, blank=True)
+    analysis_confidence = models.DecimalField(max_digits=4, decimal_places=2, blank=True, null=True)
+    analyzed_at = models.DateTimeField(blank=True, null=True)
     ativa = models.BooleanField(default=True)
     vezes_usada = models.PositiveIntegerField(default=0)
     ultima_utilizacao = models.DateTimeField(blank=True, null=True)
@@ -359,6 +384,10 @@ class SocialBaseImage(models.Model):
 
 
 class SocialBaseImageProtectedRegion(models.Model):
+    class Source(models.TextChoices):
+        MANUAL = 'MANUAL', 'Manual'
+        AI_ANALYSIS = 'AI_ANALYSIS', 'Analise IA'
+
     class RegionType(models.TextChoices):
         SUBJECT = 'subject', 'Assunto'
         FACE = 'face', 'Rosto'
@@ -372,6 +401,8 @@ class SocialBaseImageProtectedRegion(models.Model):
     width = models.DecimalField(max_digits=4, decimal_places=2)
     height = models.DecimalField(max_digits=4, decimal_places=2)
     region_type = models.CharField(max_length=20, choices=RegionType.choices, default=RegionType.SUBJECT)
+    source = models.CharField(max_length=20, choices=Source.choices, default=Source.MANUAL)
+    confidence = models.DecimalField(max_digits=4, decimal_places=2, blank=True, null=True)
     active = models.BooleanField(default=True)
     note = models.CharField(max_length=160, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -696,6 +727,9 @@ class SocialCarouselSlide(models.Model):
     order = models.PositiveSmallIntegerField(default=1)
     slide_type = models.CharField(max_length=20, choices=SlideType.choices, default=SlideType.CONTENT)
     visual_intent = models.CharField(max_length=30, choices=SocialCarouselTemplateVariant.LayoutType.choices, default=SocialCarouselTemplateVariant.LayoutType.AUTO)
+    semantic_visual_intent = models.CharField(max_length=40, blank=True)
+    media_intent = models.CharField(max_length=255, blank=True)
+    media_required = models.BooleanField(default=False)
     title = models.CharField(max_length=180, blank=True)
     body = models.TextField(blank=True)
     source_image = models.ImageField(upload_to=social_carousel_slide_source_upload_to, blank=True, null=True)
@@ -760,3 +794,34 @@ class SocialContentEvent(models.Model):
 
     def __str__(self):
         return f'{self.content_id} - {self.get_acao_display()}'
+
+
+class SocialAIUsage(models.Model):
+    class Operation(models.TextChoices):
+        TEXT_GENERATION = 'TEXT_GENERATION', 'Geracao de texto'
+        IMAGE_GENERATION = 'IMAGE_GENERATION', 'Geracao de imagem'
+        IMAGE_ANALYSIS = 'IMAGE_ANALYSIS', 'Analise de imagem'
+
+    profile = models.ForeignKey(SocialProfile, on_delete=models.CASCADE, related_name='ai_usages')
+    content = models.ForeignKey(SocialContent, on_delete=models.SET_NULL, blank=True, null=True, related_name='ai_usages')
+    base_image = models.ForeignKey(SocialBaseImage, on_delete=models.SET_NULL, blank=True, null=True, related_name='ai_usages')
+    operation = models.CharField(max_length=30, choices=Operation.choices)
+    provider = models.CharField(max_length=40, default='openai')
+    model = models.CharField(max_length=120, blank=True)
+    success = models.BooleanField(default=True)
+    prompt_tokens = models.PositiveIntegerField(blank=True, null=True)
+    output_tokens = models.PositiveIntegerField(blank=True, null=True)
+    total_tokens = models.PositiveIntegerField(blank=True, null=True)
+    error = models.CharField(max_length=500, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['profile', 'operation', '-created_at']),
+            models.Index(fields=['success', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.profile.username} - {self.operation} - {self.created_at:%d/%m/%Y %H:%M}'

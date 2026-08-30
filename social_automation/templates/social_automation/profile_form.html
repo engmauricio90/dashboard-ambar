@@ -38,6 +38,8 @@
         <div class="row g-3">
             <div class="col-md-4 d-flex align-items-end"><div class="form-check mb-2">{{ form.ai_image_generation_enabled }} <label class="form-check-label">{{ form.ai_image_generation_enabled.label }}</label></div></div>
             <div class="col-md-4"><label class="form-label">{{ form.ai_image_mode.label }}</label>{{ form.ai_image_mode }}</div>
+            <div class="col-md-2"><label class="form-label">{{ form.ai_image_daily_limit.label }}</label>{{ form.ai_image_daily_limit }}<div class="form-text">{{ form.ai_image_daily_limit.help_text }}</div></div>
+            <div class="col-md-2 d-flex align-items-end"><div class="form-check mb-2">{{ form.ai_generated_images_reusable }} <label class="form-check-label">{{ form.ai_generated_images_reusable.label }}</label></div></div>
             <div class="col-md-12"><label class="form-label">{{ form.image_ai_instructions.label }}</label>{{ form.image_ai_instructions }}</div>
         </div>
         <hr>

@@ -144,6 +144,55 @@
 </div>
 
 {% if content.is_carousel %}
+<div class="card shadow-sm mt-3">
+    <div class="card-header fw-bold">Slides e midia</div>
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Slide</th>
+                    <th>Tipo</th>
+                    <th>Intencao</th>
+                    <th>Midia</th>
+                    <th>Layout</th>
+                    <th class="text-end">Acoes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for slide in content.carousel_slides.all %}
+                <tr>
+                    <td>{{ slide.order }}</td>
+                    <td>{{ slide.get_slide_type_display }}</td>
+                    <td>
+                        <strong>{{ slide.semantic_visual_intent|default:'-' }}</strong>
+                        <div class="text-muted small">{{ slide.media_intent|default:'sem intencao de midia' }}</div>
+                    </td>
+                    <td>
+                        {% if slide.source_base_image %}
+                            {{ slide.source_base_image.nome }}
+                            <div class="text-muted small">{{ slide.source_base_image.get_source_display }}</div>
+                        {% elif slide.source_image %}
+                            imagem manual
+                        {% else %}
+                            texto/layout
+                        {% endif %}
+                    </td>
+                    <td>{{ slide.visual_intent }}</td>
+                    <td class="text-end">
+                        {% if content.status != 'publicado' %}
+                        <form method="post" action="{% url 'social_automation:carousel_slide_generate_image' slide.id %}" class="d-inline">
+                            {% csrf_token %}
+                            <button class="btn btn-sm btn-outline-primary" type="submit">Gerar imagem IA</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
 <div class="social-carousel-modal" data-carousel-modal aria-hidden="true">
     <button class="btn btn-light position-absolute top-0 end-0 m-3" type="button" data-carousel-close>Fechar</button>
     <button class="btn btn-light position-absolute start-0 top-50 translate-middle-y ms-3" type="button" data-carousel-prev>Anterior</button>

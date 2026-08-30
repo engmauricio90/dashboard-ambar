@@ -16,6 +16,7 @@ from django.views.decorators.http import require_POST
 from .ai import OpenAINotConfigured, OpenAIUnavailable
 from .automation import automacao_status_profile, executar_tick_social
 from .forms import (
+    SocialAICarouselForm,
     SocialBaseImageForm,
     SocialCarouselSlideFormSet,
     SocialCarouselTemplateForm,
@@ -25,6 +26,9 @@ from .forms import (
     SocialScheduleForm,
     SocialVisualIdentityForm,
 )
+from .autonomous_carousel import gerar_carrossel_autonomo
+from .image_analysis import analyze_social_image
+from .image_generation import SocialImagePrompt, build_social_image_prompt, generate_social_image
 from .generation import gerar_lote_conteudos
 from .instagram import (
     InstagramAPIError,
@@ -463,6 +467,69 @@ def profile_generate(request, profile_id):
     else:
         form = SocialGenerateForm()
     return render(request, 'social_automation/generate_form.html', {'profile': profile, 'form': form, 'resultado': resultado})
+
+
+@staff_required
+def profile_generate_carousel_ai(request, profile_id):
+    profile = _profile_or_404(profile_id)
+    resultado = None
+    if request.method == 'POST':
+        form = SocialAICarouselForm(request.POST, profile=profile)
+        if form.is_valid():
+            try:
+                resultado = gerar_carrossel_autonomo(
+                    profile,
+                    tema=form.cleaned_data.get('tema') or '',
+                    slides=form.cleaned_data.get('slides') or profile.carousel_default_slide_count,
+                    usuario=request.user,
+                )
+                messages.success(request, 'Carrossel gerado como rascunho.')
+                return redirect('social_automation:content_detail', content_id=resultado.content.id)
+            except (OpenAINotConfigured, OpenAIUnavailable, ValidationError, SocialRenderError) as exc:
+                _handle_validation_error(request, exc)
+    else:
+        form = SocialAICarouselForm(profile=profile)
+    return render(request, 'social_automation/generate_carousel_ai_form.html', {'profile': profile, 'form': form, 'resultado': resultado})
+
+
+@staff_required
+@require_POST
+def carousel_slide_generate_image(request, slide_id):
+    slide = get_object_or_404(SocialCarouselSlide.objects.select_related('content', 'content__profile'), pk=slide_id)
+    content = slide.content
+    if not content.pode_editar_operacionalmente:
+        messages.error(request, 'Conteudo publicado nao pode gerar nova imagem.')
+        return redirect('social_automation:content_detail', content_id=content.id)
+    try:
+        prompt_text = build_social_image_prompt(
+            content.profile,
+            purpose='CAROUSEL_SLIDE',
+            visual_intent=slide.semantic_visual_intent or 'CLEAN',
+            media_intent=slide.media_intent or slide.title,
+            desired_text_zone=slide.visual_intent,
+            aspect_ratio=content.carousel_template.aspect_ratio if content.carousel_template else 'SQUARE',
+            context={'slide_id': slide.id, 'title': slide.title},
+        )
+        image = generate_social_image(
+            SocialImagePrompt(
+                profile_id=content.profile_id,
+                prompt=prompt_text,
+                aspect_ratio=content.carousel_template.aspect_ratio if content.carousel_template else 'SQUARE',
+                purpose='CAROUSEL_SLIDE',
+                metadata={'slide_id': slide.id, 'visual_intent': slide.semantic_visual_intent, 'media_intent': slide.media_intent},
+            )
+        )
+        try:
+            analyze_social_image(content.profile, image, persist=True)
+        except OpenAIUnavailable:
+            pass
+        slide.source_base_image = image
+        slide.save(update_fields=['source_base_image', 'updated_at'])
+        renderizar_midia_social(content)
+        messages.success(request, 'Imagem do slide gerada e carrossel renderizado novamente.')
+    except (OpenAINotConfigured, OpenAIUnavailable, ValidationError, SocialRenderError) as exc:
+        _handle_validation_error(request, exc)
+    return redirect('social_automation:content_detail', content_id=content.id)
 
 
 @staff_required

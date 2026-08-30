@@ -57,6 +57,8 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
             'carousel_default_cta',
             'ai_image_generation_enabled',
             'ai_image_mode',
+            'ai_image_daily_limit',
+            'ai_generated_images_reusable',
             'image_ai_instructions',
             'estilo',
             'instrucoes_ia',
@@ -94,6 +96,10 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
         self.fields['carousel_default_cta'].required = False
         self.fields['ai_image_mode'].required = False
         self.fields['ai_image_mode'].initial = self.instance.ai_image_mode if self.instance and self.instance.pk else 'NONE'
+        self.fields['ai_image_mode'].label = 'Politica de IA visual'
+        self.fields['ai_image_daily_limit'].required = False
+        self.fields['ai_image_daily_limit'].help_text = '0 usa o limite padrao do sistema.'
+        self.fields['ai_generated_images_reusable'].required = False
         self.fields['image_ai_instructions'].required = False
 
     def clean_horarios_texto(self):
@@ -165,6 +171,7 @@ class SocialBaseImageForm(BootstrapMixin, forms.ModelForm):
         fields = [
             'arquivo',
             'nome',
+            'descricao',
             'tags',
             'text_position',
             'text_box_preset',
@@ -233,6 +240,7 @@ class SocialBaseImageForm(BootstrapMixin, forms.ModelForm):
             'text_safe_zone': 'Area segura para texto',
             'focal_x': 'Foco X',
             'focal_y': 'Foco Y',
+            'descricao': 'Descricao visual',
         }
         help_texts = {
             'text_box_preset': 'Preenche a caixa principal da foto quando os percentuais estiverem vazios.',
@@ -477,6 +485,21 @@ class SocialGenerateForm(BootstrapMixin, forms.Form):
         return quantidade
 
 
+class SocialAICarouselForm(BootstrapMixin, forms.Form):
+    tema = forms.CharField(
+        label='Tema',
+        required=False,
+        widget=forms.Textarea(attrs={'rows': 3, 'placeholder': 'Opcional. Ex.: bastidores, tutorial, lancamento, dica pratica'}),
+    )
+    slides = forms.IntegerField(label='Quantidade de slides', min_value=2, max_value=10, required=False)
+
+    def __init__(self, *args, profile, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.profile = profile
+        self.fields['slides'].initial = profile.carousel_default_slide_count or 6
+        self._apply_bootstrap()
+
+
 class SocialCarouselTemplateForm(BootstrapMixin, forms.ModelForm):
     class Meta:
         model = SocialCarouselTemplate
@@ -513,6 +536,9 @@ class SocialCarouselSlideForm(BootstrapMixin, forms.ModelForm):
             'order',
             'slide_type',
             'visual_intent',
+            'semantic_visual_intent',
+            'media_intent',
+            'media_required',
             'variant',
             'source_base_image',
             'title',
@@ -533,6 +559,9 @@ class SocialCarouselSlideForm(BootstrapMixin, forms.ModelForm):
         for field_name in ['slide_type', 'visual_intent', 'variant', 'source_base_image', 'overlay_override']:
             self.fields[field_name].widget.attrs['class'] = 'form-select'
         self.fields['visual_intent'].required = False
+        self.fields['semantic_visual_intent'].required = False
+        self.fields['media_intent'].required = False
+        self.fields['media_required'].required = False
         self.fields['variant'].required = False
         self.fields['source_base_image'].required = False
         self.fields['overlay_override'].required = False

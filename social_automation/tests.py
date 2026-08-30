@@ -1,4 +1,5 @@
 from datetime import timedelta
+import base64
 from io import BytesIO, StringIO
 from hashlib import sha256
 import importlib.util
@@ -25,6 +26,7 @@ from PIL import Image, ImageDraw
 from empresas.models import Empresa, UsuarioEmpresa
 
 from .models import (
+    SocialAIUsage,
     SocialBaseImage,
     SocialBaseImageProtectedRegion,
     SocialCarouselSlide,
@@ -36,7 +38,7 @@ from .models import (
     SocialProfile,
     SocialVisualIdentity,
 )
-from .ai import GeneratedContent
+from .ai import GeneratedCarouselBlueprint, GeneratedCarouselSlide, GeneratedContent, OpenAIUnavailable
 from .automation import executar_tick_social
 from .container_versioning import (
     REEL_SHARE_TO_FEED,
@@ -49,6 +51,8 @@ from .forms import SocialCarouselSlideFormSet
 from .generation import GenerationResult, _image_contexts, gerar_lote_conteudos
 from .image_selection import selecionar_imagem_base
 from .image_generation import SocialImageGenerationDisabled, SocialImagePrompt, build_image_generation_prompt, generate_social_image, image_generation_available
+from .image_analysis import ImageAnalysisResult, persist_image_analysis
+from .media_resolver import STATUS_FULL_TEXT, STATUS_NEEDS_GENERATION, STATUS_SELECTED, resolve_slide_media
 from .instagram import (
     InstagramAPIError,
     InstagramContainerPending,
@@ -3659,3 +3663,398 @@ class SocialAutomationCarouselHardeningTests(TestCase):
         with mock.patch('social_automation.instagram._request', side_effect=self._fake_meta([])):
             call_command('diagnosticar_container_carrossel_instagram', content.id, stdout=output)
         self.assertIn('Containers criados sem publicar', output.getvalue())
+
+
+class SocialAutomationAIVisionTests(TestCase):
+    def setUp(self):
+        self.profile = SocialProfile.objects.create(
+            nome='Perfil Generico',
+            username='perfil_generico',
+            horarios_publicacao=['12:00'],
+            ai_image_generation_enabled=True,
+            ai_image_mode=SocialProfile.AIImagePolicy.AI_WHEN_NEEDED,
+            image_ai_instructions='Visual limpo e generico.',
+        )
+        self.image = SocialBaseImage.objects.create(
+            profile=self.profile,
+            arquivo=imagem_social('banco.jpg'),
+            nome='Imagem banco obra limpa',
+            descricao='Area segura a esquerda com assunto a direita',
+            tags='obra, limpo, clean',
+            text_safe_zone=SocialBaseImage.TextSafeZone.LEFT,
+            subject_position=SocialBaseImage.SubjectPosition.RIGHT,
+            primary_text_box_x=7,
+            primary_text_box_y=20,
+            primary_text_box_width=42,
+            primary_text_box_height=46,
+        )
+
+    def test_media_resolver_usa_banco_quando_score_e_suficiente(self):
+        result = resolve_slide_media(
+            self.profile,
+            media_intent='obra limpa',
+            visual_intent='CLEAN',
+            preferred_layout='HERO_LEFT',
+            aspect_ratio='SQUARE',
+            media_required=True,
+        )
+        self.assertEqual(result.status, STATUS_SELECTED)
+        self.assertEqual(result.image, self.image)
+
+    def test_media_resolver_solicita_geracao_quando_banco_nao_casa(self):
+        result = resolve_slide_media(
+            self.profile,
+            media_intent='laboratorio espacial futurista',
+            visual_intent='DRAMATIC',
+            preferred_layout='HERO_RIGHT',
+            aspect_ratio='SQUARE',
+            media_required=True,
+        )
+        self.assertEqual(result.status, STATUS_NEEDS_GENERATION)
+
+    def test_slide_sem_midia_obrigatoria_vira_full_text(self):
+        result = resolve_slide_media(self.profile, media_required=False)
+        self.assertEqual(result.status, STATUS_FULL_TEXT)
+
+    @override_settings(SOCIAL_IMAGE_ANALYSIS_MIN_CONFIDENCE=0.6)
+    def test_persist_image_analysis_preserva_manual_e_cria_regiao_ia(self):
+        SocialBaseImageProtectedRegion.objects.create(image=self.image, x=0.1, y=0.1, width=0.2, height=0.2)
+        result = ImageAnalysisResult(
+            subject_position=SocialBaseImage.SubjectPosition.RIGHT,
+            focal_x=0.7,
+            focal_y=0.4,
+            safe_zones=[SocialBaseImage.TextSafeZone.LEFT],
+            protected_regions=[{'x': 0.55, 'y': 0.15, 'width': 0.35, 'height': 0.60, 'region_type': 'subject', 'confidence': 0.9}],
+            confidence=0.85,
+            raw={'ok': True},
+        )
+        persist_image_analysis(self.image, result, model='vision-test')
+        self.image.refresh_from_db()
+        self.assertEqual(self.image.analysis_model, 'vision-test')
+        self.assertEqual(self.image.protected_regions.filter(source=SocialBaseImageProtectedRegion.Source.MANUAL).count(), 1)
+        self.assertEqual(self.image.protected_regions.filter(source=SocialBaseImageProtectedRegion.Source.AI_ANALYSIS).count(), 1)
+
+    def test_policy_bank_only_bloqueia_generate_social_image(self):
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.BANK_ONLY
+        self.profile.save(update_fields=['ai_image_mode', 'updated_at'])
+        with override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test'):
+            with self.assertRaises(SocialImageGenerationDisabled):
+                generate_social_image(SocialImagePrompt(profile_id=self.profile.id, prompt='Imagem teste'))
+
+    def _fake_image_response(self, nome='generated.jpg'):
+        image = Image.new('RGB', (1024, 1024), color='navy')
+        buffer = BytesIO()
+        image.save(buffer, format='JPEG')
+        payload = base64.b64encode(buffer.getvalue()).decode('ascii')
+        data = type('Data', (), {'b64_json': payload})()
+        return type('Response', (), {'data': [data], 'id': nome})()
+
+    def _provider(self, side_effect=None):
+        generate = mock.Mock(side_effect=side_effect) if side_effect is not None else mock.Mock(return_value=self._fake_image_response())
+        return type('Client', (), {'images': type('Images', (), {'generate': generate})()})(), generate
+
+    def _blueprint(self, media_required=True, count=6, all_required=False):
+        slides = []
+        for index in range(1, count + 1):
+            slides.append(
+                GeneratedCarouselSlide(
+                    order=index,
+                    slide_type=SocialCarouselSlide.SlideType.COVER if index == 1 else SocialCarouselSlide.SlideType.CONTENT,
+                    title=f'Slide {index}',
+                    body='Texto curto',
+                    visual_intent='CLEAN',
+                    media_intent='midia inexistente',
+                    media_required=media_required if (all_required or index == 1) else False,
+                    preferred_layout='HERO_LEFT' if index == 1 else 'FULL_TEXT',
+                )
+            )
+        return GeneratedCarouselBlueprint(topic='Tema', hook='Hook seguro', caption='Legenda segura', hashtags=['teste'], slides=slides)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test')
+    def test_feature_flag_desligada_bloqueia_antes_do_provider(self):
+        self.profile.ai_image_generation_enabled = False
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_ALWAYS
+        self.profile.save(update_fields=['ai_image_generation_enabled', 'ai_image_mode', 'updated_at'])
+        client, provider = self._provider()
+        with mock.patch('social_automation.image_generation._client', return_value=client), mock.patch('social_automation.image_generation.moderar_conteudo', return_value=False):
+            with self.assertRaises(SocialImageGenerationDisabled):
+                generate_social_image(SocialImagePrompt(profile_id=self.profile.id, prompt='Prompt teste'))
+        self.assertEqual(provider.call_count, 0)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test')
+    def test_policy_matrix_nao_chama_provider_quando_nao_deve(self):
+        for policy in [SocialProfile.AIImagePolicy.NONE, SocialProfile.AIImagePolicy.BANK_ONLY]:
+            with self.subTest(policy=policy):
+                self.profile.ai_image_mode = policy
+                self.profile.save(update_fields=['ai_image_mode', 'updated_at'])
+                client, provider = self._provider()
+                with mock.patch('social_automation.image_generation._client', return_value=client), mock.patch('social_automation.image_generation.moderar_conteudo', return_value=False):
+                    with self.assertRaises(SocialImageGenerationDisabled):
+                        generate_social_image(SocialImagePrompt(profile_id=self.profile.id, prompt=f'Prompt {policy}'))
+                self.assertEqual(provider.call_count, 0)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=2)
+    def test_quota_diaria_bloqueia_antes_da_api(self):
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_ALWAYS
+        self.profile.ai_generated_images_reusable = False
+        self.profile.ai_image_daily_limit = 2
+        self.profile.save(update_fields=['ai_image_mode', 'ai_generated_images_reusable', 'ai_image_daily_limit', 'updated_at'])
+        client, provider = self._provider()
+        with mock.patch('social_automation.image_generation._client', return_value=client), mock.patch('social_automation.image_generation.moderar_conteudo', return_value=False):
+            generate_social_image(SocialImagePrompt(profile_id=self.profile.id, prompt='Prompt 1'))
+            generate_social_image(SocialImagePrompt(profile_id=self.profile.id, prompt='Prompt 2'))
+            with self.assertRaises(SocialImageGenerationDisabled):
+                generate_social_image(SocialImagePrompt(profile_id=self.profile.id, prompt='Prompt 3'))
+        self.assertEqual(provider.call_count, 2)
+        self.assertEqual(SocialBaseImage.objects.filter(profile=self.profile, source=SocialBaseImage.Source.AI).count(), 2)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_IMAGE_QUALITY='standard')
+    def test_idempotencia_reutiliza_request_igual_e_request_diferente_gera(self):
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_ALWAYS
+        self.profile.save(update_fields=['ai_image_mode', 'updated_at'])
+        client, provider = self._provider()
+        with mock.patch('social_automation.image_generation._client', return_value=client), mock.patch('social_automation.image_generation.moderar_conteudo', return_value=False):
+            first = generate_social_image(SocialImagePrompt(profile_id=self.profile.id, prompt='Mesmo prompt', aspect_ratio='SQUARE'))
+            second = generate_social_image(SocialImagePrompt(profile_id=self.profile.id, prompt='Mesmo prompt', aspect_ratio='SQUARE'))
+            third = generate_social_image(SocialImagePrompt(profile_id=self.profile.id, prompt='Outro prompt', aspect_ratio='SQUARE'))
+        self.assertEqual(first.id, second.id)
+        self.assertNotEqual(first.id, third.id)
+        self.assertEqual(provider.call_count, 2)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='modelo-a', OPENAI_SOCIAL_IMAGE_QUALITY='standard')
+    def test_idempotencia_considera_modelo_e_qualidade(self):
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_ALWAYS
+        self.profile.save(update_fields=['ai_image_mode', 'updated_at'])
+        client, provider = self._provider()
+        with mock.patch('social_automation.image_generation._client', return_value=client), mock.patch('social_automation.image_generation.moderar_conteudo', return_value=False):
+            first = generate_social_image(SocialImagePrompt(profile_id=self.profile.id, prompt='Mesmo prompt'))
+            with override_settings(OPENAI_SOCIAL_IMAGE_MODEL='modelo-b'):
+                second = generate_social_image(SocialImagePrompt(profile_id=self.profile.id, prompt='Mesmo prompt'))
+            with override_settings(OPENAI_SOCIAL_IMAGE_QUALITY='hd'):
+                third = generate_social_image(SocialImagePrompt(profile_id=self.profile.id, prompt='Mesmo prompt'))
+        self.assertNotEqual(first.id, second.id)
+        self.assertNotEqual(first.id, third.id)
+        self.assertEqual(provider.call_count, 3)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test')
+    def test_erro_provider_registra_usage_sem_criar_imagem(self):
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_ALWAYS
+        self.profile.save(update_fields=['ai_image_mode', 'updated_at'])
+        client, provider = self._provider(side_effect=TimeoutError('timeout controlado key-test'))
+        with mock.patch('social_automation.image_generation._client', return_value=client), mock.patch('social_automation.image_generation.moderar_conteudo', return_value=False):
+            with self.assertRaises(OpenAIUnavailable):
+                generate_social_image(SocialImagePrompt(profile_id=self.profile.id, prompt='Prompt timeout'))
+        self.assertEqual(provider.call_count, 1)
+        self.assertFalse(SocialBaseImage.objects.filter(profile=self.profile, source=SocialBaseImage.Source.AI).exists())
+        usage = SocialAIUsage.objects.get(profile=self.profile, operation=SocialAIUsage.Operation.IMAGE_GENERATION)
+        self.assertFalse(usage.success)
+        self.assertNotIn('key-test', usage.error)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test')
+    def test_erros_429_e_5xx_sao_controlados_sem_retry(self):
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_ALWAYS
+        self.profile.save(update_fields=['ai_image_mode', 'updated_at'])
+        client, provider = self._provider(side_effect=[Exception('HTTP 429 rate limit'), Exception('HTTP 500 servidor')])
+        with mock.patch('social_automation.image_generation._client', return_value=client), mock.patch('social_automation.image_generation.moderar_conteudo', return_value=False):
+            with self.assertRaises(OpenAIUnavailable):
+                generate_social_image(SocialImagePrompt(profile_id=self.profile.id, prompt='Prompt 429'))
+            with self.assertRaises(OpenAIUnavailable):
+                generate_social_image(SocialImagePrompt(profile_id=self.profile.id, prompt='Prompt 500'))
+        self.assertEqual(provider.call_count, 2)
+        self.assertEqual(SocialAIUsage.objects.filter(profile=self.profile, success=False).count(), 2)
+        self.assertFalse(SocialBaseImage.objects.filter(profile=self.profile, source=SocialBaseImage.Source.AI).exists())
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', SOCIAL_AI_IMAGE_MAX_BYTES=10)
+    def test_resposta_acima_do_limite_nao_cria_imagem_utilizavel(self):
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_ALWAYS
+        self.profile.save(update_fields=['ai_image_mode', 'updated_at'])
+        client, provider = self._provider()
+        with mock.patch('social_automation.image_generation._client', return_value=client), mock.patch('social_automation.image_generation.moderar_conteudo', return_value=False):
+            with self.assertRaises(OpenAIUnavailable):
+                generate_social_image(SocialImagePrompt(profile_id=self.profile.id, prompt='Prompt grande'))
+        self.assertEqual(provider.call_count, 1)
+        self.assertFalse(SocialBaseImage.objects.filter(profile=self.profile, source=SocialBaseImage.Source.AI).exists())
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test')
+    def test_respostas_invalidas_nao_criam_imagem_utilizavel(self):
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_ALWAYS
+        self.profile.ai_generated_images_reusable = False
+        self.profile.save(update_fields=['ai_image_mode', 'ai_generated_images_reusable', 'updated_at'])
+        invalid_payloads = [
+            type('Response', (), {'data': [type('Data', (), {'b64_json': ''})()], 'id': 'empty'})(),
+            type('Response', (), {'data': [type('Data', (), {'b64_json': 'base64-invalido!'})()], 'id': 'bad64'})(),
+            type('Response', (), {'data': [type('Data', (), {'b64_json': base64.b64encode(b'nao-e-imagem').decode('ascii')})()], 'id': 'badimage'})(),
+        ]
+        with mock.patch('social_automation.image_generation.moderar_conteudo', return_value=False):
+            for index, response in enumerate(invalid_payloads, start=1):
+                client, provider = self._provider(side_effect=[response])
+                with mock.patch('social_automation.image_generation._client', return_value=client):
+                    with self.assertRaises(OpenAIUnavailable):
+                        generate_social_image(SocialImagePrompt(profile_id=self.profile.id, prompt=f'Prompt invalido {index}'))
+                self.assertEqual(provider.call_count, 1)
+        self.assertFalse(SocialBaseImage.objects.filter(profile=self.profile, source=SocialBaseImage.Source.AI).exists())
+
+    @override_settings(SOCIAL_IMAGE_ANALYSIS_MIN_CONFIDENCE=0.8)
+    def test_analysis_confidence_e_bbox_invalida_nao_persistem_regiao(self):
+        low = ImageAnalysisResult(confidence=0.4, protected_regions=[{'x': 0.1, 'y': 0.1, 'width': 0.2, 'height': 0.2, 'region_type': 'subject', 'confidence': 0.9}], raw={})
+        persist_image_analysis(self.image, low, model='vision-test')
+        self.assertEqual(self.image.protected_regions.count(), 0)
+        invalid = ImageAnalysisResult(
+            confidence=0.95,
+            protected_regions=[{'x': -0.2, 'y': 0.1, 'width': 1.8, 'height': 0.2, 'region_type': 'subject', 'confidence': 0.95}],
+            raw={},
+        )
+        persist_image_analysis(self.image, invalid, model='vision-test')
+        self.assertEqual(self.image.protected_regions.count(), 0)
+
+    def test_resolver_isola_midia_por_perfil_e_penaliza_uso_recente(self):
+        other_profile = SocialProfile.objects.create(nome='Outro', username='outro', horarios_publicacao=['13:00'])
+        other = SocialBaseImage.objects.create(profile=other_profile, arquivo=imagem_social('outra.jpg'), nome='Imagem obra limpa', tags='obra, limpo')
+        recent = SocialBaseImage.objects.create(
+            profile=self.profile,
+            arquivo=imagem_social('recente.jpg'),
+            nome='Imagem obra limpa recente',
+            tags='obra, limpo',
+            text_safe_zone=SocialBaseImage.TextSafeZone.LEFT,
+            subject_position=SocialBaseImage.SubjectPosition.RIGHT,
+            vezes_usada=20,
+            ultima_utilizacao=timezone.now(),
+        )
+        result = resolve_slide_media(self.profile, media_intent='obra limpa', visual_intent='CLEAN', preferred_layout='HERO_LEFT', media_required=True)
+        self.assertNotEqual(result.image, other)
+        self.assertNotEqual(result.image, recent)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', SOCIAL_MEDIA_MATCH_MIN_SCORE=88)
+    def test_multi_perfil_isola_policy_prompt_midia_quota_e_usage(self):
+        profile_b = SocialProfile.objects.create(
+            nome='Perfil B',
+            username='perfil_b',
+            horarios_publicacao=['13:00'],
+            ai_image_generation_enabled=False,
+            ai_image_mode=SocialProfile.AIImagePolicy.AI_WHEN_NEEDED,
+            ai_image_daily_limit=1,
+            image_ai_instructions='Instrucoes exclusivas B.',
+        )
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_ALWAYS
+        self.profile.ai_image_daily_limit = 1
+        self.profile.image_ai_instructions = 'Instrucoes exclusivas A.'
+        self.profile.save(update_fields=['ai_image_mode', 'ai_image_daily_limit', 'image_ai_instructions', 'updated_at'])
+        client, provider = self._provider()
+        with mock.patch('social_automation.image_generation._client', return_value=client), mock.patch('social_automation.image_generation.moderar_conteudo', return_value=False):
+            generated = generate_social_image(SocialImagePrompt(profile_id=self.profile.id, prompt=build_image_generation_prompt(self.profile, 'Prompt A')))
+            with self.assertRaises(SocialImageGenerationDisabled):
+                generate_social_image(SocialImagePrompt(profile_id=profile_b.id, prompt=build_image_generation_prompt(profile_b, 'Prompt B')))
+        self.assertEqual(provider.call_count, 1)
+        prompt_sent = provider.call_args.kwargs['prompt']
+        self.assertIn('Instrucoes exclusivas A.', prompt_sent)
+        self.assertNotIn('Instrucoes exclusivas B.', prompt_sent)
+        self.assertEqual(generated.profile, self.profile)
+        self.assertEqual(SocialAIUsage.objects.filter(profile=self.profile, success=True).count(), 1)
+        self.assertEqual(SocialAIUsage.objects.filter(profile=profile_b).count(), 0)
+        result_b = resolve_slide_media(profile_b, media_intent='ia', visual_intent='CLEAN', preferred_layout='HERO_LEFT', media_required=True)
+        self.assertNotEqual(result_b.image, generated)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', SOCIAL_MEDIA_MATCH_MIN_SCORE=99)
+    def test_carrossel_autonomo_gera_uma_imagem_e_nao_chama_meta(self):
+        from .autonomous_carousel import gerar_carrossel_autonomo
+
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_WHEN_NEEDED
+        self.profile.ai_generated_images_reusable = False
+        self.profile.save(update_fields=['ai_image_mode', 'ai_generated_images_reusable', 'updated_at'])
+        client, provider = self._provider()
+        with mock.patch('social_automation.autonomous_carousel.gerar_carrossel_blueprint_ia', return_value=self._blueprint(media_required=True)), mock.patch('social_automation.autonomous_carousel.moderar_conteudo', return_value=False), mock.patch('social_automation.image_generation.moderar_conteudo', return_value=False), mock.patch('social_automation.image_generation._client', return_value=client), mock.patch('social_automation.autonomous_carousel.analyze_social_image'), mock.patch('social_automation.instagram._request') as meta:
+            result = gerar_carrossel_autonomo(self.profile, tema='teste', slides=6)
+        self.assertEqual(provider.call_count, 1)
+        self.assertFalse(meta.called)
+        self.assertEqual(result.content.status, SocialContent.Status.RASCUNHO)
+        self.assertTrue(result.content.final_media_ready)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', SOCIAL_MEDIA_MATCH_MIN_SCORE=99)
+    def test_carrossel_sem_midia_required_nao_gasta_ia(self):
+        from .autonomous_carousel import gerar_carrossel_autonomo
+
+        client, provider = self._provider()
+        with mock.patch('social_automation.autonomous_carousel.gerar_carrossel_blueprint_ia', return_value=self._blueprint(media_required=False)), mock.patch('social_automation.autonomous_carousel.moderar_conteudo', return_value=False), mock.patch('social_automation.image_generation._client', return_value=client), mock.patch('social_automation.instagram._request') as meta:
+            result = gerar_carrossel_autonomo(self.profile, tema='teste', slides=6)
+        self.assertEqual(provider.call_count, 0)
+        self.assertFalse(meta.called)
+        self.assertEqual(result.full_text_slides, 6)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test')
+    def test_falha_parcial_preserva_conteudo_sem_pronto(self):
+        from .autonomous_carousel import gerar_carrossel_autonomo
+
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_ALWAYS
+        self.profile.save(update_fields=['ai_image_mode', 'updated_at'])
+        blueprint = self._blueprint(media_required=True, count=3)
+        blueprint.slides[1] = GeneratedCarouselSlide(2, SocialCarouselSlide.SlideType.CONTENT, 'Slide 2', 'Texto', 'CLEAN', 'midia dois', True, 'HERO_LEFT')
+        client, provider = self._provider(side_effect=[self._fake_image_response('one'), TimeoutError('timeout')])
+        with mock.patch('social_automation.autonomous_carousel.gerar_carrossel_blueprint_ia', return_value=blueprint), mock.patch('social_automation.autonomous_carousel.moderar_conteudo', return_value=False), mock.patch('social_automation.image_generation.moderar_conteudo', return_value=False), mock.patch('social_automation.image_generation._client', return_value=client):
+            result = gerar_carrossel_autonomo(self.profile, tema='teste', slides=3)
+        self.assertEqual(provider.call_count, 2)
+        self.assertIsNotNone(result.content)
+        self.assertFalse(result.content.final_media_ready)
+        self.assertTrue(result.content.erro)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', SOCIAL_MEDIA_MATCH_MIN_SCORE=99)
+    def test_carrossel_com_duas_midias_requeridas_gera_duas_imagens(self):
+        from .autonomous_carousel import gerar_carrossel_autonomo
+
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_ALWAYS
+        self.profile.ai_generated_images_reusable = False
+        self.profile.ai_image_daily_limit = 5
+        self.profile.save(update_fields=['ai_image_mode', 'ai_generated_images_reusable', 'ai_image_daily_limit', 'updated_at'])
+        blueprint = self._blueprint(media_required=True, count=6)
+        blueprint.slides[3] = GeneratedCarouselSlide(4, SocialCarouselSlide.SlideType.CONTENT, 'Slide 4', 'Texto', 'CLEAN', 'midia quatro', True, 'HERO_LEFT')
+        client, provider = self._provider()
+        with mock.patch('social_automation.autonomous_carousel.gerar_carrossel_blueprint_ia', return_value=blueprint), mock.patch('social_automation.autonomous_carousel.moderar_conteudo', return_value=False), mock.patch('social_automation.image_generation.moderar_conteudo', return_value=False), mock.patch('social_automation.image_generation._client', return_value=client), mock.patch('social_automation.autonomous_carousel.analyze_social_image'), mock.patch('social_automation.instagram._request') as meta:
+            result = gerar_carrossel_autonomo(self.profile, tema='teste', slides=6)
+        self.assertEqual(provider.call_count, 2)
+        self.assertEqual(result.generated_images, 2)
+        self.assertFalse(meta.called)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', SOCIAL_MEDIA_MATCH_MIN_SCORE=99, SOCIAL_AI_IMAGE_MAX_PER_TICK=2, SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=99)
+    def test_runaway_20_conteudos_10_slides_respeita_maximo_por_tick(self):
+        from .autonomous_carousel import gerar_carrossel_autonomo
+
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_ALWAYS
+        self.profile.ai_generated_images_reusable = False
+        self.profile.ai_image_daily_limit = 99
+        self.profile.save(update_fields=['ai_image_mode', 'ai_generated_images_reusable', 'ai_image_daily_limit', 'updated_at'])
+        client, provider = self._provider()
+        with mock.patch('social_automation.autonomous_carousel.gerar_carrossel_blueprint_ia', return_value=self._blueprint(media_required=True, count=10, all_required=True)), mock.patch('social_automation.autonomous_carousel.moderar_conteudo', return_value=False), mock.patch('social_automation.image_generation.moderar_conteudo', return_value=False), mock.patch('social_automation.image_generation._client', return_value=client), mock.patch('social_automation.autonomous_carousel.analyze_social_image'), mock.patch('social_automation.instagram._request'):
+            for _ in range(20):
+                gerar_carrossel_autonomo(self.profile, tema='runaway', slides=10)
+        self.assertLessEqual(provider.call_count, 2)
+        self.assertEqual(SocialAIUsage.objects.filter(profile=self.profile, operation=SocialAIUsage.Operation.IMAGE_GENERATION, success=True).count(), 2)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test')
+    def test_command_diagnostico_dry_run_nao_chama_openai_e_generate_gera_uma(self):
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_ALWAYS
+        self.profile.ai_generated_images_reusable = False
+        self.profile.save(update_fields=['ai_image_mode', 'ai_generated_images_reusable', 'updated_at'])
+        client, provider = self._provider()
+        output = StringIO()
+        with mock.patch('social_automation.image_generation._client', return_value=client), mock.patch('social_automation.image_generation.moderar_conteudo', return_value=False):
+            call_command('diagnosticar_geracao_imagem_social', self.profile.username, stdout=output)
+            self.assertEqual(provider.call_count, 0)
+            call_command('diagnosticar_geracao_imagem_social', self.profile.username, '--generate', stdout=output)
+        self.assertEqual(provider.call_count, 1)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', SOCIAL_MEDIA_MATCH_MIN_SCORE=99)
+    def test_command_gerar_carrossel_ia_cria_rascunho_sem_meta(self):
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_WHEN_NEEDED
+        self.profile.ai_generated_images_reusable = False
+        self.profile.save(update_fields=['ai_image_mode', 'ai_generated_images_reusable', 'updated_at'])
+        client, provider = self._provider()
+        output = StringIO()
+        with mock.patch('social_automation.autonomous_carousel.gerar_carrossel_blueprint_ia', return_value=self._blueprint(media_required=True)), mock.patch('social_automation.autonomous_carousel.moderar_conteudo', return_value=False), mock.patch('social_automation.image_generation.moderar_conteudo', return_value=False), mock.patch('social_automation.image_generation._client', return_value=client), mock.patch('social_automation.autonomous_carousel.analyze_social_image'), mock.patch('social_automation.instagram._request') as meta:
+            call_command('gerar_carrossel_ia', self.profile.username, '--tema=teste', '--slides=6', stdout=output)
+        self.assertEqual(provider.call_count, 1)
+        self.assertFalse(meta.called)
+        self.assertTrue(SocialContent.objects.filter(profile=self.profile, media_type=SocialContent.MediaType.CAROUSEL, status=SocialContent.Status.RASCUNHO).exists())
+
+    def test_perfil_novo_nasce_com_ia_visual_desligada(self):
+        profile = SocialProfile.objects.create(nome='Novo', username='novo', horarios_publicacao=['10:00'])
+        self.assertFalse(profile.ai_image_generation_enabled)
+        self.assertEqual(profile.ai_image_policy, SocialProfile.AIImagePolicy.NONE)

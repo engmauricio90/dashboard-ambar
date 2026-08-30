@@ -19,6 +19,7 @@ urlpatterns = [
     path('perfis/<int:profile_id>/identidade-visual/', views.profile_visual_identity, name='profile_visual_identity'),
     path('perfis/<int:profile_id>/toggle/', views.profile_toggle, name='profile_toggle'),
     path('perfis/<int:profile_id>/gerar/', views.profile_generate, name='profile_generate'),
+    path('perfis/<int:profile_id>/carrosseis/ia/novo/', views.profile_generate_carousel_ai, name='profile_generate_carousel_ai'),
     path('perfis/<int:profile_id>/imagens/', views.image_list, name='image_list'),
     path('perfis/<int:profile_id>/imagens/nova/', views.image_create, name='image_create'),
     path('imagens/<int:image_id>/editar/', views.image_update, name='image_update'),
@@ -42,5 +43,6 @@ urlpatterns = [
     path('conteudos/<int:content_id>/excluir/', views.content_delete, name='content_delete'),
     path('conteudos/aprovar-lote/', views.content_bulk_approve, name='content_bulk_approve'),
     path('carrosseis/slides/<int:slide_id>/preview/', views.carousel_slide_preview, name='carousel_slide_preview'),
+    path('carrosseis/slides/<int:slide_id>/gerar-imagem/', views.carousel_slide_generate_image, name='carousel_slide_generate_image'),
     path('public/<path:token>/', views.public_final_image, name='public_final_image'),
 ]

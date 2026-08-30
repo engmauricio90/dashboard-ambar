@@ -179,16 +179,51 @@ def gerar_lote_conteudos(profile, quantidade, tema, usuario, media_types=None):
                 result.bloqueados += 1
                 continue
             media_type = media_types[index] if index < len(media_types) else SocialContent.MediaType.IMAGE
+            if media_type == SocialContent.MediaType.CAROUSEL:
+                from .autonomous_carousel import gerar_carrossel_autonomo
+
+                try:
+                    carousel_result = gerar_carrossel_autonomo(
+                        profile=profile,
+                        tema=tema,
+                        slides=profile.carousel_default_slide_count,
+                        usuario=usuario,
+                    )
+                    result.criados += 1
+                    result.conteudos.append(carousel_result.content)
+                    result.mensagens.extend(carousel_result.messages)
+                    continue
+                except OpenAINotConfigured:
+                    carousel_template = _carousel_template(profile)
+                    content = SocialContent.objects.create(
+                        profile=profile,
+                        base_image=None,
+                        carousel_template=carousel_template,
+                        media_type=media_type,
+                        frase=item.frase,
+                        legenda=item.legenda,
+                        hashtags=formatar_hashtags(item.hashtags),
+                        status=SocialContent.Status.RASCUNHO,
+                    )
+                    _criar_slides_carrossel(content, item)
+                    try:
+                        renderizar_midia_social(content)
+                    except SocialRenderError as exc:
+                        content.delete()
+                        result.falhas += 1
+                        result.mensagens.append(str(exc))
+                        continue
+                    registrar_evento(content, 'gerado_ia', usuario, f'Modelo: {profile.nome}')
+                    result.criados += 1
+                    result.conteudos.append(content)
+                    continue
             imagem = None
             carousel_template = None
-            if media_type == SocialContent.MediaType.CAROUSEL:
-                carousel_template = _carousel_template(profile)
-            else:
-                imagem = selecionar_imagem_base(profile, item.tags_imagem)
-                if not imagem:
-                    result.falhas += 1
-                    result.mensagens.append('Nao havia imagem-base disponivel para um dos conteudos.')
-                    continue
+            imagem = selecionar_imagem_base(profile, item.tags_imagem)
+            if not imagem:
+                result.falhas += 1
+                result.mensagens.append('Nao havia imagem-base disponivel para um dos conteudos.')
+                continue
             content = SocialContent.objects.create(
                 profile=profile,
                 base_image=imagem,

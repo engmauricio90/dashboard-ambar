@@ -1,0 +1,35 @@
+{% extends 'social_automation/base.html' %}
+
+{% block social_title %}Gerar carrossel com IA{% endblock %}
+{% block social_subtitle %}{{ profile.nome }} - rascunho estruturado, midia inteligente e renderizacao segura.{% endblock %}
+{% block social_actions %}
+<a href="{% url 'social_automation:profile_detail' profile.id %}" class="btn btn-outline-secondary">Voltar</a>
+{% endblock %}
+
+{% block social_content %}
+<form method="post" class="card shadow-sm">
+    {% csrf_token %}
+    <div class="card-body">
+        {{ form.non_field_errors }}
+        <div class="row g-3">
+            <div class="col-md-8">
+                <label class="form-label">{{ form.tema.label }}</label>
+                {{ form.tema }}
+                {{ form.tema.errors }}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">{{ form.slides.label }}</label>
+                {{ form.slides }}
+                {{ form.slides.errors }}
+            </div>
+        </div>
+        <div class="alert alert-light border mt-3 mb-0">
+            <strong>Politica visual:</strong> {{ profile.get_ai_image_mode_display }}.
+            O resultado sempre fica em rascunho; nenhuma publicacao e feita nesta tela.
+        </div>
+    </div>
+    <div class="card-footer">
+        <button class="btn btn-primary" type="submit">Gerar rascunho</button>
+    </div>
+</form>
+{% endblock %}
