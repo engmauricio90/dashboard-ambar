@@ -428,6 +428,11 @@ def content_detail(request, content_id):
     schedule_form = SocialScheduleForm(profile=content.profile) if content.status == SocialContent.Status.APROVADO else None
     events = content.events.select_related('usuario')[:20]
     instagram_connection = getattr(content.profile, 'instagram_connection', None)
+    carousel_quality = None
+    if content.is_carousel:
+        from .carousel_quality import evaluate_carousel_quality
+
+        carousel_quality = evaluate_carousel_quality(content)
     return render(
         request,
         'social_automation/content_detail.html',
@@ -435,6 +440,7 @@ def content_detail(request, content_id):
             'content': content,
             'events': events,
             'schedule_form': schedule_form,
+            'carousel_quality': carousel_quality,
             'instagram_expected_username': instagram_connection.username if instagram_connection and instagram_connection.is_active else content.profile.username,
             'instagram_connection': instagram_connection,
         },

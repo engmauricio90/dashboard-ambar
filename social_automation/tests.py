@@ -4095,3 +4095,427 @@ class SocialAutomationAIVisionTests(TestCase):
         profile = SocialProfile.objects.create(nome='Novo', username='novo', horarios_publicacao=['10:00'])
         self.assertFalse(profile.ai_image_generation_enabled)
         self.assertEqual(profile.ai_image_policy, SocialProfile.AIImagePolicy.NONE)
+
+    def test_perfil_novo_mantem_carrossel_padrao_sem_mudar_visual_antigo(self):
+        profile = SocialProfile.objects.create(nome='Novo Padrao', username='novo_padrao', horarios_publicacao=['10:00'])
+        self.assertEqual(profile.carousel_visual_mode, SocialProfile.CarouselVisualMode.STANDARD)
+        self.assertEqual(profile.carousel_image_density, SocialProfile.CarouselImageDensity.AUTO)
+        self.assertEqual(profile.effective_carousel_max_same_image_uses, 10)
+
+    def test_visual_rich_planeja_fundos_graficos_sem_gastar_ia_por_padrao(self):
+        from .carousel_media_planner import STATUS_GRAPHIC, plan_carousel_media
+
+        self.profile.carousel_visual_mode = SocialProfile.CarouselVisualMode.VISUAL_RICH
+        self.profile.carousel_image_density = SocialProfile.CarouselImageDensity.LOW
+        self.profile.ai_image_generation_enabled = False
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.NONE
+        self.profile.save(update_fields=['carousel_visual_mode', 'carousel_image_density', 'ai_image_generation_enabled', 'ai_image_mode', 'updated_at'])
+        template = SocialCarouselTemplate.objects.create(profile=self.profile, name='Template', is_default=True)
+        blueprint = self._blueprint(media_required=False, count=4)
+
+        plan = plan_carousel_media(self.profile, blueprint.slides, template, remaining_quota=0)
+
+        self.assertEqual(plan.graphic_count, 3)
+        self.assertEqual(sum(1 for item in plan.items if item.status == STATUS_GRAPHIC or item.image), 4)
+        self.assertTrue(all(item.visual_treatment != SocialCarouselSlide.VisualTreatment.TEXT_ONLY for item in plan.items))
+        self.assertEqual(plan.needs_generation_count, 0)
+
+    def test_image_driven_exige_midia_em_todos_os_slides_e_evita_repeticao(self):
+        from .carousel_media_planner import STATUS_SELECTED, plan_carousel_media
+
+        self.profile.carousel_visual_mode = SocialProfile.CarouselVisualMode.IMAGE_DRIVEN
+        self.profile.carousel_image_density = SocialProfile.CarouselImageDensity.EVERY_SLIDE
+        self.profile.save(update_fields=['carousel_visual_mode', 'carousel_image_density', 'updated_at'])
+        images = [
+            self.image,
+            SocialBaseImage.objects.create(profile=self.profile, arquivo=imagem_social('banco-2.jpg'), nome='Imagem banco obra limpa 2', tags='obra, limpo'),
+            SocialBaseImage.objects.create(profile=self.profile, arquivo=imagem_social('banco-3.jpg'), nome='Imagem banco obra limpa 3', tags='obra, limpo'),
+        ]
+        template = SocialCarouselTemplate.objects.create(profile=self.profile, name='Template image', is_default=True)
+        blueprint = self._blueprint(media_required=False, count=3)
+        for slide in blueprint.slides:
+            object.__setattr__(slide, 'media_intent', 'obra limpa')
+
+        plan = plan_carousel_media(self.profile, blueprint.slides, template, remaining_quota=0)
+
+        self.assertEqual([item.status for item in plan.items], [STATUS_SELECTED, STATUS_SELECTED, STATUS_SELECTED])
+        self.assertEqual(len({image.id for image in images}), 3)
+        self.assertEqual(len({item.image.id for item in plan.items if item.image}), 3)
+
+    def test_image_driven_sem_midia_fica_pendente_e_quality_gate_reprova(self):
+        from .carousel_media_planner import STATUS_PENDING, plan_carousel_media
+
+        self.profile.base_images.all().delete()
+        self.profile.carousel_visual_mode = SocialProfile.CarouselVisualMode.IMAGE_DRIVEN
+        self.profile.ai_image_generation_enabled = False
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.NONE
+        self.profile.save(update_fields=['carousel_visual_mode', 'ai_image_generation_enabled', 'ai_image_mode', 'updated_at'])
+        template = SocialCarouselTemplate.objects.create(profile=self.profile, name='Template pendente', is_default=True)
+        blueprint = self._blueprint(media_required=False, count=3)
+
+        plan = plan_carousel_media(self.profile, blueprint.slides, template, remaining_quota=0)
+
+        self.assertEqual([item.status for item in plan.items], [STATUS_PENDING, STATUS_PENDING, STATUS_PENDING])
+        content = SocialContent.objects.create(profile=self.profile, carousel_template=template, media_type=SocialContent.MediaType.CAROUSEL, frase='Teste')
+        for index, item in enumerate(plan.items, start=1):
+            SocialCarouselSlide.objects.create(
+                content=content,
+                order=index,
+                title=f'Slide {index}',
+                body='Texto',
+                visual_intent=item.visual_intent,
+                visual_treatment=item.visual_treatment,
+                media_required=item.media_required,
+                rendered_image=imagem_social(f'render-{index}.jpg'),
+            )
+        self.assertFalse(content.final_media_ready)
+
+    def test_quality_gate_reprova_texto_puro_no_visual_rich(self):
+        from .carousel_quality import evaluate_carousel_quality
+
+        self.profile.carousel_visual_mode = SocialProfile.CarouselVisualMode.VISUAL_RICH
+        self.profile.save(update_fields=['carousel_visual_mode', 'updated_at'])
+        template = SocialCarouselTemplate.objects.create(profile=self.profile, name='Template quality', is_default=True)
+        content = SocialContent.objects.create(profile=self.profile, carousel_template=template, media_type=SocialContent.MediaType.CAROUSEL, frase='Teste')
+        for index in range(1, 4):
+            SocialCarouselSlide.objects.create(
+                content=content,
+                order=index,
+                title=f'Slide {index}',
+                body='Texto',
+                visual_intent=SocialCarouselTemplateVariant.LayoutType.FULL_TEXT,
+                visual_treatment=SocialCarouselSlide.VisualTreatment.TEXT_ONLY,
+                rendered_image=imagem_social(f'plain-{index}.jpg'),
+            )
+
+        quality = evaluate_carousel_quality(content)
+
+        self.assertFalse(quality.valid)
+        self.assertFalse(content.final_media_ready)
+        self.assertIn('Slide texto puro', ' '.join(quality.issues))
+
+    def test_prompt_blueprint_inclui_politica_visual_generica_do_perfil(self):
+        from .ai import gerar_carrossel_blueprint_ia
+
+        self.profile.carousel_visual_mode = SocialProfile.CarouselVisualMode.IMAGE_DRIVEN
+        self.profile.carousel_image_density = SocialProfile.CarouselImageDensity.EVERY_SLIDE
+        self.profile.save(update_fields=['carousel_visual_mode', 'carousel_image_density', 'updated_at'])
+        response = type(
+            'Response',
+            (),
+            {
+                'output_text': (
+                    '{"topic":"Tema","hook":"Hook","caption":"Legenda","hashtags":["teste"],'
+                    '"slides":[{"order":1,"slide_type":"COVER","title":"A","body":"B","visual_intent":"CLEAN","media_intent":"obra","media_required":true,"preferred_layout":"HERO_LEFT"},'
+                    '{"order":2,"slide_type":"CONTENT","title":"C","body":"D","visual_intent":"CLEAN","media_intent":"obra","media_required":true,"preferred_layout":"HERO_RIGHT"}]}'
+                )
+            },
+        )()
+        create = mock.Mock(return_value=response)
+        client = type('Client', (), {'responses': type('Responses', (), {'create': create})()})()
+
+        with mock.patch('social_automation.ai._client', return_value=client):
+            gerar_carrossel_blueprint_ia(self.profile, 'tema', 2, media_contexts=[])
+
+        prompt = create.call_args.kwargs['input'][0]['content'][0]['text']
+        self.assertIn('modo=IMAGE_DRIVEN', prompt)
+        self.assertIn('densidade=EVERY_SLIDE', prompt)
+
+    def _template_for_quality_tests(self, name='Template quality extra'):
+        return SocialCarouselTemplate.objects.create(profile=self.profile, name=name, is_default=not self.profile.carousel_templates.exists())
+
+    def _carousel_for_quality(self, mode, treatments, *, images=None, rendered=True):
+        self.profile.carousel_visual_mode = mode
+        self.profile.save(update_fields=['carousel_visual_mode', 'updated_at'])
+        template = self._template_for_quality_tests(f'Template {mode} {SocialCarouselTemplate.objects.count()}')
+        content = SocialContent.objects.create(profile=self.profile, carousel_template=template, media_type=SocialContent.MediaType.CAROUSEL, frase='Teste qualidade')
+        images = images or []
+        for index, treatment in enumerate(treatments, start=1):
+            layout = {
+                SocialCarouselSlide.VisualTreatment.TEXT_ONLY: SocialCarouselTemplateVariant.LayoutType.FULL_TEXT,
+                SocialCarouselSlide.VisualTreatment.GRAPHIC_BACKGROUND: SocialCarouselTemplateVariant.LayoutType.GRAPHIC_DARK,
+                SocialCarouselSlide.VisualTreatment.EDITORIAL_CARD: SocialCarouselTemplateVariant.LayoutType.EDITORIAL_CARD,
+                SocialCarouselSlide.VisualTreatment.IMAGE_BACKGROUND: SocialCarouselTemplateVariant.LayoutType.IMAGE_BACKGROUND,
+                SocialCarouselSlide.VisualTreatment.IMAGE_HERO: SocialCarouselTemplateVariant.LayoutType.HERO_LEFT,
+            }.get(treatment, SocialCarouselTemplateVariant.LayoutType.GRAPHIC_LIGHT)
+            SocialCarouselSlide.objects.create(
+                content=content,
+                order=index,
+                title=f'Slide {index}',
+                body='Texto',
+                visual_intent=layout,
+                visual_treatment=treatment,
+                source_base_image=images[index - 1] if index <= len(images) else None,
+                rendered_image=imagem_social(f'quality-{mode}-{index}.jpg') if rendered else None,
+            )
+        return content
+
+    def test_standard_aceita_full_text_graphic_e_carrossel_legado_renderizado(self):
+        from .carousel_quality import evaluate_carousel_quality
+
+        content = self._carousel_for_quality(
+            SocialProfile.CarouselVisualMode.STANDARD,
+            [
+                SocialCarouselSlide.VisualTreatment.TEXT_ONLY,
+                SocialCarouselSlide.VisualTreatment.GRAPHIC_BACKGROUND,
+                SocialCarouselSlide.VisualTreatment.TEXT_ONLY,
+            ],
+        )
+        quality = evaluate_carousel_quality(content)
+        self.assertTrue(quality.valid)
+        self.assertTrue(content.final_media_ready)
+        self.assertEqual(quality.plain_text_slides, 2)
+
+    def test_visual_rich_tratamentos_graficos_validos_e_texto_puro_invalido(self):
+        from .carousel_quality import evaluate_carousel_quality
+
+        valid_content = self._carousel_for_quality(
+            SocialProfile.CarouselVisualMode.VISUAL_RICH,
+            [
+                SocialCarouselSlide.VisualTreatment.IMAGE_BACKGROUND,
+                SocialCarouselSlide.VisualTreatment.GRAPHIC_BACKGROUND,
+                SocialCarouselSlide.VisualTreatment.EDITORIAL_CARD,
+                SocialCarouselSlide.VisualTreatment.MINIMAL_VISUAL,
+                SocialCarouselSlide.VisualTreatment.GRAPHIC_BACKGROUND,
+                SocialCarouselSlide.VisualTreatment.EDITORIAL_CARD,
+            ],
+            images=[self.image],
+        )
+        self.assertTrue(evaluate_carousel_quality(valid_content).valid)
+        invalid_content = self._carousel_for_quality(
+            SocialProfile.CarouselVisualMode.VISUAL_RICH,
+            [
+                SocialCarouselSlide.VisualTreatment.GRAPHIC_BACKGROUND,
+                SocialCarouselSlide.VisualTreatment.TEXT_ONLY,
+                SocialCarouselSlide.VisualTreatment.EDITORIAL_CARD,
+            ],
+        )
+        invalid_quality = evaluate_carousel_quality(invalid_content)
+        self.assertFalse(invalid_quality.valid)
+        self.assertFalse(invalid_content.final_media_ready)
+        self.assertEqual(invalid_quality.plain_text_slides, 1)
+
+    def test_image_driven_quality_gate_exige_imagem_em_cada_slide(self):
+        from .carousel_quality import evaluate_carousel_quality
+
+        images = [self.image] + [
+            SocialBaseImage.objects.create(profile=self.profile, arquivo=imagem_social(f'id-{index}.jpg'), nome=f'Imagem {index}', tags='obra limpa')
+            for index in range(2, 7)
+        ]
+        ok = self._carousel_for_quality(
+            SocialProfile.CarouselVisualMode.IMAGE_DRIVEN,
+            [SocialCarouselSlide.VisualTreatment.IMAGE_BACKGROUND] * 6,
+            images=images,
+        )
+        self.assertTrue(evaluate_carousel_quality(ok).valid)
+        self.assertTrue(ok.final_media_ready)
+        fail_graphic = self._carousel_for_quality(
+            SocialProfile.CarouselVisualMode.IMAGE_DRIVEN,
+            [SocialCarouselSlide.VisualTreatment.IMAGE_BACKGROUND] * 5 + [SocialCarouselSlide.VisualTreatment.GRAPHIC_BACKGROUND],
+            images=images[:5],
+        )
+        fail_text = self._carousel_for_quality(
+            SocialProfile.CarouselVisualMode.IMAGE_DRIVEN,
+            [SocialCarouselSlide.VisualTreatment.IMAGE_BACKGROUND] * 5 + [SocialCarouselSlide.VisualTreatment.TEXT_ONLY],
+            images=images[:5],
+        )
+        self.assertFalse(evaluate_carousel_quality(fail_graphic).valid)
+        self.assertFalse(fail_graphic.final_media_ready)
+        self.assertFalse(evaluate_carousel_quality(fail_text).valid)
+        self.assertFalse(fail_text.final_media_ready)
+
+    def test_image_density_regra_matematica_para_seis_slides(self):
+        from .carousel_media_planner import plan_carousel_media
+
+        template = self._template_for_quality_tests('Template density')
+        for index in range(2, 7):
+            SocialBaseImage.objects.create(profile=self.profile, arquivo=imagem_social(f'density-{index}.jpg'), nome=f'Density {index}', tags='obra limpa')
+        slides = self._blueprint(media_required=False, count=6).slides
+        for slide in slides:
+            object.__setattr__(slide, 'media_intent', 'obra limpa')
+        expected = {
+            SocialProfile.CarouselImageDensity.AUTO: 3,
+            SocialProfile.CarouselImageDensity.LOW: 2,
+            SocialProfile.CarouselImageDensity.MEDIUM: 3,
+            SocialProfile.CarouselImageDensity.HIGH: 5,
+            SocialProfile.CarouselImageDensity.EVERY_SLIDE: 6,
+        }
+        for density, count in expected.items():
+            with self.subTest(density=density):
+                self.profile.carousel_visual_mode = SocialProfile.CarouselVisualMode.VISUAL_RICH
+                self.profile.carousel_image_density = density
+                self.profile.save(update_fields=['carousel_visual_mode', 'carousel_image_density', 'updated_at'])
+                plan = plan_carousel_media(self.profile, slides, template, remaining_quota=0)
+                self.assertEqual(sum(1 for item in plan.items if item.image or item.media_required), count)
+                self.assertEqual(len(plan.items), 6)
+
+    def test_planner_reserva_imagem_override_manual_e_limita_repeticao(self):
+        from .carousel_media_planner import plan_carousel_media
+
+        self.profile.carousel_visual_mode = SocialProfile.CarouselVisualMode.IMAGE_DRIVEN
+        self.profile.carousel_max_same_image_uses = 1
+        self.profile.save(update_fields=['carousel_visual_mode', 'carousel_max_same_image_uses', 'updated_at'])
+        images = [self.image] + [
+            SocialBaseImage.objects.create(profile=self.profile, arquivo=imagem_social(f'manual-{index}.jpg'), nome=f'Manual {index}', tags='obra limpa')
+            for index in range(2, 7)
+        ]
+        template = self._template_for_quality_tests('Template override')
+        slides = list(self._blueprint(media_required=False, count=6).slides)
+        object.__setattr__(slides[0], 'source_base_image', images[0])
+        for slide in slides:
+            object.__setattr__(slide, 'media_intent', 'obra limpa')
+
+        plan = plan_carousel_media(self.profile, slides, template, remaining_quota=0)
+
+        self.assertEqual(plan.items[0].image, images[0])
+        chosen_ids = [item.image.id for item in plan.items if item.image]
+        self.assertEqual(len(chosen_ids), 6)
+        self.assertEqual(len(set(chosen_ids)), 6)
+
+    def test_max_same_image_uses_dois_nunca_excede_limite(self):
+        from .carousel_media_planner import plan_carousel_media
+
+        self.profile.carousel_visual_mode = SocialProfile.CarouselVisualMode.IMAGE_DRIVEN
+        self.profile.carousel_max_same_image_uses = 2
+        self.profile.save(update_fields=['carousel_visual_mode', 'carousel_max_same_image_uses', 'updated_at'])
+        SocialBaseImage.objects.create(profile=self.profile, arquivo=imagem_social('max-b.jpg'), nome='Imagem B', tags='obra limpa')
+        template = self._template_for_quality_tests('Template max same')
+        slides = self._blueprint(media_required=False, count=4).slides
+        for slide in slides:
+            object.__setattr__(slide, 'media_intent', 'obra limpa')
+
+        plan = plan_carousel_media(self.profile, slides, template, remaining_quota=0)
+        counts = {}
+        for item in plan.items:
+            counts[item.image.id] = counts.get(item.image.id, 0) + 1
+        self.assertLessEqual(max(counts.values()), 2)
+
+    def test_planner_isola_midia_por_perfil_e_policy_por_perfil(self):
+        from .carousel_media_planner import plan_carousel_media
+
+        profile_b = SocialProfile.objects.create(nome='Perfil B Planner', username='planner_b', horarios_publicacao=['13:00'], carousel_visual_mode=SocialProfile.CarouselVisualMode.IMAGE_DRIVEN)
+        image_b = SocialBaseImage.objects.create(profile=profile_b, arquivo=imagem_social('b-profile.jpg'), nome='Imagem B melhor', tags='obra limpa')
+        self.profile.carousel_visual_mode = SocialProfile.CarouselVisualMode.IMAGE_DRIVEN
+        self.profile.save(update_fields=['carousel_visual_mode', 'updated_at'])
+        template_a = self._template_for_quality_tests('Template profile A')
+        template_b = SocialCarouselTemplate.objects.create(profile=profile_b, name='Template profile B', is_default=True)
+        slides = self._blueprint(media_required=False, count=2).slides
+        for slide in slides:
+            object.__setattr__(slide, 'media_intent', 'obra limpa')
+
+        plan_a = plan_carousel_media(self.profile, slides, template_a, remaining_quota=0)
+        plan_b = plan_carousel_media(profile_b, slides, template_b, remaining_quota=0)
+
+        self.assertNotIn(image_b.id, [item.image.id for item in plan_a.items if item.image])
+        self.assertEqual([item.image for item in plan_b.items if item.image], [image_b])
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', SOCIAL_MEDIA_MATCH_MIN_SCORE=50)
+    def test_image_driven_banco_parcial_usa_ia_ate_quota_e_nao_publica_pendente(self):
+        from .autonomous_carousel import gerar_carrossel_autonomo
+
+        self.profile.base_images.all().delete()
+        self.profile.carousel_visual_mode = SocialProfile.CarouselVisualMode.IMAGE_DRIVEN
+        self.profile.ai_image_generation_enabled = True
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_WHEN_NEEDED
+        self.profile.ai_image_daily_limit = 10
+        self.profile.save(update_fields=['carousel_visual_mode', 'ai_image_generation_enabled', 'ai_image_mode', 'ai_image_daily_limit', 'updated_at'])
+        for index in range(4):
+            SocialBaseImage.objects.create(profile=self.profile, arquivo=imagem_social(f'partial-{index}.jpg'), nome=f'Banco {index}', tags='obra limpa')
+        blueprint = self._blueprint(media_required=False, count=6)
+        for slide in blueprint.slides:
+            object.__setattr__(slide, 'media_intent', 'obra limpa')
+        client, provider = self._provider()
+        with mock.patch('social_automation.autonomous_carousel.gerar_carrossel_blueprint_ia', return_value=blueprint), mock.patch('social_automation.autonomous_carousel.moderar_conteudo', return_value=False), mock.patch('social_automation.image_generation.moderar_conteudo', return_value=False), mock.patch('social_automation.image_generation._client', return_value=client), mock.patch('social_automation.autonomous_carousel.analyze_social_image'), mock.patch('social_automation.instagram._request') as meta:
+            result = gerar_carrossel_autonomo(self.profile, tema='teste', slides=6)
+        self.assertEqual(provider.call_count, 2)
+        self.assertTrue(result.content.final_media_ready)
+        self.assertFalse(meta.called)
+
+        self.profile.base_images.all().delete()
+        SocialAIUsage.objects.filter(profile=self.profile).delete()
+        for index in range(4):
+            SocialBaseImage.objects.create(profile=self.profile, arquivo=imagem_social(f'partial-low-{index}.jpg'), nome=f'Banco low {index}', tags='obra limpa')
+        client, provider = self._provider()
+        with override_settings(SOCIAL_AI_IMAGE_MAX_PER_TICK=1):
+            with mock.patch('social_automation.autonomous_carousel.gerar_carrossel_blueprint_ia', return_value=blueprint), mock.patch('social_automation.autonomous_carousel.moderar_conteudo', return_value=False), mock.patch('social_automation.image_generation.moderar_conteudo', return_value=False), mock.patch('social_automation.image_generation._client', return_value=client), mock.patch('social_automation.autonomous_carousel.analyze_social_image'), mock.patch('social_automation.instagram._request') as meta:
+                pending = gerar_carrossel_autonomo(self.profile, tema='teste', slides=6)
+        self.assertEqual(provider.call_count, 1)
+        self.assertFalse(pending.content.final_media_ready)
+        self.assertEqual(pending.pending_slides, 1)
+        self.assertFalse(meta.called)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', SOCIAL_MEDIA_MATCH_MIN_SCORE=99)
+    def test_prompts_de_ia_por_slide_usam_contexto_especifico(self):
+        from .autonomous_carousel import gerar_carrossel_autonomo
+
+        self.profile.base_images.all().delete()
+        self.profile.carousel_visual_mode = SocialProfile.CarouselVisualMode.IMAGE_DRIVEN
+        self.profile.ai_image_generation_enabled = True
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_ALWAYS
+        self.profile.ai_image_daily_limit = 5
+        self.profile.save(update_fields=['carousel_visual_mode', 'ai_image_generation_enabled', 'ai_image_mode', 'ai_image_daily_limit', 'updated_at'])
+        blueprint = self._blueprint(media_required=False, count=2)
+        object.__setattr__(blueprint.slides[0], 'media_intent', 'obra externa clara')
+        object.__setattr__(blueprint.slides[1], 'media_intent', 'escritorio interno escuro')
+        object.__setattr__(blueprint.slides[0], 'visual_intent', 'CLEAN')
+        object.__setattr__(blueprint.slides[1], 'visual_intent', 'DRAMATIC')
+        client, provider = self._provider()
+        with mock.patch('social_automation.autonomous_carousel.gerar_carrossel_blueprint_ia', return_value=blueprint), mock.patch('social_automation.autonomous_carousel.moderar_conteudo', return_value=False), mock.patch('social_automation.image_generation.moderar_conteudo', return_value=False), mock.patch('social_automation.image_generation._client', return_value=client), mock.patch('social_automation.autonomous_carousel.analyze_social_image'):
+            gerar_carrossel_autonomo(self.profile, tema='teste', slides=2)
+        prompts = [call.kwargs['prompt'] for call in provider.call_args_list]
+        self.assertEqual(len(prompts), 2)
+        self.assertNotEqual(prompts[0], prompts[1])
+        self.assertIn('obra externa clara', prompts[0])
+        self.assertIn('escritorio interno escuro', prompts[1])
+
+    def test_cross_profile_source_base_image_nao_conta_no_gate_nem_render(self):
+        from .carousel_quality import evaluate_carousel_quality
+        from .visual_composer import compose_carousel_slide
+
+        other = SocialProfile.objects.create(nome='Outro Cross', username='cross', horarios_publicacao=['15:00'])
+        other_image = SocialBaseImage.objects.create(profile=other, arquivo=imagem_social('cross.jpg'), nome='Cross', tags='obra limpa')
+        content = self._carousel_for_quality(
+            SocialProfile.CarouselVisualMode.IMAGE_DRIVEN,
+            [SocialCarouselSlide.VisualTreatment.IMAGE_BACKGROUND, SocialCarouselSlide.VisualTreatment.IMAGE_BACKGROUND],
+            images=[other_image, self.image],
+        )
+        quality = evaluate_carousel_quality(content)
+        self.assertFalse(quality.valid)
+        first_slide = content.carousel_slides.order_by('order').first()
+        decision = compose_carousel_slide(first_slide, content.carousel_template, 2)
+        self.assertIsNone(decision.source_base_image)
+
+    def test_slides_inativos_nao_contam_no_quality_gate(self):
+        from .carousel_quality import evaluate_carousel_quality
+
+        content = self._carousel_for_quality(
+            SocialProfile.CarouselVisualMode.IMAGE_DRIVEN,
+            [SocialCarouselSlide.VisualTreatment.IMAGE_BACKGROUND, SocialCarouselSlide.VisualTreatment.IMAGE_BACKGROUND, SocialCarouselSlide.VisualTreatment.TEXT_ONLY],
+            images=[self.image, self.image],
+        )
+        inactive = content.carousel_slides.order_by('-order').first()
+        inactive.is_active = False
+        inactive.save(update_fields=['is_active', 'updated_at'])
+        quality = evaluate_carousel_quality(content)
+        self.assertEqual(quality.active_slides, 2)
+        self.assertEqual(quality.image_slides, 2)
+        self.assertTrue(quality.valid)
+
+    def test_scheduler_ignora_carrossel_renderizado_com_gate_fail(self):
+        self.profile.modo_operacao = SocialProfile.ModoOperacao.AUTOMATICO
+        self.profile.save(update_fields=['modo_operacao', 'updated_at'])
+        fail = self._carousel_for_quality(
+            SocialProfile.CarouselVisualMode.IMAGE_DRIVEN,
+            [SocialCarouselSlide.VisualTreatment.TEXT_ONLY, SocialCarouselSlide.VisualTreatment.TEXT_ONLY],
+        )
+        fail.status = SocialContent.Status.APROVADO
+        fail.save(update_fields=['status', 'updated_at'])
+        ok = self._carousel_for_quality(
+            SocialProfile.CarouselVisualMode.IMAGE_DRIVEN,
+            [SocialCarouselSlide.VisualTreatment.IMAGE_BACKGROUND, SocialCarouselSlide.VisualTreatment.IMAGE_BACKGROUND],
+            images=[self.image, self.image],
+        )
+        ok.status = SocialContent.Status.APROVADO
+        ok.save(update_fields=['status', 'updated_at'])
+        ready = estoque_pronto_por_tipo(self.profile)
+        self.assertEqual(ready[SocialContent.MediaType.CAROUSEL], 1)

@@ -144,6 +144,28 @@
 </div>
 
 {% if content.is_carousel %}
+{% if carousel_quality %}
+<div class="card shadow-sm mt-3">
+    <div class="card-header fw-bold">Qualidade visual</div>
+    <div class="card-body">
+        <div class="row g-3 small">
+            <div class="col-md-2"><strong>Modo</strong><div>{{ carousel_quality.visual_mode }}</div></div>
+            <div class="col-md-2"><strong>Nota</strong><div>{{ carousel_quality.score }}/100</div></div>
+            <div class="col-md-2"><strong>Slides visuais</strong><div>{{ carousel_quality.visual_slides }}/{{ carousel_quality.active_slides }}</div></div>
+            <div class="col-md-2"><strong>Com imagem</strong><div>{{ carousel_quality.image_slides }}</div></div>
+            <div class="col-md-2"><strong>Imagens distintas</strong><div>{{ carousel_quality.distinct_images }}</div></div>
+            <div class="col-md-2"><strong>Status</strong><div>{% if carousel_quality.valid %}Aprovado{% else %}Pendente{% endif %}</div></div>
+        </div>
+        {% if carousel_quality.issues %}
+        <ul class="text-muted small mb-0 mt-3">
+            {% for issue in carousel_quality.issues %}
+            <li>{{ issue }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
 <div class="card shadow-sm mt-3">
     <div class="card-header fw-bold">Slides e midia</div>
     <div class="table-responsive">
@@ -155,6 +177,7 @@
                     <th>Intencao</th>
                     <th>Midia</th>
                     <th>Layout</th>
+                    <th>Tratamento</th>
                     <th class="text-end">Acoes</th>
                 </tr>
             </thead>
@@ -178,6 +201,7 @@
                         {% endif %}
                     </td>
                     <td>{{ slide.visual_intent }}</td>
+                    <td>{{ slide.get_visual_treatment_display }}</td>
                     <td class="text-end">
                         {% if content.status != 'publicado' %}
                         <form method="post" action="{% url 'social_automation:carousel_slide_generate_image' slide.id %}" class="d-inline">

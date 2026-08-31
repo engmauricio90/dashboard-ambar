@@ -78,13 +78,16 @@ def _score_image(image, *, media_intent, visual_intent, preferred_layout, aspect
     return max(0, min(100, float(score)))
 
 
-def resolve_slide_media(profile, *, media_intent='', visual_intent='', preferred_layout='AUTO', aspect_ratio='SQUARE', media_required=False):
+def resolve_slide_media(profile, *, media_intent='', visual_intent='', preferred_layout='AUTO', aspect_ratio='SQUARE', media_required=False, exclude_image_ids=None):
     policy = profile.ai_image_policy
     if not media_required and not media_intent:
         return MediaResolutionResult(status=STATUS_FULL_TEXT, reason='Slide textual sem necessidade de midia.')
 
+    queryset = SocialBaseImage.objects.filter(profile=profile, ativa=True)
+    if exclude_image_ids:
+        queryset = queryset.exclude(id__in=exclude_image_ids)
     candidates = list(
-        SocialBaseImage.objects.filter(profile=profile, ativa=True)
+        queryset
         .prefetch_related('protected_regions')
         .order_by('vezes_usada', 'ultima_utilizacao', 'id')[:80]
     )

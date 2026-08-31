@@ -79,6 +79,18 @@ class SocialProfile(models.Model):
         AI_WHEN_NEEDED = 'AI_WHEN_NEEDED', 'IA quando necessario'
         AI_ALWAYS = 'AI_ALWAYS', 'IA sempre'
 
+    class CarouselVisualMode(models.TextChoices):
+        STANDARD = 'STANDARD', 'Padrao'
+        VISUAL_RICH = 'VISUAL_RICH', 'Visual premium'
+        IMAGE_DRIVEN = 'IMAGE_DRIVEN', 'Imagem em todos os slides'
+
+    class CarouselImageDensity(models.TextChoices):
+        AUTO = 'AUTO', 'Automatica'
+        LOW = 'LOW', 'Baixa'
+        MEDIUM = 'MEDIUM', 'Media'
+        HIGH = 'HIGH', 'Alta'
+        EVERY_SLIDE = 'EVERY_SLIDE', 'Todos os slides'
+
     nome = models.CharField(max_length=120)
     username = models.CharField(max_length=120)
     plataforma = models.CharField(max_length=30, choices=Plataforma.choices, default=Plataforma.INSTAGRAM)
@@ -92,6 +104,10 @@ class SocialProfile(models.Model):
     carousel_ai_instructions = models.TextField(blank=True)
     carousel_cta_enabled = models.BooleanField(default=True)
     carousel_default_cta = models.CharField(max_length=255, blank=True)
+    carousel_visual_mode = models.CharField(max_length=30, choices=CarouselVisualMode.choices, default=CarouselVisualMode.STANDARD)
+    carousel_image_density = models.CharField(max_length=30, choices=CarouselImageDensity.choices, default=CarouselImageDensity.AUTO)
+    carousel_allow_same_image = models.BooleanField(default=True)
+    carousel_max_same_image_uses = models.PositiveSmallIntegerField(default=0)
     ai_image_generation_enabled = models.BooleanField(default=False)
     ai_image_mode = models.CharField(max_length=30, choices=AIImagePolicy.choices, default=AIImagePolicy.NONE)
     ai_image_daily_limit = models.PositiveSmallIntegerField(default=0)
@@ -132,6 +148,14 @@ class SocialProfile(models.Model):
             raise ValidationError('Slides padrao do carrossel deve ficar entre 2 e 10.')
         if self.reels_por_dia + self.carousels_por_dia > self.posts_por_dia:
             raise ValidationError('Reels e carrosseis por dia nao podem superar posts por dia.')
+
+    @property
+    def effective_carousel_max_same_image_uses(self):
+        if self.carousel_max_same_image_uses:
+            return self.carousel_max_same_image_uses
+        if self.carousel_visual_mode == self.CarouselVisualMode.STANDARD and self.carousel_allow_same_image:
+            return 10
+        return 1
 
 
 class SocialVisualIdentity(models.Model):
@@ -575,6 +599,13 @@ class SocialCarouselTemplateVariant(models.Model):
         SPLIT_RIGHT = 'SPLIT_RIGHT', 'Dividido direita'
         MINIMAL = 'MINIMAL', 'Minimal'
         FULL_TEXT = 'FULL_TEXT', 'Texto completo'
+        EDITORIAL_CARD = 'EDITORIAL_CARD', 'Card editorial'
+        IMAGE_BACKGROUND = 'IMAGE_BACKGROUND', 'Imagem de fundo'
+        IMAGE_BLUR_TEXT = 'IMAGE_BLUR_TEXT', 'Imagem desfocada com texto'
+        QUOTE_VISUAL = 'QUOTE_VISUAL', 'Frase visual'
+        GRAPHIC_DARK = 'GRAPHIC_DARK', 'Grafico escuro'
+        GRAPHIC_LIGHT = 'GRAPHIC_LIGHT', 'Grafico claro'
+        CTA_VISUAL = 'CTA_VISUAL', 'CTA visual'
 
     class OverlayType(models.TextChoices):
         AUTO = 'AUTO', 'Automatico'
@@ -704,7 +735,11 @@ class SocialContent(models.Model):
     def final_media_ready(self):
         if self.is_carousel:
             slides = list(self.carousel_slides.filter(is_active=True))
-            return 2 <= len(slides) <= 10 and all(bool(slide.rendered_image) for slide in slides)
+            if not (2 <= len(slides) <= 10 and all(bool(slide.rendered_image) for slide in slides)):
+                return False
+            from .carousel_quality import evaluate_carousel_quality
+
+            return evaluate_carousel_quality(self).valid
         if self.is_reel:
             return bool(self.final_video)
         return bool(self.final_image)
@@ -721,12 +756,23 @@ class SocialCarouselSlide(models.Model):
         CONTENT = 'CONTENT', 'Conteudo'
         CTA = 'CTA', 'CTA'
 
+    class VisualTreatment(models.TextChoices):
+        AUTO = 'AUTO', 'Automatico'
+        IMAGE_HERO = 'IMAGE_HERO', 'Imagem destaque'
+        IMAGE_BACKGROUND = 'IMAGE_BACKGROUND', 'Imagem de fundo'
+        IMAGE_SPLIT = 'IMAGE_SPLIT', 'Imagem dividida'
+        EDITORIAL_CARD = 'EDITORIAL_CARD', 'Card editorial'
+        GRAPHIC_BACKGROUND = 'GRAPHIC_BACKGROUND', 'Background grafico'
+        MINIMAL_VISUAL = 'MINIMAL_VISUAL', 'Minimal visual'
+        TEXT_ONLY = 'TEXT_ONLY', 'Somente texto'
+
     content = models.ForeignKey(SocialContent, on_delete=models.CASCADE, related_name='carousel_slides')
     variant = models.ForeignKey(SocialCarouselTemplateVariant, on_delete=models.SET_NULL, blank=True, null=True, related_name='slides')
     source_base_image = models.ForeignKey(SocialBaseImage, on_delete=models.SET_NULL, blank=True, null=True, related_name='carousel_slides')
     order = models.PositiveSmallIntegerField(default=1)
     slide_type = models.CharField(max_length=20, choices=SlideType.choices, default=SlideType.CONTENT)
     visual_intent = models.CharField(max_length=30, choices=SocialCarouselTemplateVariant.LayoutType.choices, default=SocialCarouselTemplateVariant.LayoutType.AUTO)
+    visual_treatment = models.CharField(max_length=30, choices=VisualTreatment.choices, default=VisualTreatment.AUTO)
     semantic_visual_intent = models.CharField(max_length=40, blank=True)
     media_intent = models.CharField(max_length=255, blank=True)
     media_required = models.BooleanField(default=False)

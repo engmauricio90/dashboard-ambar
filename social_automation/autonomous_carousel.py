@@ -6,10 +6,11 @@ from django.db.models import F
 from django.utils import timezone
 
 from .ai import formatar_hashtags, gerar_carrossel_blueprint_ia, moderar_conteudo
+from .carousel_media_planner import STATUS_GRAPHIC, STATUS_PENDING, plan_carousel_media
 from .generation import _carousel_template, _historico
 from .image_analysis import OpenAIUnavailable as ImageAnalysisUnavailable, analyze_social_image
 from .image_generation import SocialImagePrompt, build_social_image_prompt, generate_social_image, image_generation_available
-from .media_resolver import STATUS_FULL_TEXT, STATUS_NEEDS_GENERATION, STATUS_SELECTED, resolve_slide_media
+from .media_resolver import STATUS_FULL_TEXT, STATUS_NEEDS_GENERATION, STATUS_SELECTED, STATUS_UNAVAILABLE
 from .models import SocialAIUsage, SocialBaseImage, SocialCarouselSlide, SocialCarouselTemplateVariant, SocialContent
 from .rendering import SocialRenderError, renderizar_midia_social
 from .services import registrar_evento
@@ -21,6 +22,8 @@ class AutonomousCarouselResult:
     generated_images: int = 0
     selected_bank_images: int = 0
     full_text_slides: int = 0
+    graphic_slides: int = 0
+    pending_slides: int = 0
     messages: list[str] = field(default_factory=list)
 
 
@@ -97,25 +100,19 @@ def gerar_carrossel_autonomo(profile, *, tema='', slides=None, usuario=None):
     result = AutonomousCarouselResult(content=content)
     remaining_quota = _remaining_image_quota(profile)
     aspect_ratio = template.aspect_ratio
+    plan = plan_carousel_media(profile, blueprint.slides[:slide_count], template, remaining_quota=remaining_quota)
 
-    for index, item in enumerate(blueprint.slides[:slide_count], start=1):
-        preferred_layout = _normalize_layout(item.preferred_layout)
-        resolution = resolve_slide_media(
-            profile,
-            media_intent=item.media_intent,
-            visual_intent=item.visual_intent,
-            preferred_layout=preferred_layout,
-            aspect_ratio=aspect_ratio,
-            media_required=item.media_required,
-        )
-        image = resolution.image
-        if resolution.status == STATUS_SELECTED and image:
+    for index, planned in enumerate(plan.items, start=1):
+        item = planned.slide
+        preferred_layout = _normalize_layout(planned.visual_intent)
+        image = planned.image
+        if planned.status == STATUS_SELECTED and image:
             result.selected_bank_images += 1
             SocialBaseImage.objects.filter(pk=image.pk).update(vezes_usada=F('vezes_usada') + 1, ultima_utilizacao=timezone.now())
-        elif resolution.status == STATUS_NEEDS_GENERATION:
+        elif planned.status == STATUS_NEEDS_GENERATION:
             if remaining_quota <= 0 or not image_generation_available(profile):
-                result.messages.append(f'Slide {index}: geracao indisponivel ou quota esgotada; usando layout textual.')
-                preferred_layout = SocialCarouselTemplateVariant.LayoutType.FULL_TEXT
+                result.pending_slides += 1
+                result.messages.append(f'Slide {index}: geracao indisponivel ou quota esgotada; midia pendente.')
             else:
                 prompt_text = build_social_image_prompt(
                     profile,
@@ -147,12 +144,14 @@ def gerar_carrossel_autonomo(profile, *, tema='', slides=None, usuario=None):
                     analyze_social_image(profile, image, persist=True)
                 except ImageAnalysisUnavailable as exc:
                     result.messages.append(f'Slide {index}: imagem gerada sem analise visual ({exc}).')
-        elif resolution.status == STATUS_FULL_TEXT:
+        elif planned.status == STATUS_GRAPHIC:
+            result.graphic_slides += 1
+        elif planned.status == STATUS_FULL_TEXT:
             preferred_layout = SocialCarouselTemplateVariant.LayoutType.FULL_TEXT
             result.full_text_slides += 1
-        elif item.media_required:
-            content.delete()
-            raise ValidationError(f'Slide {index} exige midia, mas nenhuma midia adequada foi encontrada.')
+        elif planned.status in {STATUS_PENDING, STATUS_UNAVAILABLE}:
+            result.pending_slides += 1
+            result.messages.append(f'Slide {index}: midia visual pendente. {planned.reason}')
 
         SocialCarouselSlide.objects.create(
             content=content,
@@ -160,12 +159,20 @@ def gerar_carrossel_autonomo(profile, *, tema='', slides=None, usuario=None):
             slide_type=item.slide_type,
             source_base_image=image,
             visual_intent=preferred_layout,
+            visual_treatment=planned.visual_treatment,
             semantic_visual_intent=item.visual_intent,
             media_intent=item.media_intent,
-            media_required=item.media_required,
+            media_required=planned.media_required,
             title=item.title,
             body=item.body,
-            render_metadata={'media_resolution': resolution.status, 'media_score': resolution.score, 'media_reason': resolution.reason},
+            render_metadata={
+                'visual_mode': plan.visual_mode,
+                'image_density': plan.image_density,
+                'media_resolution': planned.status,
+                'media_score': planned.score,
+                'media_reason': planned.reason,
+                'needs_generation': planned.needs_generation,
+            },
         )
 
     try:
@@ -173,5 +180,8 @@ def gerar_carrossel_autonomo(profile, *, tema='', slides=None, usuario=None):
     except SocialRenderError:
         content.delete()
         raise
+    if not content.final_media_ready:
+        content.erro = 'Carrossel ainda nao atende a politica visual do perfil.'
+        content.save(update_fields=['erro', 'updated_at'])
     registrar_evento(content, 'gerado_ia', usuario, f'Carrossel autonomo. Tema: {tema or "-"}')
     return result

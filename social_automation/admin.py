@@ -60,8 +60,8 @@ class SocialInstagramConnectionInline(admin.StackedInline):
 
 @admin.register(SocialProfile)
 class SocialProfileAdmin(admin.ModelAdmin):
-    list_display = ['nome', 'username', 'plataforma', 'modo_operacao', 'ativo', 'ai_image_mode', 'posts_por_dia', 'reels_por_dia', 'carousels_por_dia', 'updated_at']
-    list_filter = ['plataforma', 'modo_operacao', 'ativo', 'ai_image_mode', 'ai_image_generation_enabled']
+    list_display = ['nome', 'username', 'plataforma', 'modo_operacao', 'ativo', 'carousel_visual_mode', 'carousel_image_density', 'ai_image_mode', 'posts_por_dia', 'reels_por_dia', 'carousels_por_dia', 'updated_at']
+    list_filter = ['plataforma', 'modo_operacao', 'ativo', 'carousel_visual_mode', 'carousel_image_density', 'ai_image_mode', 'ai_image_generation_enabled']
     search_fields = ['nome', 'username', 'estilo', 'instrucoes_ia']
     inlines = [SocialInstagramConnectionInline, SocialVisualIdentityInline, SocialBaseImageInline, SocialCarouselTemplateInline]
 
@@ -118,7 +118,7 @@ class SocialContentEventInline(admin.TabularInline):
 class SocialCarouselSlideInline(admin.TabularInline):
     model = SocialCarouselSlide
     extra = 0
-    fields = ['order', 'slide_type', 'visual_intent', 'semantic_visual_intent', 'media_intent', 'media_required', 'variant', 'source_base_image', 'title', 'is_active', 'rendered_image', 'instagram_container_id']
+    fields = ['order', 'slide_type', 'visual_intent', 'visual_treatment', 'semantic_visual_intent', 'media_intent', 'media_required', 'variant', 'source_base_image', 'title', 'is_active', 'rendered_image', 'instagram_container_id']
     readonly_fields = ['rendered_image', 'instagram_container_id']
 
 
@@ -171,8 +171,8 @@ class SocialBaseImageProtectedRegionAdmin(admin.ModelAdmin):
 
 @admin.register(SocialCarouselSlide)
 class SocialCarouselSlideAdmin(admin.ModelAdmin):
-    list_display = ['content', 'order', 'slide_type', 'visual_intent', 'semantic_visual_intent', 'media_required', 'variant', 'is_active', 'updated_at']
-    list_filter = ['slide_type', 'visual_intent', 'semantic_visual_intent', 'media_required', 'is_active', 'content__profile']
+    list_display = ['content', 'order', 'slide_type', 'visual_intent', 'visual_treatment', 'semantic_visual_intent', 'media_required', 'variant', 'is_active', 'updated_at']
+    list_filter = ['slide_type', 'visual_intent', 'visual_treatment', 'semantic_visual_intent', 'media_required', 'is_active', 'content__profile']
     search_fields = ['title', 'body', 'media_intent', 'content__frase']
 
 

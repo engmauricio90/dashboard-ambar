@@ -55,6 +55,10 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
             'carousel_ai_instructions',
             'carousel_cta_enabled',
             'carousel_default_cta',
+            'carousel_visual_mode',
+            'carousel_image_density',
+            'carousel_allow_same_image',
+            'carousel_max_same_image_uses',
             'ai_image_generation_enabled',
             'ai_image_mode',
             'ai_image_daily_limit',
@@ -94,6 +98,18 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
         self.fields['carousel_default_slide_count'].initial = self.instance.carousel_default_slide_count if self.instance and self.instance.pk else 6
         self.fields['carousel_ai_instructions'].required = False
         self.fields['carousel_default_cta'].required = False
+        self.fields['carousel_visual_mode'].required = False
+        self.fields['carousel_visual_mode'].initial = self.instance.carousel_visual_mode if self.instance and self.instance.pk else 'STANDARD'
+        self.fields['carousel_visual_mode'].label = 'Modo visual do carrossel'
+        self.fields['carousel_visual_mode'].widget.attrs['class'] = 'form-select'
+        self.fields['carousel_image_density'].required = False
+        self.fields['carousel_image_density'].initial = self.instance.carousel_image_density if self.instance and self.instance.pk else 'AUTO'
+        self.fields['carousel_image_density'].label = 'Densidade de imagens'
+        self.fields['carousel_image_density'].widget.attrs['class'] = 'form-select'
+        self.fields['carousel_allow_same_image'].required = False
+        self.fields['carousel_allow_same_image'].label = 'Permitir repetir a mesma imagem'
+        self.fields['carousel_max_same_image_uses'].required = False
+        self.fields['carousel_max_same_image_uses'].help_text = '0 usa o padrao do modo visual.'
         self.fields['ai_image_mode'].required = False
         self.fields['ai_image_mode'].initial = self.instance.ai_image_mode if self.instance and self.instance.pk else 'NONE'
         self.fields['ai_image_mode'].label = 'Politica de IA visual'
@@ -125,6 +141,15 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
 
     def clean_carousel_default_slide_count(self):
         return self.cleaned_data.get('carousel_default_slide_count') or 6
+
+    def clean_carousel_visual_mode(self):
+        return self.cleaned_data.get('carousel_visual_mode') or 'STANDARD'
+
+    def clean_carousel_image_density(self):
+        return self.cleaned_data.get('carousel_image_density') or 'AUTO'
+
+    def clean_carousel_max_same_image_uses(self):
+        return self.cleaned_data.get('carousel_max_same_image_uses') or 0
 
     def clean_ai_image_mode(self):
         return self.cleaned_data.get('ai_image_mode') or 'NONE'
@@ -536,6 +561,7 @@ class SocialCarouselSlideForm(BootstrapMixin, forms.ModelForm):
             'order',
             'slide_type',
             'visual_intent',
+            'visual_treatment',
             'semantic_visual_intent',
             'media_intent',
             'media_required',
@@ -556,9 +582,10 @@ class SocialCarouselSlideForm(BootstrapMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
         self._apply_bootstrap()
         content = self.instance.content if self.instance and self.instance.content_id else None
-        for field_name in ['slide_type', 'visual_intent', 'variant', 'source_base_image', 'overlay_override']:
+        for field_name in ['slide_type', 'visual_intent', 'visual_treatment', 'variant', 'source_base_image', 'overlay_override']:
             self.fields[field_name].widget.attrs['class'] = 'form-select'
         self.fields['visual_intent'].required = False
+        self.fields['visual_treatment'].required = False
         self.fields['semantic_visual_intent'].required = False
         self.fields['media_intent'].required = False
         self.fields['media_required'].required = False
@@ -595,6 +622,7 @@ class SocialCarouselSlideForm(BootstrapMixin, forms.ModelForm):
             cleaned_data['DELETE'] = True
             self.cleaned_data = cleaned_data
         cleaned_data['visual_intent'] = cleaned_data.get('visual_intent') or SocialCarouselTemplateVariant.LayoutType.AUTO
+        cleaned_data['visual_treatment'] = cleaned_data.get('visual_treatment') or SocialCarouselSlide.VisualTreatment.AUTO
         return cleaned_data
 
 

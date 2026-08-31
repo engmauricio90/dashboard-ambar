@@ -136,7 +136,25 @@ def _carousel_schema():
                         'media_required': {'type': 'boolean'},
                         'preferred_layout': {
                             'type': 'string',
-                            'enum': ['AUTO', 'HERO_LEFT', 'HERO_RIGHT', 'TEXT_TOP', 'TEXT_BOTTOM', 'CENTER_CARD', 'SPLIT_LEFT', 'SPLIT_RIGHT', 'MINIMAL', 'FULL_TEXT'],
+                            'enum': [
+                                'AUTO',
+                                'HERO_LEFT',
+                                'HERO_RIGHT',
+                                'TEXT_TOP',
+                                'TEXT_BOTTOM',
+                                'CENTER_CARD',
+                                'SPLIT_LEFT',
+                                'SPLIT_RIGHT',
+                                'MINIMAL',
+                                'FULL_TEXT',
+                                'EDITORIAL_CARD',
+                                'IMAGE_BACKGROUND',
+                                'IMAGE_BLUR_TEXT',
+                                'QUOTE_VISUAL',
+                                'GRAPHIC_DARK',
+                                'GRAPHIC_LIGHT',
+                                'CTA_VISUAL',
+                            ],
                         },
                     },
                 },
@@ -215,6 +233,14 @@ def gerar_conteudos_ia(profile, quantidade, tema, historico, image_contexts=None
 def gerar_carrossel_blueprint_ia(profile, tema, slide_count, historico=None, media_contexts=None):
     slide_count = max(2, min(10, int(slide_count or profile.carousel_default_slide_count or 6)))
     media_contexts = media_contexts or []
+    visual_mode = getattr(profile, 'carousel_visual_mode', 'STANDARD') or 'STANDARD'
+    image_density = getattr(profile, 'carousel_image_density', 'AUTO') or 'AUTO'
+    if visual_mode == 'IMAGE_DRIVEN':
+        visual_policy = 'Este perfil exige imagem em todos os slides ativos; marque media_required=true e escreva textos curtos para caber sobre imagem.'
+    elif visual_mode == 'VISUAL_RICH':
+        visual_policy = 'Este perfil exige tratamento visual rico; prefira slides com imagem quando fizer sentido e use textos curtos mesmo quando o slide puder usar fundo grafico.'
+    else:
+        visual_policy = 'Este perfil permite carrossel padrao; use imagem apenas quando ela melhorar claramente o slide.'
     prompt = (
         'Voce cria um blueprint estruturado para um carrossel de Instagram. '
         'Responda somente no JSON solicitado. '
@@ -223,6 +249,7 @@ def gerar_carrossel_blueprint_ia(profile, tema, slide_count, historico=None, med
         'Use preferred_layout como sugestao visual, sabendo que o compositor final decide a area segura. '
         'Se o slide funcionar bem sem imagem, marque media_required=false e use layout textual/minimal. '
         'Evite textos longos nos slides; cada slide precisa ser legivel em celular. '
+        f'Politica visual do carrossel: modo={visual_mode}, densidade={image_density}. {visual_policy} '
         f'Perfil: {profile.nome} ({profile.username}). '
         f'Estilo: {profile.estilo or "sem estilo cadastrado"}. '
         f'Instrucoes gerais: {profile.instrucoes_ia or "sem instrucoes adicionais"}. '

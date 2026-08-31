@@ -44,7 +44,16 @@ LAYOUTS = {
     'SPLIT_RIGHT': LayoutCandidate('SPLIT_RIGHT', (0.52, 0.16, 0.42, 0.68), (0.06, 0.10, 0.42, 0.80), align='left', overlay='GRADIENT_RIGHT'),
     'MINIMAL': LayoutCandidate('MINIMAL', (0.12, 0.62, 0.76, 0.24), align='center', overlay='GRADIENT_BOTTOM'),
     'FULL_TEXT': LayoutCandidate('FULL_TEXT', (0.10, 0.18, 0.80, 0.62), align='center', overlay='NONE'),
+    'EDITORIAL_CARD': LayoutCandidate('EDITORIAL_CARD', (0.12, 0.20, 0.76, 0.56), align='center', overlay='NONE'),
+    'IMAGE_BACKGROUND': LayoutCandidate('IMAGE_BACKGROUND', (0.10, 0.18, 0.80, 0.56), align='center', overlay='DARK'),
+    'IMAGE_BLUR_TEXT': LayoutCandidate('IMAGE_BLUR_TEXT', (0.13, 0.22, 0.74, 0.52), align='center', overlay='DARK'),
+    'QUOTE_VISUAL': LayoutCandidate('QUOTE_VISUAL', (0.14, 0.24, 0.72, 0.48), align='center', overlay='NONE'),
+    'GRAPHIC_DARK': LayoutCandidate('GRAPHIC_DARK', (0.11, 0.21, 0.78, 0.54), align='center', overlay='NONE'),
+    'GRAPHIC_LIGHT': LayoutCandidate('GRAPHIC_LIGHT', (0.11, 0.21, 0.78, 0.54), align='center', overlay='NONE'),
+    'CTA_VISUAL': LayoutCandidate('CTA_VISUAL', (0.12, 0.28, 0.76, 0.40), align='center', overlay='NONE'),
 }
+
+GRAPHIC_ONLY_LAYOUTS = {'EDITORIAL_CARD', 'QUOTE_VISUAL', 'GRAPHIC_DARK', 'GRAPHIC_LIGHT', 'CTA_VISUAL'}
 
 DEFAULT_SEQUENCE = {
     'COVER': ['HERO_LEFT', 'HERO_RIGHT', 'TEXT_TOP', 'CENTER_CARD'],
@@ -134,7 +143,9 @@ def _variant_for_layout(layout_name, variants):
 
 def _select_source_base_image(slide, layout_name):
     if slide.source_base_image_id:
-        return slide.source_base_image
+        if slide.source_base_image.profile_id == slide.content.profile_id:
+            return slide.source_base_image
+        return None
     if slide.content.base_image_id:
         return slide.content.base_image
     preferred_zone = {
@@ -235,7 +246,7 @@ def compose_carousel_slide(slide, template, total_slides):
     for layout_name in layout_names:
         candidate = LAYOUTS.get(layout_name) or LAYOUTS['FULL_TEXT']
         variant = slide.variant if slide.variant_id and slide.variant.allows_slide_type(slide.slide_type) else _variant_for_layout(layout_name, compatible_variants)
-        source_base_image = None if layout_name == 'FULL_TEXT' else _select_source_base_image(slide, layout_name)
+        source_base_image = None if layout_name in GRAPHIC_ONLY_LAYOUTS or layout_name == 'FULL_TEXT' else _select_source_base_image(slide, layout_name)
         regions = protected_regions_for_image(source_base_image)
         score = _score_candidate(candidate, regions, source_base_image)
         if score is None:
@@ -282,7 +293,7 @@ def compose_carousel_slide(slide, template, total_slides):
         overlay_type=overlay_type,
         overlay_strength=overlay_strength,
         source_base_image=source_base_image,
-        use_source_photo=bool(source_base_image and candidate.name != 'FULL_TEXT'),
+        use_source_photo=bool(source_base_image and candidate.name not in GRAPHIC_ONLY_LAYOUTS and candidate.name != 'FULL_TEXT'),
         metadata=metadata,
     )
 
