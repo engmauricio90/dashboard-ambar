@@ -313,6 +313,9 @@ class PdfDocument:
         border = self.theme.text
         active_fill = self.theme.secondary
         active_outline = tuple(max(channel - 35, 0) for channel in active_fill)
+        weekend_fill = (255, 247, 214)
+        note_fill = (255, 243, 205)
+        note_border = (224, 168, 0)
         label_font = self.theme.font('table_body')
         label_bold_font = self.theme.font('table_body', True)
         header_font = self.theme.font('table_header', True)
@@ -337,7 +340,8 @@ class PdfDocument:
             font = label_bold_font if row.get('is_group') else label_font
             line_h = font.getbbox('Ag')[3] - font.getbbox('Ag')[1] + 4
             lines = self._wrap_lines(row.get('label', '-'), service_w - 8, font)
-            return max(row_height, min(118, line_h * len(lines) + 16))
+            note_extra = 24 if row.get('note') and not row.get('is_group') else 0
+            return max(row_height, min(142, line_h * len(lines) + 16 + note_extra))
 
         def draw_activity_bar(x, y, w, h):
             pad_x = max(int(w * 0.14), 6)
@@ -395,7 +399,8 @@ class PdfDocument:
 
                 cursor = x + service_w
                 for period, width in zip(period_chunk, widths):
-                    self.draw.rectangle((cursor, y + 34, cursor + width, y + header_h), fill='white', outline=border, width=1)
+                    fill = weekend_fill if period.get('is_weekend') else 'white'
+                    self.draw.rectangle((cursor, y + 34, cursor + width, y + header_h), fill=fill, outline=border, width=1)
                     self._draw_wrapped(period.get('label', '-'), cursor, y + 34, width, header_h - 34, small_font, fill=self.theme.text, align='center')
                     cursor += width
 
@@ -409,10 +414,25 @@ class PdfDocument:
                     cursor = x + service_w
                     active_keys = set(str(key) for key in row.get('active_keys', set()))
                     for period, width in zip(period_chunk, widths):
-                        self.draw.rectangle((cursor, row_y, cursor + width, row_y + current_row_h), fill=row_fill, outline=border, width=1)
+                        cell_fill = weekend_fill if period.get('is_weekend') and not is_group else row_fill
+                        self.draw.rectangle((cursor, row_y, cursor + width, row_y + current_row_h), fill=cell_fill, outline=border, width=1)
                         if period.get('key') in active_keys and not is_group:
                             draw_activity_bar(cursor, row_y, width, current_row_h)
                         cursor += width
+                    note = row.get('note')
+                    if note and not is_group:
+                        note_x = x + service_w + 6
+                        note_w = sum(widths) - 12
+                        note_h = 24
+                        note_y = row_y + current_row_h - note_h - 5
+                        self.draw.rounded_rectangle(
+                            (note_x, note_y, note_x + note_w, note_y + note_h),
+                            radius=5,
+                            fill=note_fill,
+                            outline=note_border,
+                            width=1,
+                        )
+                        self._draw_wrapped(note, note_x + 4, note_y, note_w - 8, note_h, small_font, fill=self.theme.text)
                     row_y += current_row_h
 
                 table_right = x + service_w + sum(widths)

@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django import forms
 from django.forms import inlineformset_factory
 
@@ -333,6 +335,14 @@ class MedicaoEmpreiteiroForm(BootstrapModelForm):
         self.fields['cpf_cnpj'].widget.attrs.update({'readonly': 'readonly'})
         self.fields['pix'].required = False
         self.fields['pix'].widget.attrs.update({'readonly': 'readonly'})
+        for field_name in [
+            'retencao_tecnica',
+            'retencao_tecnica_percentual',
+            'desconto_adicional',
+            'desconto_adicional_percentual',
+        ]:
+            if field_name in self.fields:
+                self.fields[field_name].required = False
 
     def clean(self):
         cleaned_data = super().clean()
@@ -342,6 +352,9 @@ class MedicaoEmpreiteiroForm(BootstrapModelForm):
             self.add_error('periodo_fim', 'A data final nao pode ser anterior ao inicio do periodo.')
         for field in ['retencao_tecnica', 'retencao_tecnica_percentual', 'desconto_adicional', 'desconto_adicional_percentual']:
             value = cleaned_data.get(field)
+            if value in (None, ''):
+                cleaned_data[field] = Decimal('0')
+                continue
             if value is not None and value < 0:
                 self.add_error(field, 'Informe um valor positivo.')
         cadastro = cleaned_data.get('empreiteiro_cadastro')
@@ -449,6 +462,12 @@ class ItemMedicaoEmpreiteiroForm(BootstrapModelForm):
         marked_delete = cleaned_data.get('DELETE')
         if marked_delete:
             return cleaned_data
+
+        if self.instance.pk and self.instance.item_orcamento_id:
+            cleaned_data['item_orcamento'] = self.instance.item_orcamento
+            cleaned_data['item'] = self.instance.item
+            cleaned_data['descricao'] = self.instance.descricao
+            cleaned_data['unidade'] = self.instance.unidade
 
         item_orcamento = cleaned_data.get('item_orcamento')
         descricao = cleaned_data.get('descricao')

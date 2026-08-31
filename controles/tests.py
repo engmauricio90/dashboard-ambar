@@ -127,10 +127,12 @@ class ControleAbastecimentoTests(TestCase):
                 'linhas-0-id': '',
                 'linhas-0-tipo': LinhaCronogramaObra.TIPO_GERAL,
                 'linhas-0-servico': 'Execucao de formas',
+                'linhas-0-observacao_periodo': 'Aguardando liberacao da frente',
                 'linhas-0-periodos': ['0', '1'],
                 'linhas-1-id': '',
                 'linhas-1-tipo': LinhaCronogramaObra.TIPO_SERVICO,
                 'linhas-1-servico': 'Concretagem',
+                'linhas-1-observacao_periodo': '',
                 'linhas-1-periodos': ['2'],
             },
         )
@@ -139,6 +141,10 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(LinhaCronogramaObra.objects.count(), 2)
         self.assertEqual(LinhaCronogramaObra.objects.get(servico='Execucao de formas').periodos, ['0', '1'])
         self.assertEqual(LinhaCronogramaObra.objects.get(servico='Execucao de formas').tipo, LinhaCronogramaObra.TIPO_GERAL)
+        self.assertEqual(
+            LinhaCronogramaObra.objects.get(servico='Execucao de formas').observacao_periodo,
+            'Aguardando liberacao da frente',
+        )
 
         lista = self.client.get(reverse('lista_cronogramas_obras'))
         self.assertContains(lista, 'Cronograma trecho 1')
@@ -147,6 +153,33 @@ class ControleAbastecimentoTests(TestCase):
         self.assertEqual(pdf.status_code, 200)
         self.assertEqual(pdf['Content-Type'], 'application/pdf')
         self.assertTrue(pdf.content.startswith(b'%PDF'))
+
+    def test_cronograma_diario_mostra_dia_semana_fim_de_semana_e_observacao(self):
+        obra = self._obra(nome_obra='Obra Cronograma Diario')
+        cronograma = CronogramaObra.objects.create(
+            empresa=self.empresa,
+            obra=obra,
+            nome='Cronograma diario',
+            data_inicio=date(2026, 5, 1),
+            data_fim=date(2026, 5, 3),
+            formato=CronogramaObra.FORMATO_DIA,
+        )
+        LinhaCronogramaObra.objects.create(
+            cronograma=cronograma,
+            tipo=LinhaCronogramaObra.TIPO_SERVICO,
+            servico='Servico sem data prevista',
+            periodos=[],
+            observacao_periodo='Data depende da liberacao da prefeitura',
+        )
+
+        response = self.client.get(reverse('editar_cronograma_obra', args=[cronograma.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'sexta')
+        self.assertContains(response, 'sábado')
+        self.assertContains(response, 'domingo')
+        self.assertContains(response, 'weekend')
+        self.assertContains(response, 'Data depende da liberacao da prefeitura')
 
     def test_pdf_cronograma_obra_extenso_quebra_paginas(self):
         obra = self._obra(nome_obra='Obra Cronograma Extenso')

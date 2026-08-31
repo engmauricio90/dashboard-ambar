@@ -129,6 +129,7 @@ class NotaFiscalOrdemCompraGeralAdmin(admin.ModelAdmin):
 class LinhaCronogramaObraInline(admin.TabularInline):
     model = LinhaCronogramaObra
     extra = 0
+    fields = ('ordem', 'tipo', 'servico', 'periodos', 'observacao_periodo')
 
 
 @admin.register(CronogramaObra)

@@ -1332,6 +1332,7 @@ class LinhaCronogramaObra(models.Model):
     tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default=TIPO_SERVICO)
     servico = models.CharField(max_length=255)
     periodos = models.JSONField(default=list, blank=True)
+    observacao_periodo = models.CharField(max_length=255, blank=True)
 
     class Meta:
         ordering = ['ordem', 'id']

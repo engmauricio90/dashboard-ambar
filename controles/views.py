@@ -179,6 +179,17 @@ def _add_month(value):
     return value.replace(year=year, month=month, day=day)
 
 
+DIAS_SEMANA = [
+    'segunda',
+    'terça',
+    'quarta',
+    'quinta',
+    'sexta',
+    'sábado',
+    'domingo',
+]
+
+
 def _periodos_cronograma(cronograma):
     periodos = []
     atual = cronograma.data_inicio
@@ -207,6 +218,8 @@ def _periodos_cronograma(cronograma):
                 'fim': fim,
                 'label': label,
                 'grupo': grupo,
+                'dia_semana': DIAS_SEMANA[atual.weekday()],
+                'is_weekend': atual.weekday() >= 5 if cronograma.formato == CronogramaObra.FORMATO_DIA else False,
             }
         )
         atual = proximo
@@ -300,6 +313,7 @@ def editar_cronograma_obra(request, cronograma_id):
                     linha_id = request.POST.get(f'linhas-{index}-id')
                     tipo = request.POST.get(f'linhas-{index}-tipo') or LinhaCronogramaObra.TIPO_SERVICO
                     servico = (request.POST.get(f'linhas-{index}-servico') or '').strip()
+                    observacao_periodo = (request.POST.get(f'linhas-{index}-observacao_periodo') or '').strip()
                     excluir = request.POST.get(f'linhas-{index}-DELETE')
                     periodos = request.POST.getlist(f'linhas-{index}-periodos')
                     linha = LinhaCronogramaObra.objects.filter(cronograma=cronograma, id=linha_id).first() if linha_id else None
@@ -314,6 +328,7 @@ def editar_cronograma_obra(request, cronograma_id):
                     linha.tipo = tipo if tipo in {LinhaCronogramaObra.TIPO_SERVICO, LinhaCronogramaObra.TIPO_GERAL} else LinhaCronogramaObra.TIPO_SERVICO
                     linha.servico = servico
                     linha.periodos = periodos
+                    linha.observacao_periodo = observacao_periodo
                     linha.save()
             messages.success(request, 'Cronograma salvo com sucesso.')
             return redirect('editar_cronograma_obra', cronograma_id=cronograma.id)
@@ -361,7 +376,16 @@ def cronograma_obra_pdf(request, cronograma_id):
     )
     doc.add_timeline_grid(
         [
-            {'key': periodo['key'], 'label': periodo['label'], 'group': periodo['grupo']}
+            {
+                'key': periodo['key'],
+                'label': (
+                    f"{periodo['label']} {periodo['dia_semana']}"
+                    if cronograma.formato == CronogramaObra.FORMATO_DIA
+                    else periodo['label']
+                ),
+                'group': periodo['grupo'],
+                'is_weekend': periodo.get('is_weekend', False),
+            }
             for periodo in periodos
         ],
         [
@@ -369,6 +393,7 @@ def cronograma_obra_pdf(request, cronograma_id):
                 'label': linha.servico,
                 'active_keys': set(str(periodo) for periodo in linha.periodos),
                 'is_group': linha.tipo == LinhaCronogramaObra.TIPO_GERAL,
+                'note': linha.observacao_periodo,
             }
             for linha in linhas
         ],

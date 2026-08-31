@@ -575,6 +575,74 @@ class MedicoesTests(TestCase):
         self.assertContains(response_detalhe, 'R$ 225,00')
         self.assertContains(response_detalhe, '25,00% concluida')
 
+    def test_edicao_medicao_cumulativa_empreiteiro_salva_itens_visiveis(self):
+        empreiteiro = Empreiteiro.objects.create(empresa=self.empresa, nome='Contratado Cumulativo')
+        orcamento = OrcamentoMedicao.objects.create(
+            obra=self.obra,
+            nome='Planilha cumulativa contratado',
+            tipo=OrcamentoMedicao.TIPO_EMPREITEIRO,
+        )
+        item_orcamento = ItemOrcamentoMedicao.objects.create(
+            orcamento=orcamento,
+            item='1.1',
+            descricao='Servico cumulativo',
+            unidade='m2',
+            quantidade=Decimal('20.0000'),
+            preco_unitario_mao_obra=Decimal('10.0000'),
+        )
+        medicao = MedicaoEmpreiteiro.objects.create(
+            empresa=self.empresa,
+            obra=self.obra,
+            orcamento=orcamento,
+            tipo=MedicaoEmpreiteiro.TIPO_CUMULATIVA,
+            empreiteiro_cadastro=empreiteiro,
+            empreiteiro=empreiteiro.nome,
+            numero=1,
+            periodo_inicio=date(2026, 2, 1),
+            periodo_fim=date(2026, 2, 28),
+            data_medicao=date(2026, 2, 28),
+        )
+        item_medicao = ItemMedicaoEmpreiteiro.objects.create(
+            medicao=medicao,
+            item_orcamento=item_orcamento,
+            quantidade_periodo=Decimal('0.0000'),
+            valor_unitario=Decimal('10.00'),
+        )
+
+        response = self.client.post(
+            reverse('editar_medicao_empreiteiro', args=[medicao.id]),
+            {
+                'active_tab': 'itens',
+                'obra': self.obra.id,
+                'empreiteiro_cadastro': empreiteiro.id,
+                'empreiteiro': '',
+                'cpf_cnpj': '',
+                'pix': '',
+                'numero': '1',
+                'periodo_inicio': '2026-02-01',
+                'periodo_fim': '2026-02-28',
+                'data_medicao': '2026-02-28',
+                'retencao_tecnica': '0',
+                'retencao_tecnica_percentual': '',
+                'desconto_adicional': '0',
+                'desconto_adicional_percentual': '',
+                'observacoes': '',
+                'itens-TOTAL_FORMS': '1',
+                'itens-INITIAL_FORMS': '1',
+                'itens-MIN_NUM_FORMS': '0',
+                'itens-MAX_NUM_FORMS': '1000',
+                'itens-0-id': item_medicao.id,
+                'itens-0-quantidade_periodo': '7.5000',
+                'itens-0-valor_unitario': '10.00',
+            },
+        )
+
+        self.assertRedirects(response, reverse('editar_medicao_empreiteiro', args=[medicao.id]))
+        item_medicao.refresh_from_db()
+        self.assertEqual(item_medicao.item_orcamento, item_orcamento)
+        self.assertEqual(item_medicao.descricao, 'Servico cumulativo')
+        self.assertEqual(item_medicao.quantidade_periodo, Decimal('7.5000'))
+
     def test_relatorio_gerencial_medicoes_filtra_colunas_e_exporta(self):
         orcamento, item = self._orcamento()
         medicao_construtora = MedicaoConstrutora.objects.create(

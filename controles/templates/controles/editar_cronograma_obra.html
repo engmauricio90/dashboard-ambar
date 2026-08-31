@@ -25,6 +25,11 @@
         width: 24px;
         height: 24px;
         cursor: pointer;
+        accent-color: #0f766e;
+    }
+    .cronograma-check:checked {
+        border-color: #0f766e;
+        box-shadow: 0 0 0 .12rem rgba(15, 118, 110, .24);
     }
     .periodo-col {
         min-width: 54px;
@@ -38,6 +43,38 @@
     .ordem-col {
         min-width: 96px;
         text-align: center;
+    }
+    .periodo-col.weekend,
+    .cronograma-date-cell.weekend {
+        background: #fff3cd;
+    }
+    .periodo-col span,
+    .periodo-col small {
+        display: block;
+        line-height: 1.1;
+    }
+    .periodo-col small {
+        color: #495057;
+        font-size: .68rem;
+        margin-top: .15rem;
+    }
+    .cronograma-observacao-input {
+        margin-top: .35rem;
+        font-size: .8rem;
+    }
+    .cronograma-note-row td {
+        background: #fff8e1;
+        border-top: 0;
+    }
+    .cronograma-note-label {
+        display: block;
+        border: 1px solid #e0a800;
+        border-radius: .35rem;
+        background: #fff3cd;
+        color: #5c4200;
+        font-weight: 600;
+        padding: .35rem .5rem;
+        text-align: left;
     }
 </style>
 
@@ -95,7 +132,10 @@
                         </tr>
                         <tr>
                             {% for periodo in periodos %}
-                            <th class="periodo-col">{{ periodo.label }}</th>
+                            <th class="periodo-col {% if periodo.is_weekend %}weekend{% endif %}">
+                                <span>{{ periodo.label }}</span>
+                                {% if periodo.dia_semana %}<small>{{ periodo.dia_semana }}</small>{% endif %}
+                            </th>
                             {% endfor %}
                         </tr>
                     </thead>
@@ -115,14 +155,24 @@
                             <td class="servico-col">
                                 <input type="hidden" name="linhas-{{ forloop.counter0 }}-id" value="{{ linha.id }}">
                                 <input type="text" name="linhas-{{ forloop.counter0 }}-servico" value="{{ linha.servico }}" class="form-control form-control-sm">
+                                <input type="text" name="linhas-{{ forloop.counter0 }}-observacao_periodo" value="{{ linha.observacao_periodo }}" class="form-control form-control-sm cronograma-observacao-input" placeholder="Observacao na faixa de datas">
                             </td>
                             {% for periodo in periodos %}
-                            <td class="text-center">
+                            <td class="text-center cronograma-date-cell {% if periodo.is_weekend %}weekend{% endif %}">
                                 <input type="checkbox" class="form-check-input cronograma-check" name="linhas-{{ forloop.parentloop.counter0 }}-periodos" value="{{ periodo.key }}" {% if periodo.key in linha.periodos %}checked{% endif %}>
                             </td>
                             {% endfor %}
                             <td class="text-center"><input type="checkbox" class="form-check-input" name="linhas-{{ forloop.counter0 }}-DELETE"></td>
                         </tr>
+                        {% if linha.observacao_periodo %}
+                        <tr class="cronograma-note-row">
+                            <td colspan="3"></td>
+                            <td colspan="{{ periodos|length }}">
+                                <span class="cronograma-note-label">{{ linha.observacao_periodo }}</span>
+                            </td>
+                            <td></td>
+                        </tr>
+                        {% endif %}
                         {% empty %}
                         <tr id="cronograma-empty-row"><td colspan="{{ periodos|length|add:4 }}" class="text-muted">Adicione a primeira linha de servico.</td></tr>
                         {% endfor %}
@@ -153,9 +203,10 @@
         <td class="servico-col">
             <input type="hidden" name="linhas-__prefix__-id" value="">
             <input type="text" name="linhas-__prefix__-servico" class="form-control form-control-sm">
+            <input type="text" name="linhas-__prefix__-observacao_periodo" class="form-control form-control-sm cronograma-observacao-input" placeholder="Observacao na faixa de datas">
         </td>
         {% for periodo in periodos %}
-        <td class="text-center">
+        <td class="text-center cronograma-date-cell {% if periodo.is_weekend %}weekend{% endif %}">
             <input type="checkbox" class="form-check-input cronograma-check" name="linhas-__prefix__-periodos" value="{{ periodo.key }}">
         </td>
         {% endfor %}
@@ -174,6 +225,35 @@
 
     function linhasCronograma() {
         return Array.from(linhasCronogramaBody.querySelectorAll('tr.linha-cronograma'));
+    }
+
+    function blocoLinhaCronograma(row) {
+        const noteRow = row.nextElementSibling && row.nextElementSibling.classList.contains('cronograma-note-row')
+            ? row.nextElementSibling
+            : null;
+        return [row, noteRow].filter(Boolean);
+    }
+
+    function moverBlocoAntes(row, target) {
+        const fragment = document.createDocumentFragment();
+        blocoLinhaCronograma(row).forEach((element) => fragment.appendChild(element));
+        linhasCronogramaBody.insertBefore(fragment, target);
+    }
+
+    function proximaLinhaCronograma(row) {
+        let next = row.nextElementSibling;
+        if (next && next.classList.contains('cronograma-note-row')) {
+            next = next.nextElementSibling;
+        }
+        return next && next.classList.contains('linha-cronograma') ? next : null;
+    }
+
+    function linhaCronogramaAnterior(row) {
+        let previous = row.previousElementSibling;
+        if (previous && previous.classList.contains('cronograma-note-row')) {
+            previous = previous.previousElementSibling;
+        }
+        return previous && previous.classList.contains('linha-cronograma') ? previous : null;
     }
 
     function atualizarTipoLinha(row) {
@@ -217,16 +297,16 @@
             return;
         }
         if (event.target.classList.contains('mover-linha-acima')) {
-            const previous = row.previousElementSibling;
-            if (previous && previous.classList.contains('linha-cronograma')) {
-                linhasCronogramaBody.insertBefore(row, previous);
+            const previous = linhaCronogramaAnterior(row);
+            if (previous) {
+                moverBlocoAntes(row, previous);
                 reindexarLinhasCronograma();
             }
         }
         if (event.target.classList.contains('mover-linha-abaixo')) {
-            const next = row.nextElementSibling;
-            if (next && next.classList.contains('linha-cronograma')) {
-                linhasCronogramaBody.insertBefore(next, row);
+            const next = proximaLinhaCronograma(row);
+            if (next) {
+                moverBlocoAntes(next, row);
                 reindexarLinhasCronograma();
             }
         }
@@ -241,7 +321,7 @@
     if (ordenarLinhasCronograma) {
         ordenarLinhasCronograma.addEventListener('click', () => {
             const linhasOrdenadas = linhasCronograma().sort((a, b) => primeiraMarcacao(a) - primeiraMarcacao(b));
-            linhasOrdenadas.forEach((row) => linhasCronogramaBody.appendChild(row));
+            linhasOrdenadas.forEach((row) => blocoLinhaCronograma(row).forEach((element) => linhasCronogramaBody.appendChild(element)));
             reindexarLinhasCronograma();
         });
     }
