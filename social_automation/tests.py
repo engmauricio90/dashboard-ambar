@@ -3875,6 +3875,43 @@ class SocialAutomationAIVisionTests(TestCase):
         self.assertEqual(provider.call_count, 1)
         self.assertFalse(SocialBaseImage.objects.filter(profile=self.profile, source=SocialBaseImage.Source.AI).exists())
 
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-2', OPENAI_SOCIAL_IMAGE_QUALITY='medium')
+    def test_gpt_image_2_nao_envia_response_format_e_salva_b64(self):
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_ALWAYS
+        self.profile.save(update_fields=['ai_image_mode', 'updated_at'])
+        client, provider = self._provider()
+        with mock.patch('social_automation.image_generation._client', return_value=client), mock.patch('social_automation.image_generation.moderar_conteudo', return_value=False):
+            image = generate_social_image(SocialImagePrompt(profile_id=self.profile.id, prompt='Prompt gpt-image-2', aspect_ratio='SQUARE'))
+        self.assertEqual(provider.call_count, 1)
+        kwargs = provider.call_args.kwargs
+        self.assertEqual(kwargs['model'], 'gpt-image-2')
+        self.assertEqual(kwargs['quality'], 'medium')
+        self.assertEqual(kwargs['size'], '1024x1024')
+        self.assertEqual(kwargs['n'], 1)
+        self.assertNotIn('response_format', kwargs)
+        self.assertEqual(image.source, SocialBaseImage.Source.AI)
+        self.assertEqual(image.ai_model, 'gpt-image-2')
+        self.assertTrue(image.arquivo.name)
+        self.assertNotIn('b64_json', image.analysis_metadata)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-2', OPENAI_SOCIAL_IMAGE_QUALITY='medium')
+    def test_resposta_sem_data_ou_sem_b64_falha_controlada(self):
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_ALWAYS
+        self.profile.ai_generated_images_reusable = False
+        self.profile.save(update_fields=['ai_image_mode', 'ai_generated_images_reusable', 'updated_at'])
+        responses = [
+            type('Response', (), {'data': [], 'id': 'sem-data'})(),
+            type('Response', (), {'data': [type('Data', (), {})()], 'id': 'sem-b64'})(),
+        ]
+        with mock.patch('social_automation.image_generation.moderar_conteudo', return_value=False):
+            for index, response in enumerate(responses, start=1):
+                client, provider = self._provider(side_effect=[response])
+                with mock.patch('social_automation.image_generation._client', return_value=client):
+                    with self.assertRaises(OpenAIUnavailable):
+                        generate_social_image(SocialImagePrompt(profile_id=self.profile.id, prompt=f'Prompt resposta incompleta {index}'))
+                self.assertEqual(provider.call_count, 1)
+        self.assertFalse(SocialBaseImage.objects.filter(profile=self.profile, source=SocialBaseImage.Source.AI).exists())
+
     @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test')
     def test_respostas_invalidas_nao_criam_imagem_utilizavel(self):
         self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_ALWAYS

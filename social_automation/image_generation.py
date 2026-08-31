@@ -160,10 +160,16 @@ def _sanitize_metadata(metadata):
 
 
 def _extract_image_bytes(response):
-    item = response.data[0]
+    data = getattr(response, 'data', None)
+    if not data:
+        raise OpenAIUnavailable('A API de imagem nao retornou dados de imagem.')
+    item = data[0]
     raw = getattr(item, 'b64_json', None)
     if raw:
-        return base64.b64decode(raw)
+        try:
+            return base64.b64decode(raw, validate=True)
+        except Exception as exc:
+            raise OpenAIUnavailable('A API de imagem retornou base64 invalido.') from exc
     raise OpenAIUnavailable('A API de imagem nao retornou bytes em base64.')
 
 
@@ -219,7 +225,6 @@ def generate_social_image(prompt: SocialImagePrompt):
             size=_image_size(prompt.aspect_ratio),
             quality=settings.OPENAI_SOCIAL_IMAGE_QUALITY,
             n=1,
-            response_format='b64_json',
         )
         image_bytes = _extract_image_bytes(response)
         width, height = _validate_image_bytes(image_bytes)
