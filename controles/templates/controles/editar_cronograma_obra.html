@@ -22,14 +22,32 @@
         z-index: 3;
     }
     .cronograma-check {
-        width: 24px;
-        height: 24px;
+        appearance: none;
+        -webkit-appearance: none;
+        width: 44px;
+        height: 18px;
         cursor: pointer;
-        accent-color: #0f766e;
+        border: 1px solid #adb5bd;
+        border-radius: .25rem;
+        background: #fff;
+        position: relative;
+        display: inline-block;
+        vertical-align: middle;
     }
     .cronograma-check:checked {
+        background: #0f766e;
         border-color: #0f766e;
-        box-shadow: 0 0 0 .12rem rgba(15, 118, 110, .24);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .35), 0 0 0 .12rem rgba(15, 118, 110, .18);
+    }
+    .cronograma-check:checked::after {
+        content: "X";
+        color: #fff;
+        font-size: .72rem;
+        font-weight: 800;
+        line-height: 18px;
+        position: absolute;
+        inset: 0;
+        text-align: center;
     }
     .periodo-col {
         min-width: 54px;

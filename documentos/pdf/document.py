@@ -311,7 +311,7 @@ class PdfDocument:
         header_h = 78
         block_gap = 28
         border = self.theme.text
-        active_fill = self.theme.secondary
+        active_fill = self.theme.primary
         active_outline = tuple(max(channel - 35, 0) for channel in active_fill)
         weekend_fill = (255, 247, 214)
         note_fill = (255, 243, 205)
