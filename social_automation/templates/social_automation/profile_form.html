@@ -32,8 +32,11 @@
             <div class="col-12"><label class="form-label">{{ form.carousel_ai_instructions.label }}</label>{{ form.carousel_ai_instructions }}</div>
         </div>
         <div class="row g-3 mt-1">
+            <div class="col-md-4"><label class="form-label">{{ form.carousel_editorial_mode.label }}</label>{{ form.carousel_editorial_mode }}</div>
             <div class="col-md-4"><label class="form-label">{{ form.carousel_visual_mode.label }}</label>{{ form.carousel_visual_mode }}</div>
             <div class="col-md-4"><label class="form-label">{{ form.carousel_image_density.label }}</label>{{ form.carousel_image_density }}</div>
+        </div>
+        <div class="row g-3 mt-1">
             <div class="col-md-2"><label class="form-label">{{ form.carousel_max_same_image_uses.label }}</label>{{ form.carousel_max_same_image_uses }}<div class="form-text">{{ form.carousel_max_same_image_uses.help_text }}</div></div>
             <div class="col-md-2 d-flex align-items-end"><div class="form-check mb-2">{{ form.carousel_allow_same_image }} <label class="form-check-label">{{ form.carousel_allow_same_image.label }}</label></div></div>
         </div>

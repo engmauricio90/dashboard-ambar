@@ -60,8 +60,8 @@ class SocialInstagramConnectionInline(admin.StackedInline):
 
 @admin.register(SocialProfile)
 class SocialProfileAdmin(admin.ModelAdmin):
-    list_display = ['nome', 'username', 'plataforma', 'modo_operacao', 'ativo', 'carousel_visual_mode', 'carousel_image_density', 'ai_image_mode', 'posts_por_dia', 'reels_por_dia', 'carousels_por_dia', 'updated_at']
-    list_filter = ['plataforma', 'modo_operacao', 'ativo', 'carousel_visual_mode', 'carousel_image_density', 'ai_image_mode', 'ai_image_generation_enabled']
+    list_display = ['nome', 'username', 'plataforma', 'modo_operacao', 'ativo', 'carousel_editorial_mode', 'carousel_visual_mode', 'carousel_image_density', 'ai_image_mode', 'posts_por_dia', 'reels_por_dia', 'carousels_por_dia', 'updated_at']
+    list_filter = ['plataforma', 'modo_operacao', 'ativo', 'carousel_editorial_mode', 'carousel_visual_mode', 'carousel_image_density', 'ai_image_mode', 'ai_image_generation_enabled']
     search_fields = ['nome', 'username', 'estilo', 'instrucoes_ia']
     inlines = [SocialInstagramConnectionInline, SocialVisualIdentityInline, SocialBaseImageInline, SocialCarouselTemplateInline]
 

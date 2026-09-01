@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from django.conf import settings
 
+from .carousel_quality import is_premium_editorial
 from .media_resolver import STATUS_FULL_TEXT, STATUS_NEEDS_GENERATION, STATUS_SELECTED, STATUS_UNAVAILABLE, resolve_slide_media
 from .models import SocialBaseImage, SocialCarouselSlide, SocialCarouselTemplateVariant, SocialProfile
 
@@ -67,9 +68,20 @@ def _target_image_count(total, mode, density):
     return max(1, (total + 1) // 2)
 
 
+def _slide_role(slide):
+    return (getattr(slide, 'slide_role', '') or '').upper()
+
+
 def _graphic_layout_for(slide, index):
+    role = _slide_role(slide)
     if getattr(slide, 'slide_type', '') == SocialCarouselSlide.SlideType.CTA:
-        return SocialCarouselTemplateVariant.LayoutType.CTA_VISUAL
+        return SocialCarouselTemplateVariant.LayoutType.CTA_CLEAN
+    if role == SocialCarouselSlide.SlideRole.BELIEF_BREAK:
+        return SocialCarouselTemplateVariant.LayoutType.QUOTE_BIG
+    if role == SocialCarouselSlide.SlideRole.VISUAL_PUNCH:
+        return SocialCarouselTemplateVariant.LayoutType.IMAGE_PUNCH_MINIMAL
+    if role == SocialCarouselSlide.SlideRole.ACTION_STEP:
+        return SocialCarouselTemplateVariant.LayoutType.EDITORIAL_SPLIT
     layouts = [
         SocialCarouselTemplateVariant.LayoutType.EDITORIAL_CARD,
         SocialCarouselTemplateVariant.LayoutType.GRAPHIC_LIGHT,
@@ -94,14 +106,25 @@ def _image_layout_for(slide, layout):
         SocialCarouselTemplateVariant.LayoutType.CENTER_CARD,
         SocialCarouselTemplateVariant.LayoutType.AUTO,
     }:
-        if getattr(slide, 'slide_type', '') == SocialCarouselSlide.SlideType.COVER:
-            return SocialCarouselTemplateVariant.LayoutType.HERO_LEFT
+        role = _slide_role(slide)
+        if getattr(slide, 'slide_type', '') == SocialCarouselSlide.SlideType.COVER or role == SocialCarouselSlide.SlideRole.HOOK_COVER:
+            return SocialCarouselTemplateVariant.LayoutType.COVER_HERO_LEFT
+        if role == SocialCarouselSlide.SlideRole.VISUAL_PUNCH:
+            return SocialCarouselTemplateVariant.LayoutType.IMAGE_PUNCH_MINIMAL
+        if role == SocialCarouselSlide.SlideRole.ACTION_STEP:
+            return SocialCarouselTemplateVariant.LayoutType.EDITORIAL_SPLIT
         return SocialCarouselTemplateVariant.LayoutType.IMAGE_BACKGROUND
     return layout
 
 
 def _graphic_treatment_for(layout):
-    if layout in {SocialCarouselTemplateVariant.LayoutType.EDITORIAL_CARD, SocialCarouselTemplateVariant.LayoutType.CTA_VISUAL, SocialCarouselTemplateVariant.LayoutType.CENTER_CARD}:
+    if layout in {
+        SocialCarouselTemplateVariant.LayoutType.EDITORIAL_CARD,
+        SocialCarouselTemplateVariant.LayoutType.CTA_VISUAL,
+        SocialCarouselTemplateVariant.LayoutType.CTA_CLEAN,
+        SocialCarouselTemplateVariant.LayoutType.CENTER_CARD,
+        SocialCarouselTemplateVariant.LayoutType.EDITORIAL_SPLIT,
+    }:
         return SocialCarouselSlide.VisualTreatment.EDITORIAL_CARD
     return SocialCarouselSlide.VisualTreatment.GRAPHIC_BACKGROUND
 
@@ -116,8 +139,10 @@ def _policy_allows_generation(profile):
 def plan_carousel_media(profile, slides, template, *, remaining_quota=None):
     slide_list = list(slides)
     visual_mode = profile.carousel_visual_mode or SocialProfile.CarouselVisualMode.STANDARD
+    editorial_mode = profile.carousel_editorial_mode or SocialProfile.CarouselEditorialMode.STANDARD
+    planning_visual_mode = SocialProfile.CarouselVisualMode.VISUAL_RICH if is_premium_editorial(editorial_mode) and visual_mode == SocialProfile.CarouselVisualMode.STANDARD else visual_mode
     density = profile.carousel_image_density or SocialProfile.CarouselImageDensity.AUTO
-    target_images = _target_image_count(len(slide_list), visual_mode, density)
+    target_images = _target_image_count(len(slide_list), planning_visual_mode, density)
     remaining_quota = settings.SOCIAL_AI_IMAGE_MAX_PER_TICK if remaining_quota is None else max(0, remaining_quota)
     image_use_counts = {}
     max_same_uses = profile.effective_carousel_max_same_image_uses
@@ -128,8 +153,13 @@ def plan_carousel_media(profile, slides, template, *, remaining_quota=None):
     for index, slide in enumerate(slide_list, start=1):
         preferred_layout = _normalize_layout(getattr(slide, 'preferred_layout', None) or getattr(slide, 'visual_intent', None))
         manual_image = getattr(slide, 'source_base_image', None)
+        role = _slide_role(slide)
         force_image = visual_mode == SocialProfile.CarouselVisualMode.IMAGE_DRIVEN
-        wants_image = force_image or bool(getattr(slide, 'media_required', False)) or image_slots_used < target_images
+        role_prefers_image = is_premium_editorial(editorial_mode) and role in {
+            SocialCarouselSlide.SlideRole.HOOK_COVER,
+            SocialCarouselSlide.SlideRole.VISUAL_PUNCH,
+        }
+        wants_image = force_image or role_prefers_image or bool(getattr(slide, 'media_required', False)) or image_slots_used < target_images
 
         if manual_image:
             image_layout = _image_layout_for(slide, preferred_layout)
@@ -214,7 +244,7 @@ def plan_carousel_media(profile, slides, template, *, remaining_quota=None):
                 )
                 continue
 
-        if visual_mode == SocialProfile.CarouselVisualMode.VISUAL_RICH:
+        if planning_visual_mode == SocialProfile.CarouselVisualMode.VISUAL_RICH:
             graphic_layout = _graphic_layout_for(slide, index)
             items.append(
                 CarouselMediaPlanItem(

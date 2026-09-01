@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from .ai import formatar_hashtags, gerar_carrossel_blueprint_ia, moderar_conteudo
 from .carousel_media_planner import STATUS_GRAPHIC, STATUS_PENDING, plan_carousel_media
+from .carousel_quality import PREMIUM_BLUEPRINT_ATTEMPTS, evaluate_blueprint_editorial_quality, evaluate_carousel_quality, is_premium_editorial
 from .generation import _carousel_template, _historico
 from .image_analysis import OpenAIUnavailable as ImageAnalysisUnavailable, analyze_social_image
 from .image_generation import SocialImagePrompt, build_social_image_prompt, generate_social_image, image_generation_available
@@ -71,15 +72,65 @@ def _purpose_for_slide(slide_type):
     return 'CAROUSEL_SLIDE'
 
 
+def _generate_blueprint_with_preflight(profile, tema, slide_count, media_contexts):
+    attempts = PREMIUM_BLUEPRINT_ATTEMPTS if is_premium_editorial(getattr(profile, 'carousel_editorial_mode', None)) else 1
+    last_blueprint = None
+    last_quality = None
+    for attempt in range(1, attempts + 1):
+        blueprint = gerar_carrossel_blueprint_ia(
+            profile,
+            tema,
+            slide_count,
+            historico=_historico(profile),
+            media_contexts=media_contexts,
+        )
+        quality = evaluate_blueprint_editorial_quality(profile, blueprint)
+        last_blueprint = blueprint
+        last_quality = quality
+        if quality.valid:
+            return blueprint, quality, attempt
+    return last_blueprint, last_quality, attempts
+
+
+def _create_preflight_rejected_content(profile, template, blueprint, preflight, attempts, usuario, tema):
+    content = SocialContent.objects.create(
+        profile=profile,
+        carousel_template=template,
+        media_type=SocialContent.MediaType.CAROUSEL,
+        frase=blueprint.hook,
+        legenda=blueprint.caption,
+        hashtags=formatar_hashtags(blueprint.hashtags),
+        status=SocialContent.Status.RASCUNHO,
+        erro='Preflight editorial reprovado: ' + '; '.join(preflight.issues)[:900],
+    )
+    for index, item in enumerate(blueprint.slides, start=1):
+        SocialCarouselSlide.objects.create(
+            content=content,
+            order=index,
+            slide_type=item.slide_type,
+            slide_role=getattr(item, 'slide_role', '') or SocialCarouselSlide.SlideRole.EXPLANATION,
+            visual_intent=_normalize_layout(getattr(item, 'preferred_layout', None) or SocialCarouselTemplateVariant.LayoutType.FULL_TEXT),
+            visual_treatment=SocialCarouselSlide.VisualTreatment.TEXT_ONLY,
+            semantic_visual_intent=item.visual_intent,
+            media_intent=item.media_intent,
+            media_required=False,
+            title=item.title,
+            body=item.body,
+            render_metadata={
+                'editorial_preflight': 'rejected',
+                'editorial_attempts': attempts,
+                'editorial_score': preflight.score,
+                'editorial_issues': preflight.issues,
+            },
+        )
+    registrar_evento(content, 'gerado_ia', usuario, f'Carrossel reprovado no preflight editorial. Tema: {tema or "-"}')
+    return content
+
+
 def gerar_carrossel_autonomo(profile, *, tema='', slides=None, usuario=None):
     slide_count = max(2, min(10, int(slides or profile.carousel_default_slide_count or 6)))
-    blueprint = gerar_carrossel_blueprint_ia(
-        profile,
-        tema,
-        slide_count,
-        historico=_historico(profile),
-        media_contexts=_media_contexts(profile),
-    )
+    media_contexts = _media_contexts(profile)
+    blueprint, preflight, preflight_attempts = _generate_blueprint_with_preflight(profile, tema, slide_count, media_contexts)
     text_for_moderation = '\n'.join(
         [blueprint.hook, blueprint.caption, formatar_hashtags(blueprint.hashtags)]
         + [f'{slide.title}\n{slide.body}' for slide in blueprint.slides]
@@ -88,6 +139,10 @@ def gerar_carrossel_autonomo(profile, *, tema='', slides=None, usuario=None):
         raise ValidationError('Carrossel bloqueado pela moderacao.')
 
     template = _carousel_template(profile)
+    if preflight and not preflight.valid:
+        content = _create_preflight_rejected_content(profile, template, blueprint, preflight, preflight_attempts, usuario, tema)
+        return AutonomousCarouselResult(content=content, pending_slides=len(blueprint.slides), messages=preflight.issues)
+
     content = SocialContent.objects.create(
         profile=profile,
         carousel_template=template,
@@ -157,6 +212,7 @@ def gerar_carrossel_autonomo(profile, *, tema='', slides=None, usuario=None):
             content=content,
             order=index,
             slide_type=item.slide_type,
+            slide_role=getattr(item, 'slide_role', '') or SocialCarouselSlide.SlideRole.EXPLANATION,
             source_base_image=image,
             visual_intent=preferred_layout,
             visual_treatment=planned.visual_treatment,
@@ -172,6 +228,9 @@ def gerar_carrossel_autonomo(profile, *, tema='', slides=None, usuario=None):
                 'media_score': planned.score,
                 'media_reason': planned.reason,
                 'needs_generation': planned.needs_generation,
+                'editorial_mode': getattr(profile, 'carousel_editorial_mode', 'STANDARD'),
+                'editorial_preflight_score': preflight.score if preflight else None,
+                'editorial_preflight_attempts': preflight_attempts,
             },
         )
 
@@ -180,8 +239,12 @@ def gerar_carrossel_autonomo(profile, *, tema='', slides=None, usuario=None):
     except SocialRenderError:
         content.delete()
         raise
+    quality = evaluate_carousel_quality(content)
     if not content.final_media_ready:
-        content.erro = 'Carrossel ainda nao atende a politica visual do perfil.'
+        if quality.editorial_issues:
+            content.erro = 'Carrossel ainda nao atende a politica editorial do perfil: ' + '; '.join(quality.editorial_issues)[:900]
+        else:
+            content.erro = 'Carrossel ainda nao atende a politica visual do perfil.'
         content.save(update_fields=['erro', 'updated_at'])
     registrar_evento(content, 'gerado_ia', usuario, f'Carrossel autonomo. Tema: {tema or "-"}')
     return result

@@ -4250,6 +4250,31 @@ class SocialAutomationAIVisionTests(TestCase):
             )
         return content
 
+    def _premium_blueprint(self):
+        roles = [
+            (SocialCarouselSlide.SlideType.COVER, SocialCarouselSlide.SlideRole.HOOK_COVER, 'Nao cabe mais', '', 'COVER_HERO_LEFT'),
+            (SocialCarouselSlide.SlideType.CONTENT, SocialCarouselSlide.SlideRole.BELIEF_BREAK, 'Nao e falta de vontade', 'E excesso de ruido no caminho.', 'QUOTE_BIG'),
+            (SocialCarouselSlide.SlideType.CONTENT, SocialCarouselSlide.SlideRole.CONTEXT, 'O contexto muda tudo', 'Quando a rotina pesa, a decisao precisa ficar mais simples.', 'EDITORIAL_CARD'),
+            (SocialCarouselSlide.SlideType.CONTENT, SocialCarouselSlide.SlideRole.INSIGHT, 'Corte uma escolha', 'Menos opcoes deixam a acao mais provavel.', 'IMAGE_PUNCH_MINIMAL'),
+            (SocialCarouselSlide.SlideType.CONTENT, SocialCarouselSlide.SlideRole.ACTION_STEP, 'Escolha o proximo passo', 'Defina uma acao pequena para hoje.', 'EDITORIAL_SPLIT'),
+            (SocialCarouselSlide.SlideType.CTA, SocialCarouselSlide.SlideRole.CTA, 'Salve para revisar', 'Volte quando precisar decidir com calma.', 'CTA_CLEAN'),
+        ]
+        slides = [
+            GeneratedCarouselSlide(
+                order=index,
+                slide_type=slide_type,
+                title=title,
+                body=body,
+                visual_intent='CLEAN',
+                media_intent='obra limpa',
+                media_required=False,
+                preferred_layout=layout,
+                slide_role=role,
+            )
+            for index, (slide_type, role, title, body, layout) in enumerate(roles, start=1)
+        ]
+        return GeneratedCarouselBlueprint(topic='Tema', hook='Nao cabe mais', caption='Legenda segura', hashtags=['teste'], slides=slides)
+
     def test_standard_aceita_full_text_graphic_e_carrossel_legado_renderizado(self):
         from .carousel_quality import evaluate_carousel_quality
 
@@ -4265,6 +4290,133 @@ class SocialAutomationAIVisionTests(TestCase):
         self.assertTrue(quality.valid)
         self.assertTrue(content.final_media_ready)
         self.assertEqual(quality.plain_text_slides, 2)
+
+    def test_perfil_novo_nasce_com_editorial_standard(self):
+        profile = SocialProfile.objects.create(nome='Novo Editorial', username='novo_editorial', horarios_publicacao=['10:00'])
+        self.assertEqual(profile.carousel_editorial_mode, SocialProfile.CarouselEditorialMode.STANDARD)
+
+    def test_profile_form_expoe_modo_editorial_e_slide_form_expoe_role(self):
+        from .forms import SocialCarouselSlideForm, SocialProfileForm
+
+        self.assertIn('carousel_editorial_mode', SocialProfileForm().fields)
+        self.assertIn('slide_role', SocialCarouselSlideForm().fields)
+
+    def test_blueprint_premium_curto_passa_e_capa_longa_falha(self):
+        from .carousel_quality import evaluate_blueprint_editorial_quality
+
+        self.profile.carousel_editorial_mode = SocialProfile.CarouselEditorialMode.SOCIAL_PREMIUM
+        self.profile.save(update_fields=['carousel_editorial_mode', 'updated_at'])
+        ok = evaluate_blueprint_editorial_quality(self.profile, self._premium_blueprint())
+        self.assertTrue(ok.valid, ok.issues)
+
+        invalid = self._premium_blueprint()
+        object.__setattr__(invalid.slides[0], 'title', 'Esta capa tenta explicar o carrossel inteiro com muitas palavras e perde impacto visual')
+        bad = evaluate_blueprint_editorial_quality(self.profile, invalid)
+        self.assertFalse(bad.valid)
+        self.assertIn('titulo excede', ' '.join(bad.issues))
+
+    def test_standard_nao_sofre_text_budget_premium(self):
+        from .carousel_quality import evaluate_blueprint_editorial_quality
+
+        blueprint = self._premium_blueprint()
+        object.__setattr__(blueprint.slides[0], 'title', 'Esta capa longa continua aceita no modo padrao para preservar compatibilidade')
+        quality = evaluate_blueprint_editorial_quality(self.profile, blueprint)
+        self.assertTrue(quality.valid)
+
+    def test_premium_detecta_repeticao_progressao_fraca_e_layout_repetido(self):
+        from .carousel_quality import evaluate_blueprint_editorial_quality
+
+        self.profile.carousel_editorial_mode = SocialProfile.CarouselEditorialMode.SOCIAL_PREMIUM
+        self.profile.save(update_fields=['carousel_editorial_mode', 'updated_at'])
+        blueprint = self._premium_blueprint()
+        for slide in blueprint.slides:
+            object.__setattr__(slide, 'slide_role', SocialCarouselSlide.SlideRole.EXPLANATION)
+            object.__setattr__(slide, 'title', 'Voce precisa mudar')
+            object.__setattr__(slide, 'body', 'Voce precisa mudar para mudar de verdade.')
+            object.__setattr__(slide, 'preferred_layout', 'EDITORIAL_CARD')
+        bad = evaluate_blueprint_editorial_quality(self.profile, blueprint)
+        issues = ' '.join(bad.issues)
+        self.assertFalse(bad.valid)
+        self.assertIn('Capa premium', issues)
+        self.assertIn('semelhantes', issues)
+        self.assertIn('mesmo layout', issues)
+
+    def test_premium_final_quality_bloqueia_autoaprovacao_editorial_ruim(self):
+        from .automation import _quality_gate
+        from .carousel_quality import evaluate_carousel_quality
+
+        self.profile.carousel_editorial_mode = SocialProfile.CarouselEditorialMode.SOCIAL_PREMIUM
+        self.profile.save(update_fields=['carousel_editorial_mode', 'updated_at'])
+        content = self._carousel_for_quality(
+            SocialProfile.CarouselVisualMode.STANDARD,
+            [SocialCarouselSlide.VisualTreatment.GRAPHIC_BACKGROUND] * 6,
+        )
+        content.status = SocialContent.Status.RASCUNHO
+        content.frase = 'Hook'
+        content.legenda = 'Legenda'
+        content.save(update_fields=['status', 'frase', 'legenda', 'updated_at'])
+        for slide in content.carousel_slides.all():
+            slide.slide_role = SocialCarouselSlide.SlideRole.EXPLANATION
+            slide.title = 'Voce precisa mudar'
+            slide.body = 'Voce precisa mudar para mudar de verdade.'
+            slide.visual_intent = SocialCarouselTemplateVariant.LayoutType.EDITORIAL_CARD
+            slide.save(update_fields=['slide_role', 'title', 'body', 'visual_intent', 'updated_at'])
+
+        quality = evaluate_carousel_quality(content)
+
+        self.assertTrue(quality.visual_valid)
+        self.assertFalse(quality.editorial_valid)
+        self.assertFalse(content.final_media_ready)
+        self.assertFalse(_quality_gate(content))
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test')
+    def test_preflight_premium_reprovado_nao_gasta_imagem(self):
+        from .autonomous_carousel import gerar_carrossel_autonomo
+
+        self.profile.carousel_editorial_mode = SocialProfile.CarouselEditorialMode.SOCIAL_PREMIUM
+        self.profile.ai_image_generation_enabled = True
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_ALWAYS
+        self.profile.save(update_fields=['carousel_editorial_mode', 'ai_image_generation_enabled', 'ai_image_mode', 'updated_at'])
+        bad = self._premium_blueprint()
+        for slide in bad.slides:
+            object.__setattr__(slide, 'title', 'Voce precisa mudar')
+            object.__setattr__(slide, 'body', 'Voce precisa mudar para mudar de verdade com uma explicacao longa e repetida demais.')
+            object.__setattr__(slide, 'slide_role', SocialCarouselSlide.SlideRole.EXPLANATION)
+        client, provider = self._provider()
+        with mock.patch('social_automation.autonomous_carousel.gerar_carrossel_blueprint_ia', return_value=bad), mock.patch('social_automation.autonomous_carousel.moderar_conteudo', return_value=False), mock.patch('social_automation.image_generation._client', return_value=client):
+            result = gerar_carrossel_autonomo(self.profile, tema='premium', slides=6)
+
+        self.assertEqual(provider.call_count, 0)
+        self.assertTrue(result.content.erro)
+        self.assertFalse(result.content.final_media_ready)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test')
+    def test_preflight_premium_regenera_limitado_antes_de_midia(self):
+        from .autonomous_carousel import gerar_carrossel_autonomo
+
+        self.profile.carousel_editorial_mode = SocialProfile.CarouselEditorialMode.SOCIAL_PREMIUM
+        self.profile.carousel_visual_mode = SocialProfile.CarouselVisualMode.VISUAL_RICH
+        self.profile.save(update_fields=['carousel_editorial_mode', 'carousel_visual_mode', 'updated_at'])
+        for index in range(2, 7):
+            SocialBaseImage.objects.create(
+                profile=self.profile,
+                arquivo=imagem_social(f'premium-banco-{index}.jpg'),
+                nome=f'Imagem obra limpa secundaria {index}',
+                descricao='obra limpa com area segura para texto',
+                tags='obra limpa clean editorial',
+            )
+        bad = self._premium_blueprint()
+        for slide in bad.slides:
+            object.__setattr__(slide, 'slide_role', SocialCarouselSlide.SlideRole.EXPLANATION)
+        good = self._premium_blueprint()
+        client, provider = self._provider()
+        with mock.patch('social_automation.autonomous_carousel.gerar_carrossel_blueprint_ia', side_effect=[bad, good]) as blueprint_ai, mock.patch('social_automation.autonomous_carousel.moderar_conteudo', return_value=False), mock.patch('social_automation.autonomous_carousel.generate_social_image') as image_generation, mock.patch('social_automation.image_generation._client', return_value=client), mock.patch('social_automation.instagram._request'):
+            result = gerar_carrossel_autonomo(self.profile, tema='premium', slides=6)
+
+        self.assertEqual(blueprint_ai.call_count, 2)
+        image_generation.assert_not_called()
+        self.assertEqual(provider.call_count, 0)
+        self.assertTrue(result.content.final_media_ready)
 
     def test_visual_rich_tratamentos_graficos_validos_e_texto_puro_invalido(self):
         from .carousel_quality import evaluate_carousel_quality

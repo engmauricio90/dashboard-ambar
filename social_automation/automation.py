@@ -296,6 +296,11 @@ def _quality_gate(content):
         return False
     if not content.final_media_ready:
         return False
+    if content.is_carousel:
+        from .carousel_quality import automation_quality_ready
+
+        if not automation_quality_ready(content):
+            return False
     try:
         if content.is_reel:
             auditar_video_reel(content)

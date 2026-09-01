@@ -55,6 +55,7 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
             'carousel_ai_instructions',
             'carousel_cta_enabled',
             'carousel_default_cta',
+            'carousel_editorial_mode',
             'carousel_visual_mode',
             'carousel_image_density',
             'carousel_allow_same_image',
@@ -102,6 +103,10 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
         self.fields['carousel_visual_mode'].initial = self.instance.carousel_visual_mode if self.instance and self.instance.pk else 'STANDARD'
         self.fields['carousel_visual_mode'].label = 'Modo visual do carrossel'
         self.fields['carousel_visual_mode'].widget.attrs['class'] = 'form-select'
+        self.fields['carousel_editorial_mode'].required = False
+        self.fields['carousel_editorial_mode'].initial = self.instance.carousel_editorial_mode if self.instance and self.instance.pk else 'STANDARD'
+        self.fields['carousel_editorial_mode'].label = 'Qualidade editorial do carrossel'
+        self.fields['carousel_editorial_mode'].widget.attrs['class'] = 'form-select'
         self.fields['carousel_image_density'].required = False
         self.fields['carousel_image_density'].initial = self.instance.carousel_image_density if self.instance and self.instance.pk else 'AUTO'
         self.fields['carousel_image_density'].label = 'Densidade de imagens'
@@ -144,6 +149,9 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
 
     def clean_carousel_visual_mode(self):
         return self.cleaned_data.get('carousel_visual_mode') or 'STANDARD'
+
+    def clean_carousel_editorial_mode(self):
+        return self.cleaned_data.get('carousel_editorial_mode') or 'STANDARD'
 
     def clean_carousel_image_density(self):
         return self.cleaned_data.get('carousel_image_density') or 'AUTO'
@@ -560,6 +568,7 @@ class SocialCarouselSlideForm(BootstrapMixin, forms.ModelForm):
         fields = [
             'order',
             'slide_type',
+            'slide_role',
             'visual_intent',
             'visual_treatment',
             'semantic_visual_intent',
@@ -582,8 +591,9 @@ class SocialCarouselSlideForm(BootstrapMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
         self._apply_bootstrap()
         content = self.instance.content if self.instance and self.instance.content_id else None
-        for field_name in ['slide_type', 'visual_intent', 'visual_treatment', 'variant', 'source_base_image', 'overlay_override']:
+        for field_name in ['slide_type', 'slide_role', 'visual_intent', 'visual_treatment', 'variant', 'source_base_image', 'overlay_override']:
             self.fields[field_name].widget.attrs['class'] = 'form-select'
+        self.fields['slide_role'].required = False
         self.fields['visual_intent'].required = False
         self.fields['visual_treatment'].required = False
         self.fields['semantic_visual_intent'].required = False
@@ -623,6 +633,7 @@ class SocialCarouselSlideForm(BootstrapMixin, forms.ModelForm):
             self.cleaned_data = cleaned_data
         cleaned_data['visual_intent'] = cleaned_data.get('visual_intent') or SocialCarouselTemplateVariant.LayoutType.AUTO
         cleaned_data['visual_treatment'] = cleaned_data.get('visual_treatment') or SocialCarouselSlide.VisualTreatment.AUTO
+        cleaned_data['slide_role'] = cleaned_data.get('slide_role') or SocialCarouselSlide.SlideRole.EXPLANATION
         return cleaned_data
 
 

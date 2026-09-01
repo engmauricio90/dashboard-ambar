@@ -84,6 +84,10 @@ class SocialProfile(models.Model):
         VISUAL_RICH = 'VISUAL_RICH', 'Visual premium'
         IMAGE_DRIVEN = 'IMAGE_DRIVEN', 'Imagem em todos os slides'
 
+    class CarouselEditorialMode(models.TextChoices):
+        STANDARD = 'STANDARD', 'Padrao'
+        SOCIAL_PREMIUM = 'SOCIAL_PREMIUM', 'Social premium'
+
     class CarouselImageDensity(models.TextChoices):
         AUTO = 'AUTO', 'Automatica'
         LOW = 'LOW', 'Baixa'
@@ -104,6 +108,7 @@ class SocialProfile(models.Model):
     carousel_ai_instructions = models.TextField(blank=True)
     carousel_cta_enabled = models.BooleanField(default=True)
     carousel_default_cta = models.CharField(max_length=255, blank=True)
+    carousel_editorial_mode = models.CharField(max_length=30, choices=CarouselEditorialMode.choices, default=CarouselEditorialMode.STANDARD)
     carousel_visual_mode = models.CharField(max_length=30, choices=CarouselVisualMode.choices, default=CarouselVisualMode.STANDARD)
     carousel_image_density = models.CharField(max_length=30, choices=CarouselImageDensity.choices, default=CarouselImageDensity.AUTO)
     carousel_allow_same_image = models.BooleanField(default=True)
@@ -592,6 +597,7 @@ class SocialCarouselTemplateVariant(models.Model):
         AUTO = 'AUTO', 'Automatico'
         HERO_LEFT = 'HERO_LEFT', 'Hero esquerda'
         HERO_RIGHT = 'HERO_RIGHT', 'Hero direita'
+        COVER_HERO_RIGHT = 'COVER_HERO_RIGHT', 'Capa hero direita'
         TEXT_TOP = 'TEXT_TOP', 'Texto superior'
         TEXT_BOTTOM = 'TEXT_BOTTOM', 'Texto inferior'
         CENTER_CARD = 'CENTER_CARD', 'Card central'
@@ -606,6 +612,13 @@ class SocialCarouselTemplateVariant(models.Model):
         GRAPHIC_DARK = 'GRAPHIC_DARK', 'Grafico escuro'
         GRAPHIC_LIGHT = 'GRAPHIC_LIGHT', 'Grafico claro'
         CTA_VISUAL = 'CTA_VISUAL', 'CTA visual'
+        COVER_HERO_LEFT = 'COVER_HERO_LEFT', 'Capa hero esquerda'
+        COVER_HERO_CENTER = 'COVER_HERO_CENTER', 'Capa hero central'
+        QUOTE_BIG = 'QUOTE_BIG', 'Frase grande'
+        EDITORIAL_SPLIT = 'EDITORIAL_SPLIT', 'Editorial dividido'
+        IMAGE_PUNCH_MINIMAL = 'IMAGE_PUNCH_MINIMAL', 'Imagem impacto minimal'
+        DARK_MINIMAL_TEXT = 'DARK_MINIMAL_TEXT', 'Texto minimal escuro'
+        CTA_CLEAN = 'CTA_CLEAN', 'CTA limpo'
 
     class OverlayType(models.TextChoices):
         AUTO = 'AUTO', 'Automatico'
@@ -756,6 +769,18 @@ class SocialCarouselSlide(models.Model):
         CONTENT = 'CONTENT', 'Conteudo'
         CTA = 'CTA', 'CTA'
 
+    class SlideRole(models.TextChoices):
+        HOOK_COVER = 'HOOK_COVER', 'Hook de capa'
+        BELIEF_BREAK = 'BELIEF_BREAK', 'Quebra de crenca'
+        CONTEXT = 'CONTEXT', 'Contexto'
+        EXPLANATION = 'EXPLANATION', 'Explicacao'
+        INSIGHT = 'INSIGHT', 'Insight'
+        VISUAL_PUNCH = 'VISUAL_PUNCH', 'Impacto visual'
+        ACTION_STEP = 'ACTION_STEP', 'Acao pratica'
+        PROOF = 'PROOF', 'Prova'
+        CONCLUSION = 'CONCLUSION', 'Conclusao'
+        CTA = 'CTA', 'CTA'
+
     class VisualTreatment(models.TextChoices):
         AUTO = 'AUTO', 'Automatico'
         IMAGE_HERO = 'IMAGE_HERO', 'Imagem destaque'
@@ -771,6 +796,7 @@ class SocialCarouselSlide(models.Model):
     source_base_image = models.ForeignKey(SocialBaseImage, on_delete=models.SET_NULL, blank=True, null=True, related_name='carousel_slides')
     order = models.PositiveSmallIntegerField(default=1)
     slide_type = models.CharField(max_length=20, choices=SlideType.choices, default=SlideType.CONTENT)
+    slide_role = models.CharField(max_length=30, choices=SlideRole.choices, default=SlideRole.EXPLANATION)
     visual_intent = models.CharField(max_length=30, choices=SocialCarouselTemplateVariant.LayoutType.choices, default=SocialCarouselTemplateVariant.LayoutType.AUTO)
     visual_treatment = models.CharField(max_length=30, choices=VisualTreatment.choices, default=VisualTreatment.AUTO)
     semantic_visual_intent = models.CharField(max_length=40, blank=True)

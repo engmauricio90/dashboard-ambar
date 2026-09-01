@@ -146,23 +146,42 @@
 {% if content.is_carousel %}
 {% if carousel_quality %}
 <div class="card shadow-sm mt-3">
-    <div class="card-header fw-bold">Qualidade visual</div>
+    <div class="card-header fw-bold">Qualidade do carrossel</div>
     <div class="card-body">
         <div class="row g-3 small">
-            <div class="col-md-2"><strong>Modo</strong><div>{{ carousel_quality.visual_mode }}</div></div>
-            <div class="col-md-2"><strong>Nota</strong><div>{{ carousel_quality.score }}/100</div></div>
+            <div class="col-md-2"><strong>Visual</strong><div>{{ carousel_quality.visual_score }}/100</div><div class="text-muted">{{ carousel_quality.visual_mode }}</div></div>
+            <div class="col-md-2"><strong>Editorial</strong><div>{{ carousel_quality.editorial_score }}/100</div><div class="text-muted">{{ carousel_quality.editorial_mode }}</div></div>
+            <div class="col-md-2"><strong>Nota final</strong><div>{{ carousel_quality.score }}/100</div></div>
             <div class="col-md-2"><strong>Slides visuais</strong><div>{{ carousel_quality.visual_slides }}/{{ carousel_quality.active_slides }}</div></div>
-            <div class="col-md-2"><strong>Com imagem</strong><div>{{ carousel_quality.image_slides }}</div></div>
-            <div class="col-md-2"><strong>Imagens distintas</strong><div>{{ carousel_quality.distinct_images }}</div></div>
+            <div class="col-md-2"><strong>Com imagem</strong><div>{{ carousel_quality.image_slides }} ({{ carousel_quality.distinct_images }} distintas)</div></div>
             <div class="col-md-2"><strong>Status</strong><div>{% if carousel_quality.valid %}Aprovado{% else %}Pendente{% endif %}</div></div>
         </div>
-        {% if carousel_quality.issues %}
-        <ul class="text-muted small mb-0 mt-3">
-            {% for issue in carousel_quality.issues %}
-            <li>{{ issue }}</li>
-            {% endfor %}
-        </ul>
-        {% endif %}
+        <div class="row g-3 mt-2">
+            <div class="col-md-6">
+                <strong class="small">Issues visuais</strong>
+                {% if carousel_quality.visual_issues %}
+                <ul class="text-muted small mb-0 mt-1">
+                    {% for issue in carousel_quality.visual_issues %}
+                    <li>{{ issue }}</li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="text-muted small">Sem problema visual conhecido.</div>
+                {% endif %}
+            </div>
+            <div class="col-md-6">
+                <strong class="small">Issues editoriais</strong>
+                {% if carousel_quality.editorial_issues %}
+                <ul class="text-muted small mb-0 mt-1">
+                    {% for issue in carousel_quality.editorial_issues %}
+                    <li>{{ issue }}</li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="text-muted small">Sem problema editorial conhecido.</div>
+                {% endif %}
+            </div>
+        </div>
     </div>
 </div>
 {% endif %}
@@ -174,6 +193,7 @@
                 <tr>
                     <th>Slide</th>
                     <th>Tipo</th>
+                    <th>Papel</th>
                     <th>Intencao</th>
                     <th>Midia</th>
                     <th>Layout</th>
@@ -186,6 +206,7 @@
                 <tr>
                     <td>{{ slide.order }}</td>
                     <td>{{ slide.get_slide_type_display }}</td>
+                    <td>{{ slide.get_slide_role_display }}</td>
                     <td>
                         <strong>{{ slide.semantic_visual_intent|default:'-' }}</strong>
                         <div class="text-muted small">{{ slide.media_intent|default:'sem intencao de midia' }}</div>

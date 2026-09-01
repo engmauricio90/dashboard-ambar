@@ -35,6 +35,7 @@ class GeneratedCarouselSlide:
     media_intent: str
     media_required: bool
     preferred_layout: str
+    slide_role: str = 'EXPLANATION'
 
 
 @dataclass(frozen=True)
@@ -122,10 +123,12 @@ def _carousel_schema():
                         'media_intent',
                         'media_required',
                         'preferred_layout',
+                        'slide_role',
                     ],
                     'properties': {
                         'order': {'type': 'integer', 'minimum': 1, 'maximum': 10},
                         'slide_type': {'type': 'string', 'enum': ['COVER', 'CONTENT', 'CTA']},
+                        'slide_role': {'type': 'string', 'enum': _editorial_role_values()},
                         'title': {'type': 'string', 'maxLength': 180},
                         'body': {'type': 'string', 'maxLength': 500},
                         'visual_intent': {
@@ -140,6 +143,7 @@ def _carousel_schema():
                                 'AUTO',
                                 'HERO_LEFT',
                                 'HERO_RIGHT',
+                                'COVER_HERO_RIGHT',
                                 'TEXT_TOP',
                                 'TEXT_BOTTOM',
                                 'CENTER_CARD',
@@ -154,6 +158,13 @@ def _carousel_schema():
                                 'GRAPHIC_DARK',
                                 'GRAPHIC_LIGHT',
                                 'CTA_VISUAL',
+                                'COVER_HERO_LEFT',
+                                'COVER_HERO_CENTER',
+                                'QUOTE_BIG',
+                                'EDITORIAL_SPLIT',
+                                'IMAGE_PUNCH_MINIMAL',
+                                'DARK_MINIMAL_TEXT',
+                                'CTA_CLEAN',
                             ],
                         },
                     },
@@ -234,22 +245,47 @@ def gerar_carrossel_blueprint_ia(profile, tema, slide_count, historico=None, med
     slide_count = max(2, min(10, int(slide_count or profile.carousel_default_slide_count or 6)))
     media_contexts = media_contexts or []
     visual_mode = getattr(profile, 'carousel_visual_mode', 'STANDARD') or 'STANDARD'
+    editorial_mode = getattr(profile, 'carousel_editorial_mode', 'STANDARD') or 'STANDARD'
     image_density = getattr(profile, 'carousel_image_density', 'AUTO') or 'AUTO'
+    from .carousel_quality import EDITORIAL_ROLE_ORDER, get_slide_text_budget, is_premium_editorial
+
+    budget_guidance = [
+        {
+            'papel': role,
+            'titulo_palavras': get_slide_text_budget(editorial_mode, role).max_title_words,
+            'texto_palavras': get_slide_text_budget(editorial_mode, role).max_body_words,
+            'caracteres_total': get_slide_text_budget(editorial_mode, role).max_total_chars,
+            'linhas': get_slide_text_budget(editorial_mode, role).max_lines,
+        }
+        for role in EDITORIAL_ROLE_ORDER
+    ]
     if visual_mode == 'IMAGE_DRIVEN':
         visual_policy = 'Este perfil exige imagem em todos os slides ativos; marque media_required=true e escreva textos curtos para caber sobre imagem.'
     elif visual_mode == 'VISUAL_RICH':
         visual_policy = 'Este perfil exige tratamento visual rico; prefira slides com imagem quando fizer sentido e use textos curtos mesmo quando o slide puder usar fundo grafico.'
     else:
         visual_policy = 'Este perfil permite carrossel padrao; use imagem apenas quando ela melhorar claramente o slide.'
+    if is_premium_editorial(editorial_mode):
+        editorial_policy = (
+            'Modo editorial SOCIAL_PREMIUM: crie capa com poucas palavras e alto impacto, sem tom de palestra ou coach generico. '
+            'Estruture progressao narrativa antes de escrever: hook, quebra/contexto, desenvolvimento, insight/prova/acao e CTA quando aplicavel. '
+            'Cada slide deve defender uma unica ideia com texto curto e incisivo. Varie layouts e intencoes visuais; evite sequencias repetidas. '
+            'Nao use frases obvias, abstratas demais ou chamadas artificiais. O tom vem das instrucoes do perfil.'
+        )
+    else:
+        editorial_policy = 'Modo editorial padrao: mantenha clareza e consistencia com o perfil.'
     prompt = (
         'Voce cria um blueprint estruturado para um carrossel de Instagram. '
         'Responda somente no JSON solicitado. '
         'Nao escolha IDs de imagens do banco; descreva a intencao visual e a necessidade de midia. '
         'Use visual_intent apenas como intencao semantica, nao coordenadas. '
         'Use preferred_layout como sugestao visual, sabendo que o compositor final decide a area segura. '
-        'Se o slide funcionar bem sem imagem, marque media_required=false e use layout textual/minimal. '
+        'Defina slide_role para cada slide conforme sua funcao narrativa. '
+        'Se o slide funcionar bem sem imagem, marque media_required=false e use layout textual/minimal apenas em modo padrao. '
         'Evite textos longos nos slides; cada slide precisa ser legivel em celular. '
         f'Politica visual do carrossel: modo={visual_mode}, densidade={image_density}. {visual_policy} '
+        f'Politica editorial: modo={editorial_mode}. {editorial_policy} '
+        f'Orcamento de texto por papel editorial: {budget_guidance}. '
         f'Perfil: {profile.nome} ({profile.username}). '
         f'Estilo: {profile.estilo or "sem estilo cadastrado"}. '
         f'Instrucoes gerais: {profile.instrucoes_ia or "sem instrucoes adicionais"}. '
@@ -295,6 +331,7 @@ def gerar_carrossel_blueprint_ia(profile, tema, slide_count, historico=None, med
                 media_intent=(item.get('media_intent') or '').strip(),
                 media_required=bool(item.get('media_required')),
                 preferred_layout=(item.get('preferred_layout') or 'AUTO').strip(),
+                slide_role=(item.get('slide_role') or '').strip() or _default_slide_role(item.get('slide_type'), len(slides), slide_count),
             )
         )
     slides.sort(key=lambda slide: slide.order)
@@ -305,6 +342,18 @@ def gerar_carrossel_blueprint_ia(profile, tema, slide_count, historico=None, med
         hashtags=[str(tag).strip() for tag in payload.get('hashtags', []) if str(tag).strip()],
         slides=slides,
     )
+
+
+def _default_slide_role(slide_type, index, slide_count):
+    from .carousel_quality import default_editorial_role
+
+    return default_editorial_role(slide_type, index, slide_count)
+
+
+def _editorial_role_values():
+    from .carousel_quality import EDITORIAL_ROLE_ORDER
+
+    return EDITORIAL_ROLE_ORDER
 
 
 def moderar_conteudo(texto):
