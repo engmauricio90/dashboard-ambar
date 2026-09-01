@@ -626,9 +626,27 @@ def content_resume_ai_finished(request, content_id):
         _handle_validation_error(request, exc)
         return redirect('social_automation:content_detail', content_id=content.id)
     if result.pending_slides:
-        messages.warning(request, f'Composicao retomada com {result.pending_slides} slide(s) ainda pendente(s).')
+        detail = '; '.join(result.messages[:2])
+        suffix = f' Motivo: {detail}' if detail and not result.generated_images else ''
+        messages.warning(
+            request,
+            (
+                f'Composicao retomada: {result.processed_slides} processado(s), '
+                f'{result.approved_slides} aprovado(s), {result.failed_slides} reprovado(s), '
+                f'{result.pending_slides} pendente(s), '
+                f'{result.composition_calls_used}/{result.composition_call_cap} chamadas usadas.'
+                f'{suffix}'
+            ),
+        )
     else:
-        messages.success(request, 'Composicao AI_FINISHED retomada e finalizada.')
+        messages.success(
+            request,
+            (
+                f'Composicao AI_FINISHED finalizada: {result.processed_slides} processado(s), '
+                f'{result.approved_slides} aprovado(s), '
+                f'{result.composition_calls_used}/{result.composition_call_cap} chamadas usadas.'
+            ),
+        )
     return redirect('social_automation:content_detail', content_id=content.id)
 
 

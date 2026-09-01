@@ -31,6 +31,12 @@ class AutonomousCarouselResult:
     graphic_slides: int = 0
     pending_slides: int = 0
     messages: list[str] = field(default_factory=list)
+    processed_slides: int = 0
+    approved_slides: int = 0
+    failed_slides: int = 0
+    composition_calls_used: int = 0
+    composition_call_cap: int = 0
+    quota_remaining: int = 0
 
 
 def _usage_today(profile):
@@ -43,9 +49,17 @@ def _usage_today(profile):
     ).count()
 
 
-def _remaining_image_quota(profile):
+def _remaining_daily_image_quota(profile):
+    used = _usage_today(profile)
     profile_limit = profile.ai_image_daily_limit or settings.SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY
-    return max(0, min(profile_limit, settings.SOCIAL_AI_IMAGE_MAX_PER_TICK) - _usage_today(profile))
+    return max(0, profile_limit - used)
+
+
+def _remaining_image_quota(profile, *, include_prior_tick_usage=True):
+    used = _usage_today(profile) if include_prior_tick_usage else 0
+    tick_limit = max(0, int(settings.SOCIAL_AI_IMAGE_MAX_PER_TICK))
+    tick_remaining = max(0, tick_limit - used)
+    return max(0, min(_remaining_daily_image_quota(profile), tick_remaining))
 
 
 def _image_quota_block_reason(profile):
@@ -54,8 +68,6 @@ def _image_quota_block_reason(profile):
         return 'Limite diario do perfil atingido.'
     if used >= settings.SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY:
         return 'Limite diario global do perfil atingido.'
-    if used >= settings.SOCIAL_AI_IMAGE_MAX_PER_TICK:
-        return 'Limite global do tick atingido.'
     return 'Quota de composicao IA esgotada.'
 
 
@@ -290,43 +302,45 @@ def retomar_ai_finished_content(content, *, usuario=None):
 
     result = AutonomousCarouselResult(content=content)
     call_cap = max(0, int(getattr(settings, 'SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL', 8)))
-    spent_in_content = sum(slide.ai_composition_attempts for slide in content.carousel_slides.filter(is_active=True, render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED))
-    remaining = min(max(0, call_cap - spent_in_content), _remaining_image_quota(profile))
+    spent_in_content = composition_calls_used(content)
+    remaining = min(max(0, call_cap - spent_in_content), _remaining_image_quota(profile, include_prior_tick_usage=False))
+    result.composition_calls_used = spent_in_content
+    result.composition_call_cap = call_cap
+    result.quota_remaining = remaining
     max_attempts = max(1, int(getattr(settings, 'SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS', 2)))
     slides = list(content.carousel_slides.filter(is_active=True).order_by('order', 'id'))
 
     for slide in _resume_review_candidates(slides):
         _refresh_ai_finished_review_if_needed(slide, creative_direction)
 
-    for slide in _resume_pending_candidates(slides):
+    work_queue = get_composition_work_queue(content, max_attempts=max_attempts)
+    first_attempts = [item for item in work_queue if item['action'] in {'COMPOSE_FIRST_ATTEMPT', 'RECOMPOSE'}]
+    retries = [item for item in work_queue if item['action'] == 'RETRY']
+
+    for item in [*first_attempts, *retries]:
+        slide = item['slide']
         if remaining <= 0:
+            if item['action'] == 'RETRY':
+                result.messages.append(
+                    f'Slide {slide.order}: retry adiado por {_ai_finished_quota_reason(profile, call_cap, result.generated_images + spent_in_content)}'
+                )
+                continue
             _mark_ai_finished_pending_by_quota(slide, result, _ai_finished_quota_reason(profile, call_cap, result.generated_images + spent_in_content))
             continue
         composed = compose_slide_with_ai(slide, creative_direction, slide.creative_plan_metadata or {}, aspect_ratio=aspect_ratio, remaining_calls=1)
         remaining = _record_ai_finished_result(result, composed, remaining)
-
-    retry_candidates = [slide for slide in slides if _can_retry_ai_finished_slide(slide, max_attempts)]
-    while remaining > 0 and retry_candidates:
-        next_candidates = []
-        for slide in retry_candidates:
-            if remaining <= 0:
-                next_candidates.append(slide)
-                continue
-            refreshed = _refresh_ai_finished_review_if_needed(slide, creative_direction)
-            slide.refresh_from_db()
-            if refreshed and slide.ai_composition_status == SocialCarouselSlide.CompositionStatus.READY:
-                continue
-            composed = compose_slide_with_ai(slide, creative_direction, slide.creative_plan_metadata or {}, aspect_ratio=aspect_ratio, remaining_calls=1)
-            remaining = _record_ai_finished_result(result, composed, remaining, count_pending=False)
-            slide.refresh_from_db()
-            if _can_retry_ai_finished_slide(slide, max_attempts):
-                next_candidates.append(slide)
-        retry_candidates = next_candidates
+        result.processed_slides += 1 if composed.attempts else 0
+        result.approved_slides += 1 if composed.ready else 0
+        result.failed_slides += 1 if composed.issues and not composed.pending and not composed.ready else 0
 
     for slide in slides:
         slide.refresh_from_db()
         if slide.ai_composition_status != SocialCarouselSlide.CompositionStatus.READY:
             result.pending_slides += 1
+    result.composition_calls_used = spent_in_content + result.generated_images
+    result.quota_remaining = remaining
+    if not result.generated_images and work_queue:
+        result.messages.append(_no_work_reason(remaining, call_cap, spent_in_content, profile))
     if content.status != content.Status.PUBLICADO:
         from .container_versioning import invalidate_instagram_container
 
@@ -342,8 +356,80 @@ def retomar_ai_finished_content(content, *, usuario=None):
     run.error = content.erro[:1000]
     run.finished_at = timezone.now()
     run.save(update_fields=['status', 'error', 'finished_at'])
-    registrar_evento(content, 'gerado_ia', usuario, 'Retomada de composicao AI_FINISHED.')
+    registrar_evento(
+        content,
+        'gerado_ia',
+        usuario,
+        (
+            f'Retomada AI_FINISHED: {result.processed_slides} slide(s) processado(s), '
+            f'{result.approved_slides} aprovado(s), {result.failed_slides} reprovado(s), '
+            f'{result.composition_calls_used}/{result.composition_call_cap} chamadas de composicao utilizadas.'
+        ),
+    )
     return result
+
+
+def composition_calls_used(content):
+    usages = list(
+        SocialAIUsage.objects.filter(
+            content=content,
+            operation=SocialAIUsage.Operation.COMPOSED_SLIDE,
+        ).only('metadata')
+    )
+    provider_calls = [
+        usage
+        for usage in usages
+        if (usage.metadata or {}).get('purpose') == 'CAROUSEL_COMPOSED_SLIDE' or (usage.metadata or {}).get('provider_called')
+    ]
+    if provider_calls:
+        return len(provider_calls)
+    return sum(
+        slide.ai_composition_attempts
+        for slide in content.carousel_slides.filter(is_active=True, render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED)
+    )
+
+
+def get_composition_work_queue(content, *, max_attempts=None):
+    max_attempts = max_attempts or max(1, int(getattr(settings, 'SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS', 2)))
+    queue = []
+    slides = list(content.carousel_slides.filter(is_active=True).order_by('order', 'id'))
+    priority = {
+        'COMPOSE_FIRST_ATTEMPT': 1,
+        'RECOMPOSE': 2,
+        'RETRY': 3,
+    }
+    for slide in slides:
+        item = {
+            'slide': slide,
+            'slide_id': slide.id,
+            'status': slide.ai_composition_status,
+            'attempts': slide.ai_composition_attempts,
+            'action': 'SKIP',
+            'reason': 'ALREADY_READY' if slide.ai_composition_status == SocialCarouselSlide.CompositionStatus.READY else 'NOT_ACTIONABLE',
+            'priority': 99,
+        }
+        if slide.render_mode != SocialCarouselSlide.RenderMode.AI_FINISHED:
+            item['reason'] = 'NOT_AI_FINISHED'
+        elif slide.ai_composition_status == SocialCarouselSlide.CompositionStatus.PENDING and slide.ai_composition_attempts == 0:
+            item.update({'action': 'COMPOSE_FIRST_ATTEMPT', 'reason': 'never attempted', 'priority': priority['COMPOSE_FIRST_ATTEMPT']})
+        elif slide.ai_composition_status == SocialCarouselSlide.CompositionStatus.NEEDS_RECOMPOSE:
+            item.update({'action': 'RECOMPOSE', 'reason': 'copy or creative plan changed', 'priority': priority['RECOMPOSE']})
+        elif slide.ai_composition_status == SocialCarouselSlide.CompositionStatus.ERROR and slide.ai_composition_attempts < max_attempts:
+            item.update({'action': 'RETRY', 'reason': 'review failed and attempts remain', 'priority': priority['RETRY']})
+        elif slide.ai_composition_status == SocialCarouselSlide.CompositionStatus.ERROR:
+            item['reason'] = 'SLIDE_MAX_ATTEMPTS'
+        queue.append(item)
+    return sorted([item for item in queue if item['action'] != 'SKIP'], key=lambda item: (item['priority'], item['slide'].order, item['slide'].id))
+
+
+def _no_work_reason(remaining, call_cap, spent_in_content, profile):
+    if call_cap <= 0 or spent_in_content >= call_cap:
+        return 'Nenhum slide pode ser composto: limite de chamadas deste carrossel atingido.'
+    if _remaining_daily_image_quota(profile) <= 0:
+        return f'Nenhum slide pode ser composto: {_image_quota_block_reason(profile)}'
+    if remaining <= 0:
+        return 'Nenhum slide pode ser composto: limite desta execucao atingido.'
+    return 'Nenhum slide pode ser composto.'
 
 
 def _resume_review_candidates(slides):

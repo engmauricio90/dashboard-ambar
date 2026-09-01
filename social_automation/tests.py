@@ -5316,6 +5316,164 @@ class SocialAutomationAIVisionTests(TestCase):
         self.assertEqual(slides[1].ai_composition_attempts, 1)
         self.assertEqual(slides[2].ai_composition_attempts, 1)
 
+    def _partial_ai_finished_content(self, *, ready_orders=None, error_attempts=1):
+        ready_orders = set(ready_orders or [])
+        self.profile.carousel_generation_mode = SocialProfile.CarouselGenerationMode.AI_FINISHED
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_ALWAYS
+        self.profile.ai_image_daily_limit = 20
+        self.profile.carousel_cta_enabled = False
+        self.profile.save(update_fields=['carousel_generation_mode', 'ai_image_mode', 'ai_image_daily_limit', 'carousel_cta_enabled', 'updated_at'])
+        content = SocialContent.objects.create(
+            profile=self.profile,
+            carousel_template=self._template_for_quality_tests(f'Template partial {SocialContent.objects.count()}'),
+            media_type=SocialContent.MediaType.CAROUSEL,
+            frase='Hook',
+            legenda='Legenda',
+            erro='Erro antigo de quality gate.',
+        )
+        for index in range(1, 7):
+            status = SocialCarouselSlide.CompositionStatus.PENDING
+            attempts = 0
+            image = None
+            review = {}
+            if index == 1:
+                status = SocialCarouselSlide.CompositionStatus.ERROR
+                attempts = error_attempts
+                image = imagem_social('partial-error-1.jpg', tamanho=(1080, 1080))
+                review = {'valid': False, 'review_schema_version': 2, 'score_scale': 100, 'text_fidelity': 92, 'legibility': 88, 'composition': 92, 'brand_consistency': 72, 'visual_quality': 90, 'issues': ['Consistencia de marca abaixo do minimo.'], 'blocking_issues': ['Consistencia de marca abaixo do minimo.'], 'warnings': [], 'info': []}
+            if index in ready_orders:
+                status = SocialCarouselSlide.CompositionStatus.READY
+                attempts = 1
+                image = imagem_social(f'partial-ready-{index}.jpg', tamanho=(1080, 1080))
+                review = {'valid': True, 'review_schema_version': 2, 'score_scale': 100, 'text_fidelity': 100, 'legibility': 92, 'composition': 91, 'brand_consistency': 95, 'visual_quality': 93, 'issues': [], 'blocking_issues': [], 'warnings': [], 'info': []}
+            SocialCarouselSlide.objects.create(
+                content=content,
+                order=index,
+                slide_type=SocialCarouselSlide.SlideType.COVER if index == 1 else SocialCarouselSlide.SlideType.CONTENT,
+                slide_role=SocialCarouselSlide.SlideRole.HOOK_COVER if index == 1 else SocialCarouselSlide.SlideRole.EXPLANATION,
+                title=f'Slide {index}',
+                body='Texto curto',
+                ai_composed_image=image,
+                rendered_image=image,
+                render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED,
+                ai_composition_status=status,
+                ai_composition_attempts=attempts,
+                ai_composition_fingerprint=f'fingerprint-{index}' if attempts else '',
+                ai_review_metadata=review,
+                creative_plan_metadata={'composition_type': 'PHOTO_EDITORIAL'},
+            )
+        SocialCarouselGenerationRun.objects.create(profile=self.profile, content=content, generation_mode=SocialProfile.CarouselGenerationMode.AI_FINISHED, status=SocialCarouselGenerationRun.Status.PARTIAL, creative_blueprint={'concept_name': 'Conceito'})
+        if error_attempts:
+            SocialAIUsage.objects.create(profile=self.profile, content=content, slide=content.carousel_slides.get(order=1), operation=SocialAIUsage.Operation.COMPOSED_SLIDE, success=True, metadata={'purpose': 'CAROUSEL_COMPOSED_SLIDE', 'provider_called': True})
+        return content
+
+    def test_work_queue_ordering_deterministico_pending_antes_retry(self):
+        from .autonomous_carousel import get_composition_work_queue
+
+        content = self._partial_ai_finished_content()
+        queue = get_composition_work_queue(content, max_attempts=2)
+
+        self.assertEqual([item['slide'].order for item in queue], [2, 3, 4, 5, 6, 1])
+        self.assertEqual([item['action'] for item in queue[:5]], ['COMPOSE_FIRST_ATTEMPT'] * 5)
+        self.assertEqual(queue[-1]['action'], 'RETRY')
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=20, SOCIAL_AI_IMAGE_MAX_PER_TICK=8, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=6, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
+    def test_retomar_ai_finished_cap_6_processa_pendentes_sem_retry(self):
+        from .composed_slide_review import ComposedSlideReviewResult
+        from .autonomous_carousel import retomar_ai_finished_content
+
+        content = self._partial_ai_finished_content()
+        client, provider = self._provider()
+        good = ComposedSlideReviewResult(True, 100, 94, 92, 91, 93, [])
+
+        with mock.patch('social_automation.ai_slide_composer._client', return_value=client), mock.patch('social_automation.ai_slide_composer.moderar_conteudo', return_value=False), mock.patch('social_automation.ai_slide_composer.review_composed_slide', return_value=good), mock.patch('social_automation.instagram._request'):
+            result = retomar_ai_finished_content(content)
+
+        self.assertEqual(provider.call_count, 5)
+        self.assertEqual(result.generated_images, 5)
+        self.assertEqual(result.composition_calls_used, 6)
+        self.assertEqual(list(content.carousel_slides.filter(ai_composition_status=SocialCarouselSlide.CompositionStatus.READY).values_list('order', flat=True)), [2, 3, 4, 5, 6])
+        self.assertEqual(content.carousel_slides.get(order=1).ai_composition_status, SocialCarouselSlide.CompositionStatus.ERROR)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=20, SOCIAL_AI_IMAGE_MAX_PER_TICK=8, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=8, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
+    def test_retomar_ai_finished_cap_8_processa_pendentes_depois_retry(self):
+        from .composed_slide_review import ComposedSlideReviewResult
+        from .autonomous_carousel import retomar_ai_finished_content
+
+        content = self._partial_ai_finished_content()
+        client, provider = self._provider()
+        good = ComposedSlideReviewResult(True, 100, 94, 92, 91, 93, [])
+
+        with mock.patch('social_automation.ai_slide_composer._client', return_value=client), mock.patch('social_automation.ai_slide_composer.moderar_conteudo', return_value=False), mock.patch('social_automation.ai_slide_composer.review_composed_slide', return_value=good), mock.patch('social_automation.instagram._request'):
+            result = retomar_ai_finished_content(content)
+
+        self.assertEqual(provider.call_count, 6)
+        self.assertEqual(result.generated_images, 6)
+        self.assertEqual(result.composition_calls_used, 7)
+        self.assertEqual(list(content.carousel_slides.filter(ai_composition_status=SocialCarouselSlide.CompositionStatus.READY).order_by('order').values_list('order', flat=True)), [1, 2, 3, 4, 5, 6])
+        self.assertTrue(content.final_media_ready)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=20, SOCIAL_AI_IMAGE_MAX_PER_TICK=3, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=8, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
+    def test_retomar_ai_finished_quota_menor_processa_tres_pendentes_com_reason(self):
+        from .composed_slide_review import ComposedSlideReviewResult
+        from .autonomous_carousel import retomar_ai_finished_content
+
+        content = self._partial_ai_finished_content()
+        client, provider = self._provider()
+        good = ComposedSlideReviewResult(True, 100, 94, 92, 91, 93, [])
+
+        with mock.patch('social_automation.ai_slide_composer._client', return_value=client), mock.patch('social_automation.ai_slide_composer.moderar_conteudo', return_value=False), mock.patch('social_automation.ai_slide_composer.review_composed_slide', return_value=good), mock.patch('social_automation.instagram._request'):
+            result = retomar_ai_finished_content(content)
+
+        self.assertEqual(provider.call_count, 3)
+        self.assertEqual(list(content.carousel_slides.filter(ai_composition_status=SocialCarouselSlide.CompositionStatus.READY).order_by('order').values_list('order', flat=True)), [2, 3, 4])
+        self.assertEqual(result.pending_slides, 3)
+        self.assertIn('Slide 5:', ' '.join(result.messages))
+
+    def test_composition_budget_conta_somente_provider_calls(self):
+        from .autonomous_carousel import composition_calls_used
+
+        content = self._partial_ai_finished_content(error_attempts=0)
+        slide = content.carousel_slides.get(order=1)
+        SocialAIUsage.objects.create(profile=self.profile, content=content, slide=slide, operation=SocialAIUsage.Operation.COMPOSED_SLIDE_REVIEW, success=True, metadata={'score_scale': 100})
+        SocialAIUsage.objects.create(profile=self.profile, content=content, slide=slide, operation=SocialAIUsage.Operation.TEXT_GENERATION, success=True, metadata={'stage': 'ideation'})
+        SocialAIUsage.objects.create(profile=self.profile, content=content, slide=slide, operation=SocialAIUsage.Operation.CREATIVE_BLUEPRINT, success=True, metadata={'stage': 'blueprint'})
+        SocialAIUsage.objects.create(profile=self.profile, content=content, slide=slide, operation=SocialAIUsage.Operation.COMPOSED_SLIDE, success=False, metadata={'reason': 'moderation'})
+        SocialAIUsage.objects.create(profile=self.profile, content=content, slide=slide, operation=SocialAIUsage.Operation.COMPOSED_SLIDE, success=False, metadata={'provider_called': True, 'purpose': 'CAROUSEL_COMPOSED_SLIDE'})
+
+        self.assertEqual(composition_calls_used(content), 1)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=20, SOCIAL_AI_IMAGE_MAX_PER_TICK=8, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=8, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
+    def test_action_manual_continuar_executa_pendentes_e_mostra_resumo(self):
+        from .composed_slide_review import ComposedSlideReviewResult
+
+        content = self._partial_ai_finished_content()
+        staff = User.objects.create_user('staff-resume-ai', password='123', is_staff=True)
+        self.client.force_login(staff)
+        client, provider = self._provider()
+        good = ComposedSlideReviewResult(True, 100, 94, 92, 91, 93, [])
+
+        with mock.patch('social_automation.ai_slide_composer._client', return_value=client), mock.patch('social_automation.ai_slide_composer.moderar_conteudo', return_value=False), mock.patch('social_automation.ai_slide_composer.review_composed_slide', return_value=good), mock.patch('social_automation.instagram._request'):
+            response = self.client.post(reverse('social_automation:content_resume_ai_finished', args=[content.id]), follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(provider.call_count, 6)
+        self.assertContains(response, 'chamadas usadas')
+        self.assertIn('Retomada AI_FINISHED:', SocialContentEvent.objects.filter(content=content).latest('created_at').detalhe)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AI_IMAGE_MAX_PER_TICK=8, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=1, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
+    def test_zero_work_por_cap_retorna_reason_explicito(self):
+        from .autonomous_carousel import retomar_ai_finished_content
+
+        content = self._partial_ai_finished_content()
+
+        with mock.patch('social_automation.ai_slide_composer._client') as provider, mock.patch('social_automation.instagram._request'):
+            result = retomar_ai_finished_content(content)
+
+        provider.assert_not_called()
+        self.assertEqual(result.generated_images, 0)
+        self.assertIn('Nenhum slide pode ser composto', ' '.join(result.messages))
+
     def test_quality_e_ui_distinguem_ai_finished_nao_avaliado_de_score_zero_real(self):
         from .carousel_quality import evaluate_carousel_quality
 

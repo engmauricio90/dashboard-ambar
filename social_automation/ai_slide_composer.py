@@ -116,7 +116,7 @@ def compose_slide_with_ai(slide, creative_direction, creative_plan=None, *, aspe
             final_image_bytes = _apply_system_brand_overlay_to_bytes(raw_image_bytes, profile, slide) if brand_mode == BRAND_MODE_SYSTEM_OVERLAY else raw_image_bytes
             _validate_image_bytes(final_image_bytes)
             _persist_composed_slide(slide, final_image_bytes, fingerprint, response_id, attempt, plan, brand_mode, raw_image_bytes=raw_image_bytes)
-            _register_usage(slide, success=True, metadata={'fingerprint': fingerprint, 'attempt': attempt, 'purpose': 'CAROUSEL_COMPOSED_SLIDE'})
+            _register_usage(slide, success=True, metadata={'fingerprint': fingerprint, 'attempt': attempt, 'purpose': 'CAROUSEL_COMPOSED_SLIDE', 'provider_called': True})
             review = review_composed_slide(slide, creative_direction=creative_direction)
             slide.ai_review_metadata = review.as_dict()
             slide.ai_composition_status = SocialCarouselSlide.CompositionStatus.READY if review.valid else SocialCarouselSlide.CompositionStatus.ERROR
@@ -129,7 +129,7 @@ def compose_slide_with_ai(slide, creative_direction, creative_plan=None, *, aspe
             raise
         except Exception as exc:
             issues = ['Falha controlada na composicao IA do slide.']
-            _register_usage(slide, success=False, error=exc, metadata={'fingerprint': fingerprint, 'attempt': attempt})
+            _register_usage(slide, success=False, error=exc, metadata={'fingerprint': fingerprint, 'attempt': attempt, 'purpose': 'CAROUSEL_COMPOSED_SLIDE', 'provider_called': True})
             if local_attempt >= remaining_attempts:
                 _mark_error(slide, fingerprint, issues, attempt)
                 return ComposeSlideResult(slide=slide, attempts=attempts_spent, issues=issues)
