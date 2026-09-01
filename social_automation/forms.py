@@ -55,6 +55,9 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
             'carousel_ai_instructions',
             'carousel_cta_enabled',
             'carousel_default_cta',
+            'carousel_generation_mode',
+            'carousel_creative_variation',
+            'carousel_fallback_policy',
             'carousel_editorial_mode',
             'carousel_visual_mode',
             'carousel_image_density',
@@ -99,6 +102,15 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
         self.fields['carousel_default_slide_count'].initial = self.instance.carousel_default_slide_count if self.instance and self.instance.pk else 6
         self.fields['carousel_ai_instructions'].required = False
         self.fields['carousel_default_cta'].required = False
+        for field_name in ['carousel_generation_mode', 'carousel_creative_variation', 'carousel_fallback_policy']:
+            self.fields[field_name].required = False
+            self.fields[field_name].widget.attrs['class'] = 'form-select'
+        self.fields['carousel_generation_mode'].initial = self.instance.carousel_generation_mode if self.instance and self.instance.pk else 'SYSTEM_COMPOSED'
+        self.fields['carousel_generation_mode'].label = 'Modo de geracao do carrossel'
+        self.fields['carousel_creative_variation'].initial = self.instance.carousel_creative_variation if self.instance and self.instance.pk else 'MEDIUM'
+        self.fields['carousel_creative_variation'].label = 'Variacao criativa'
+        self.fields['carousel_fallback_policy'].initial = self.instance.carousel_fallback_policy if self.instance and self.instance.pk else 'STRICT'
+        self.fields['carousel_fallback_policy'].label = 'Fallback da arte final IA'
         self.fields['carousel_visual_mode'].required = False
         self.fields['carousel_visual_mode'].initial = self.instance.carousel_visual_mode if self.instance and self.instance.pk else 'STANDARD'
         self.fields['carousel_visual_mode'].label = 'Modo visual do carrossel'
@@ -149,6 +161,15 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
 
     def clean_carousel_visual_mode(self):
         return self.cleaned_data.get('carousel_visual_mode') or 'STANDARD'
+
+    def clean_carousel_generation_mode(self):
+        return self.cleaned_data.get('carousel_generation_mode') or 'SYSTEM_COMPOSED'
+
+    def clean_carousel_creative_variation(self):
+        return self.cleaned_data.get('carousel_creative_variation') or 'MEDIUM'
+
+    def clean_carousel_fallback_policy(self):
+        return self.cleaned_data.get('carousel_fallback_policy') or 'STRICT'
 
     def clean_carousel_editorial_mode(self):
         return self.cleaned_data.get('carousel_editorial_mode') or 'STANDARD'
@@ -569,6 +590,7 @@ class SocialCarouselSlideForm(BootstrapMixin, forms.ModelForm):
             'order',
             'slide_type',
             'slide_role',
+            'composition_type',
             'visual_intent',
             'visual_treatment',
             'semantic_visual_intent',
@@ -591,9 +613,10 @@ class SocialCarouselSlideForm(BootstrapMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
         self._apply_bootstrap()
         content = self.instance.content if self.instance and self.instance.content_id else None
-        for field_name in ['slide_type', 'slide_role', 'visual_intent', 'visual_treatment', 'variant', 'source_base_image', 'overlay_override']:
+        for field_name in ['slide_type', 'slide_role', 'composition_type', 'visual_intent', 'visual_treatment', 'variant', 'source_base_image', 'overlay_override']:
             self.fields[field_name].widget.attrs['class'] = 'form-select'
         self.fields['slide_role'].required = False
+        self.fields['composition_type'].required = False
         self.fields['visual_intent'].required = False
         self.fields['visual_treatment'].required = False
         self.fields['semantic_visual_intent'].required = False
@@ -634,6 +657,7 @@ class SocialCarouselSlideForm(BootstrapMixin, forms.ModelForm):
         cleaned_data['visual_intent'] = cleaned_data.get('visual_intent') or SocialCarouselTemplateVariant.LayoutType.AUTO
         cleaned_data['visual_treatment'] = cleaned_data.get('visual_treatment') or SocialCarouselSlide.VisualTreatment.AUTO
         cleaned_data['slide_role'] = cleaned_data.get('slide_role') or SocialCarouselSlide.SlideRole.EXPLANATION
+        cleaned_data['composition_type'] = cleaned_data.get('composition_type') or SocialCarouselSlide.CompositionType.AUTO
         return cleaned_data
 
 

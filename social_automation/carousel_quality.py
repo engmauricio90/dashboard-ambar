@@ -78,8 +78,12 @@ class CarouselQualityResult:
     score: int
     visual_score: int
     editorial_score: int
+    text_fidelity_score: int
+    brand_score: int
+    composition_score: int
     visual_valid: bool
     editorial_valid: bool
+    composed_valid: bool
     issues: list[str] = field(default_factory=list)
     visual_issues: list[str] = field(default_factory=list)
     editorial_issues: list[str] = field(default_factory=list)
@@ -189,8 +193,12 @@ def evaluate_carousel_quality(content):
             score=100,
             visual_score=100,
             editorial_score=100,
+            text_fidelity_score=100,
+            brand_score=100,
+            composition_score=100,
             visual_valid=True,
             editorial_valid=True,
+            composed_valid=True,
         )
 
     visual_mode = content.profile.carousel_visual_mode or SocialProfile.CarouselVisualMode.STANDARD
@@ -198,9 +206,10 @@ def evaluate_carousel_quality(content):
     slides = list(content.carousel_slides.filter(is_active=True).order_by('order', 'id'))
     visual = _evaluate_visual_quality(slides, visual_mode)
     editorial = _evaluate_editorial_quality(slides, editorial_mode, cta_enabled=content.profile.carousel_cta_enabled)
-    issues = [*visual.issues, *editorial.issues]
-    valid = visual.valid and editorial.valid
-    score = min(visual.score, editorial.score)
+    composed = _evaluate_composed_quality(content, slides)
+    issues = [*visual.issues, *editorial.issues, *composed['issues']]
+    valid = visual.valid and editorial.valid and composed['valid']
+    score = min(visual.score, editorial.score, composed['overall'])
     if issues:
         score = min(score, 69)
 
@@ -216,11 +225,15 @@ def evaluate_carousel_quality(content):
         score=max(0, min(100, score)),
         visual_score=visual.score,
         editorial_score=editorial.score,
+        text_fidelity_score=composed['text_fidelity'],
+        brand_score=composed['brand'],
+        composition_score=composed['composition'],
         visual_valid=visual.valid,
         editorial_valid=editorial.valid,
+        composed_valid=composed['valid'],
         issues=issues,
         visual_issues=visual.issues,
-        editorial_issues=editorial.issues,
+        editorial_issues=[*editorial.issues, *composed['issues']],
     )
 
 
@@ -417,7 +430,50 @@ def _slide_base_image_valid(slide):
 
 
 def _slide_has_image(slide):
-    return bool(_slide_base_image_valid(slide) or getattr(slide, 'source_image', None))
+    return bool(_slide_base_image_valid(slide) or getattr(slide, 'source_image', None) or getattr(slide, 'ai_composed_image', None))
+
+
+def _evaluate_composed_quality(content, slides):
+    if getattr(content.profile, 'carousel_generation_mode', '') != SocialProfile.CarouselGenerationMode.AI_FINISHED:
+        return {'valid': True, 'overall': 100, 'text_fidelity': 100, 'brand': 100, 'composition': 100, 'issues': []}
+    issues = []
+    text_scores = []
+    brand_scores = []
+    composition_scores = []
+    for slide in slides:
+        if slide.render_mode != SocialCarouselSlide.RenderMode.AI_FINISHED:
+            issues.append(f'Slide {slide.order}: render mode nao e AI_FINISHED.')
+        if slide.ai_composition_status != SocialCarouselSlide.CompositionStatus.READY:
+            issues.append(f'Slide {slide.order}: arte final IA ainda nao aprovada.')
+        if not slide.get_final_image():
+            issues.append(f'Slide {slide.order}: asset final AI_FINISHED indisponivel.')
+        review = slide.ai_review_metadata or {}
+        text_scores.append(_score(review.get('text_fidelity'), default=0))
+        brand_scores.append(_score(review.get('brand_consistency'), default=0))
+        composition_scores.append(_score(review.get('composition'), default=0))
+        if review.get('issues'):
+            issues.extend([f'Slide {slide.order}: {issue}' for issue in review.get('issues', [])])
+    text = min(text_scores) if text_scores else 0
+    brand = min(brand_scores) if brand_scores else 0
+    composition = min(composition_scores) if composition_scores else 0
+    overall = min(text, brand, composition)
+    if text < 90:
+        issues.append('Fidelidade textual abaixo do minimo para arte final IA.')
+    return {
+        'valid': not issues,
+        'overall': overall,
+        'text_fidelity': text,
+        'brand': brand,
+        'composition': composition,
+        'issues': list(dict.fromkeys(issues)),
+    }
+
+
+def _score(value, *, default=100):
+    try:
+        return max(0, min(100, int(value)))
+    except Exception:
+        return default
 
 
 def _slide_visual_treatment(slide):

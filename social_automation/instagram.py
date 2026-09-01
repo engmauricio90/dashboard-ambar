@@ -518,7 +518,7 @@ def gerar_assinatura_video_meta(content):
 
 
 def gerar_assinatura_carousel_slide_meta(slide):
-    if not slide.rendered_image:
+    if not slide.get_final_image():
         raise InstagramPublishError('Renderize o slide antes de publicar.')
     signed_value = signing.TimestampSigner(salt=CAROUSEL_META_SIGNING_SALT).sign(f'{slide.content_id}:{slide.id}')
     prefix = f'{slide.content_id}:{slide.id}:'
@@ -557,9 +557,10 @@ def auditar_imagem_final(content):
 
 
 def auditar_imagem_slide_carrossel(slide):
-    if not slide.rendered_image:
+    media = slide.get_final_image()
+    if not media:
         raise InstagramPublishError('Renderize o slide antes de publicar.')
-    with slide.rendered_image.storage.open(slide.rendered_image.name, 'rb') as arquivo:
+    with media.storage.open(media.name, 'rb') as arquivo:
         header = arquivo.read(3)
         arquivo.seek(0, 2)
         size = arquivo.tell()
@@ -576,7 +577,7 @@ def auditar_imagem_slide_carrossel(slide):
     if (image.width, image.height) not in {(1080, 1080), (1080, 1350)}:
         raise InstagramPublishError('O slide precisa estar em 1080x1080 ou 1080x1350.')
     return {
-        'name': slide.rendered_image.name,
+        'name': media.name,
         'format': image.format,
         'mode': image.mode,
         'width': image.width,
@@ -642,7 +643,7 @@ def validar_assinatura_carousel_slide_meta(content_id, slide_id, signature):
     if str(unsigned) != f'{content_id}:{slide_id}':
         raise ValidationError('Assinatura invalida ou expirada.')
     slide = SocialCarouselSlide.objects.select_related('content').filter(pk=slide_id, content_id=content_id, is_active=True).first()
-    if not slide or not slide.rendered_image:
+    if not slide or not slide.get_final_image():
         raise ValidationError('Assinatura invalida ou expirada.')
     return slide
 

@@ -29,7 +29,7 @@ def _media_field(content):
 
 
 def calculate_slide_media_hash(slide):
-    media = slide.rendered_image
+    media = slide.get_final_image()
     if not media:
         return ''
     hasher = sha256()

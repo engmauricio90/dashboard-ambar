@@ -4,11 +4,13 @@ from .models import (
     SocialBaseImage,
     SocialBaseImageProtectedRegion,
     SocialAIUsage,
+    SocialCarouselGenerationRun,
     SocialCarouselSlide,
     SocialCarouselTemplate,
     SocialCarouselTemplateVariant,
     SocialContent,
     SocialContentEvent,
+    SocialCreativeReference,
     SocialInstagramConnection,
     SocialProfile,
     SocialVisualIdentity,
@@ -60,8 +62,8 @@ class SocialInstagramConnectionInline(admin.StackedInline):
 
 @admin.register(SocialProfile)
 class SocialProfileAdmin(admin.ModelAdmin):
-    list_display = ['nome', 'username', 'plataforma', 'modo_operacao', 'ativo', 'carousel_editorial_mode', 'carousel_visual_mode', 'carousel_image_density', 'ai_image_mode', 'posts_por_dia', 'reels_por_dia', 'carousels_por_dia', 'updated_at']
-    list_filter = ['plataforma', 'modo_operacao', 'ativo', 'carousel_editorial_mode', 'carousel_visual_mode', 'carousel_image_density', 'ai_image_mode', 'ai_image_generation_enabled']
+    list_display = ['nome', 'username', 'plataforma', 'modo_operacao', 'ativo', 'carousel_generation_mode', 'carousel_editorial_mode', 'carousel_visual_mode', 'carousel_image_density', 'ai_image_mode', 'posts_por_dia', 'reels_por_dia', 'carousels_por_dia', 'updated_at']
+    list_filter = ['plataforma', 'modo_operacao', 'ativo', 'carousel_generation_mode', 'carousel_creative_variation', 'carousel_fallback_policy', 'carousel_editorial_mode', 'carousel_visual_mode', 'carousel_image_density', 'ai_image_mode', 'ai_image_generation_enabled']
     search_fields = ['nome', 'username', 'estilo', 'instrucoes_ia']
     inlines = [SocialInstagramConnectionInline, SocialVisualIdentityInline, SocialBaseImageInline, SocialCarouselTemplateInline]
 
@@ -118,8 +120,8 @@ class SocialContentEventInline(admin.TabularInline):
 class SocialCarouselSlideInline(admin.TabularInline):
     model = SocialCarouselSlide
     extra = 0
-    fields = ['order', 'slide_type', 'visual_intent', 'visual_treatment', 'semantic_visual_intent', 'media_intent', 'media_required', 'variant', 'source_base_image', 'title', 'is_active', 'rendered_image', 'instagram_container_id']
-    readonly_fields = ['rendered_image', 'instagram_container_id']
+    fields = ['order', 'slide_type', 'slide_role', 'render_mode', 'composition_type', 'ai_composition_status', 'visual_intent', 'visual_treatment', 'semantic_visual_intent', 'media_intent', 'media_required', 'variant', 'source_base_image', 'title', 'is_active', 'rendered_image', 'ai_composed_image', 'instagram_container_id']
+    readonly_fields = ['rendered_image', 'ai_composed_image', 'instagram_container_id']
 
 
 @admin.register(SocialContent)
@@ -171,9 +173,26 @@ class SocialBaseImageProtectedRegionAdmin(admin.ModelAdmin):
 
 @admin.register(SocialCarouselSlide)
 class SocialCarouselSlideAdmin(admin.ModelAdmin):
-    list_display = ['content', 'order', 'slide_type', 'visual_intent', 'visual_treatment', 'semantic_visual_intent', 'media_required', 'variant', 'is_active', 'updated_at']
-    list_filter = ['slide_type', 'visual_intent', 'visual_treatment', 'semantic_visual_intent', 'media_required', 'is_active', 'content__profile']
+    list_display = ['content', 'order', 'slide_type', 'slide_role', 'render_mode', 'composition_type', 'ai_composition_status', 'visual_intent', 'visual_treatment', 'media_required', 'is_active', 'updated_at']
+    list_filter = ['slide_type', 'slide_role', 'render_mode', 'composition_type', 'ai_composition_status', 'visual_intent', 'visual_treatment', 'semantic_visual_intent', 'media_required', 'is_active', 'content__profile']
     search_fields = ['title', 'body', 'media_intent', 'content__frase']
+    readonly_fields = ['rendered_image', 'ai_composed_image', 'ai_composition_id', 'ai_composition_fingerprint', 'rendered_text_snapshot', 'creative_plan_metadata', 'ai_composition_metadata', 'ai_review_metadata', 'created_at', 'updated_at']
+
+
+@admin.register(SocialCreativeReference)
+class SocialCreativeReferenceAdmin(admin.ModelAdmin):
+    list_display = ['profile', 'reference_type', 'ownership_type', 'active', 'created_at']
+    list_filter = ['reference_type', 'ownership_type', 'active', 'profile']
+    search_fields = ['profile__nome', 'profile__username', 'text_reference', 'style_tags', 'notes', 'source_url']
+    readonly_fields = ['created_at']
+
+
+@admin.register(SocialCarouselGenerationRun)
+class SocialCarouselGenerationRunAdmin(admin.ModelAdmin):
+    list_display = ['profile', 'content', 'generation_mode', 'status', 'started_at', 'finished_at']
+    list_filter = ['generation_mode', 'status', 'profile']
+    search_fields = ['profile__nome', 'profile__username', 'content__frase', 'error']
+    readonly_fields = ['profile', 'content', 'generation_mode', 'status', 'selected_idea', 'selection_metadata', 'creative_blueprint', 'attempts', 'error', 'metadata', 'started_at', 'finished_at']
 
 
 @admin.register(SocialContentEvent)
@@ -186,7 +205,7 @@ class SocialContentEventAdmin(admin.ModelAdmin):
 
 @admin.register(SocialAIUsage)
 class SocialAIUsageAdmin(admin.ModelAdmin):
-    list_display = ['profile', 'operation', 'model', 'success', 'created_at']
+    list_display = ['profile', 'content', 'slide', 'operation', 'model', 'success', 'created_at']
     list_filter = ['operation', 'success', 'profile']
     search_fields = ['profile__nome', 'profile__username', 'model', 'error']
-    readonly_fields = ['profile', 'content', 'base_image', 'operation', 'provider', 'model', 'success', 'prompt_tokens', 'output_tokens', 'total_tokens', 'error', 'metadata', 'created_at']
+    readonly_fields = ['profile', 'content', 'slide', 'base_image', 'operation', 'provider', 'model', 'success', 'prompt_tokens', 'output_tokens', 'total_tokens', 'error', 'metadata', 'created_at']

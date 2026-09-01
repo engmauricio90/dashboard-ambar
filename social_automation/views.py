@@ -27,9 +27,11 @@ from .forms import (
     SocialVisualIdentityForm,
 )
 from .autonomous_carousel import gerar_carrossel_autonomo
+from .carousel_creative_blueprint import CarouselIdea, IdeaSelection
+from .carousel_ideation import generate_carousel_ideas
+from .generation import _historico, gerar_lote_conteudos
 from .image_analysis import analyze_social_image
 from .image_generation import SocialImagePrompt, build_social_image_prompt, generate_social_image
-from .generation import gerar_lote_conteudos
 from .instagram import (
     InstagramAPIError,
     InstagramConfigurationError,
@@ -433,6 +435,7 @@ def content_detail(request, content_id):
         from .carousel_quality import evaluate_carousel_quality
 
         carousel_quality = evaluate_carousel_quality(content)
+    latest_generation_run = content.carousel_generation_runs.order_by('-started_at').first() if content.is_carousel else None
     return render(
         request,
         'social_automation/content_detail.html',
@@ -441,6 +444,7 @@ def content_detail(request, content_id):
             'events': events,
             'schedule_form': schedule_form,
             'carousel_quality': carousel_quality,
+            'latest_generation_run': latest_generation_run,
             'instagram_expected_username': instagram_connection.username if instagram_connection and instagram_connection.is_active else content.profile.username,
             'instagram_connection': instagram_connection,
         },
@@ -479,15 +483,24 @@ def profile_generate(request, profile_id):
 def profile_generate_carousel_ai(request, profile_id):
     profile = _profile_or_404(profile_id)
     resultado = None
+    ideas = []
     if request.method == 'POST':
         form = SocialAICarouselForm(request.POST, profile=profile)
         if form.is_valid():
             try:
+                action = request.POST.get('action') or 'generate_carousel'
+                if action == 'generate_ideas':
+                    ideas = generate_carousel_ideas(profile, form.cleaned_data.get('tema') or '', historico=_historico(profile), count=4)
+                    messages.success(request, 'Ideias geradas para revisao.')
+                    return render(request, 'social_automation/generate_carousel_ai_form.html', {'profile': profile, 'form': form, 'resultado': resultado, 'ideas': ideas})
+                selected_idea = _idea_from_post(request.POST) if action == 'use_idea' else None
                 resultado = gerar_carrossel_autonomo(
                     profile,
                     tema=form.cleaned_data.get('tema') or '',
                     slides=form.cleaned_data.get('slides') or profile.carousel_default_slide_count,
                     usuario=request.user,
+                    selected_idea=selected_idea,
+                    idea_selection=IdeaSelection(selected_idea.idea_id, 'Selecao manual do usuario.', 100) if selected_idea else None,
                 )
                 messages.success(request, 'Carrossel gerado como rascunho.')
                 return redirect('social_automation:content_detail', content_id=resultado.content.id)
@@ -495,7 +508,24 @@ def profile_generate_carousel_ai(request, profile_id):
                 _handle_validation_error(request, exc)
     else:
         form = SocialAICarouselForm(profile=profile)
-    return render(request, 'social_automation/generate_carousel_ai_form.html', {'profile': profile, 'form': form, 'resultado': resultado})
+    return render(request, 'social_automation/generate_carousel_ai_form.html', {'profile': profile, 'form': form, 'resultado': resultado, 'ideas': ideas})
+
+
+def _idea_from_post(post):
+    idea_id = (post.get('idea_id') or '').strip()
+    if not idea_id:
+        return None
+    return CarouselIdea(
+        idea_id=idea_id,
+        hook=(post.get('idea_hook') or '').strip(),
+        concept=(post.get('idea_concept') or '').strip(),
+        promise=(post.get('idea_promise') or '').strip(),
+        audience_angle=(post.get('idea_audience_angle') or '').strip(),
+        editorial_angle=(post.get('idea_editorial_angle') or '').strip(),
+        suggested_slide_count=int(post.get('idea_suggested_slide_count') or 6),
+        creative_direction=(post.get('idea_creative_direction') or '').strip(),
+        reason=(post.get('idea_reason') or '').strip(),
+    )
 
 
 @staff_required
@@ -623,9 +653,10 @@ def ig_carousel_slide(request, content_id, slide_id, signature):
         slide = validar_assinatura_carousel_slide_meta(content_id, slide_id, signature)
     except ValidationError as exc:
         raise Http404 from exc
-    if not slide.rendered_image:
+    final_image = slide.get_final_image()
+    if not final_image:
         raise Http404
-    with slide.rendered_image.storage.open(slide.rendered_image.name, 'rb') as arquivo:
+    with final_image.storage.open(final_image.name, 'rb') as arquivo:
         image_bytes = arquivo.read()
     logger.info('signed_carousel_slide_fetch content_id=%s slide_id=%s method=%s bytes=%s', content_id, slide.id, request.method, len(image_bytes))
     body = b'' if request.method == 'HEAD' else image_bytes
@@ -639,10 +670,11 @@ def ig_carousel_slide(request, content_id, slide_id, signature):
 @staff_required
 def carousel_slide_preview(request, slide_id):
     slide = get_object_or_404(SocialCarouselSlide.objects.select_related('content', 'content__profile'), pk=slide_id)
-    if not slide.rendered_image:
+    final_image = slide.get_final_image()
+    if not final_image:
         raise Http404
     return FileResponse(
-        slide.rendered_image.storage.open(slide.rendered_image.name, 'rb'),
+        final_image.storage.open(final_image.name, 'rb'),
         content_type='image/jpeg',
         as_attachment=False,
         filename=f'carousel-slide-{slide.order}.jpg',

@@ -23,7 +23,7 @@
                                 <button class="btn btn-sm btn-outline-secondary" type="button" data-carousel-next>Proximo</button>
                             </div>
                             {% for slide in content.carousel_slides.all %}
-                                {% if slide.rendered_image %}
+                                {% if slide.get_final_image %}
                                     {% if forloop.first %}
                                         <img src="{% url 'social_automation:carousel_slide_preview' slide.id %}" class="social-carousel-main" alt="Slide {{ slide.order }}" data-carousel-main data-index="0">
                                     {% endif %}
@@ -31,7 +31,7 @@
                             {% endfor %}
                             <div class="d-flex gap-2 flex-wrap mt-3">
                                 {% for slide in content.carousel_slides.all %}
-                                    {% if slide.rendered_image %}
+                                    {% if slide.get_final_image %}
                                         <img src="{% url 'social_automation:carousel_slide_preview' slide.id %}" class="social-carousel-thumb {% if forloop.first %}active{% endif %}" alt="Slide {{ slide.order }}" data-carousel-thumb data-index="{{ forloop.counter0 }}" data-title="{{ slide.get_slide_type_display }}" data-variant="{{ slide.render_metadata.variant|default:'Auto' }}">
                                     {% endif %}
                                 {% endfor %}
@@ -144,6 +144,23 @@
 </div>
 
 {% if content.is_carousel %}
+<div class="card shadow-sm mt-3">
+    <div class="card-header fw-bold">Motor criativo</div>
+    <div class="card-body small">
+        <div class="row g-3">
+            <div class="col-md-3"><strong>Modo</strong><div>{{ content.profile.get_carousel_generation_mode_display }}</div></div>
+            <div class="col-md-3"><strong>Variação</strong><div>{{ content.profile.get_carousel_creative_variation_display }}</div></div>
+            <div class="col-md-3"><strong>Fallback</strong><div>{{ content.profile.get_carousel_fallback_policy_display }}</div></div>
+            <div class="col-md-3"><strong>Run</strong><div>{% if latest_generation_run %}{{ latest_generation_run.get_status_display }}{% else %}-{% endif %}</div></div>
+        </div>
+        {% if latest_generation_run.selected_idea %}
+        <div class="mt-3"><strong>Ideia escolhida</strong><div class="text-muted">{{ latest_generation_run.selected_idea.hook|default:'-' }}</div></div>
+        {% endif %}
+        {% if latest_generation_run.creative_blueprint %}
+        <div class="mt-2"><strong>Conceito</strong><div class="text-muted">{{ latest_generation_run.creative_blueprint.concept_name|default:'-' }}</div></div>
+        {% endif %}
+    </div>
+</div>
 {% if carousel_quality %}
 <div class="card shadow-sm mt-3">
     <div class="card-header fw-bold">Qualidade do carrossel</div>
@@ -152,6 +169,9 @@
             <div class="col-md-2"><strong>Visual</strong><div>{{ carousel_quality.visual_score }}/100</div><div class="text-muted">{{ carousel_quality.visual_mode }}</div></div>
             <div class="col-md-2"><strong>Editorial</strong><div>{{ carousel_quality.editorial_score }}/100</div><div class="text-muted">{{ carousel_quality.editorial_mode }}</div></div>
             <div class="col-md-2"><strong>Nota final</strong><div>{{ carousel_quality.score }}/100</div></div>
+            <div class="col-md-2"><strong>Texto IA</strong><div>{{ carousel_quality.text_fidelity_score }}/100</div></div>
+            <div class="col-md-2"><strong>Marca IA</strong><div>{{ carousel_quality.brand_score }}/100</div></div>
+            <div class="col-md-2"><strong>Composição IA</strong><div>{{ carousel_quality.composition_score }}/100</div></div>
             <div class="col-md-2"><strong>Slides visuais</strong><div>{{ carousel_quality.visual_slides }}/{{ carousel_quality.active_slides }}</div></div>
             <div class="col-md-2"><strong>Com imagem</strong><div>{{ carousel_quality.image_slides }} ({{ carousel_quality.distinct_images }} distintas)</div></div>
             <div class="col-md-2"><strong>Status</strong><div>{% if carousel_quality.valid %}Aprovado{% else %}Pendente{% endif %}</div></div>
@@ -194,6 +214,7 @@
                     <th>Slide</th>
                     <th>Tipo</th>
                     <th>Papel</th>
+                    <th>Motor</th>
                     <th>Intencao</th>
                     <th>Midia</th>
                     <th>Layout</th>
@@ -207,6 +228,10 @@
                     <td>{{ slide.order }}</td>
                     <td>{{ slide.get_slide_type_display }}</td>
                     <td>{{ slide.get_slide_role_display }}</td>
+                    <td>
+                        <span class="badge text-bg-light">{{ slide.get_render_mode_display }}</span>
+                        <div class="text-muted small">{{ slide.get_ai_composition_status_display }}{% if slide.ai_composition_attempts %} · {{ slide.ai_composition_attempts }} tentativa(s){% endif %}</div>
+                    </td>
                     <td>
                         <strong>{{ slide.semantic_visual_intent|default:'-' }}</strong>
                         <div class="text-muted small">{{ slide.media_intent|default:'sem intencao de midia' }}</div>

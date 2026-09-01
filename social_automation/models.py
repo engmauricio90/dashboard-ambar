@@ -45,6 +45,17 @@ def social_carousel_slide_rendered_upload_to(instance, filename):
     return f'social/{profile_id}/carousels/{content_id}/slides/{filename}'
 
 
+def social_carousel_slide_composed_upload_to(instance, filename):
+    profile_id = instance.content.profile_id if instance.content_id else 'sem-perfil'
+    content_id = instance.content_id or 'sem-conteudo'
+    return f'social/{profile_id}/carousels/{content_id}/composed/{filename}'
+
+
+def social_creative_reference_upload_to(instance, filename):
+    profile_id = instance.profile_id or 'global'
+    return f'social/{profile_id}/creative_references/{filename}'
+
+
 def validate_timezone_name(value):
     if value not in available_timezones():
         raise ValidationError('Timezone invalido.')
@@ -95,6 +106,20 @@ class SocialProfile(models.Model):
         HIGH = 'HIGH', 'Alta'
         EVERY_SLIDE = 'EVERY_SLIDE', 'Todos os slides'
 
+    class CarouselGenerationMode(models.TextChoices):
+        SYSTEM_COMPOSED = 'SYSTEM_COMPOSED', 'Sistema'
+        AI_DIRECTED = 'AI_DIRECTED', 'IA dirigida'
+        AI_FINISHED = 'AI_FINISHED', 'IA - arte final'
+
+    class CarouselCreativeVariation(models.TextChoices):
+        LOW = 'LOW', 'Baixa'
+        MEDIUM = 'MEDIUM', 'Media'
+        HIGH = 'HIGH', 'Alta'
+
+    class CarouselFallbackPolicy(models.TextChoices):
+        STRICT = 'STRICT', 'Estrito'
+        ALLOW_SYSTEM_FALLBACK = 'ALLOW_SYSTEM_FALLBACK', 'Permitir compositor do sistema'
+
     nome = models.CharField(max_length=120)
     username = models.CharField(max_length=120)
     plataforma = models.CharField(max_length=30, choices=Plataforma.choices, default=Plataforma.INSTAGRAM)
@@ -108,6 +133,9 @@ class SocialProfile(models.Model):
     carousel_ai_instructions = models.TextField(blank=True)
     carousel_cta_enabled = models.BooleanField(default=True)
     carousel_default_cta = models.CharField(max_length=255, blank=True)
+    carousel_generation_mode = models.CharField(max_length=30, choices=CarouselGenerationMode.choices, default=CarouselGenerationMode.SYSTEM_COMPOSED)
+    carousel_creative_variation = models.CharField(max_length=20, choices=CarouselCreativeVariation.choices, default=CarouselCreativeVariation.MEDIUM)
+    carousel_fallback_policy = models.CharField(max_length=30, choices=CarouselFallbackPolicy.choices, default=CarouselFallbackPolicy.STRICT)
     carousel_editorial_mode = models.CharField(max_length=30, choices=CarouselEditorialMode.choices, default=CarouselEditorialMode.STANDARD)
     carousel_visual_mode = models.CharField(max_length=30, choices=CarouselVisualMode.choices, default=CarouselVisualMode.STANDARD)
     carousel_image_density = models.CharField(max_length=30, choices=CarouselImageDensity.choices, default=CarouselImageDensity.AUTO)
@@ -748,7 +776,7 @@ class SocialContent(models.Model):
     def final_media_ready(self):
         if self.is_carousel:
             slides = list(self.carousel_slides.filter(is_active=True))
-            if not (2 <= len(slides) <= 10 and all(bool(slide.rendered_image) for slide in slides)):
+            if not (2 <= len(slides) <= 10 and all(bool(slide.get_final_image()) for slide in slides)):
                 return False
             from .carousel_quality import evaluate_carousel_quality
 
@@ -791,6 +819,35 @@ class SocialCarouselSlide(models.Model):
         MINIMAL_VISUAL = 'MINIMAL_VISUAL', 'Minimal visual'
         TEXT_ONLY = 'TEXT_ONLY', 'Somente texto'
 
+    class RenderMode(models.TextChoices):
+        SYSTEM = 'SYSTEM', 'Sistema'
+        AI_FINISHED = 'AI_FINISHED', 'IA - arte final'
+        HYBRID = 'HYBRID', 'Hibrido'
+
+    class CompositionStatus(models.TextChoices):
+        PENDING = 'PENDING', 'Pendente'
+        COMPOSING = 'COMPOSING', 'Compondo'
+        REVIEWING = 'REVIEWING', 'Revisando'
+        READY = 'READY', 'Pronto'
+        ERROR = 'ERROR', 'Erro'
+        NEEDS_RECOMPOSE = 'NEEDS_RECOMPOSE', 'Recompor'
+
+    class CompositionType(models.TextChoices):
+        AUTO = 'AUTO', 'Automatico'
+        TYPOGRAPHIC_HERO = 'TYPOGRAPHIC_HERO', 'Tipografia hero'
+        PHOTO_EDITORIAL = 'PHOTO_EDITORIAL', 'Foto editorial'
+        PHOTO_WITH_TYPE = 'PHOTO_WITH_TYPE', 'Foto com tipografia'
+        SOCIAL_POST_CARD = 'SOCIAL_POST_CARD', 'Card social'
+        EDITORIAL_CARD = 'EDITORIAL_CARD', 'Card editorial'
+        SPLIT_COMPOSITION = 'SPLIT_COMPOSITION', 'Composicao dividida'
+        QUOTE_ART = 'QUOTE_ART', 'Frase visual'
+        INFOGRAPHIC_LIGHT = 'INFOGRAPHIC_LIGHT', 'Infografico leve'
+        NUMBER_STATEMENT = 'NUMBER_STATEMENT', 'Numero/frase'
+        MINIMAL_STATEMENT = 'MINIMAL_STATEMENT', 'Minimal'
+        COLLAGE = 'COLLAGE', 'Colagem'
+        ILLUSTRATIVE = 'ILLUSTRATIVE', 'Ilustrativo'
+        CTA_EDITORIAL = 'CTA_EDITORIAL', 'CTA editorial'
+
     content = models.ForeignKey(SocialContent, on_delete=models.CASCADE, related_name='carousel_slides')
     variant = models.ForeignKey(SocialCarouselTemplateVariant, on_delete=models.SET_NULL, blank=True, null=True, related_name='slides')
     source_base_image = models.ForeignKey(SocialBaseImage, on_delete=models.SET_NULL, blank=True, null=True, related_name='carousel_slides')
@@ -806,6 +863,17 @@ class SocialCarouselSlide(models.Model):
     body = models.TextField(blank=True)
     source_image = models.ImageField(upload_to=social_carousel_slide_source_upload_to, blank=True, null=True)
     rendered_image = models.ImageField(upload_to=social_carousel_slide_rendered_upload_to, blank=True, null=True)
+    render_mode = models.CharField(max_length=30, choices=RenderMode.choices, default=RenderMode.SYSTEM)
+    composition_type = models.CharField(max_length=30, choices=CompositionType.choices, default=CompositionType.AUTO)
+    ai_composed_image = models.ImageField(upload_to=social_carousel_slide_composed_upload_to, blank=True, null=True)
+    ai_composition_id = models.CharField(max_length=120, blank=True)
+    ai_composition_fingerprint = models.CharField(max_length=64, blank=True, default='')
+    ai_composition_status = models.CharField(max_length=30, choices=CompositionStatus.choices, default=CompositionStatus.PENDING)
+    ai_composition_attempts = models.PositiveSmallIntegerField(default=0)
+    rendered_text_snapshot = models.JSONField(default=dict, blank=True)
+    creative_plan_metadata = models.JSONField(default=dict, blank=True)
+    ai_composition_metadata = models.JSONField(default=dict, blank=True)
+    ai_review_metadata = models.JSONField(default=dict, blank=True)
     text_color_override = models.CharField(max_length=20, blank=True)
     overlay_override = models.CharField(max_length=30, choices=SocialCarouselTemplateVariant.OverlayType.choices, blank=True)
     render_metadata = models.JSONField(default=dict, blank=True)
@@ -826,6 +894,17 @@ class SocialCarouselSlide(models.Model):
 
     def __str__(self):
         return f'{self.content_id} - slide {self.order}'
+
+    def get_final_image(self):
+        if self.render_mode == self.RenderMode.AI_FINISHED:
+            if self.ai_composition_status == self.CompositionStatus.READY and self.ai_composed_image:
+                return self.ai_composed_image
+            return None
+        return self.rendered_image if self.rendered_image else None
+
+    @property
+    def final_image_ready(self):
+        return bool(self.get_final_image())
 
     def clean(self):
         super().clean()
@@ -868,14 +947,91 @@ class SocialContentEvent(models.Model):
         return f'{self.content_id} - {self.get_acao_display()}'
 
 
+class SocialCreativeReference(models.Model):
+    class ReferenceType(models.TextChoices):
+        VISUAL_STYLE = 'VISUAL_STYLE', 'Estilo visual'
+        CAROUSEL_STYLE = 'CAROUSEL_STYLE', 'Estilo de carrossel'
+        COPY_STRUCTURE = 'COPY_STRUCTURE', 'Estrutura de copy'
+        HOOK = 'HOOK', 'Hook'
+        CTA = 'CTA', 'CTA'
+        COMPOSITION = 'COMPOSITION', 'Composicao'
+
+    class OwnershipType(models.TextChoices):
+        OWNED = 'OWNED', 'Propria'
+        THIRD_PARTY_INSPIRATION = 'THIRD_PARTY_INSPIRATION', 'Inspiracao de terceiro'
+        LICENSED = 'LICENSED', 'Licenciada'
+
+    profile = models.ForeignKey(SocialProfile, on_delete=models.CASCADE, blank=True, null=True, related_name='creative_references')
+    reference_type = models.CharField(max_length=30, choices=ReferenceType.choices)
+    image = models.ImageField(upload_to=social_creative_reference_upload_to, blank=True, null=True)
+    text_reference = models.TextField(blank=True)
+    style_tags = models.CharField(max_length=255, blank=True)
+    notes = models.TextField(blank=True)
+    source_url = models.URLField(blank=True)
+    ownership_type = models.CharField(max_length=40, choices=OwnershipType.choices, default=OwnershipType.OWNED)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['profile__nome', 'reference_type', '-created_at']
+        indexes = [
+            models.Index(fields=['profile', 'active', 'reference_type']),
+        ]
+
+    def __str__(self):
+        owner = self.profile.username if self.profile_id else 'global'
+        return f'{owner} - {self.reference_type}'
+
+
+class SocialCarouselGenerationRun(models.Model):
+    class Status(models.TextChoices):
+        IDEATING = 'IDEATING', 'Gerando ideias'
+        IDEA_SELECTED = 'IDEA_SELECTED', 'Ideia selecionada'
+        BLUEPRINT_READY = 'BLUEPRINT_READY', 'Blueprint pronto'
+        EDITORIAL_APPROVED = 'EDITORIAL_APPROVED', 'Editorial aprovado'
+        COMPOSING = 'COMPOSING', 'Compondo'
+        REVIEWING = 'REVIEWING', 'Revisando'
+        READY = 'READY', 'Pronto'
+        PARTIAL = 'PARTIAL', 'Parcial'
+        ERROR = 'ERROR', 'Erro'
+
+    profile = models.ForeignKey(SocialProfile, on_delete=models.CASCADE, related_name='carousel_generation_runs')
+    content = models.ForeignKey(SocialContent, on_delete=models.SET_NULL, blank=True, null=True, related_name='carousel_generation_runs')
+    generation_mode = models.CharField(max_length=30, default=SocialProfile.CarouselGenerationMode.SYSTEM_COMPOSED)
+    status = models.CharField(max_length=30, choices=Status.choices, default=Status.IDEATING)
+    selected_idea = models.JSONField(default=dict, blank=True)
+    selection_metadata = models.JSONField(default=dict, blank=True)
+    creative_blueprint = models.JSONField(default=dict, blank=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    error = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        ordering = ['-started_at', '-id']
+        indexes = [
+            models.Index(fields=['profile', 'status', '-started_at']),
+            models.Index(fields=['content', '-started_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.profile.username} - {self.generation_mode} - {self.status}'
+
+
 class SocialAIUsage(models.Model):
     class Operation(models.TextChoices):
         TEXT_GENERATION = 'TEXT_GENERATION', 'Geracao de texto'
         IMAGE_GENERATION = 'IMAGE_GENERATION', 'Geracao de imagem'
         IMAGE_ANALYSIS = 'IMAGE_ANALYSIS', 'Analise de imagem'
+        IDEATION = 'IDEATION', 'Ideacao'
+        CREATIVE_BLUEPRINT = 'CREATIVE_BLUEPRINT', 'Blueprint criativo'
+        COMPOSED_SLIDE = 'COMPOSED_SLIDE', 'Composicao de slide'
+        COMPOSED_SLIDE_REVIEW = 'COMPOSED_SLIDE_REVIEW', 'Review de slide composto'
 
     profile = models.ForeignKey(SocialProfile, on_delete=models.CASCADE, related_name='ai_usages')
     content = models.ForeignKey(SocialContent, on_delete=models.SET_NULL, blank=True, null=True, related_name='ai_usages')
+    slide = models.ForeignKey(SocialCarouselSlide, on_delete=models.SET_NULL, blank=True, null=True, related_name='ai_usages')
     base_image = models.ForeignKey(SocialBaseImage, on_delete=models.SET_NULL, blank=True, null=True, related_name='ai_usages')
     operation = models.CharField(max_length=30, choices=Operation.choices)
     provider = models.CharField(max_length=40, default='openai')
