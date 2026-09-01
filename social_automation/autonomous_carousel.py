@@ -6,17 +6,18 @@ from django.db.models import F
 from django.utils import timezone
 
 from .ai import formatar_hashtags, gerar_carrossel_blueprint_ia, moderar_conteudo
-from .ai_slide_composer import compose_slide_with_ai
+from .ai_slide_composer import BRAND_OVERLAY_VERSION, compose_slide_with_ai, reapply_system_brand_overlay
 from .carousel_creative_blueprint import IdeaSelection, is_ai_directed, is_ai_finished
 from .carousel_creative_director import build_creative_direction
 from .carousel_ideation import generate_carousel_ideas, select_carousel_idea
 from .carousel_media_planner import STATUS_GRAPHIC, STATUS_PENDING, plan_carousel_media
 from .carousel_quality import PREMIUM_BLUEPRINT_ATTEMPTS, evaluate_blueprint_editorial_quality, evaluate_carousel_quality, is_premium_editorial
+from .composed_slide_review import rereview_ai_finished_slide
 from .generation import _carousel_template, _historico
 from .image_analysis import OpenAIUnavailable as ImageAnalysisUnavailable, analyze_social_image
 from .image_generation import SocialImagePrompt, build_social_image_prompt, generate_social_image, image_generation_available
 from .media_resolver import STATUS_FULL_TEXT, STATUS_NEEDS_GENERATION, STATUS_SELECTED, STATUS_UNAVAILABLE
-from .models import SocialAIUsage, SocialBaseImage, SocialCarouselGenerationRun, SocialCarouselSlide, SocialCarouselTemplateVariant, SocialContent
+from .models import SocialAIUsage, SocialBaseImage, SocialCarouselGenerationRun, SocialCarouselSlide, SocialCarouselTemplateVariant, SocialContent, SocialProfile
 from .rendering import SocialRenderError, renderizar_midia_social
 from .services import registrar_evento
 
@@ -264,9 +265,127 @@ def _compose_ai_finished_content(profile, content, blueprint, creative_direction
     quality = evaluate_carousel_quality(content)
     if not quality.valid:
         content.erro = 'Carrossel AI_FINISHED ainda nao aprovado: ' + '; '.join(quality.issues)[:900]
-        content.save(update_fields=['erro', 'updated_at'])
+    else:
+        content.erro = ''
+    content.save(update_fields=['erro', 'updated_at'])
     registrar_evento(content, 'gerado_ia', usuario, f'Carrossel AI_FINISHED. Tema: {tema or "-"}')
     return result
+
+
+def retomar_ai_finished_content(content, *, usuario=None):
+    profile = content.profile
+    if not content.is_carousel or profile.carousel_generation_mode != SocialProfile.CarouselGenerationMode.AI_FINISHED:
+        raise ValidationError('Retomada disponivel somente para carrossel AI_FINISHED.')
+    if not content.pode_editar_operacionalmente:
+        raise ValidationError('Conteudo publicado nao pode retomar composicao pela interface operacional.')
+    template = content.carousel_template or _carousel_template(profile)
+    aspect_ratio = template.aspect_ratio if template else 'SQUARE'
+    latest_run = content.carousel_generation_runs.order_by('-started_at').first()
+    creative_direction = latest_run.creative_blueprint if latest_run and latest_run.creative_blueprint else {}
+    run = _run(profile, mode=profile.carousel_generation_mode, metadata={'resume': True})
+    run.content = content
+    run.status = SocialCarouselGenerationRun.Status.COMPOSING
+    run.creative_blueprint = creative_direction if isinstance(creative_direction, dict) else {}
+    run.save(update_fields=['content', 'status', 'creative_blueprint'])
+
+    result = AutonomousCarouselResult(content=content)
+    call_cap = max(0, int(getattr(settings, 'SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL', 8)))
+    spent_in_content = sum(slide.ai_composition_attempts for slide in content.carousel_slides.filter(is_active=True, render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED))
+    remaining = min(max(0, call_cap - spent_in_content), _remaining_image_quota(profile))
+    max_attempts = max(1, int(getattr(settings, 'SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS', 2)))
+    slides = list(content.carousel_slides.filter(is_active=True).order_by('order', 'id'))
+
+    for slide in _resume_review_candidates(slides):
+        _refresh_ai_finished_review_if_needed(slide, creative_direction)
+
+    for slide in _resume_pending_candidates(slides):
+        if remaining <= 0:
+            _mark_ai_finished_pending_by_quota(slide, result, _ai_finished_quota_reason(profile, call_cap, result.generated_images + spent_in_content))
+            continue
+        composed = compose_slide_with_ai(slide, creative_direction, slide.creative_plan_metadata or {}, aspect_ratio=aspect_ratio, remaining_calls=1)
+        remaining = _record_ai_finished_result(result, composed, remaining)
+
+    retry_candidates = [slide for slide in slides if _can_retry_ai_finished_slide(slide, max_attempts)]
+    while remaining > 0 and retry_candidates:
+        next_candidates = []
+        for slide in retry_candidates:
+            if remaining <= 0:
+                next_candidates.append(slide)
+                continue
+            refreshed = _refresh_ai_finished_review_if_needed(slide, creative_direction)
+            slide.refresh_from_db()
+            if refreshed and slide.ai_composition_status == SocialCarouselSlide.CompositionStatus.READY:
+                continue
+            composed = compose_slide_with_ai(slide, creative_direction, slide.creative_plan_metadata or {}, aspect_ratio=aspect_ratio, remaining_calls=1)
+            remaining = _record_ai_finished_result(result, composed, remaining, count_pending=False)
+            slide.refresh_from_db()
+            if _can_retry_ai_finished_slide(slide, max_attempts):
+                next_candidates.append(slide)
+        retry_candidates = next_candidates
+
+    for slide in slides:
+        slide.refresh_from_db()
+        if slide.ai_composition_status != SocialCarouselSlide.CompositionStatus.READY:
+            result.pending_slides += 1
+    if content.status != content.Status.PUBLICADO:
+        from .container_versioning import invalidate_instagram_container
+
+        invalidate_instagram_container(content, reason='ai_finished_carousel_resumed')
+    quality = evaluate_carousel_quality(content)
+    if quality.valid:
+        content.erro = ''
+        run.status = SocialCarouselGenerationRun.Status.READY
+    else:
+        content.erro = 'Carrossel AI_FINISHED ainda nao aprovado: ' + '; '.join(quality.issues)[:900]
+        run.status = SocialCarouselGenerationRun.Status.PARTIAL
+    content.save(update_fields=['erro', 'updated_at'])
+    run.error = content.erro[:1000]
+    run.finished_at = timezone.now()
+    run.save(update_fields=['status', 'error', 'finished_at'])
+    registrar_evento(content, 'gerado_ia', usuario, 'Retomada de composicao AI_FINISHED.')
+    return result
+
+
+def _resume_review_candidates(slides):
+    return [
+        slide
+        for slide in slides
+        if slide.render_mode == SocialCarouselSlide.RenderMode.AI_FINISHED
+        and slide.ai_composition_status == SocialCarouselSlide.CompositionStatus.ERROR
+        and slide.ai_composed_image
+        and _needs_ai_finished_review_refresh(slide)
+    ]
+
+
+def _resume_pending_candidates(slides):
+    priority_statuses = {
+        SocialCarouselSlide.CompositionStatus.PENDING,
+        SocialCarouselSlide.CompositionStatus.NEEDS_RECOMPOSE,
+    }
+    return [
+        slide
+        for slide in slides
+        if slide.render_mode == SocialCarouselSlide.RenderMode.AI_FINISHED
+        and slide.ai_composition_status in priority_statuses
+        and not slide.get_final_image()
+    ]
+
+
+def _needs_ai_finished_review_refresh(slide):
+    review = slide.ai_review_metadata or {}
+    metadata = slide.ai_composition_metadata or {}
+    if review.get('review_schema_version') != 2 or review.get('score_scale') != 100:
+        return True
+    return bool(metadata.get('raw_composed_image') and metadata.get('brand_overlay_version') != BRAND_OVERLAY_VERSION)
+
+
+def _refresh_ai_finished_review_if_needed(slide, creative_direction):
+    if not _needs_ai_finished_review_refresh(slide):
+        return None
+    metadata = slide.ai_composition_metadata or {}
+    if metadata.get('raw_composed_image') and metadata.get('brand_overlay_version') != BRAND_OVERLAY_VERSION:
+        return reapply_system_brand_overlay(slide, creative_direction=creative_direction)
+    return rereview_ai_finished_slide(slide, creative_direction=creative_direction)
 
 
 def _record_ai_finished_result(result, composed, remaining, *, count_pending=True):

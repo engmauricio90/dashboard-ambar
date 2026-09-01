@@ -3,6 +3,7 @@ from difflib import SequenceMatcher
 import re
 import unicodedata
 
+from .composed_slide_review import normalize_review_score
 from .models import SocialCarouselSlide, SocialContent, SocialProfile
 
 
@@ -87,6 +88,10 @@ class CarouselQualityResult:
     issues: list[str] = field(default_factory=list)
     visual_issues: list[str] = field(default_factory=list)
     editorial_issues: list[str] = field(default_factory=list)
+    ai_reviewed_slides: int = 0
+    ai_ready_slides: int = 0
+    ai_pending_slides: int = 0
+    ai_failed_slides: int = 0
 
 
 TEXT_BUDGETS = {
@@ -235,6 +240,10 @@ def evaluate_carousel_quality(content):
         issues=issues,
         visual_issues=visual.issues,
         editorial_issues=[*editorial.issues, *composed['issues']],
+        ai_reviewed_slides=composed.get('reviewed', 0),
+        ai_ready_slides=composed.get('ready', 0),
+        ai_pending_slides=composed.get('pending', 0),
+        ai_failed_slides=composed.get('failed', 0),
     )
 
 
@@ -463,20 +472,34 @@ def _evaluate_composed_quality(content, slides):
     text_scores = []
     brand_scores = []
     composition_scores = []
+    reviewed = 0
+    ready = 0
+    pending = 0
+    failed = 0
     for slide in slides:
         if slide.render_mode != SocialCarouselSlide.RenderMode.AI_FINISHED:
             issues.append(f'Slide {slide.order}: render mode nao e AI_FINISHED.')
         review = slide.ai_review_metadata or {}
         blocking = review.get('blocking_issues') or review.get('issues') or []
         warnings = review.get('warnings') or []
+        if review:
+            reviewed += 1
+        if slide.ai_composition_status == SocialCarouselSlide.CompositionStatus.READY:
+            ready += 1
+        elif slide.ai_composition_status in {SocialCarouselSlide.CompositionStatus.PENDING, SocialCarouselSlide.CompositionStatus.NEEDS_RECOMPOSE, SocialCarouselSlide.CompositionStatus.COMPOSING, SocialCarouselSlide.CompositionStatus.REVIEWING}:
+            pending += 1
+        elif slide.ai_composition_status == SocialCarouselSlide.CompositionStatus.ERROR:
+            failed += 1
         if slide.ai_composition_status != SocialCarouselSlide.CompositionStatus.READY:
             count = len(blocking) or 1
             issues.append(f'Slide {slide.order}: arte AI_FINISHED pendente de aprovacao por {count} problema(s) bloqueante(s).')
         elif not slide.get_final_image():
             issues.append(f'Slide {slide.order}: asset final AI_FINISHED indisponivel.')
-        text_scores.append(_score(review.get('text_fidelity'), default=0))
-        brand_scores.append(_score(review.get('brand_consistency'), default=0))
-        composition_scores.append(_score(review.get('composition'), default=0))
+        if review:
+            scale = review.get('score_scale') or 100
+            text_scores.append(_score(review.get('text_fidelity'), default=0, scale=scale))
+            brand_scores.append(_score(review.get('brand_consistency'), default=0, scale=scale))
+            composition_scores.append(_score(review.get('composition'), default=0, scale=scale))
         if blocking:
             issues.extend([f'Slide {slide.order}: {issue}' for issue in blocking])
         if warnings and not blocking:
@@ -494,12 +517,16 @@ def _evaluate_composed_quality(content, slides):
         'brand': brand,
         'composition': composition,
         'issues': list(dict.fromkeys(issues)),
+        'reviewed': reviewed,
+        'ready': ready,
+        'pending': pending,
+        'failed': failed,
     }
 
 
-def _score(value, *, default=100):
+def _score(value, *, default=100, scale=100):
     try:
-        return max(0, min(100, int(value)))
+        return normalize_review_score(value, scale)
     except Exception:
         return default
 

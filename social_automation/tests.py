@@ -5121,7 +5121,7 @@ class SocialAutomationAIVisionTests(TestCase):
         slide = SocialCarouselSlide.objects.create(content=content, order=1, slide_type=SocialCarouselSlide.SlideType.COVER, slide_role=SocialCarouselSlide.SlideRole.HOOK_COVER, title='Disciplina', body='Um passo.', ai_composed_image=imagem_social('rereview-1.jpg', tamanho=(1080, 1080)), render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED, ai_composition_status=SocialCarouselSlide.CompositionStatus.ERROR)
         SocialCarouselSlide.objects.create(content=content, order=2, slide_type=SocialCarouselSlide.SlideType.CONTENT, slide_role=SocialCarouselSlide.SlideRole.EXPLANATION, title='Conteudo', body='Curto', ai_composed_image=imagem_social('rereview-2.jpg', tamanho=(1080, 1080)), render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED, ai_composition_status=SocialCarouselSlide.CompositionStatus.READY, ai_review_metadata={'valid': True, 'text_fidelity': 100, 'legibility': 93, 'composition': 91, 'brand_consistency': 100, 'visual_quality': 92, 'issues': [], 'blocking_issues': [], 'warnings': [], 'info': []})
         original_hash = sha256(slide.ai_composed_image.read()).hexdigest()
-        response = type('Response', (), {'output_text': '{"valid": true, "text_fidelity": 100, "legibility": 93, "composition": 91, "brand_consistency": 100, "visual_quality": 92, "issues": [], "blocking_issues": [], "warnings": ["Texto decorativo secundario tem baixo contraste."], "info": []}'})()
+        response = type('Response', (), {'output_text': '{"valid": true, "review_schema_version": 2, "score_scale": 100, "text_fidelity": 100, "legibility": 93, "composition": 91, "brand_consistency": 100, "visual_quality": 92, "issues": [], "blocking_issues": [], "warnings": ["Texto decorativo secundario tem baixo contraste."], "info": []}'})()
         create = mock.Mock(return_value=response)
         client = type('Client', (), {'responses': type('Responses', (), {'create': create})()})()
 
@@ -5150,7 +5150,7 @@ class SocialAutomationAIVisionTests(TestCase):
             ai_composed_image=imagem_social('review-composed.jpg'),
             render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED,
         )
-        response = type('Response', (), {'output_text': '{"valid": true, "text_fidelity": 100, "legibility": 94, "composition": 92, "brand_consistency": 91, "visual_quality": 93, "issues": [], "blocking_issues": [], "warnings": [], "info": []}'})()
+        response = type('Response', (), {'output_text': '{"valid": true, "review_schema_version": 2, "score_scale": 100, "text_fidelity": 100, "legibility": 94, "composition": 92, "brand_consistency": 91, "visual_quality": 93, "issues": [], "blocking_issues": [], "warnings": [], "info": []}'})()
         create = mock.Mock(return_value=response)
         client = type('Client', (), {'responses': type('Responses', (), {'create': create})()})()
 
@@ -5167,6 +5167,175 @@ class SocialAutomationAIVisionTests(TestCase):
         typo = review_result_from_payload({'valid': True, 'text_fidelity': 60, 'legibility': 90, 'composition': 90, 'brand_consistency': 90, 'visual_quality': 90, 'issues': []})
         self.assertFalse(typo.valid)
         self.assertIn('Fidelidade textual', typo.issues[0])
+
+    def test_composed_review_normaliza_escala_declarada_e_limita_scores(self):
+        from .composed_slide_review import normalize_review_score, review_result_from_payload
+
+        escala_100 = review_result_from_payload({'valid': True, 'review_schema_version': 2, 'score_scale': 100, 'text_fidelity': 95, 'legibility': 88, 'composition': 91, 'brand_consistency': 100, 'visual_quality': 93, 'issues': [], 'blocking_issues': [], 'warnings': [], 'info': []})
+        self.assertTrue(escala_100.valid)
+        self.assertEqual(escala_100.text_fidelity, 95)
+
+        escala_10 = review_result_from_payload({'valid': True, 'review_schema_version': 2, 'score_scale': 10, 'text_fidelity': 10, 'legibility': 8, 'composition': 9, 'brand_consistency': 4, 'visual_quality': 9, 'issues': [], 'blocking_issues': [], 'warnings': [], 'info': []})
+        self.assertFalse(escala_10.valid)
+        self.assertEqual(escala_10.text_fidelity, 100)
+        self.assertEqual(escala_10.legibility, 80)
+        self.assertEqual(escala_10.composition, 90)
+        self.assertEqual(escala_10.brand_consistency, 40)
+        self.assertIn('Consistencia de marca', ' '.join(escala_10.issues))
+
+        self.assertEqual(normalize_review_score(12, 10), 100)
+        self.assertEqual(normalize_review_score('93%', 100), 93)
+
+    def test_brand_overlay_elementos_normalizam_handle_e_counter(self):
+        from .ai_slide_composer import brand_overlay_elements
+
+        content = SocialContent.objects.create(profile=self.profile, carousel_template=self._template_for_quality_tests('Template overlay'), media_type=SocialContent.MediaType.CAROUSEL, frase='Hook', legenda='Legenda')
+        slides = [
+            SocialCarouselSlide.objects.create(content=content, order=index, slide_type=SocialCarouselSlide.SlideType.CONTENT, title=f'Slide {index}')
+            for index in range(1, 7)
+        ]
+
+        self.profile.username = 'millionow25'
+        self.profile.save(update_fields=['username', 'updated_at'])
+        self.assertEqual(brand_overlay_elements(self.profile, slides[0]), ('@millionow25', '1/6'))
+        self.assertEqual(brand_overlay_elements(self.profile, slides[-1]), ('@millionow25', '6/6'))
+
+        self.profile.username = '@millionow25'
+        self.profile.save(update_fields=['username', 'updated_at'])
+        self.assertEqual(brand_overlay_elements(self.profile, slides[0]), ('@millionow25', '1/6'))
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test')
+    def test_brand_overlay_preserva_raw_e_reaplica_sem_nova_imagem(self):
+        from .ai_slide_composer import BRAND_OVERLAY_VERSION, compose_slide_with_ai, reapply_system_brand_overlay
+        from .carousel_creative_director import build_creative_direction
+        from .composed_slide_review import ComposedSlideReviewResult
+
+        self.profile.username = 'millionow25'
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_ALWAYS
+        self.profile.ai_image_daily_limit = 10
+        self.profile.save(update_fields=['username', 'ai_image_mode', 'ai_image_daily_limit', 'updated_at'])
+        content = SocialContent.objects.create(profile=self.profile, carousel_template=self._template_for_quality_tests('Template brand raw'), media_type=SocialContent.MediaType.CAROUSEL, frase='Hook', legenda='Legenda')
+        slide = SocialCarouselSlide.objects.create(content=content, order=1, slide_type=SocialCarouselSlide.SlideType.COVER, title='Capa', render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED)
+        SocialCarouselSlide.objects.create(content=content, order=2, slide_type=SocialCarouselSlide.SlideType.CONTENT, title='Conteudo', render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED)
+        direction = build_creative_direction(self.profile, self._premium_blueprint())
+        client, provider = self._provider()
+        review = ComposedSlideReviewResult(True, 100, 94, 92, 91, 93, [])
+
+        with mock.patch('social_automation.ai_slide_composer._client', return_value=client), mock.patch('social_automation.ai_slide_composer.moderar_conteudo', return_value=False), mock.patch('social_automation.ai_slide_composer.review_composed_slide', return_value=review):
+            compose_slide_with_ai(slide, direction, direction.slides[0].as_dict(), remaining_calls=1)
+
+        slide.refresh_from_db()
+        self.assertEqual(slide.ai_composition_metadata['brand_overlay']['handle'], '@millionow25')
+        self.assertEqual(slide.ai_composition_metadata['brand_overlay']['counter'], '1/2')
+        self.assertIn('raw_composed_image', slide.ai_composition_metadata)
+        original_final = slide.ai_composed_image.name
+        slide.ai_composition_metadata['brand_overlay_version'] = 1
+        slide.save(update_fields=['ai_composition_metadata', 'updated_at'])
+
+        with mock.patch('social_automation.ai_slide_composer.review_composed_slide', return_value=review), mock.patch('social_automation.ai_slide_composer._generate_image_bytes') as image_provider:
+            reapply_system_brand_overlay(slide, creative_direction=direction)
+
+        slide.refresh_from_db()
+        image_provider.assert_not_called()
+        self.assertNotEqual(slide.ai_composed_image.name, original_final)
+        self.assertEqual(slide.ai_composition_metadata['brand_overlay_version'], BRAND_OVERLAY_VERSION)
+        self.assertEqual(provider.call_count, 1)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AI_IMAGE_MAX_PER_TICK=8, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=8, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
+    def test_retomar_ai_finished_prioriza_pendentes_preserva_ready_e_limpa_erro_atual(self):
+        from .ai_slide_composer import ComposeSlideResult
+        from .autonomous_carousel import retomar_ai_finished_content
+
+        self.profile.carousel_generation_mode = SocialProfile.CarouselGenerationMode.AI_FINISHED
+        self.profile.ai_image_mode = SocialProfile.AIImagePolicy.AI_ALWAYS
+        self.profile.ai_image_daily_limit = 20
+        self.profile.carousel_cta_enabled = False
+        self.profile.save(update_fields=['carousel_generation_mode', 'ai_image_mode', 'ai_image_daily_limit', 'carousel_cta_enabled', 'updated_at'])
+        content = SocialContent.objects.create(
+            profile=self.profile,
+            carousel_template=self._template_for_quality_tests('Template resume'),
+            media_type=SocialContent.MediaType.CAROUSEL,
+            frase='Hook',
+            legenda='Legenda',
+            erro='Todos os slides precisam de tratamento visual; watermark antigo.',
+        )
+        slides = []
+        for index in range(1, 7):
+            status = SocialCarouselSlide.CompositionStatus.PENDING
+            attempts = 0
+            image = None
+            review = {}
+            if index in {2, 3}:
+                status = SocialCarouselSlide.CompositionStatus.READY
+                attempts = 1
+                image = imagem_social(f'resume-ready-{index}.jpg', tamanho=(1080, 1080))
+                review = {'valid': True, 'review_schema_version': 2, 'score_scale': 100, 'text_fidelity': 100, 'legibility': 92, 'composition': 91, 'brand_consistency': 95, 'visual_quality': 93, 'issues': [], 'blocking_issues': [], 'warnings': [], 'info': []}
+            elif index == 1:
+                status = SocialCarouselSlide.CompositionStatus.ERROR
+                attempts = 1
+                review = {'valid': False, 'review_schema_version': 2, 'score_scale': 100, 'text_fidelity': 80, 'legibility': 92, 'composition': 91, 'brand_consistency': 95, 'visual_quality': 93, 'issues': ['Texto truncado.'], 'blocking_issues': ['Texto truncado.'], 'warnings': [], 'info': []}
+            slides.append(
+                SocialCarouselSlide.objects.create(
+                    content=content,
+                    order=index,
+                    slide_type=SocialCarouselSlide.SlideType.COVER if index == 1 else SocialCarouselSlide.SlideType.CONTENT,
+                    slide_role=SocialCarouselSlide.SlideRole.HOOK_COVER if index == 1 else SocialCarouselSlide.SlideRole.EXPLANATION,
+                    title=f'Slide {index}',
+                    body='Texto curto',
+                    ai_composed_image=image,
+                    rendered_image=image,
+                    render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED,
+                    ai_composition_status=status,
+                    ai_composition_attempts=attempts,
+                    ai_review_metadata=review,
+                    creative_plan_metadata={'composition_type': 'PHOTO_EDITORIAL'},
+                )
+            )
+        SocialCarouselGenerationRun.objects.create(profile=self.profile, content=content, generation_mode=SocialProfile.CarouselGenerationMode.AI_FINISHED, status=SocialCarouselGenerationRun.Status.PARTIAL, creative_blueprint={'concept_name': 'Conceito'})
+        called = []
+
+        def fake_compose(slide, creative_direction, creative_plan, **kwargs):
+            called.append(slide.order)
+            slide.ai_composed_image = imagem_social(f'resume-composed-{slide.order}.jpg', tamanho=(1080, 1080))
+            slide.rendered_image = slide.ai_composed_image
+            slide.ai_composition_status = SocialCarouselSlide.CompositionStatus.READY
+            slide.ai_composition_attempts = slide.ai_composition_attempts + 1
+            slide.ai_review_metadata = {'valid': True, 'review_schema_version': 2, 'score_scale': 100, 'text_fidelity': 100, 'legibility': 92, 'composition': 91, 'brand_consistency': 95, 'visual_quality': 93, 'issues': [], 'blocking_issues': [], 'warnings': [], 'info': []}
+            slide.save()
+            return ComposeSlideResult(slide=slide, composed=True, ready=True, attempts=1)
+
+        with mock.patch('social_automation.autonomous_carousel.compose_slide_with_ai', side_effect=fake_compose), mock.patch('social_automation.instagram._request'):
+            result = retomar_ai_finished_content(content)
+
+        content.refresh_from_db()
+        self.assertEqual(called, [4, 5, 6, 1])
+        self.assertEqual(result.pending_slides, 0)
+        self.assertEqual(content.erro, '')
+        self.assertTrue(content.final_media_ready)
+        self.assertEqual(SocialCarouselGenerationRun.objects.filter(content=content).order_by('-started_at').first().status, SocialCarouselGenerationRun.Status.READY)
+        self.assertEqual(slides[1].ai_composition_attempts, 1)
+        self.assertEqual(slides[2].ai_composition_attempts, 1)
+
+    def test_quality_e_ui_distinguem_ai_finished_nao_avaliado_de_score_zero_real(self):
+        from .carousel_quality import evaluate_carousel_quality
+
+        self.profile.carousel_generation_mode = SocialProfile.CarouselGenerationMode.AI_FINISHED
+        self.profile.carousel_cta_enabled = False
+        self.profile.save(update_fields=['carousel_generation_mode', 'carousel_cta_enabled', 'updated_at'])
+        content = SocialContent.objects.create(profile=self.profile, carousel_template=self._template_for_quality_tests('Template partial ui'), media_type=SocialContent.MediaType.CAROUSEL, frase='Hook', legenda='Legenda')
+        SocialCarouselSlide.objects.create(content=content, order=1, slide_type=SocialCarouselSlide.SlideType.COVER, slide_role=SocialCarouselSlide.SlideRole.HOOK_COVER, title='Capa', render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED, ai_composition_status=SocialCarouselSlide.CompositionStatus.PENDING)
+        SocialCarouselSlide.objects.create(content=content, order=2, slide_type=SocialCarouselSlide.SlideType.CONTENT, slide_role=SocialCarouselSlide.SlideRole.EXPLANATION, title='Conteudo', render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED, ai_composition_status=SocialCarouselSlide.CompositionStatus.PENDING)
+
+        quality = evaluate_carousel_quality(content)
+        self.assertFalse(quality.valid)
+        self.assertEqual(quality.ai_reviewed_slides, 0)
+        self.assertEqual(quality.ai_pending_slides, 2)
+
+        staff = User.objects.create_user('staff-ai-partial-ui', password='123', is_staff=True)
+        self.client.force_login(staff)
+        response = self.client.get(reverse('social_automation:content_detail', args=[content.id]))
+        self.assertContains(response, 'Nao avaliados')
+        self.assertContains(response, '<div>-</div>', html=True)
 
     def test_creative_references_ficam_isoladas_por_perfil(self):
         from .autonomous_carousel import _creative_references

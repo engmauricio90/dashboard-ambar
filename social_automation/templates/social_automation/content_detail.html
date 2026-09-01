@@ -163,18 +163,33 @@
 </div>
 {% if carousel_quality %}
 <div class="card shadow-sm mt-3">
-    <div class="card-header fw-bold">Qualidade do carrossel</div>
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>Qualidade do carrossel</strong>
+        {% if carousel_ai_progress and carousel_ai_progress.can_resume %}
+        <form method="post" action="{% url 'social_automation:content_resume_ai_finished' content.id %}" class="mb-0">
+            {% csrf_token %}
+            <button class="btn btn-sm btn-outline-primary" type="submit">Continuar composicao IA</button>
+        </form>
+        {% endif %}
+    </div>
     <div class="card-body">
         <div class="row g-3 small">
             <div class="col-md-2"><strong>Visual</strong><div>{{ carousel_quality.visual_score }}/100</div><div class="text-muted">{{ carousel_quality.visual_mode }}</div></div>
             <div class="col-md-2"><strong>Editorial</strong><div>{{ carousel_quality.editorial_score }}/100</div><div class="text-muted">{{ carousel_quality.editorial_mode }}</div></div>
             <div class="col-md-2"><strong>Nota final</strong><div>{{ carousel_quality.score }}/100</div></div>
-            <div class="col-md-2"><strong>Texto IA</strong><div>{{ carousel_quality.text_fidelity_score }}/100</div></div>
-            <div class="col-md-2"><strong>Marca IA</strong><div>{{ carousel_quality.brand_score }}/100</div></div>
-            <div class="col-md-2"><strong>Composição IA</strong><div>{{ carousel_quality.composition_score }}/100</div></div>
+            <div class="col-md-2"><strong>Texto IA</strong><div>{% if carousel_quality.ai_reviewed_slides %}{{ carousel_quality.text_fidelity_score }}/100{% else %}-{% endif %}</div></div>
+            <div class="col-md-2"><strong>Marca IA</strong><div>{% if carousel_quality.ai_reviewed_slides %}{{ carousel_quality.brand_score }}/100{% else %}-{% endif %}</div></div>
+            <div class="col-md-2"><strong>Composição IA</strong><div>{% if carousel_quality.ai_reviewed_slides %}{{ carousel_quality.composition_score }}/100{% else %}-{% endif %}</div></div>
             <div class="col-md-2"><strong>Slides visuais</strong><div>{{ carousel_quality.visual_slides }}/{{ carousel_quality.active_slides }}</div></div>
             <div class="col-md-2"><strong>Com imagem</strong><div>{{ carousel_quality.image_slides }} ({{ carousel_quality.distinct_images }} distintas)</div></div>
             <div class="col-md-2"><strong>Status</strong><div>{% if carousel_quality.valid %}Aprovado{% else %}Pendente{% endif %}</div></div>
+            {% if carousel_ai_progress %}
+            <div class="col-md-2"><strong>Analisados</strong><div>{{ carousel_ai_progress.reviewed }}/{{ carousel_ai_progress.total }}</div></div>
+            <div class="col-md-2"><strong>Aprovados</strong><div>{{ carousel_ai_progress.ready }}/{{ carousel_ai_progress.total }}</div></div>
+            <div class="col-md-2"><strong>Nao avaliados</strong><div>{{ carousel_ai_progress.not_reviewed }}</div></div>
+            <div class="col-md-2"><strong>Pendentes</strong><div>{{ carousel_ai_progress.pending }}</div></div>
+            <div class="col-md-2"><strong>Reprovados</strong><div>{{ carousel_ai_progress.failed }}</div></div>
+            {% endif %}
         </div>
         <div class="row g-3 mt-2">
             <div class="col-md-6">

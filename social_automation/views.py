@@ -26,7 +26,7 @@ from .forms import (
     SocialScheduleForm,
     SocialVisualIdentityForm,
 )
-from .autonomous_carousel import gerar_carrossel_autonomo
+from .autonomous_carousel import gerar_carrossel_autonomo, retomar_ai_finished_content
 from .carousel_creative_blueprint import CarouselIdea, IdeaSelection
 from .carousel_ideation import generate_carousel_ideas
 from .composed_slide_review import rereview_ai_finished_slide
@@ -437,6 +437,7 @@ def content_detail(request, content_id):
 
         carousel_quality = evaluate_carousel_quality(content)
     latest_generation_run = content.carousel_generation_runs.order_by('-started_at').first() if content.is_carousel else None
+    carousel_ai_progress = _carousel_ai_finished_progress(content) if content.is_carousel else None
     return render(
         request,
         'social_automation/content_detail.html',
@@ -445,6 +446,7 @@ def content_detail(request, content_id):
             'events': events,
             'schedule_form': schedule_form,
             'carousel_quality': carousel_quality,
+            'carousel_ai_progress': carousel_ai_progress,
             'latest_generation_run': latest_generation_run,
             'instagram_expected_username': instagram_connection.username if instagram_connection and instagram_connection.is_active else content.profile.username,
             'instagram_connection': instagram_connection,
@@ -510,6 +512,26 @@ def profile_generate_carousel_ai(request, profile_id):
     else:
         form = SocialAICarouselForm(profile=profile)
     return render(request, 'social_automation/generate_carousel_ai_form.html', {'profile': profile, 'form': form, 'resultado': resultado, 'ideas': ideas})
+
+
+def _carousel_ai_finished_progress(content):
+    if content.profile.carousel_generation_mode != SocialProfile.CarouselGenerationMode.AI_FINISHED:
+        return None
+    slides = list(content.carousel_slides.filter(is_active=True).order_by('order', 'id'))
+    total = len(slides)
+    ready = sum(1 for slide in slides if slide.ai_composition_status == SocialCarouselSlide.CompositionStatus.READY)
+    reviewed = sum(1 for slide in slides if slide.ai_review_metadata)
+    pending = sum(1 for slide in slides if slide.ai_composition_status in {SocialCarouselSlide.CompositionStatus.PENDING, SocialCarouselSlide.CompositionStatus.NEEDS_RECOMPOSE})
+    failed = sum(1 for slide in slides if slide.ai_composition_status == SocialCarouselSlide.CompositionStatus.ERROR)
+    return {
+        'total': total,
+        'ready': ready,
+        'reviewed': reviewed,
+        'pending': pending,
+        'failed': failed,
+        'not_reviewed': max(0, total - reviewed),
+        'can_resume': content.pode_editar_operacionalmente and total and ready < total,
+    }
 
 
 def _idea_from_post(post):
@@ -591,6 +613,22 @@ def carousel_slide_rereview_ai_finished(request, slide_id):
         messages.success(request, 'Arte AI_FINISHED aprovada no re-review.')
     else:
         messages.error(request, 'Arte AI_FINISHED reprovada no re-review.')
+    return redirect('social_automation:content_detail', content_id=content.id)
+
+
+@staff_required
+@require_POST
+def content_resume_ai_finished(request, content_id):
+    content = get_object_or_404(_content_queryset(), pk=content_id)
+    try:
+        result = retomar_ai_finished_content(content, usuario=request.user)
+    except (OpenAINotConfigured, OpenAIUnavailable, ValidationError) as exc:
+        _handle_validation_error(request, exc)
+        return redirect('social_automation:content_detail', content_id=content.id)
+    if result.pending_slides:
+        messages.warning(request, f'Composicao retomada com {result.pending_slides} slide(s) ainda pendente(s).')
+    else:
+        messages.success(request, 'Composicao AI_FINISHED retomada e finalizada.')
     return redirect('social_automation:content_detail', content_id=content.id)
 
 

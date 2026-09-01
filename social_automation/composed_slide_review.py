@@ -22,6 +22,8 @@ class ComposedSlideReviewResult:
     blocking_issues: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     info: list[str] = field(default_factory=list)
+    review_schema_version: int = 2
+    score_scale: int = 100
 
     @property
     def overall_score(self):
@@ -93,11 +95,12 @@ def review_result_from_payload(payload):
     legacy_issues = [str(issue).strip() for issue in payload.get('issues', []) if str(issue).strip()]
     if not blocking and legacy_issues and not any(key in payload for key in ['blocking_issues', 'warnings', 'info']):
         blocking = legacy_issues
-    text_fidelity = _score(payload.get('text_fidelity'))
-    legibility = _score(payload.get('legibility'))
-    composition = _score(payload.get('composition'))
-    brand_consistency = _score(payload.get('brand_consistency'))
-    visual_quality = _score(payload.get('visual_quality'))
+    declared_scale = _declared_score_scale(payload)
+    text_fidelity = normalize_review_score(payload.get('text_fidelity'), declared_scale)
+    legibility = normalize_review_score(payload.get('legibility'), declared_scale)
+    composition = normalize_review_score(payload.get('composition'), declared_scale)
+    brand_consistency = normalize_review_score(payload.get('brand_consistency'), declared_scale)
+    visual_quality = normalize_review_score(payload.get('visual_quality'), declared_scale)
     threshold_blocking = []
     if text_fidelity < 90:
         threshold_blocking.append('Fidelidade textual abaixo do minimo.')
@@ -116,6 +119,8 @@ def review_result_from_payload(payload):
         composition=composition,
         brand_consistency=brand_consistency,
         visual_quality=visual_quality,
+        review_schema_version=2,
+        score_scale=100,
         issues=blocking,
         blocking_issues=blocking,
         warnings=warnings,
@@ -151,10 +156,13 @@ def _review_prompt(slide, creative_direction=None):
         [
             'Avalie uma arte final de slide de carrossel Instagram.',
             'Verifique fidelidade textual, legibilidade mobile, composicao, consistencia de marca e qualidade visual.',
+            'Use exclusivamente scores inteiros em escala 0-100 e retorne score_scale=100. Se pensar em 8/10, retorne 80.',
             'Nao identifique pessoas. Nao julgue popularidade. Retorne apenas o JSON solicitado.',
             f'Perfil: {profile.nome} ({profile.username}).',
             f'Elementos de marca autorizados: {brand}.',
             'Nao classifique esses elementos autorizados como watermark se corresponderem ao handle/contador esperados.',
+            f'Handle esperado: {brand.get("handle") or ""}.',
+            f'Contador esperado: {brand.get("slide_counter") or ""}.',
             'Classifique como problema bloqueante se houver watermark de terceiro, handle errado, contador claramente errado, texto principal cortado ou copy canonica alterada.',
             'Use warnings para textos decorativos secundarios com baixo contraste ou preferencias esteticas subjetivas que nao comprometam a copy principal.',
             f'Texto canonico esperado: {_expected_copy(slide)}',
@@ -193,9 +201,11 @@ def _review_schema():
     return {
         'type': 'object',
         'additionalProperties': False,
-        'required': ['valid', 'text_fidelity', 'legibility', 'composition', 'brand_consistency', 'visual_quality', 'issues', 'blocking_issues', 'warnings', 'info'],
+        'required': ['valid', 'review_schema_version', 'score_scale', 'text_fidelity', 'legibility', 'composition', 'brand_consistency', 'visual_quality', 'issues', 'blocking_issues', 'warnings', 'info'],
         'properties': {
             'valid': {'type': 'boolean'},
+            'review_schema_version': {'type': 'integer', 'enum': [2]},
+            'score_scale': {'type': 'integer', 'enum': [10, 100]},
             'text_fidelity': score,
             'legibility': score,
             'composition': score,
@@ -209,11 +219,27 @@ def _review_schema():
     }
 
 
-def _score(value):
+def _declared_score_scale(payload):
     try:
-        return max(0, min(100, int(value)))
+        scale = int(payload.get('score_scale') or 100)
+    except Exception:
+        return 100
+    return scale if scale in {1, 10, 100} else 100
+
+
+def normalize_review_score(value, declared_scale=None):
+    try:
+        if isinstance(value, str):
+            value = value.strip().replace('%', '').replace(',', '.')
+        score = float(value)
     except Exception:
         return 0
+    scale = 100 if declared_scale is None else _declared_score_scale({'score_scale': declared_scale})
+    if scale == 10:
+        score *= 10
+    elif scale == 1:
+        score *= 100
+    return max(0, min(100, int(round(score))))
 
 
 def _register_review_usage(slide, result, *, success, error=''):

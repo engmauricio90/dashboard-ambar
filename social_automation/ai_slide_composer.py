@@ -1,21 +1,22 @@
 from dataclasses import dataclass, field
 from io import BytesIO
-from uuid import uuid4
 
 from django.conf import settings
 from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.utils import timezone
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from .ai import OpenAINotConfigured, OpenAIUnavailable, _client, moderar_conteudo
 from .carousel_creative_blueprint import composition_fingerprint, slide_text_snapshot
-from .composed_slide_review import review_composed_slide
+from .composed_slide_review import ComposedSlideReviewResult, review_composed_slide
 from .image_generation import SocialImageGenerationDisabled, _extract_image_bytes, _sanitize_metadata, _sanitize_value, _validate_image_bytes, image_generation_available
 from .models import SocialAIUsage, SocialCarouselSlide, SocialProfile
 
 
 BRAND_MODE_SYSTEM_OVERLAY = 'SYSTEM_BRAND_OVERLAY'
 BRAND_MODE_FULL_AI = 'FULL_AI'
+BRAND_OVERLAY_VERSION = 2
 
 
 @dataclass
@@ -111,9 +112,10 @@ def compose_slide_with_ai(slide, creative_direction, creative_plan=None, *, aspe
         try:
             image_bytes, response_id = _generate_image_bytes(prompt, aspect_ratio=aspect_ratio)
             attempts_spent += 1
-            image_bytes = _normalize_image(image_bytes, aspect_ratio=aspect_ratio, brand_mode=brand_mode, profile=profile, slide=slide)
-            _validate_image_bytes(image_bytes)
-            _persist_composed_slide(slide, image_bytes, fingerprint, response_id, attempt, plan, brand_mode)
+            raw_image_bytes = _normalize_image(image_bytes, aspect_ratio=aspect_ratio)
+            final_image_bytes = _apply_system_brand_overlay_to_bytes(raw_image_bytes, profile, slide) if brand_mode == BRAND_MODE_SYSTEM_OVERLAY else raw_image_bytes
+            _validate_image_bytes(final_image_bytes)
+            _persist_composed_slide(slide, final_image_bytes, fingerprint, response_id, attempt, plan, brand_mode, raw_image_bytes=raw_image_bytes)
             _register_usage(slide, success=True, metadata={'fingerprint': fingerprint, 'attempt': attempt, 'purpose': 'CAROUSEL_COMPOSED_SLIDE'})
             review = review_composed_slide(slide, creative_direction=creative_direction)
             slide.ai_review_metadata = review.as_dict()
@@ -155,7 +157,7 @@ def _generate_image_bytes(prompt, *, aspect_ratio):
     return _extract_image_bytes(response), getattr(response, 'id', '') or ''
 
 
-def _normalize_image(image_bytes, *, aspect_ratio, brand_mode, profile, slide):
+def _normalize_image(image_bytes, *, aspect_ratio):
     target = (1080, 1350) if (aspect_ratio or '').upper() in {'PORTRAIT', '4:5', '1080X1350'} else (1080, 1080)
     with Image.open(BytesIO(image_bytes)) as image:
         image = ImageOps.exif_transpose(image).convert('RGB')
@@ -164,26 +166,102 @@ def _normalize_image(image_bytes, *, aspect_ratio, brand_mode, profile, slide):
         left = (target[0] - image.width) // 2
         top = (target[1] - image.height) // 2
         canvas.paste(image, (left, top))
-    if brand_mode == BRAND_MODE_SYSTEM_OVERLAY:
-        _apply_brand_overlay(canvas, profile, slide)
     output = BytesIO()
     canvas.save(output, format='JPEG', quality=92, optimize=True)
     return output.getvalue()
 
 
+def _apply_system_brand_overlay_to_bytes(image_bytes, profile, slide):
+    with Image.open(BytesIO(image_bytes)) as image:
+        canvas = ImageOps.exif_transpose(image).convert('RGB')
+        _apply_brand_overlay(canvas, profile, slide)
+        output = BytesIO()
+        canvas.save(output, format='JPEG', quality=92, optimize=True)
+        return output.getvalue()
+
+
 def _apply_brand_overlay(canvas, profile, slide):
     draw = ImageDraw.Draw(canvas)
-    font = ImageFont.load_default()
-    username = (profile.username or '').strip()
-    handle = username if username.startswith('@') else f'@{username}' if username else ''
+    handle, counter = brand_overlay_elements(profile, slide)
+    if not handle and not counter:
+        return
+    font = _brand_overlay_font(max(24, int(canvas.width * 0.026)))
+    padding = max(24, int(canvas.width * 0.030))
+    gap = max(10, int(canvas.width * 0.010))
+    y = canvas.height - padding
+    if handle:
+        _draw_overlay_chip(draw, (padding, y), handle, font, anchor='bottom-left', gap=gap)
+    if counter:
+        _draw_overlay_chip(draw, (canvas.width - padding, y), counter, font, anchor='bottom-right', gap=gap)
+
+
+def brand_overlay_elements(profile, slide):
+    username = (profile.username or '').strip().lstrip('@')
+    handle = f'@{username}' if username else ''
     total = slide.content.carousel_slides.filter(is_active=True).count() or slide.order
-    text = '    '.join(part for part in [handle, f'{slide.order}/{total}'] if part)
-    padding = 28
-    draw.text((padding, canvas.height - padding - 12), text, fill=(255, 255, 255), font=font)
+    counter = f'{slide.order}/{total}'
+    return handle, counter
 
 
-def _persist_composed_slide(slide, image_bytes, fingerprint, response_id, attempt, plan, brand_mode):
+def _brand_overlay_font(size):
+    for font_name in ['DejaVuSans-Bold.ttf', 'Arial.ttf']:
+        try:
+            return ImageFont.truetype(font_name, size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def _draw_overlay_chip(draw, point, text, font, *, anchor, gap):
+    bbox = draw.textbbox((0, 0), text, font=font)
+    width = bbox[2] - bbox[0]
+    height = bbox[3] - bbox[1]
+    radius = max(10, int(height * 0.55))
+    px = max(14, int(height * 0.75))
+    py = max(9, int(height * 0.45))
+    x, y = point
+    if anchor == 'bottom-right':
+        left = x - width - (px * 2)
+    else:
+        left = x
+    top = y - height - (py * 2)
+    right = left + width + (px * 2)
+    bottom = y
+    draw.rounded_rectangle((left, top, right, bottom), radius=radius, fill=(17, 24, 39), outline=(255, 255, 255), width=1)
+    draw.text((left + px, top + py - bbox[1]), text, fill=(255, 255, 255), font=font)
+
+
+def reapply_system_brand_overlay(slide, *, creative_direction=None):
+    raw_name = (slide.ai_composition_metadata or {}).get('raw_composed_image')
+    if not raw_name or not default_storage.exists(raw_name):
+        result = ComposedSlideReviewResult(False, 0, 0, 0, 0, 0, ['Arte base sem overlay inexistente.'], ['Arte base sem overlay inexistente.'])
+        slide.ai_review_metadata = result.as_dict()
+        slide.ai_composition_status = SocialCarouselSlide.CompositionStatus.ERROR
+        slide.save(update_fields=['ai_review_metadata', 'ai_composition_status', 'updated_at'])
+        return result
+    with default_storage.open(raw_name, 'rb') as arquivo:
+        final_image_bytes = _apply_system_brand_overlay_to_bytes(arquivo.read(), slide.content.profile, slide)
+    filename = f'{slide.ai_composition_fingerprint or slide.id}-brand-v{BRAND_OVERLAY_VERSION}.jpg'
+    slide.ai_composed_image.save(filename, ContentFile(final_image_bytes), save=False)
+    slide.rendered_image.name = slide.ai_composed_image.name
+    metadata = slide.ai_composition_metadata or {}
+    metadata.update({'brand_mode': BRAND_MODE_SYSTEM_OVERLAY, 'brand_overlay_version': BRAND_OVERLAY_VERSION, 'brand_overlay': dict(zip(['handle', 'counter'], brand_overlay_elements(slide.content.profile, slide)))})
+    slide.ai_composition_metadata = metadata
+    slide.ai_composition_status = SocialCarouselSlide.CompositionStatus.REVIEWING
+    slide.save(update_fields=['ai_composed_image', 'rendered_image', 'ai_composition_metadata', 'ai_composition_status', 'updated_at'])
+    result = review_composed_slide(slide, image_field=slide.ai_composed_image, creative_direction=creative_direction)
+    slide.ai_review_metadata = result.as_dict()
+    slide.ai_composition_status = SocialCarouselSlide.CompositionStatus.READY if result.valid else SocialCarouselSlide.CompositionStatus.ERROR
+    slide.save(update_fields=['ai_review_metadata', 'ai_composition_status', 'updated_at'])
+    return result
+
+
+def _persist_composed_slide(slide, image_bytes, fingerprint, response_id, attempt, plan, brand_mode, *, raw_image_bytes=None):
     filename = f'{fingerprint}.jpg'
+    raw_name = ''
+    if raw_image_bytes:
+        raw_name = _raw_composed_image_name(slide, fingerprint)
+        raw_name = default_storage.save(raw_name, ContentFile(raw_image_bytes))
     slide.ai_composed_image.save(filename, ContentFile(image_bytes), save=False)
     slide.rendered_image.name = slide.ai_composed_image.name
     slide.render_mode = SocialCarouselSlide.RenderMode.AI_FINISHED
@@ -193,8 +271,17 @@ def _persist_composed_slide(slide, image_bytes, fingerprint, response_id, attemp
     slide.ai_composition_attempts = attempt
     slide.rendered_text_snapshot = slide_text_snapshot(slide)
     slide.creative_plan_metadata = plan
-    slide.ai_composition_metadata = {'fingerprint': fingerprint, 'attempt': attempt, 'brand_mode': brand_mode}
+    metadata = {'fingerprint': fingerprint, 'attempt': attempt, 'brand_mode': brand_mode}
+    if raw_name:
+        metadata.update({'raw_composed_image': raw_name, 'brand_overlay_version': BRAND_OVERLAY_VERSION, 'brand_overlay': dict(zip(['handle', 'counter'], brand_overlay_elements(slide.content.profile, slide)))})
+    slide.ai_composition_metadata = metadata
     slide.save()
+
+
+def _raw_composed_image_name(slide, fingerprint):
+    profile_id = slide.content.profile_id if slide.content_id else 'sem-perfil'
+    content_id = slide.content_id or 'sem-conteudo'
+    return f'social/{profile_id}/carousels/{content_id}/composed_raw/{fingerprint}.jpg'
 
 
 def _daily_quota_remaining(profile):
