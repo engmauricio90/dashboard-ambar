@@ -5043,6 +5043,99 @@ class SocialAutomationAIVisionTests(TestCase):
         slide = content.carousel_slides.order_by('order').first()
         self.assertEqual(slide.title, 'Titulo 1')
 
+    def test_quality_ai_finished_nao_depende_de_visual_treatment_ou_source_image(self):
+        from .carousel_quality import evaluate_carousel_quality
+
+        content = SocialContent.objects.create(profile=self.profile, carousel_template=self._template_for_quality_tests('Template ai visual'), media_type=SocialContent.MediaType.CAROUSEL, frase='Hook', legenda='Legenda')
+        self.profile.carousel_generation_mode = SocialProfile.CarouselGenerationMode.AI_FINISHED
+        self.profile.carousel_visual_mode = SocialProfile.CarouselVisualMode.VISUAL_RICH
+        self.profile.carousel_cta_enabled = False
+        self.profile.save(update_fields=['carousel_generation_mode', 'carousel_visual_mode', 'carousel_cta_enabled', 'updated_at'])
+        for index in range(1, 4):
+            SocialCarouselSlide.objects.create(
+                content=content,
+                order=index,
+                slide_type=SocialCarouselSlide.SlideType.COVER if index == 1 else SocialCarouselSlide.SlideType.CONTENT,
+                slide_role=SocialCarouselSlide.SlideRole.HOOK_COVER if index == 1 else SocialCarouselSlide.SlideRole.EXPLANATION,
+                title=f'Titulo {index}',
+                body='Texto curto',
+                visual_treatment=SocialCarouselSlide.VisualTreatment.TEXT_ONLY,
+                visual_intent=SocialCarouselTemplateVariant.LayoutType.FULL_TEXT,
+                ai_composed_image=imagem_social(f'ai-ready-{index}.jpg', tamanho=(1080, 1080)),
+                render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED,
+                ai_composition_status=SocialCarouselSlide.CompositionStatus.READY,
+                ai_review_metadata={'valid': True, 'text_fidelity': 100, 'legibility': 93, 'composition': 91, 'brand_consistency': 100, 'visual_quality': 92, 'issues': [], 'blocking_issues': [], 'warnings': [], 'info': []},
+            )
+
+        quality = evaluate_carousel_quality(content)
+        self.assertTrue(quality.valid, quality.issues)
+        self.assertNotIn('texto puro', ' '.join(quality.issues).lower())
+        self.assertNotIn('tratamento visual', ' '.join(quality.issues).lower())
+        self.assertEqual(quality.image_slides, 3)
+
+    def test_quality_ai_finished_sem_composed_image_falha_com_issue_unica(self):
+        from .carousel_quality import evaluate_carousel_quality
+
+        content = SocialContent.objects.create(profile=self.profile, carousel_template=self._template_for_quality_tests('Template ai missing'), media_type=SocialContent.MediaType.CAROUSEL, frase='Hook', legenda='Legenda')
+        self.profile.carousel_generation_mode = SocialProfile.CarouselGenerationMode.AI_FINISHED
+        self.profile.carousel_cta_enabled = False
+        self.profile.save(update_fields=['carousel_generation_mode', 'carousel_cta_enabled', 'updated_at'])
+        SocialCarouselSlide.objects.create(content=content, order=1, slide_type=SocialCarouselSlide.SlideType.COVER, slide_role=SocialCarouselSlide.SlideRole.HOOK_COVER, title='Capa', render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED, ai_composition_status=SocialCarouselSlide.CompositionStatus.ERROR, ai_review_metadata={'valid': False, 'text_fidelity': 60, 'legibility': 90, 'composition': 90, 'brand_consistency': 90, 'visual_quality': 90, 'issues': ['Texto principal cortado.'], 'blocking_issues': ['Texto principal cortado.'], 'warnings': [], 'info': []})
+        SocialCarouselSlide.objects.create(content=content, order=2, slide_type=SocialCarouselSlide.SlideType.CONTENT, slide_role=SocialCarouselSlide.SlideRole.EXPLANATION, title='Conteudo', ai_composed_image=imagem_social('ai-ready-missing-2.jpg', tamanho=(1080, 1080)), render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED, ai_composition_status=SocialCarouselSlide.CompositionStatus.READY, ai_review_metadata={'valid': True, 'text_fidelity': 100, 'legibility': 90, 'composition': 90, 'brand_consistency': 90, 'visual_quality': 90, 'issues': [], 'blocking_issues': [], 'warnings': [], 'info': []})
+
+        quality = evaluate_carousel_quality(content)
+        joined = ' '.join(quality.issues)
+        self.assertFalse(quality.valid)
+        self.assertIn('arte AI_FINISHED pendente de aprovacao', joined)
+        self.assertNotIn('asset final AI_FINISHED indisponivel', joined)
+
+    def test_composed_review_separa_blocking_warning_e_brand_context(self):
+        from .composed_slide_review import review_result_from_payload, _review_prompt
+
+        content = SocialContent.objects.create(profile=self.profile, carousel_template=self._template_for_quality_tests('Template severity'), media_type=SocialContent.MediaType.CAROUSEL, frase='Hook', legenda='Legenda')
+        slide = SocialCarouselSlide.objects.create(content=content, order=1, slide_type=SocialCarouselSlide.SlideType.COVER, title='Disciplina', body='Um passo.', render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED)
+        SocialCarouselSlide.objects.create(content=content, order=2, slide_type=SocialCarouselSlide.SlideType.CONTENT, title='Conteudo', body='Curto')
+        prompt = _review_prompt(slide)
+        self.assertIn('@perfil_generico', prompt)
+        self.assertIn('1/2', prompt)
+        self.assertIn('Nao classifique esses elementos autorizados como watermark', prompt)
+
+        warning_only = review_result_from_payload({'valid': True, 'text_fidelity': 100, 'legibility': 88, 'composition': 90, 'brand_consistency': 100, 'visual_quality': 90, 'issues': [], 'blocking_issues': [], 'warnings': ['Texto decorativo secundario tem baixo contraste.'], 'info': ['OK']})
+        self.assertTrue(warning_only.valid)
+        self.assertEqual(warning_only.issues, [])
+        self.assertEqual(warning_only.warnings, ['Texto decorativo secundario tem baixo contraste.'])
+
+        blocking = review_result_from_payload({'valid': True, 'text_fidelity': 100, 'legibility': 92, 'composition': 91, 'brand_consistency': 60, 'visual_quality': 90, 'issues': [], 'blocking_issues': ['Handle errado detectado.'], 'warnings': [], 'info': []})
+        self.assertFalse(blocking.valid)
+        self.assertIn('Handle errado detectado.', blocking.blocking_issues)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test')
+    def test_rereview_ai_finished_nao_gera_nova_imagem_e_atualiza_status(self):
+        from .composed_slide_review import rereview_ai_finished_slide
+        from .carousel_quality import evaluate_carousel_quality
+
+        content = SocialContent.objects.create(profile=self.profile, carousel_template=self._template_for_quality_tests('Template rereview'), media_type=SocialContent.MediaType.CAROUSEL, frase='Hook', legenda='Legenda')
+        self.profile.carousel_generation_mode = SocialProfile.CarouselGenerationMode.AI_FINISHED
+        self.profile.carousel_cta_enabled = False
+        self.profile.save(update_fields=['carousel_generation_mode', 'carousel_cta_enabled', 'updated_at'])
+        slide = SocialCarouselSlide.objects.create(content=content, order=1, slide_type=SocialCarouselSlide.SlideType.COVER, slide_role=SocialCarouselSlide.SlideRole.HOOK_COVER, title='Disciplina', body='Um passo.', ai_composed_image=imagem_social('rereview-1.jpg', tamanho=(1080, 1080)), render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED, ai_composition_status=SocialCarouselSlide.CompositionStatus.ERROR)
+        SocialCarouselSlide.objects.create(content=content, order=2, slide_type=SocialCarouselSlide.SlideType.CONTENT, slide_role=SocialCarouselSlide.SlideRole.EXPLANATION, title='Conteudo', body='Curto', ai_composed_image=imagem_social('rereview-2.jpg', tamanho=(1080, 1080)), render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED, ai_composition_status=SocialCarouselSlide.CompositionStatus.READY, ai_review_metadata={'valid': True, 'text_fidelity': 100, 'legibility': 93, 'composition': 91, 'brand_consistency': 100, 'visual_quality': 92, 'issues': [], 'blocking_issues': [], 'warnings': [], 'info': []})
+        original_hash = sha256(slide.ai_composed_image.read()).hexdigest()
+        response = type('Response', (), {'output_text': '{"valid": true, "text_fidelity": 100, "legibility": 93, "composition": 91, "brand_consistency": 100, "visual_quality": 92, "issues": [], "blocking_issues": [], "warnings": ["Texto decorativo secundario tem baixo contraste."], "info": []}'})()
+        create = mock.Mock(return_value=response)
+        client = type('Client', (), {'responses': type('Responses', (), {'create': create})()})()
+
+        with mock.patch('social_automation.composed_slide_review.vision_client', return_value=client), mock.patch('social_automation.ai_slide_composer._generate_image_bytes') as image_provider:
+            result = rereview_ai_finished_slide(slide)
+
+        slide.refresh_from_db()
+        self.assertTrue(result.valid)
+        self.assertEqual(slide.ai_composition_status, SocialCarouselSlide.CompositionStatus.READY)
+        self.assertEqual(slide.ai_review_metadata['warnings'], ['Texto decorativo secundario tem baixo contraste.'])
+        self.assertEqual(sha256(slide.ai_composed_image.read()).hexdigest(), original_hash)
+        image_provider.assert_not_called()
+        self.assertTrue(evaluate_carousel_quality(content).valid)
+
     @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test')
     def test_composed_review_usa_visao_structured_output_e_reprova_texto_baixo(self):
         from .composed_slide_review import review_composed_slide, review_result_from_payload
@@ -5057,7 +5150,7 @@ class SocialAutomationAIVisionTests(TestCase):
             ai_composed_image=imagem_social('review-composed.jpg'),
             render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED,
         )
-        response = type('Response', (), {'output_text': '{"valid": true, "text_fidelity": 100, "legibility": 94, "composition": 92, "brand_consistency": 91, "visual_quality": 93, "issues": []}'})()
+        response = type('Response', (), {'output_text': '{"valid": true, "text_fidelity": 100, "legibility": 94, "composition": 92, "brand_consistency": 91, "visual_quality": 93, "issues": [], "blocking_issues": [], "warnings": [], "info": []}'})()
         create = mock.Mock(return_value=response)
         client = type('Client', (), {'responses': type('Responses', (), {'create': create})()})()
 

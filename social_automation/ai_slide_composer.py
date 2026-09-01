@@ -174,7 +174,10 @@ def _normalize_image(image_bytes, *, aspect_ratio, brand_mode, profile, slide):
 def _apply_brand_overlay(canvas, profile, slide):
     draw = ImageDraw.Draw(canvas)
     font = ImageFont.load_default()
-    text = f'{profile.username}  {slide.order}'
+    username = (profile.username or '').strip()
+    handle = username if username.startswith('@') else f'@{username}' if username else ''
+    total = slide.content.carousel_slides.filter(is_active=True).count() or slide.order
+    text = '    '.join(part for part in [handle, f'{slide.order}/{total}'] if part)
     padding = 28
     draw.text((padding, canvas.height - padding - 12), text, fill=(255, 255, 255), font=font)
 

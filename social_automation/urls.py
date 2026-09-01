@@ -44,5 +44,6 @@ urlpatterns = [
     path('conteudos/aprovar-lote/', views.content_bulk_approve, name='content_bulk_approve'),
     path('carrosseis/slides/<int:slide_id>/preview/', views.carousel_slide_preview, name='carousel_slide_preview'),
     path('carrosseis/slides/<int:slide_id>/gerar-imagem/', views.carousel_slide_generate_image, name='carousel_slide_generate_image'),
+    path('carrosseis/slides/<int:slide_id>/revisar-ai-finished/', views.carousel_slide_rereview_ai_finished, name='carousel_slide_rereview_ai_finished'),
     path('public/<path:token>/', views.public_final_image, name='public_final_image'),
 ]

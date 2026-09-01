@@ -29,6 +29,7 @@ from .forms import (
 from .autonomous_carousel import gerar_carrossel_autonomo
 from .carousel_creative_blueprint import CarouselIdea, IdeaSelection
 from .carousel_ideation import generate_carousel_ideas
+from .composed_slide_review import rereview_ai_finished_slide
 from .generation import _historico, gerar_lote_conteudos
 from .image_analysis import analyze_social_image
 from .image_generation import SocialImagePrompt, build_social_image_prompt, generate_social_image
@@ -565,6 +566,31 @@ def carousel_slide_generate_image(request, slide_id):
         messages.success(request, 'Imagem do slide gerada e carrossel renderizado novamente.')
     except (OpenAINotConfigured, OpenAIUnavailable, ValidationError, SocialRenderError) as exc:
         _handle_validation_error(request, exc)
+    return redirect('social_automation:content_detail', content_id=content.id)
+
+
+@staff_required
+@require_POST
+def carousel_slide_rereview_ai_finished(request, slide_id):
+    slide = get_object_or_404(SocialCarouselSlide.objects.select_related('content', 'content__profile'), pk=slide_id)
+    content = slide.content
+    if slide.render_mode != SocialCarouselSlide.RenderMode.AI_FINISHED:
+        messages.error(request, 'Re-review disponivel somente para slides AI_FINISHED.')
+        return redirect('social_automation:content_detail', content_id=content.id)
+    if not content.pode_editar_operacionalmente:
+        messages.error(request, 'Conteudo publicado nao pode ser reavaliado pela interface operacional.')
+        return redirect('social_automation:content_detail', content_id=content.id)
+    try:
+        result = rereview_ai_finished_slide(slide)
+    except OpenAIUnavailable as exc:
+        _handle_validation_error(request, exc)
+        return redirect('social_automation:content_detail', content_id=content.id)
+    if result.valid and result.warnings:
+        messages.warning(request, 'Arte AI_FINISHED aprovada com alertas.')
+    elif result.valid:
+        messages.success(request, 'Arte AI_FINISHED aprovada no re-review.')
+    else:
+        messages.error(request, 'Arte AI_FINISHED reprovada no re-review.')
     return redirect('social_automation:content_detail', content_id=content.id)
 
 

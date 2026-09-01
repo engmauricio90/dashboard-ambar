@@ -204,10 +204,11 @@ def evaluate_carousel_quality(content):
     visual_mode = content.profile.carousel_visual_mode or SocialProfile.CarouselVisualMode.STANDARD
     editorial_mode = content.profile.carousel_editorial_mode or SocialProfile.CarouselEditorialMode.STANDARD
     slides = list(content.carousel_slides.filter(is_active=True).order_by('order', 'id'))
-    visual = _evaluate_visual_quality(slides, visual_mode)
+    is_ai_finished_content = getattr(content.profile, 'carousel_generation_mode', '') == SocialProfile.CarouselGenerationMode.AI_FINISHED
+    visual = _evaluate_ai_finished_visual_quality(slides, visual_mode) if is_ai_finished_content else _evaluate_visual_quality(slides, visual_mode)
     editorial = _evaluate_editorial_quality(slides, editorial_mode, cta_enabled=content.profile.carousel_cta_enabled)
     composed = _evaluate_composed_quality(content, slides)
-    issues = [*visual.issues, *editorial.issues, *composed['issues']]
+    issues = list(dict.fromkeys([*visual.issues, *editorial.issues, *composed['issues']]))
     valid = visual.valid and editorial.valid and composed['valid']
     score = min(visual.score, editorial.score, composed['overall'])
     if issues:
@@ -298,6 +299,28 @@ def _evaluate_visual_quality(slides, visual_mode):
         image_slides=image_slides,
         distinct_images=distinct_images,
         plain_text_slides=plain_text,
+        score=max(0, min(100, score)),
+        issues=issues,
+    )
+
+
+def _evaluate_ai_finished_visual_quality(slides, visual_mode):
+    active = len(slides)
+    ready_slides = [slide for slide in slides if slide.get_final_image()]
+    issues = []
+    if active < 2 or active > 10:
+        issues.append('Carrossel precisa ter entre 2 e 10 slides ativos.')
+    if len(ready_slides) < active:
+        missing = active - len(ready_slides)
+        issues.append(f'{missing} slide(s) AI_FINISHED ainda sem arte final aprovada.')
+    score = 100 if active and len(ready_slides) == active else 69
+    return _VisualQuality(
+        valid=not issues,
+        active_slides=active,
+        visual_slides=len(ready_slides),
+        image_slides=len(ready_slides),
+        distinct_images=len(ready_slides),
+        plain_text_slides=0,
         score=max(0, min(100, score)),
         issues=issues,
     )
@@ -443,16 +466,21 @@ def _evaluate_composed_quality(content, slides):
     for slide in slides:
         if slide.render_mode != SocialCarouselSlide.RenderMode.AI_FINISHED:
             issues.append(f'Slide {slide.order}: render mode nao e AI_FINISHED.')
-        if slide.ai_composition_status != SocialCarouselSlide.CompositionStatus.READY:
-            issues.append(f'Slide {slide.order}: arte final IA ainda nao aprovada.')
-        if not slide.get_final_image():
-            issues.append(f'Slide {slide.order}: asset final AI_FINISHED indisponivel.')
         review = slide.ai_review_metadata or {}
+        blocking = review.get('blocking_issues') or review.get('issues') or []
+        warnings = review.get('warnings') or []
+        if slide.ai_composition_status != SocialCarouselSlide.CompositionStatus.READY:
+            count = len(blocking) or 1
+            issues.append(f'Slide {slide.order}: arte AI_FINISHED pendente de aprovacao por {count} problema(s) bloqueante(s).')
+        elif not slide.get_final_image():
+            issues.append(f'Slide {slide.order}: asset final AI_FINISHED indisponivel.')
         text_scores.append(_score(review.get('text_fidelity'), default=0))
         brand_scores.append(_score(review.get('brand_consistency'), default=0))
         composition_scores.append(_score(review.get('composition'), default=0))
-        if review.get('issues'):
-            issues.extend([f'Slide {slide.order}: {issue}' for issue in review.get('issues', [])])
+        if blocking:
+            issues.extend([f'Slide {slide.order}: {issue}' for issue in blocking])
+        if warnings and not blocking:
+            continue
     text = min(text_scores) if text_scores else 0
     brand = min(brand_scores) if brand_scores else 0
     composition = min(composition_scores) if composition_scores else 0

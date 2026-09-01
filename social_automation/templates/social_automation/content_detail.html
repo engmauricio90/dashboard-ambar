@@ -230,7 +230,24 @@
                     <td>{{ slide.get_slide_role_display }}</td>
                     <td>
                         <span class="badge text-bg-light">{{ slide.get_render_mode_display }}</span>
+                        {% if slide.render_mode == 'AI_FINISHED' and slide.ai_review_metadata %}
+                            {% if slide.ai_composition_status == 'READY' and slide.ai_review_metadata.warnings %}
+                                <div class="small text-warning">Aprovado com alertas{% if slide.ai_composition_attempts %} · {{ slide.ai_composition_attempts }} tentativa(s){% endif %}</div>
+                            {% elif slide.ai_composition_status == 'READY' %}
+                                <div class="small text-success">Aprovado{% if slide.ai_composition_attempts %} · {{ slide.ai_composition_attempts }} tentativa(s){% endif %}</div>
+                            {% else %}
+                                <div class="small text-danger">Reprovado{% if slide.ai_composition_attempts %} · {{ slide.ai_composition_attempts }} tentativa(s){% endif %}</div>
+                            {% endif %}
+                            <div class="small text-muted">Texto: {{ slide.ai_review_metadata.text_fidelity|default:'-' }} · Legibilidade: {{ slide.ai_review_metadata.legibility|default:'-' }} · Composicao: {{ slide.ai_review_metadata.composition|default:'-' }} · Marca: {{ slide.ai_review_metadata.brand_consistency|default:'-' }}</div>
+                            {% if slide.ai_review_metadata.blocking_issues %}
+                                <div class="small text-danger">{{ slide.ai_review_metadata.blocking_issues|join:'; ' }}</div>
+                            {% endif %}
+                            {% if slide.ai_review_metadata.warnings %}
+                                <div class="small text-warning">{{ slide.ai_review_metadata.warnings|join:'; ' }}</div>
+                            {% endif %}
+                        {% else %}
                         <div class="text-muted small">{{ slide.get_ai_composition_status_display }}{% if slide.ai_composition_attempts %} · {{ slide.ai_composition_attempts }} tentativa(s){% endif %}</div>
+                        {% endif %}
                     </td>
                     <td>
                         <strong>{{ slide.semantic_visual_intent|default:'-' }}</strong>
@@ -254,6 +271,12 @@
                             {% csrf_token %}
                             <button class="btn btn-sm btn-outline-primary" type="submit">Gerar imagem IA</button>
                         </form>
+                        {% if slide.render_mode == 'AI_FINISHED' and slide.ai_composed_image %}
+                        <form method="post" action="{% url 'social_automation:carousel_slide_rereview_ai_finished' slide.id %}" class="d-inline">
+                            {% csrf_token %}
+                            <button class="btn btn-sm btn-outline-secondary" type="submit">Revisar IA</button>
+                        </form>
+                        {% endif %}
                         {% endif %}
                     </td>
                 </tr>
