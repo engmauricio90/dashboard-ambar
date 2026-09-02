@@ -168,11 +168,29 @@
         {% if carousel_ai_progress and carousel_ai_progress.can_resume %}
         <form method="post" action="{% url 'social_automation:content_resume_ai_finished' content.id %}" class="mb-0">
             {% csrf_token %}
-            <button class="btn btn-sm btn-outline-primary" type="submit">Continuar composicao IA</button>
+            <button class="btn btn-sm btn-outline-primary" type="submit" {% if carousel_ai_progress.active %}disabled{% endif %}>
+                {% if carousel_ai_progress.active %}Composicao em andamento...{% else %}Continuar composicao IA{% endif %}
+            </button>
         </form>
         {% endif %}
     </div>
     <div class="card-body">
+        {% if carousel_ai_progress and carousel_ai_progress.active %}
+        <div class="alert alert-info small" data-ai-finished-run data-advance-url="{% url 'social_automation:content_resume_ai_finished_advance' content.id %}">
+            <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
+                <div>
+                    <strong>Composicao IA em andamento</strong>
+                    <div data-ai-finished-status>
+                        {{ carousel_ai_progress.ready }}/{{ carousel_ai_progress.total }} aprovado(s),
+                        {{ carousel_ai_progress.failed }} reprovado(s),
+                        {{ carousel_ai_progress.pending }} pendente(s)
+                    </div>
+                </div>
+                <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+            </div>
+            <div class="mt-2" data-ai-finished-log>Preparando proxima etapa...</div>
+        </div>
+        {% endif %}
         <div class="row g-3 small">
             <div class="col-md-2"><strong>Visual</strong><div>{{ carousel_quality.visual_score }}/100</div><div class="text-muted">{{ carousel_quality.visual_mode }}</div></div>
             <div class="col-md-2"><strong>Editorial</strong><div>{{ carousel_quality.editorial_score }}/100</div><div class="text-muted">{{ carousel_quality.editorial_mode }}</div></div>
@@ -358,6 +376,58 @@
         if (event.key === 'ArrowRight') show(current + 1);
     });
     show(0);
+})();
+</script>
+<script>
+(function () {
+    const panel = document.querySelector('[data-ai-finished-run]');
+    if (!panel) return;
+    const status = panel.querySelector('[data-ai-finished-status]');
+    const log = panel.querySelector('[data-ai-finished-log]');
+    const advanceUrl = panel.dataset.advanceUrl;
+    const csrf = document.querySelector('input[name="csrfmiddlewaretoken"]');
+    let running = false;
+
+    function update(data) {
+        if (status) {
+            status.textContent = `${data.approved}/${data.total} aprovado(s), ${data.rejected} reprovado(s), ${data.pending} pendente(s), chamadas ${data.carousel_used}/${data.carousel_limit}`;
+        }
+        if (log) {
+            if (data.step) {
+                log.textContent = `Etapa ${data.step}${data.slide ? ` no slide ${data.slide}` : ''}.`;
+            } else if (data.blocking_reason) {
+                log.textContent = data.blocking_reason;
+            }
+        }
+    }
+
+    async function advance() {
+        if (running) return;
+        running = true;
+        try {
+            const response = await fetch(advanceUrl, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrf ? csrf.value : '',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+            const data = await response.json();
+            update(data);
+            running = false;
+            if (data.ok && data.has_more_work) {
+                window.setTimeout(advance, 900);
+            } else if (data.ok) {
+                if (log) log.textContent = data.blocking_reason || 'Composicao concluida.';
+                window.setTimeout(() => window.location.reload(), 1200);
+            }
+        } catch (error) {
+            running = false;
+            if (log) log.textContent = 'Nao foi possivel avancar agora. Tente novamente em instantes.';
+        }
+    }
+
+    window.setTimeout(advance, 500);
 })();
 </script>
 {% endif %}

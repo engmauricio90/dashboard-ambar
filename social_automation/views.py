@@ -10,6 +10,7 @@ from django.http import FileResponse, Http404, HttpResponse, HttpResponseForbidd
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
@@ -26,7 +27,7 @@ from .forms import (
     SocialScheduleForm,
     SocialVisualIdentityForm,
 )
-from .autonomous_carousel import gerar_carrossel_autonomo, retomar_ai_finished_content
+from .autonomous_carousel import advance_manual_resume_ai_finished, gerar_carrossel_autonomo, start_manual_resume_ai_finished
 from .carousel_creative_blueprint import CarouselIdea, IdeaSelection
 from .carousel_ideation import generate_carousel_ideas
 from .composed_slide_review import rereview_ai_finished_slide
@@ -49,7 +50,7 @@ from .instagram import (
     validar_assinatura_video_meta,
     validar_token_midia_temporaria,
 )
-from .models import SocialBaseImage, SocialCarouselSlide, SocialCarouselTemplate, SocialContent, SocialInstagramConnection, SocialProfile, SocialVisualIdentity
+from .models import SocialAIUsage, SocialBaseImage, SocialCarouselSlide, SocialCarouselTemplate, SocialContent, SocialInstagramConnection, SocialProfile, SocialVisualIdentity
 from .rendering import SocialRenderError, renderizar_midia_social
 from .services import (
     agendar_conteudo,
@@ -522,14 +523,21 @@ def _carousel_ai_finished_progress(content):
     ready = sum(1 for slide in slides if slide.ai_composition_status == SocialCarouselSlide.CompositionStatus.READY)
     reviewed = sum(1 for slide in slides if slide.ai_review_metadata)
     pending = sum(1 for slide in slides if slide.ai_composition_status in {SocialCarouselSlide.CompositionStatus.PENDING, SocialCarouselSlide.CompositionStatus.NEEDS_RECOMPOSE})
+    running = sum(1 for slide in slides if slide.ai_composition_status in {SocialCarouselSlide.CompositionStatus.COMPOSING, SocialCarouselSlide.CompositionStatus.REVIEWING})
     failed = sum(1 for slide in slides if slide.ai_composition_status == SocialCarouselSlide.CompositionStatus.ERROR)
+    active_run = content.carousel_generation_runs.filter(
+        status='COMPOSING',
+        metadata__execution_mode='MANUAL_RESUME',
+    ).order_by('-started_at').first()
     return {
         'total': total,
         'ready': ready,
         'reviewed': reviewed,
         'pending': pending,
+        'running': running,
         'failed': failed,
         'not_reviewed': max(0, total - reviewed),
+        'active': bool(active_run),
         'can_resume': content.pode_editar_operacionalmente and total and ready < total,
     }
 
@@ -621,33 +629,53 @@ def carousel_slide_rereview_ai_finished(request, slide_id):
 def content_resume_ai_finished(request, content_id):
     content = get_object_or_404(_content_queryset(), pk=content_id)
     try:
-        result = retomar_ai_finished_content(content, usuario=request.user)
+        result = start_manual_resume_ai_finished(content, usuario=request.user)
     except (OpenAINotConfigured, OpenAIUnavailable, ValidationError) as exc:
         _handle_validation_error(request, exc)
         return redirect('social_automation:content_detail', content_id=content.id)
-    if result.pending_slides:
-        detail = '; '.join(result.messages[:2])
-        suffix = f' Motivo: {detail}' if detail and not result.generated_images else ''
-        messages.warning(
-            request,
-            (
-                f'Composicao retomada: {result.processed_slides} processado(s), '
-                f'{result.approved_slides} aprovado(s), {result.failed_slides} reprovado(s), '
-                f'{result.pending_slides} pendente(s), '
-                f'{result.composition_calls_used}/{result.composition_call_cap} chamadas usadas.'
-                f'{suffix}'
-            ),
-        )
+    if result.messages:
+        messages.warning(request, result.messages[0])
     else:
-        messages.success(
-            request,
-            (
-                f'Composicao AI_FINISHED finalizada: {result.processed_slides} processado(s), '
-                f'{result.approved_slides} aprovado(s), '
-                f'{result.composition_calls_used}/{result.composition_call_cap} chamadas usadas.'
-            ),
-        )
+        messages.success(request, 'Composicao AI_FINISHED iniciada. Acompanhe o progresso nesta pagina.')
     return redirect('social_automation:content_detail', content_id=content.id)
+
+
+@staff_required
+@require_POST
+def content_resume_ai_finished_advance(request, content_id):
+    content = get_object_or_404(_content_queryset(), pk=content_id)
+    try:
+        result = advance_manual_resume_ai_finished(content, usuario=request.user)
+    except (OpenAINotConfigured, OpenAIUnavailable, ValidationError) as exc:
+        return JsonResponse({'ok': False, 'error': str(exc), 'has_more_work': False}, status=400)
+    progress = _carousel_ai_finished_progress(content)
+    profile_used_today = SocialAIUsage.objects.filter(
+        profile=content.profile,
+        operation__in=[SocialAIUsage.Operation.IMAGE_GENERATION, SocialAIUsage.Operation.COMPOSED_SLIDE],
+        success=True,
+        created_at__date=timezone.localdate(),
+    ).count()
+    return JsonResponse(
+        {
+            'ok': True,
+            'run_status': result.run.status if result.run else '',
+            'content_status': content.status,
+            'step': result.step,
+            'slide': result.slide_order,
+            'processed': result.processed_slides,
+            'total': progress['total'] if progress else 0,
+            'approved': progress['ready'] if progress else 0,
+            'rejected': progress['failed'] if progress else 0,
+            'pending': result.pending_slides,
+            'running': progress['running'] if progress else 0,
+            'carousel_used': result.composition_calls_used,
+            'carousel_limit': result.composition_call_cap,
+            'profile_used_today': profile_used_today,
+            'profile_limit_today': content.profile.ai_image_daily_limit or settings.SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY,
+            'has_more_work': result.has_more_work,
+            'blocking_reason': result.blocking_reason or ('; '.join(result.messages[:2]) if result.messages and not result.has_more_work else None),
+        }
+    )
 
 
 @staff_required

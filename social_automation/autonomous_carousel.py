@@ -2,11 +2,12 @@ from dataclasses import asdict, dataclass, field, is_dataclass
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 
 from .ai import formatar_hashtags, gerar_carrossel_blueprint_ia, moderar_conteudo
-from .ai_slide_composer import BRAND_OVERLAY_VERSION, compose_slide_with_ai, reapply_system_brand_overlay
+from .ai_slide_composer import BRAND_OVERLAY_VERSION, compose_slide_image_with_ai, compose_slide_with_ai, reapply_system_brand_overlay
 from .carousel_creative_blueprint import IdeaSelection, is_ai_directed, is_ai_finished
 from .carousel_creative_director import build_creative_direction
 from .carousel_ideation import generate_carousel_ideas, select_carousel_idea
@@ -37,6 +38,19 @@ class AutonomousCarouselResult:
     composition_calls_used: int = 0
     composition_call_cap: int = 0
     quota_remaining: int = 0
+    run: SocialCarouselGenerationRun | None = None
+    step: str = ''
+    slide_order: int | None = None
+    has_more_work: bool = False
+    blocking_reason: str = ''
+
+
+class CarouselExecutionMode:
+    AUTOMATIC_TICK = 'AUTOMATIC_TICK'
+    MANUAL_RESUME = 'MANUAL_RESUME'
+
+
+MANUAL_RESUME_STALE_MINUTES = 15
 
 
 def _usage_today(profile):
@@ -52,11 +66,14 @@ def _usage_today(profile):
 def _remaining_daily_image_quota(profile):
     used = _usage_today(profile)
     profile_limit = profile.ai_image_daily_limit or settings.SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY
-    return max(0, profile_limit - used)
+    daily_limit = settings.SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY
+    return max(0, min(profile_limit, daily_limit) - used)
 
 
-def _remaining_image_quota(profile, *, include_prior_tick_usage=True):
-    used = _usage_today(profile) if include_prior_tick_usage else 0
+def _remaining_image_quota(profile, *, execution_mode=CarouselExecutionMode.AUTOMATIC_TICK):
+    if execution_mode == CarouselExecutionMode.MANUAL_RESUME:
+        return _remaining_daily_image_quota(profile)
+    used = _usage_today(profile)
     tick_limit = max(0, int(settings.SOCIAL_AI_IMAGE_MAX_PER_TICK))
     tick_remaining = max(0, tick_limit - used)
     return max(0, min(_remaining_daily_image_quota(profile), tick_remaining))
@@ -284,36 +301,128 @@ def _compose_ai_finished_content(profile, content, blueprint, creative_direction
     return result
 
 
-def retomar_ai_finished_content(content, *, usuario=None):
+def _start_manual_resume_run(content, profile, creative_direction):
+    stale_before = timezone.now() - timezone.timedelta(minutes=MANUAL_RESUME_STALE_MINUTES)
+    with transaction.atomic():
+        SocialContent.objects.select_for_update().get(pk=content.pk)
+        active_runs = SocialCarouselGenerationRun.objects.select_for_update().filter(
+            content=content,
+            status=SocialCarouselGenerationRun.Status.COMPOSING,
+            metadata__execution_mode=CarouselExecutionMode.MANUAL_RESUME,
+        )
+        if active_runs.filter(started_at__gte=stale_before).exists():
+            return None
+        stale_count = active_runs.filter(started_at__lt=stale_before).update(
+            status=SocialCarouselGenerationRun.Status.PARTIAL,
+            error='Execucao manual anterior ficou sem atividade e foi liberada para retomada.',
+            finished_at=timezone.now(),
+        )
+        if stale_count:
+            _release_stale_manual_slides(content)
+        return SocialCarouselGenerationRun.objects.create(
+            profile=profile,
+            content=content,
+            generation_mode=profile.carousel_generation_mode,
+            status=SocialCarouselGenerationRun.Status.COMPOSING,
+            creative_blueprint=creative_direction if isinstance(creative_direction, dict) else {},
+            metadata={'resume': True, 'execution_mode': CarouselExecutionMode.MANUAL_RESUME},
+        )
+
+
+def _validate_manual_resume_content(content):
     profile = content.profile
     if not content.is_carousel or profile.carousel_generation_mode != SocialProfile.CarouselGenerationMode.AI_FINISHED:
         raise ValidationError('Retomada disponivel somente para carrossel AI_FINISHED.')
     if not content.pode_editar_operacionalmente:
         raise ValidationError('Conteudo publicado nao pode retomar composicao pela interface operacional.')
+    return profile
+
+
+def _manual_resume_context(content):
+    profile = content.profile
     template = content.carousel_template or _carousel_template(profile)
     aspect_ratio = template.aspect_ratio if template else 'SQUARE'
     latest_run = content.carousel_generation_runs.order_by('-started_at').first()
     creative_direction = latest_run.creative_blueprint if latest_run and latest_run.creative_blueprint else {}
-    run = _run(profile, mode=profile.carousel_generation_mode, metadata={'resume': True})
-    run.content = content
-    run.status = SocialCarouselGenerationRun.Status.COMPOSING
-    run.creative_blueprint = creative_direction if isinstance(creative_direction, dict) else {}
-    run.save(update_fields=['content', 'status', 'creative_blueprint'])
+    return profile, aspect_ratio, creative_direction
 
+
+def start_manual_resume_ai_finished(content, *, usuario=None):
+    profile = _validate_manual_resume_content(content)
+    _, _, creative_direction = _manual_resume_context(content)
     result = AutonomousCarouselResult(content=content)
     call_cap = max(0, int(getattr(settings, 'SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL', 8)))
     spent_in_content = composition_calls_used(content)
-    remaining = min(max(0, call_cap - spent_in_content), _remaining_image_quota(profile, include_prior_tick_usage=False))
+    remaining = min(max(0, call_cap - spent_in_content), _remaining_image_quota(profile, execution_mode=CarouselExecutionMode.MANUAL_RESUME))
+    result.composition_calls_used = spent_in_content
+    result.composition_call_cap = call_cap
+    result.quota_remaining = remaining
+    run = _start_manual_resume_run(content, profile, creative_direction)
+    if run is None:
+        result.pending_slides = content.carousel_slides.filter(is_active=True).exclude(ai_composition_status=SocialCarouselSlide.CompositionStatus.READY).count()
+        result.messages.append('Composicao ja esta em andamento.')
+        return result
+    result.run = run
+    result.step = 'START'
+    result.has_more_work = _manual_resume_has_more_work(content)
+    _fill_ai_finished_progress(result, content)
+    registrar_evento(content, 'gerado_ia', usuario, 'Retomada AI_FINISHED incremental iniciada.')
+    return result
+
+
+def retomar_ai_finished_content(content, *, usuario=None):
+    return start_manual_resume_ai_finished(content, usuario=usuario)
+
+
+def advance_manual_resume_ai_finished(content, *, usuario=None):
+    profile = _validate_manual_resume_content(content)
+    profile, aspect_ratio, creative_direction = _manual_resume_context(content)
+    run = _active_manual_resume_run(content)
+    if run is None:
+        run = _start_manual_resume_run(content, profile, creative_direction)
+    result = AutonomousCarouselResult(content=content, run=run)
+    if run is None:
+        result.messages.append('Composicao ja esta em andamento.')
+        _fill_ai_finished_progress(result, content)
+        result.has_more_work = True
+        result.blocking_reason = result.messages[-1]
+        return result
+
+    reviewing = _claim_reviewing_slide(content)
+    if reviewing:
+        result.step = 'REVIEW'
+        result.slide_order = reviewing.order
+        try:
+            review = _refresh_ai_finished_review_if_needed(reviewing, creative_direction) or _review_claimed_slide(reviewing, creative_direction)
+        except Exception as exc:
+            reviewing.ai_composition_status = SocialCarouselSlide.CompositionStatus.REVIEWING
+            reviewing.save(update_fields=['ai_composition_status', 'updated_at'])
+            run.status = SocialCarouselGenerationRun.Status.ERROR
+            run.error = str(exc)[:1000]
+            run.finished_at = timezone.now()
+            run.save(update_fields=['status', 'error', 'finished_at'])
+            raise
+        if review.valid:
+            result.approved_slides = 1
+        else:
+            result.failed_slides = 1
+            result.messages.extend(review.issues or ['Review automatico reprovou a arte final.'])
+        _finish_manual_resume_advance(content, run, result)
+        return result
+
+    call_cap = max(0, int(getattr(settings, 'SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL', 8)))
+    spent_in_content = composition_calls_used(content)
+    remaining = min(max(0, call_cap - spent_in_content), _remaining_image_quota(profile, execution_mode=CarouselExecutionMode.MANUAL_RESUME))
     result.composition_calls_used = spent_in_content
     result.composition_call_cap = call_cap
     result.quota_remaining = remaining
     max_attempts = max(1, int(getattr(settings, 'SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS', 2)))
-    slides = list(content.carousel_slides.filter(is_active=True).order_by('order', 'id'))
-
-    for slide in _resume_review_candidates(slides):
-        _refresh_ai_finished_review_if_needed(slide, creative_direction)
-
     work_queue = get_composition_work_queue(content, max_attempts=max_attempts)
+    if work_queue and remaining <= 0:
+        result.messages.append(_no_work_reason(remaining, call_cap, spent_in_content, profile))
+        result.blocking_reason = result.messages[-1]
+        _finish_manual_resume_advance(content, run, result)
+        return result
     first_attempts = [item for item in work_queue if item['action'] in {'COMPOSE_FIRST_ATTEMPT', 'RECOMPOSE'}]
     retries = [item for item in work_queue if item['action'] == 'RETRY']
 
@@ -324,23 +433,44 @@ def retomar_ai_finished_content(content, *, usuario=None):
                 result.messages.append(
                     f'Slide {slide.order}: retry adiado por {_ai_finished_quota_reason(profile, call_cap, result.generated_images + spent_in_content)}'
                 )
-                continue
+                break
             _mark_ai_finished_pending_by_quota(slide, result, _ai_finished_quota_reason(profile, call_cap, result.generated_images + spent_in_content))
+            break
+        claimed = _claim_composition_slide(item, max_attempts=max_attempts)
+        if claimed is None:
+            result.messages.append(f'Slide {slide.order}: composicao ignorada porque o slide ja foi alterado por outra execucao.')
             continue
-        composed = compose_slide_with_ai(slide, creative_direction, slide.creative_plan_metadata or {}, aspect_ratio=aspect_ratio, remaining_calls=1)
+        slide = claimed
+        try:
+            composed = compose_slide_image_with_ai(slide, creative_direction, slide.creative_plan_metadata or {}, aspect_ratio=aspect_ratio, remaining_calls=1)
+        except Exception as exc:
+            slide.ai_composition_status = item['status']
+            slide.save(update_fields=['ai_composition_status', 'updated_at'])
+            run.status = SocialCarouselGenerationRun.Status.ERROR
+            run.error = str(exc)[:1000]
+            run.finished_at = timezone.now()
+            run.save(update_fields=['status', 'error', 'finished_at'])
+            raise
         remaining = _record_ai_finished_result(result, composed, remaining)
         result.processed_slides += 1 if composed.attempts else 0
-        result.approved_slides += 1 if composed.ready else 0
         result.failed_slides += 1 if composed.issues and not composed.pending and not composed.ready else 0
+        result.step = 'COMPOSE'
+        result.slide_order = slide.order
+        break
 
-    for slide in slides:
-        slide.refresh_from_db()
-        if slide.ai_composition_status != SocialCarouselSlide.CompositionStatus.READY:
-            result.pending_slides += 1
-    result.composition_calls_used = spent_in_content + result.generated_images
-    result.quota_remaining = remaining
-    if not result.generated_images and work_queue:
-        result.messages.append(_no_work_reason(remaining, call_cap, spent_in_content, profile))
+    _finish_manual_resume_advance(content, run, result)
+    return result
+
+
+def _finish_manual_resume_advance(content, run, result):
+    _fill_ai_finished_progress(result, content)
+    result.composition_calls_used = composition_calls_used(content)
+    result.composition_call_cap = max(0, int(getattr(settings, 'SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL', 8)))
+    result.quota_remaining = min(
+        max(0, result.composition_call_cap - result.composition_calls_used),
+        _remaining_image_quota(content.profile, execution_mode=CarouselExecutionMode.MANUAL_RESUME),
+    )
+    result.has_more_work = _manual_resume_has_more_work(content)
     if content.status != content.Status.PUBLICADO:
         from .container_versioning import invalidate_instagram_container
 
@@ -349,24 +479,145 @@ def retomar_ai_finished_content(content, *, usuario=None):
     if quality.valid:
         content.erro = ''
         run.status = SocialCarouselGenerationRun.Status.READY
+        result.has_more_work = False
+    elif result.has_more_work:
+        content.erro = 'Carrossel AI_FINISHED ainda nao aprovado: ' + '; '.join(quality.issues)[:900]
+        run.status = SocialCarouselGenerationRun.Status.COMPOSING
     else:
         content.erro = 'Carrossel AI_FINISHED ainda nao aprovado: ' + '; '.join(quality.issues)[:900]
         run.status = SocialCarouselGenerationRun.Status.PARTIAL
+        result.blocking_reason = result.messages[-1] if result.messages else content.erro[:180]
     content.save(update_fields=['erro', 'updated_at'])
     run.error = content.erro[:1000]
-    run.finished_at = timezone.now()
+    run.finished_at = timezone.now() if run.status in {SocialCarouselGenerationRun.Status.READY, SocialCarouselGenerationRun.Status.PARTIAL, SocialCarouselGenerationRun.Status.ERROR} else None
     run.save(update_fields=['status', 'error', 'finished_at'])
     registrar_evento(
         content,
         'gerado_ia',
-        usuario,
+        None,
         (
-            f'Retomada AI_FINISHED: {result.processed_slides} slide(s) processado(s), '
-            f'{result.approved_slides} aprovado(s), {result.failed_slides} reprovado(s), '
-            f'{result.composition_calls_used}/{result.composition_call_cap} chamadas de composicao utilizadas.'
+            f'Retomada AI_FINISHED incremental: etapa {result.step or "-"}'
+            f'{f" slide {result.slide_order}" if result.slide_order else ""}; '
+            f'{result.composition_calls_used}/{result.composition_call_cap} chamadas utilizadas.'
         ),
     )
-    return result
+
+
+def _fill_ai_finished_progress(result, content):
+    slides = list(content.carousel_slides.filter(is_active=True, render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED))
+    result.pending_slides = sum(1 for slide in slides if slide.ai_composition_status != SocialCarouselSlide.CompositionStatus.READY)
+    result.approved_slides += 0
+
+
+def _manual_resume_has_more_work(content):
+    return bool(_claimable_reviewing_exists(content) or get_composition_work_queue(content))
+
+
+def _active_manual_resume_run(content):
+    stale_before = timezone.now() - timezone.timedelta(minutes=MANUAL_RESUME_STALE_MINUTES)
+    active = (
+        SocialCarouselGenerationRun.objects.filter(
+            content=content,
+            status=SocialCarouselGenerationRun.Status.COMPOSING,
+            metadata__execution_mode=CarouselExecutionMode.MANUAL_RESUME,
+        )
+        .order_by('-started_at', '-id')
+        .first()
+    )
+    if active and active.started_at < stale_before:
+        active.status = SocialCarouselGenerationRun.Status.PARTIAL
+        active.error = 'Execucao manual anterior ficou sem atividade e foi liberada para retomada.'
+        active.finished_at = timezone.now()
+        active.save(update_fields=['status', 'error', 'finished_at'])
+        with transaction.atomic():
+            SocialContent.objects.select_for_update().get(pk=content.pk)
+            _release_stale_manual_slides(content)
+        return None
+    return active
+
+
+def _claimable_reviewing_exists(content):
+    return content.carousel_slides.filter(
+        is_active=True,
+        render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED,
+        ai_composition_status=SocialCarouselSlide.CompositionStatus.REVIEWING,
+        ai_composed_image__isnull=False,
+    ).exists()
+
+
+def _claim_reviewing_slide(content):
+    with transaction.atomic():
+        slide = (
+            SocialCarouselSlide.objects.select_for_update()
+            .filter(
+                content=content,
+                is_active=True,
+                render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED,
+                ai_composition_status=SocialCarouselSlide.CompositionStatus.REVIEWING,
+                ai_composed_image__isnull=False,
+            )
+            .order_by('order', 'id')
+            .first()
+        )
+        if slide:
+            metadata = slide.ai_composition_metadata or {}
+            metadata.update({'manual_resume_claim': True, 'manual_resume_previous_status': SocialCarouselSlide.CompositionStatus.REVIEWING})
+            slide.ai_composition_metadata = metadata
+            slide.ai_composition_status = SocialCarouselSlide.CompositionStatus.COMPOSING
+            slide.save(update_fields=['ai_composition_status', 'ai_composition_metadata', 'updated_at'])
+        return slide
+
+
+def _review_claimed_slide(slide, creative_direction):
+    return rereview_ai_finished_slide(slide, creative_direction=creative_direction)
+
+
+def _release_stale_manual_slides(content):
+    valid_previous = {
+        SocialCarouselSlide.CompositionStatus.PENDING,
+        SocialCarouselSlide.CompositionStatus.REVIEWING,
+        SocialCarouselSlide.CompositionStatus.ERROR,
+        SocialCarouselSlide.CompositionStatus.NEEDS_RECOMPOSE,
+    }
+    for slide in SocialCarouselSlide.objects.select_for_update().filter(
+        content=content,
+        is_active=True,
+        render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED,
+        ai_composition_status=SocialCarouselSlide.CompositionStatus.COMPOSING,
+    ):
+        metadata = slide.ai_composition_metadata or {}
+        if not metadata.get('manual_resume_claim'):
+            continue
+        previous = metadata.get('manual_resume_previous_status') or SocialCarouselSlide.CompositionStatus.PENDING
+        slide.ai_composition_status = previous if previous in valid_previous else SocialCarouselSlide.CompositionStatus.PENDING
+        metadata.pop('manual_resume_claim', None)
+        metadata.pop('manual_resume_previous_status', None)
+        slide.ai_composition_metadata = metadata
+        slide.save(update_fields=['ai_composition_status', 'ai_composition_metadata', 'updated_at'])
+
+
+def _claim_composition_slide(item, *, max_attempts):
+    with transaction.atomic():
+        slide = SocialCarouselSlide.objects.select_for_update().get(pk=item['slide'].pk)
+        if slide.render_mode != SocialCarouselSlide.RenderMode.AI_FINISHED:
+            return None
+        if slide.ai_composition_status == SocialCarouselSlide.CompositionStatus.PENDING and slide.ai_composition_attempts == 0:
+            if item['action'] != 'COMPOSE_FIRST_ATTEMPT':
+                return None
+        elif slide.ai_composition_status == SocialCarouselSlide.CompositionStatus.NEEDS_RECOMPOSE:
+            if item['action'] != 'RECOMPOSE':
+                return None
+        elif slide.ai_composition_status == SocialCarouselSlide.CompositionStatus.ERROR and slide.ai_composition_attempts < max_attempts:
+            if item['action'] != 'RETRY':
+                return None
+        else:
+            return None
+        metadata = slide.ai_composition_metadata or {}
+        metadata.update({'manual_resume_claim': True, 'manual_resume_previous_status': slide.ai_composition_status})
+        slide.ai_composition_metadata = metadata
+        slide.ai_composition_status = SocialCarouselSlide.CompositionStatus.COMPOSING
+        slide.save(update_fields=['ai_composition_status', 'ai_composition_metadata', 'updated_at'])
+        return slide
 
 
 def composition_calls_used(content):

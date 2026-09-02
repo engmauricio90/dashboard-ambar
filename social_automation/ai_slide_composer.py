@@ -138,6 +138,57 @@ def compose_slide_with_ai(slide, creative_direction, creative_plan=None, *, aspe
     return ComposeSlideResult(slide=slide, attempts=attempts_spent, issues=issues)
 
 
+def compose_slide_image_with_ai(slide, creative_direction, creative_plan=None, *, aspect_ratio='SQUARE', brand_mode=BRAND_MODE_SYSTEM_OVERLAY, remaining_calls=None):
+    profile = slide.content.profile
+    plan = creative_plan or slide.creative_plan_metadata or {}
+    fingerprint = composition_fingerprint(profile, slide, plan, aspect_ratio=aspect_ratio, brand_mode=brand_mode)
+    if _can_reuse(slide, fingerprint):
+        slide.rendered_image.name = slide.ai_composed_image.name
+        slide.save(update_fields=['rendered_image', 'updated_at'])
+        return ComposeSlideResult(slide=slide, reused=True, ready=True, attempts=0)
+    if not image_generation_available(profile):
+        _mark_pending(slide, fingerprint, 'Geracao de arte final IA indisponivel.')
+        return ComposeSlideResult(slide=slide, pending=True, issues=['Geracao de arte final IA indisponivel.'])
+    if profile.ai_image_policy in {SocialProfile.AIImagePolicy.NONE, SocialProfile.AIImagePolicy.BANK_ONLY}:
+        _mark_pending(slide, fingerprint, 'Politica do perfil nao permite arte final IA.')
+        return ComposeSlideResult(slide=slide, pending=True, issues=['Politica do perfil nao permite arte final IA.'])
+    if remaining_calls is not None and remaining_calls <= 0:
+        _mark_pending(slide, fingerprint, 'Quota do carrossel para arte final IA esgotada.')
+        return ComposeSlideResult(slide=slide, pending=True, issues=['Quota do carrossel para arte final IA esgotada.'])
+
+    max_attempts = max(1, int(getattr(settings, 'SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS', 2)))
+    previous_attempts = slide.ai_composition_attempts if slide.ai_composition_fingerprint == fingerprint else 0
+    if previous_attempts >= max_attempts:
+        issues = ['Maximo de tentativas deste slide atingido.']
+        _mark_error(slide, fingerprint, issues, previous_attempts)
+        return ComposeSlideResult(slide=slide, attempts=0, issues=issues)
+    attempt = previous_attempts + 1
+    if _daily_quota_remaining(profile) <= 0:
+        _register_usage(slide, success=False, error='Quota diaria de composicao IA esgotada.', metadata={'fingerprint': fingerprint, 'attempt': attempt})
+        _mark_pending(slide, fingerprint, 'Quota diaria de composicao IA esgotada.')
+        return ComposeSlideResult(slide=slide, pending=True, issues=['Quota diaria de composicao IA esgotada.'])
+    prompt = build_composed_slide_prompt(profile, slide, creative_direction, plan, aspect_ratio=aspect_ratio, brand_mode=brand_mode, previous_issues=[])
+    if moderar_conteudo(prompt):
+        _register_usage(slide, success=False, error='Prompt de composicao bloqueado pela moderacao.', metadata={'fingerprint': fingerprint})
+        _mark_error(slide, fingerprint, ['Prompt de composicao bloqueado pela moderacao.'], attempt)
+        return ComposeSlideResult(slide=slide, issues=['Prompt de composicao bloqueado pela moderacao.'])
+    try:
+        image_bytes, response_id = _generate_image_bytes(prompt, aspect_ratio=aspect_ratio)
+        raw_image_bytes = _normalize_image(image_bytes, aspect_ratio=aspect_ratio)
+        final_image_bytes = _apply_system_brand_overlay_to_bytes(raw_image_bytes, profile, slide) if brand_mode == BRAND_MODE_SYSTEM_OVERLAY else raw_image_bytes
+        _validate_image_bytes(final_image_bytes)
+        _persist_composed_slide(slide, final_image_bytes, fingerprint, response_id, attempt, plan, brand_mode, raw_image_bytes=raw_image_bytes)
+        _register_usage(slide, success=True, metadata={'fingerprint': fingerprint, 'attempt': attempt, 'purpose': 'CAROUSEL_COMPOSED_SLIDE', 'provider_called': True})
+        return ComposeSlideResult(slide=slide, composed=True, pending=True, attempts=1)
+    except (OpenAINotConfigured, SocialImageGenerationDisabled):
+        raise
+    except Exception as exc:
+        issues = ['Falha controlada na composicao IA do slide.']
+        _register_usage(slide, success=False, error=exc, metadata={'fingerprint': fingerprint, 'attempt': attempt, 'purpose': 'CAROUSEL_COMPOSED_SLIDE', 'provider_called': True})
+        _mark_error(slide, fingerprint, issues, attempt)
+        return ComposeSlideResult(slide=slide, attempts=1, issues=issues)
+
+
 def _can_reuse(slide, fingerprint):
     return bool(
         slide.ai_composed_image
@@ -286,7 +337,8 @@ def _raw_composed_image_name(slide, fingerprint):
 
 def _daily_quota_remaining(profile):
     today = timezone.localdate()
-    limit = profile.ai_image_daily_limit or settings.SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY
+    profile_limit = profile.ai_image_daily_limit or settings.SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY
+    limit = min(profile_limit, settings.SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY)
     used = SocialAIUsage.objects.filter(
         profile=profile,
         operation__in=[SocialAIUsage.Operation.IMAGE_GENERATION, SocialAIUsage.Operation.COMPOSED_SLIDE],

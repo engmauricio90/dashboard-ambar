@@ -4821,7 +4821,7 @@ class SocialAutomationAIVisionTests(TestCase):
         self.assertEqual(finished.get_final_image().name, finished.ai_composed_image.name)
         self.assertIsNone(rejected.get_final_image())
 
-    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AI_IMAGE_MAX_PER_TICK=8, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=8, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=20, SOCIAL_AI_IMAGE_MAX_PER_TICK=8, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=8, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
     def test_ai_finished_budget_primeiro_todos_slides_depois_retries(self):
         from .autonomous_carousel import gerar_carrossel_autonomo
         from .carousel_creative_blueprint import CarouselIdea, IdeaSelection
@@ -4853,6 +4853,7 @@ class SocialAutomationAIVisionTests(TestCase):
         OPENAI_API_KEY='key-test',
         OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test',
         OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test',
+        SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=20,
         SOCIAL_AI_IMAGE_MAX_PER_TICK=8,
         SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=8,
         SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2,
@@ -5304,8 +5305,8 @@ class SocialAutomationAIVisionTests(TestCase):
             slide.save()
             return ComposeSlideResult(slide=slide, composed=True, ready=True, attempts=1)
 
-        with mock.patch('social_automation.autonomous_carousel.compose_slide_with_ai', side_effect=fake_compose), mock.patch('social_automation.instagram._request'):
-            result = retomar_ai_finished_content(content)
+        with mock.patch('social_automation.autonomous_carousel.compose_slide_image_with_ai', side_effect=fake_compose), mock.patch('social_automation.instagram._request'):
+            result = self._drain_manual_resume(content)
 
         content.refresh_from_db()
         self.assertEqual(called, [4, 5, 6, 1])
@@ -5367,6 +5368,29 @@ class SocialAutomationAIVisionTests(TestCase):
             SocialAIUsage.objects.create(profile=self.profile, content=content, slide=content.carousel_slides.get(order=1), operation=SocialAIUsage.Operation.COMPOSED_SLIDE, success=True, metadata={'purpose': 'CAROUSEL_COMPOSED_SLIDE', 'provider_called': True})
         return content
 
+    def _drain_manual_resume(self, content, *, max_steps=20):
+        from .autonomous_carousel import advance_manual_resume_ai_finished, start_manual_resume_ai_finished
+
+        start = start_manual_resume_ai_finished(content)
+        result = start
+        generated = 0
+        processed = 0
+        approved = 0
+        failed = 0
+        for _ in range(max_steps):
+            result = advance_manual_resume_ai_finished(content)
+            generated += result.generated_images
+            processed += result.processed_slides
+            approved += result.approved_slides
+            failed += result.failed_slides
+            if not result.has_more_work:
+                break
+        result.generated_images = generated
+        result.processed_slides = processed
+        result.approved_slides = approved
+        result.failed_slides = failed
+        return result
+
     def test_work_queue_ordering_deterministico_pending_antes_retry(self):
         from .autonomous_carousel import get_composition_work_queue
 
@@ -5380,14 +5404,13 @@ class SocialAutomationAIVisionTests(TestCase):
     @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=20, SOCIAL_AI_IMAGE_MAX_PER_TICK=8, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=6, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
     def test_retomar_ai_finished_cap_6_processa_pendentes_sem_retry(self):
         from .composed_slide_review import ComposedSlideReviewResult
-        from .autonomous_carousel import retomar_ai_finished_content
 
         content = self._partial_ai_finished_content()
         client, provider = self._provider()
         good = ComposedSlideReviewResult(True, 100, 94, 92, 91, 93, [])
 
-        with mock.patch('social_automation.ai_slide_composer._client', return_value=client), mock.patch('social_automation.ai_slide_composer.moderar_conteudo', return_value=False), mock.patch('social_automation.ai_slide_composer.review_composed_slide', return_value=good), mock.patch('social_automation.instagram._request'):
-            result = retomar_ai_finished_content(content)
+        with mock.patch('social_automation.ai_slide_composer._client', return_value=client), mock.patch('social_automation.ai_slide_composer.moderar_conteudo', return_value=False), mock.patch('social_automation.composed_slide_review.review_composed_slide', return_value=good), mock.patch('social_automation.instagram._request'):
+            result = self._drain_manual_resume(content)
 
         self.assertEqual(provider.call_count, 5)
         self.assertEqual(result.generated_images, 5)
@@ -5398,14 +5421,13 @@ class SocialAutomationAIVisionTests(TestCase):
     @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=20, SOCIAL_AI_IMAGE_MAX_PER_TICK=8, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=8, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
     def test_retomar_ai_finished_cap_8_processa_pendentes_depois_retry(self):
         from .composed_slide_review import ComposedSlideReviewResult
-        from .autonomous_carousel import retomar_ai_finished_content
 
         content = self._partial_ai_finished_content()
         client, provider = self._provider()
         good = ComposedSlideReviewResult(True, 100, 94, 92, 91, 93, [])
 
-        with mock.patch('social_automation.ai_slide_composer._client', return_value=client), mock.patch('social_automation.ai_slide_composer.moderar_conteudo', return_value=False), mock.patch('social_automation.ai_slide_composer.review_composed_slide', return_value=good), mock.patch('social_automation.instagram._request'):
-            result = retomar_ai_finished_content(content)
+        with mock.patch('social_automation.ai_slide_composer._client', return_value=client), mock.patch('social_automation.ai_slide_composer.moderar_conteudo', return_value=False), mock.patch('social_automation.composed_slide_review.review_composed_slide', return_value=good), mock.patch('social_automation.instagram._request'):
+            result = self._drain_manual_resume(content)
 
         self.assertEqual(provider.call_count, 6)
         self.assertEqual(result.generated_images, 6)
@@ -5413,22 +5435,64 @@ class SocialAutomationAIVisionTests(TestCase):
         self.assertEqual(list(content.carousel_slides.filter(ai_composition_status=SocialCarouselSlide.CompositionStatus.READY).order_by('order').values_list('order', flat=True)), [1, 2, 3, 4, 5, 6])
         self.assertTrue(content.final_media_ready)
 
-    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=20, SOCIAL_AI_IMAGE_MAX_PER_TICK=3, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=8, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=4, SOCIAL_AI_IMAGE_MAX_PER_TICK=8, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=8, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
     def test_retomar_ai_finished_quota_menor_processa_tres_pendentes_com_reason(self):
         from .composed_slide_review import ComposedSlideReviewResult
-        from .autonomous_carousel import retomar_ai_finished_content
 
         content = self._partial_ai_finished_content()
+        self.profile.ai_image_daily_limit = 4
+        self.profile.save(update_fields=['ai_image_daily_limit', 'updated_at'])
         client, provider = self._provider()
         good = ComposedSlideReviewResult(True, 100, 94, 92, 91, 93, [])
 
-        with mock.patch('social_automation.ai_slide_composer._client', return_value=client), mock.patch('social_automation.ai_slide_composer.moderar_conteudo', return_value=False), mock.patch('social_automation.ai_slide_composer.review_composed_slide', return_value=good), mock.patch('social_automation.instagram._request'):
-            result = retomar_ai_finished_content(content)
+        with mock.patch('social_automation.ai_slide_composer._client', return_value=client), mock.patch('social_automation.ai_slide_composer.moderar_conteudo', return_value=False), mock.patch('social_automation.composed_slide_review.review_composed_slide', return_value=good), mock.patch('social_automation.instagram._request'):
+            result = self._drain_manual_resume(content)
 
         self.assertEqual(provider.call_count, 3)
         self.assertEqual(list(content.carousel_slides.filter(ai_composition_status=SocialCarouselSlide.CompositionStatus.READY).order_by('order').values_list('order', flat=True)), [2, 3, 4])
         self.assertEqual(result.pending_slides, 3)
-        self.assertIn('Slide 5:', ' '.join(result.messages))
+        self.assertIn('Nenhum slide pode ser composto', ' '.join(result.messages))
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=8, SOCIAL_AI_IMAGE_MAX_PER_TICK=1, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=8, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
+    def test_manual_resume_nao_usa_tick_como_teto_e_finaliza_343(self):
+        from .composed_slide_review import ComposedSlideReviewResult
+
+        content = self._partial_ai_finished_content(ready_orders={2, 3})
+        for order in [2, 3]:
+            SocialAIUsage.objects.create(
+                profile=self.profile,
+                content=content,
+                slide=content.carousel_slides.get(order=order),
+                operation=SocialAIUsage.Operation.COMPOSED_SLIDE,
+                success=True,
+                metadata={'purpose': 'CAROUSEL_COMPOSED_SLIDE', 'provider_called': True},
+            )
+        client, provider = self._provider()
+        good = ComposedSlideReviewResult(True, 100, 94, 92, 91, 93, [])
+
+        with mock.patch('social_automation.ai_slide_composer._client', return_value=client), mock.patch('social_automation.ai_slide_composer.moderar_conteudo', return_value=False), mock.patch('social_automation.composed_slide_review.review_composed_slide', return_value=good), mock.patch('social_automation.instagram._request'):
+            result = self._drain_manual_resume(content)
+
+        self.assertEqual(provider.call_count, 4)
+        self.assertEqual(result.generated_images, 4)
+        self.assertEqual(result.composition_calls_used, 7)
+        self.assertEqual(list(content.carousel_slides.filter(ai_composition_status=SocialCarouselSlide.CompositionStatus.READY).order_by('order').values_list('order', flat=True)), [1, 2, 3, 4, 5, 6])
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=20, SOCIAL_AI_IMAGE_MAX_PER_TICK=1, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=8, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
+    def test_manual_resume_tick_um_processa_tres_pendentes_em_um_clique(self):
+        from .composed_slide_review import ComposedSlideReviewResult
+
+        content = self._partial_ai_finished_content(error_attempts=2)
+        client, provider = self._provider()
+        good = ComposedSlideReviewResult(True, 100, 94, 92, 91, 93, [])
+
+        with mock.patch('social_automation.ai_slide_composer._client', return_value=client), mock.patch('social_automation.ai_slide_composer.moderar_conteudo', return_value=False), mock.patch('social_automation.composed_slide_review.review_composed_slide', return_value=good), mock.patch('social_automation.instagram._request'):
+            result = self._drain_manual_resume(content)
+
+        self.assertEqual(provider.call_count, 5)
+        self.assertEqual(result.generated_images, 5)
+        self.assertEqual(content.carousel_slides.get(order=1).ai_composition_status, SocialCarouselSlide.CompositionStatus.ERROR)
+        self.assertEqual(list(content.carousel_slides.filter(ai_composition_status=SocialCarouselSlide.CompositionStatus.READY).order_by('order').values_list('order', flat=True)), [2, 3, 4, 5, 6])
 
     def test_composition_budget_conta_somente_provider_calls(self):
         from .autonomous_carousel import composition_calls_used
@@ -5444,7 +5508,7 @@ class SocialAutomationAIVisionTests(TestCase):
         self.assertEqual(composition_calls_used(content), 1)
 
     @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=20, SOCIAL_AI_IMAGE_MAX_PER_TICK=8, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=8, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
-    def test_action_manual_continuar_executa_pendentes_e_mostra_resumo(self):
+    def test_action_manual_continuar_inicia_sem_compor_e_advance_processa_uma_etapa(self):
         from .composed_slide_review import ComposedSlideReviewResult
 
         content = self._partial_ai_finished_content()
@@ -5453,22 +5517,92 @@ class SocialAutomationAIVisionTests(TestCase):
         client, provider = self._provider()
         good = ComposedSlideReviewResult(True, 100, 94, 92, 91, 93, [])
 
-        with mock.patch('social_automation.ai_slide_composer._client', return_value=client), mock.patch('social_automation.ai_slide_composer.moderar_conteudo', return_value=False), mock.patch('social_automation.ai_slide_composer.review_composed_slide', return_value=good), mock.patch('social_automation.instagram._request'):
+        with mock.patch('social_automation.ai_slide_composer._client', return_value=client), mock.patch('social_automation.ai_slide_composer.moderar_conteudo', return_value=False), mock.patch('social_automation.composed_slide_review.review_composed_slide', return_value=good), mock.patch('social_automation.instagram._request'):
             response = self.client.post(reverse('social_automation:content_resume_ai_finished', args=[content.id]), follow=True)
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(provider.call_count, 0)
+        self.assertContains(response, 'Composicao IA em andamento')
+        self.assertIn('Retomada AI_FINISHED incremental iniciada.', SocialContentEvent.objects.filter(content=content).latest('created_at').detalhe)
+
+        with mock.patch('social_automation.ai_slide_composer._client', return_value=client), mock.patch('social_automation.ai_slide_composer.moderar_conteudo', return_value=False), mock.patch('social_automation.composed_slide_review.review_composed_slide', return_value=good), mock.patch('social_automation.instagram._request'):
+            advance = self.client.post(reverse('social_automation:content_resume_ai_finished_advance', args=[content.id]))
+
+        self.assertEqual(advance.status_code, 200)
+        self.assertEqual(provider.call_count, 1)
+        self.assertEqual(advance.json()['step'], 'COMPOSE')
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=20, SOCIAL_AI_IMAGE_MAX_PER_TICK=8, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=8, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
+    def test_manual_resume_advance_compoe_um_slide_e_revisa_no_proximo_request(self):
+        from .autonomous_carousel import advance_manual_resume_ai_finished, start_manual_resume_ai_finished
+        from .composed_slide_review import ComposedSlideReviewResult
+
+        content = self._partial_ai_finished_content()
+        client, provider = self._provider()
+        good = ComposedSlideReviewResult(True, 100, 94, 92, 91, 93, [])
+
+        with mock.patch('social_automation.ai_slide_composer._client', return_value=client), mock.patch('social_automation.ai_slide_composer.moderar_conteudo', return_value=False), mock.patch('social_automation.composed_slide_review.review_composed_slide', return_value=good) as reviewer, mock.patch('social_automation.instagram._request'):
+            start = start_manual_resume_ai_finished(content)
+            first = advance_manual_resume_ai_finished(content)
+            slide = content.carousel_slides.get(order=2)
+            self.assertEqual(start.step, 'START')
+            self.assertEqual(first.step, 'COMPOSE')
+            self.assertEqual(first.slide_order, 2)
+            self.assertEqual(provider.call_count, 1)
+            reviewer.assert_not_called()
+            self.assertEqual(slide.ai_composition_status, SocialCarouselSlide.CompositionStatus.REVIEWING)
+
+            second = advance_manual_resume_ai_finished(content)
+            slide.refresh_from_db()
+
+        self.assertEqual(second.step, 'REVIEW')
+        self.assertEqual(second.slide_order, 2)
+        self.assertEqual(provider.call_count, 1)
+        reviewer.assert_called_once()
+        self.assertEqual(slide.ai_composition_status, SocialCarouselSlide.CompositionStatus.READY)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=20, SOCIAL_AI_IMAGE_MAX_PER_TICK=8, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=8, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
+    def test_manual_resume_duplo_clique_nao_inicia_execucao_paralela(self):
+        from .autonomous_carousel import CarouselExecutionMode, start_manual_resume_ai_finished
+
+        content = self._partial_ai_finished_content()
+        SocialCarouselGenerationRun.objects.create(
+            profile=self.profile,
+            content=content,
+            generation_mode=SocialProfile.CarouselGenerationMode.AI_FINISHED,
+            status=SocialCarouselGenerationRun.Status.COMPOSING,
+            metadata={'resume': True, 'execution_mode': CarouselExecutionMode.MANUAL_RESUME},
+        )
+
+        with mock.patch('social_automation.autonomous_carousel.compose_slide_image_with_ai') as composer:
+            result = start_manual_resume_ai_finished(content)
+
+        composer.assert_not_called()
+        self.assertIn('Composicao ja esta em andamento.', result.messages)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=20, SOCIAL_AI_IMAGE_MAX_PER_TICK=8, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=8, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
+    def test_manual_resume_falha_em_um_slide_nao_impede_os_seguintes(self):
+        from .composed_slide_review import ComposedSlideReviewResult
+
+        content = self._partial_ai_finished_content(error_attempts=2)
+        client, provider = self._provider()
+        bad = ComposedSlideReviewResult(False, 60, 94, 92, 91, 93, ['Arte reprovada.'])
+        good = ComposedSlideReviewResult(True, 100, 94, 92, 91, 93, [])
+
+        with mock.patch('social_automation.ai_slide_composer._client', return_value=client), mock.patch('social_automation.ai_slide_composer.moderar_conteudo', return_value=False), mock.patch('social_automation.composed_slide_review.review_composed_slide', side_effect=[bad, good, good, good, good, good]), mock.patch('social_automation.instagram._request'):
+            result = self._drain_manual_resume(content)
+
         self.assertEqual(provider.call_count, 6)
-        self.assertContains(response, 'chamadas usadas')
-        self.assertIn('Retomada AI_FINISHED:', SocialContentEvent.objects.filter(content=content).latest('created_at').detalhe)
+        self.assertEqual(result.failed_slides, 1)
+        self.assertEqual(list(content.carousel_slides.filter(ai_composition_status=SocialCarouselSlide.CompositionStatus.READY).order_by('order').values_list('order', flat=True)), [2, 3, 4, 5, 6])
 
     @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AI_IMAGE_MAX_PER_TICK=8, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=1, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
     def test_zero_work_por_cap_retorna_reason_explicito(self):
-        from .autonomous_carousel import retomar_ai_finished_content
 
         content = self._partial_ai_finished_content()
 
         with mock.patch('social_automation.ai_slide_composer._client') as provider, mock.patch('social_automation.instagram._request'):
-            result = retomar_ai_finished_content(content)
+            result = self._drain_manual_resume(content)
 
         provider.assert_not_called()
         self.assertEqual(result.generated_images, 0)
