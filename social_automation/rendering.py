@@ -1,9 +1,11 @@
 from io import BytesIO
-from pathlib import Path
 from uuid import uuid4
 
 from django.core.files.base import ContentFile
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageOps
+
+from .typography import load_font, typography_for_identity
+from .visual_composer import visual_identity_for_profile
 
 
 class SocialRenderError(Exception):
@@ -21,17 +23,10 @@ ACCEPTABLE_MAX_LINES = 5
 TEXT_BOX_PADDING = 24
 
 
-def _font(size):
-    candidates = [
-        Path('C:/Windows/Fonts/arialbd.ttf'),
-        Path('C:/Windows/Fonts/arial.ttf'),
-        Path('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'),
-        Path('/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf'),
-    ]
-    for path in candidates:
-        if path.exists():
-            return ImageFont.truetype(str(path), size=size)
-    return ImageFont.load_default(size=size)
+def _font(size, typography=None, *, weight=None):
+    if typography:
+        return load_font(size, family=typography.family, weight=weight or typography.weight)
+    return load_font(size, family='SYSTEM_BOLD', weight=weight or 700)
 
 
 def _text_width(draw, text, font):
@@ -63,10 +58,11 @@ def _wrap(draw, text, font, max_width):
     return lines
 
 
-def _layout_candidate(draw, text, max_width, max_height, size):
-    font = _font(size)
+def _layout_candidate(draw, text, max_width, max_height, size, typography=None):
+    font = _font(size, typography)
     lines = _wrap(draw, text, font, max_width)
-    line_height = _line_height(draw, font) + max(8, size // 7)
+    spacing_factor = typography.line_spacing if typography else 1.0
+    line_height = _line_height(draw, font) + max(4, round(max(8, size // 7) * spacing_factor))
     total_height = line_height * len(lines)
     fits = total_height <= max_height and all(_text_width(draw, line, font) <= max_width for line in lines)
     return {
@@ -92,19 +88,23 @@ def _candidate_score(candidate):
     return (line_penalty, -candidate['size'])
 
 
-def _layout_text(draw, text, max_width, max_height):
+def _layout_text(draw, text, max_width, max_height, typography=None):
     candidates = []
-    for size in range(MAX_FONT_SIZE, MIN_FONT_SIZE - 1, -2):
-        candidate = _layout_candidate(draw, text, max_width, max_height, size)
+    scale = typography.scale if typography else 1.0
+    max_size = max(MIN_FONT_SIZE, round(MAX_FONT_SIZE * scale))
+    min_size = max(20, round(MIN_FONT_SIZE * scale))
+    for size in range(max_size, min_size - 1, -2):
+        candidate = _layout_candidate(draw, text, max_width, max_height, size, typography)
         if candidate['fits']:
             candidates.append(candidate)
     if candidates:
         best = sorted(candidates, key=_candidate_score)[0]
         return best['font'], best['lines'], best['line_height'], best['total_height']
-    for size in range(MIN_FONT_SIZE - 2, 19, -2):
-        font = _font(size)
+    for size in range(min_size - 2, 19, -2):
+        font = _font(size, typography)
         lines = _wrap(draw, text, font, max_width)
-        line_height = _line_height(draw, font) + 8
+        spacing_factor = typography.line_spacing if typography else 1.0
+        line_height = _line_height(draw, font) + max(4, round(8 * spacing_factor))
         total_height = line_height * len(lines)
         if total_height <= max_height and all(_text_width(draw, line, font) <= max_width for line in lines):
             return font, lines, line_height, total_height
@@ -282,7 +282,8 @@ def _draw_text_box(overlay, text, box):
     region = box['region']
     inner = _inner_region(region)
     draw = ImageDraw.Draw(overlay)
-    font, lines, line_height, text_height = _layout_text(draw, text, inner[2], inner[3])
+    typography = box.get('typography')
+    font, lines, line_height, text_height = _layout_text(draw, text, inner[2], inner[3], typography)
 
     if box['align_vertical'] == 'top':
         y = inner[1]
@@ -302,8 +303,20 @@ def _draw_text_box(overlay, text, box):
             x = inner[0] + inner[2] - width
         else:
             x = inner[0] + (inner[2] - width) // 2
-        text_draw.text((x + 3, y + 4), line, font=font, fill=(0, 0, 0, 150))
-        text_draw.text((x, y), line, font=font, fill=(255, 255, 255, 255), stroke_width=3, stroke_fill=(0, 0, 0, 170))
+        shadow_offset = getattr(typography, 'shadow_offset', (3, 4))
+        shadow_alpha = getattr(typography, 'shadow_alpha', 150)
+        outline_width = getattr(typography, 'outline_width', 3)
+        outline_alpha = getattr(typography, 'outline_alpha', 170)
+        if shadow_alpha and shadow_offset != (0, 0):
+            text_draw.text((x + shadow_offset[0], y + shadow_offset[1]), line, font=font, fill=(0, 0, 0, shadow_alpha))
+        text_draw.text(
+            (x, y),
+            line,
+            font=font,
+            fill=(255, 255, 255, 255),
+            stroke_width=outline_width,
+            stroke_fill=(0, 0, 0, outline_alpha),
+        )
         y += line_height
 
     mask = Image.new('L', canvas_size, 0)
@@ -332,8 +345,10 @@ def renderizar_conteudo_social(content):
 
     overlay = Image.new('RGBA', CANVAS_SIZE, (0, 0, 0, 0))
     boxes = _text_boxes(content.base_image)
+    typography = typography_for_identity(visual_identity_for_profile(content.profile), context='image')
     last_error = None
     for box in boxes:
+        box = {**box, 'typography': typography}
         candidate_overlay = Image.new('RGBA', CANVAS_SIZE, (0, 0, 0, 0))
         _apply_gradient(candidate_overlay, box['gradient_position'], box['region'])
         try:

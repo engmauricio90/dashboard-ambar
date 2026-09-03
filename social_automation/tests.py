@@ -21,7 +21,7 @@ from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 from empresas.models import Empresa, UsuarioEmpresa
 
@@ -49,7 +49,7 @@ from .container_versioning import (
     calculate_instagram_container_fingerprint,
     invalidate_instagram_container,
 )
-from .forms import SocialCarouselSlideFormSet
+from .forms import SocialCarouselSlideFormSet, SocialProfileForm
 from .generation import GenerationResult, _image_contexts, gerar_lote_conteudos
 from .image_selection import selecionar_imagem_base
 from .image_generation import SocialImageGenerationDisabled, SocialImagePrompt, build_image_generation_prompt, generate_social_image, image_generation_available
@@ -86,10 +86,13 @@ from .instagram import (
 )
 from .rendering import CANVAS_SIZE, REEL_CANVAS_SIZE, SocialRenderError, renderizar_conteudo_social
 from .rendering import _draw_text_box, _layout_text, _reel_text_boxes, _region, _text_boxes
+from .carousel_rendering import renderizar_carrossel_social
 from .scheduler import build_daily_media_plan, estoque_alvo_profile, estoque_minimo_profile, estoque_pronto, estoque_pronto_por_tipo, estoque_reservado_por_tipo, media_type_for_slot, plano_geracao_por_deficit, preencher_agenda, slot_reservado
 from .token_crypto import InstagramTokenEncryptionError, decrypt_instagram_token, encrypt_instagram_token
+from .typography import TypographyConfig, load_font, resolve_font_path, typography_for_identity
 from .video_rendering import (
     SocialVideoRenderError,
+    _compose_reel_frame,
     _ffmpeg_command,
     _validate_output_file,
     auditar_video_reel,
@@ -828,6 +831,181 @@ class SocialAutomationRenderingPositionTests(TestCase):
         ImageDraw.Draw(outside).rectangle((100, 200, 460, 420), fill=0)
         outside_alpha = Image.composite(alpha, Image.new('L', (1080, 1080), 0), outside)
         self.assertIsNone(outside_alpha.getbbox())
+
+    def test_registry_resolve_fonte_valida_ou_fallback_controlado(self):
+        font = load_font(32, family='SYSTEM_BOLD', weight=700)
+
+        self.assertIsNotNone(font)
+
+    def test_fonte_inexistente_usa_fallback_sem_quebrar(self):
+        with mock.patch('social_automation.typography.resolve_font_path', return_value=None):
+            font = load_font(28, family='NAO_EXISTE', weight=999)
+
+        self.assertIsNotNone(font)
+
+    def test_perfis_podem_ter_tipografias_diferentes(self):
+        other = SocialProfile.objects.create(nome='Perfil B', username='@perfilb', horarios_publicacao=['13:00'])
+        SocialVisualIdentity.objects.create(profile=self.profile, font_primary='BOLD_SOCIAL', font_weight_title=800)
+        SocialVisualIdentity.objects.create(profile=other, font_primary='EDITORIAL', font_weight_title=700)
+
+        typography_a = typography_for_identity(visual_identity_for_profile(self.profile), context='image')
+        typography_b = typography_for_identity(visual_identity_for_profile(other), context='image')
+
+        self.assertEqual(typography_a.family, 'BOLD_SOCIAL')
+        self.assertEqual(typography_b.family, 'EDITORIAL')
+        self.assertNotEqual(typography_a.family, typography_b.family)
+
+    def test_escala_e_espacamento_alteram_layout_sem_perder_autofit(self):
+        canvas = Image.new('RGBA', (1080, 1080))
+        draw = ImageDraw.Draw(canvas)
+        text = 'Uma frase de teste para medir escala e espacamento'
+        normal = TypographyConfig(scale=1.0, line_spacing=1.0)
+        large = TypographyConfig(scale=1.2, line_spacing=1.28)
+
+        _font_a, lines_a, line_height_a, height_a = _layout_text(draw, text, 760, 360, normal)
+        _font_b, lines_b, line_height_b, height_b = _layout_text(draw, text, 760, 360, large)
+
+        self.assertGreaterEqual(line_height_b, line_height_a)
+        self.assertLessEqual(height_b, 360)
+        self.assertLessEqual(height_a, 360)
+        self.assertTrue(lines_a)
+        self.assertTrue(lines_b)
+
+    def test_outline_e_shadow_funcionam_sem_vazar_da_caixa(self):
+        overlay = Image.new('RGBA', (1080, 1080), (0, 0, 0, 0))
+        typography = TypographyConfig(outline_width=5, outline_alpha=220, shadow_offset=(3, 4), shadow_alpha=150)
+        box = {
+            'name': 'primary',
+            'region': (160, 160, 420, 260),
+            'align_horizontal': 'center',
+            'align_vertical': 'middle',
+            'gradient_position': 'left',
+            'typography': typography,
+        }
+
+        _draw_text_box(overlay, 'Texto com contorno forte', box)
+
+        alpha = overlay.getchannel('A')
+        outside = Image.new('L', (1080, 1080), 255)
+        ImageDraw.Draw(outside).rectangle((160, 160, 580, 420), fill=0)
+        outside_alpha = Image.composite(alpha, Image.new('L', (1080, 1080), 0), outside)
+        self.assertIsNone(outside_alpha.getbbox())
+
+    def test_image_usa_tipografia_configurada_do_perfil(self):
+        SocialVisualIdentity.objects.create(profile=self.profile, font_primary='BOLD_SOCIAL', font_weight_title=800, font_scale='LARGE')
+        calls = []
+
+        def fake_font(size, *, family='SYSTEM_BOLD', weight=700):
+            calls.append((family, weight, size))
+            return ImageFont.load_default()
+
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            content = self._content(self._image(SocialBaseImage.TextPosition.BOTTOM), frase='Frase curta')
+            with mock.patch('social_automation.rendering.load_font', side_effect=fake_font):
+                renderizar_conteudo_social(content)
+
+        self.assertTrue(any(call[0] == 'BOLD_SOCIAL' and call[1] == 800 for call in calls))
+
+    def test_reel_usa_tipografia_configurada_do_perfil(self):
+        SocialVisualIdentity.objects.create(profile=self.profile, font_primary='CONDENSED', font_weight_title=800, font_scale='LARGE')
+        calls = []
+
+        def fake_font(size, *, family='SYSTEM_BOLD', weight=700):
+            calls.append((family, weight, size))
+            return ImageFont.load_default()
+
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            content = self._content(self._image(SocialBaseImage.TextPosition.BOTTOM), frase='Frase curta')
+            content.media_type = SocialContent.MediaType.REEL
+            content.save(update_fields=['media_type', 'updated_at'])
+            with mock.patch('social_automation.rendering.load_font', side_effect=fake_font):
+                frame = _compose_reel_frame(content)
+
+        self.assertEqual(frame.size, (1080, 1920))
+        self.assertTrue(any(call[0] == 'CONDENSED' and call[1] == 800 for call in calls))
+
+    def test_system_composed_registra_tipografia_no_render_metadata(self):
+        SocialVisualIdentity.objects.create(profile=self.profile, font_primary='EDITORIAL', font_weight_title=700, font_scale='SMALL', line_spacing='WIDE')
+        template = SocialCarouselTemplate.objects.create(profile=self.profile, name='Template tipografia', is_default=True)
+        content = SocialContent.objects.create(profile=self.profile, media_type=SocialContent.MediaType.CAROUSEL, carousel_template=template, frase='Carrossel')
+        SocialCarouselSlide.objects.create(content=content, order=1, slide_type=SocialCarouselSlide.SlideType.COVER, title='Capa curta')
+        SocialCarouselSlide.objects.create(content=content, order=2, slide_type=SocialCarouselSlide.SlideType.CONTENT, title='Conteudo', body='Um texto curto')
+
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            renderizar_carrossel_social(content)
+
+        first = content.carousel_slides.order_by('order').first()
+        first.refresh_from_db()
+        self.assertEqual(first.render_metadata['typography']['family'], 'EDITORIAL')
+        self.assertEqual(first.render_metadata['typography']['scale'], 0.9)
+
+    def test_fingerprint_operacional_muda_ao_trocar_tipografia(self):
+        identity = SocialVisualIdentity.objects.create(profile=self.profile, font_primary='MODERN', font_weight_title=700)
+        template = SocialCarouselTemplate.objects.create(profile=self.profile, name='Template fingerprint', is_default=True)
+        content = SocialContent.objects.create(profile=self.profile, media_type=SocialContent.MediaType.CAROUSEL, carousel_template=template, frase='Carrossel')
+        slide = SocialCarouselSlide.objects.create(content=content, order=1, slide_type=SocialCarouselSlide.SlideType.COVER, title='Capa curta')
+
+        before = compose_carousel_slide(slide, template, 1).metadata['typography']
+        identity.font_primary = 'BOLD_SOCIAL'
+        identity.font_weight_title = 800
+        identity.save(update_fields=['font_primary', 'font_weight_title', 'updated_at'])
+        after = compose_carousel_slide(slide, template, 1).metadata['typography']
+
+        self.assertNotEqual(before, after)
+
+    def test_form_do_perfil_salva_tipografia_na_identidade_padrao(self):
+        data = {
+            'nome': self.profile.nome,
+            'username': self.profile.username,
+            'plataforma': SocialProfile.Plataforma.INSTAGRAM,
+            'ativo': 'on',
+            'timezone': 'America/Sao_Paulo',
+            'modo_operacao': SocialProfile.ModoOperacao.SEMIAUTOMATICO,
+            'posts_por_dia': '2',
+            'reels_por_dia': '0',
+            'carousels_por_dia': '0',
+            'carousel_default_slide_count': '6',
+            'horarios_texto': '12:00',
+            'carousel_generation_mode': SocialProfile.CarouselGenerationMode.SYSTEM_COMPOSED,
+            'carousel_creative_variation': SocialProfile.CarouselCreativeVariation.MEDIUM,
+            'carousel_fallback_policy': SocialProfile.CarouselFallbackPolicy.STRICT,
+            'carousel_editorial_mode': SocialProfile.CarouselEditorialMode.STANDARD,
+            'carousel_visual_mode': SocialProfile.CarouselVisualMode.STANDARD,
+            'carousel_image_density': SocialProfile.CarouselImageDensity.AUTO,
+            'carousel_max_same_image_uses': '0',
+            'ai_image_mode': SocialProfile.AIImagePolicy.NONE,
+            'ai_image_daily_limit': '0',
+            'limite_respostas': '0',
+            'typography_font_family': 'BOLD_SOCIAL',
+            'typography_font_weight': '800',
+            'typography_font_scale': 'LARGE',
+            'typography_line_spacing': 'COMPACT',
+            'typography_text_outline': 'MEDIUM',
+            'typography_text_shadow': 'SOFT',
+        }
+
+        form = SocialProfileForm(data=data, instance=self.profile)
+
+        self.assertTrue(form.is_valid(), form.errors)
+        form.save()
+        identity = self.profile.visual_identities.get(is_default=True)
+        self.assertEqual(identity.font_primary, 'BOLD_SOCIAL')
+        self.assertEqual(identity.font_weight_title, 800)
+        self.assertEqual(identity.font_scale, 'LARGE')
+        self.assertEqual(identity.line_spacing, 'COMPACT')
+        self.assertEqual(identity.text_outline, 'MEDIUM')
+        self.assertEqual(identity.text_shadow, 'SOFT')
+
+    def test_ai_finished_nao_usa_renderer_de_texto_do_sistema(self):
+        from .ai_slide_composer import _brand_overlay_font
+
+        SocialVisualIdentity.objects.create(profile=self.profile, font_primary='BOLD_SOCIAL', font_weight_title=800)
+
+        with mock.patch('social_automation.rendering.load_font') as renderer_font:
+            font = _brand_overlay_font(28)
+
+        self.assertIsNotNone(font)
+        renderer_font.assert_not_called()
 
     def test_form_salva_posicao_e_choice_invalido_falha(self):
         with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):

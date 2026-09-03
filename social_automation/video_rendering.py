@@ -11,6 +11,8 @@ from django.core.files.base import ContentFile
 from PIL import Image, ImageFilter, ImageOps
 
 from .rendering import CANVAS_SIZE, SocialRenderError, _apply_gradient, _draw_text_box, _reel_text_boxes
+from .typography import typography_for_identity
+from .visual_composer import visual_identity_for_profile
 
 
 REEL_SIZE = (1080, 1920)
@@ -80,8 +82,10 @@ def _compose_reel_frame(content):
         boxes.append({**box, 'region': (scaled[0], y0, scaled[2], max(1, y1 - y0))})
 
     overlay = Image.new('RGBA', REEL_SIZE, (0, 0, 0, 0))
+    typography = typography_for_identity(visual_identity_for_profile(content.profile), context='reel')
     last_error = None
     for box in boxes:
+        box = {**box, 'typography': typography}
         candidate = Image.new('RGBA', REEL_SIZE, (0, 0, 0, 0))
         _apply_gradient(candidate, box['gradient_position'], box['region'])
         try:

@@ -17,6 +17,14 @@ from .models import (
     SocialVisualIdentity,
     validate_horarios_publicacao,
 )
+from .typography import (
+    FONT_FAMILY_CHOICES,
+    FONT_SCALE_CHOICES,
+    FONT_WEIGHT_CHOICES,
+    LINE_SPACING_CHOICES,
+    TEXT_OUTLINE_CHOICES,
+    TEXT_SHADOW_CHOICES,
+)
 
 
 class BootstrapMixin:
@@ -38,6 +46,12 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
         help_text='Use um horario por linha ou separado por virgula. Ex.: 12:00, 19:30',
         widget=forms.Textarea(attrs={'rows': 2}),
     )
+    typography_font_family = forms.ChoiceField(label='Fonte principal', choices=FONT_FAMILY_CHOICES, required=False)
+    typography_font_weight = forms.TypedChoiceField(label='Peso', choices=FONT_WEIGHT_CHOICES, coerce=int, required=False)
+    typography_font_scale = forms.ChoiceField(label='Escala da fonte', choices=FONT_SCALE_CHOICES, required=False)
+    typography_line_spacing = forms.ChoiceField(label='Espacamento entre linhas', choices=LINE_SPACING_CHOICES, required=False)
+    typography_text_outline = forms.ChoiceField(label='Contorno', choices=TEXT_OUTLINE_CHOICES, required=False)
+    typography_text_shadow = forms.ChoiceField(label='Sombra', choices=TEXT_SHADOW_CHOICES, required=False)
 
     class Meta:
         model = SocialProfile
@@ -134,6 +148,27 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
         self.fields['ai_image_daily_limit'].help_text = '0 usa o limite padrao do sistema.'
         self.fields['ai_generated_images_reusable'].required = False
         self.fields['image_ai_instructions'].required = False
+        for field_name in [
+            'typography_font_family',
+            'typography_font_weight',
+            'typography_font_scale',
+            'typography_line_spacing',
+            'typography_text_outline',
+            'typography_text_shadow',
+        ]:
+            self.fields[field_name].widget.attrs['class'] = 'form-select'
+        identity = self._default_visual_identity()
+        self.fields['typography_font_family'].initial = getattr(identity, 'font_primary', 'SYSTEM_BOLD')
+        self.fields['typography_font_weight'].initial = getattr(identity, 'font_weight_title', 700)
+        self.fields['typography_font_scale'].initial = getattr(identity, 'font_scale', 'NORMAL')
+        self.fields['typography_line_spacing'].initial = getattr(identity, 'line_spacing', 'NORMAL')
+        self.fields['typography_text_outline'].initial = getattr(identity, 'text_outline', 'AUTO')
+        self.fields['typography_text_shadow'].initial = getattr(identity, 'text_shadow', 'AUTO')
+
+    def _default_visual_identity(self):
+        if not self.instance or not self.instance.pk:
+            return None
+        return self.instance.visual_identities.filter(active=True, is_default=True).first() or self.instance.visual_identities.filter(active=True).first()
 
     def clean_horarios_texto(self):
         raw = self.cleaned_data.get('horarios_texto') or ''
@@ -197,7 +232,22 @@ class SocialProfileForm(BootstrapMixin, forms.ModelForm):
         instance.horarios_publicacao = self.cleaned_data['horarios_texto']
         if commit:
             instance.save()
+            self._save_typography(instance)
         return instance
+
+    def _save_typography(self, profile):
+        identity = profile.visual_identities.filter(is_default=True).first() or profile.visual_identities.first()
+        if identity is None:
+            identity = SocialVisualIdentity(profile=profile, name='Identidade padrao', brand_name=profile.nome)
+        identity.font_primary = self.cleaned_data.get('typography_font_family') or 'SYSTEM_BOLD'
+        identity.font_weight_title = self.cleaned_data.get('typography_font_weight') or 700
+        identity.font_scale = self.cleaned_data.get('typography_font_scale') or 'NORMAL'
+        identity.line_spacing = self.cleaned_data.get('typography_line_spacing') or 'NORMAL'
+        identity.text_outline = self.cleaned_data.get('typography_text_outline') or 'AUTO'
+        identity.text_shadow = self.cleaned_data.get('typography_text_shadow') or 'AUTO'
+        if not identity.brand_name:
+            identity.brand_name = profile.nome
+        identity.save()
 
 
 class SocialBaseImageForm(BootstrapMixin, forms.ModelForm):
@@ -398,6 +448,9 @@ class SocialBaseImageForm(BootstrapMixin, forms.ModelForm):
 
 
 class SocialVisualIdentityForm(BootstrapMixin, forms.ModelForm):
+    font_weight_title = forms.TypedChoiceField(label='Peso do titulo', choices=FONT_WEIGHT_CHOICES, coerce=int, required=False)
+    font_weight_body = forms.TypedChoiceField(label='Peso do corpo', choices=FONT_WEIGHT_CHOICES, coerce=int, required=False)
+
     class Meta:
         model = SocialVisualIdentity
         fields = [
@@ -413,6 +466,10 @@ class SocialVisualIdentityForm(BootstrapMixin, forms.ModelForm):
             'font_secondary',
             'font_weight_title',
             'font_weight_body',
+            'font_scale',
+            'line_spacing',
+            'text_outline',
+            'text_shadow',
             'brand_name',
             'brand_logo',
             'show_brand_name',
@@ -424,8 +481,14 @@ class SocialVisualIdentityForm(BootstrapMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._apply_bootstrap()
-        for field_name in ['font_primary', 'font_secondary']:
+        for field_name in ['font_primary', 'font_secondary', 'font_weight_title', 'font_weight_body', 'font_scale', 'line_spacing', 'text_outline', 'text_shadow']:
             self.fields[field_name].widget.attrs['class'] = 'form-select'
+        self.fields['font_primary'].label = 'Fonte principal'
+        self.fields['font_secondary'].label = 'Fonte secundaria'
+        self.fields['font_scale'].label = 'Escala da fonte'
+        self.fields['line_spacing'].label = 'Espacamento entre linhas'
+        self.fields['text_outline'].label = 'Contorno'
+        self.fields['text_shadow'].label = 'Sombra'
         for field_name in [
             'primary_color',
             'secondary_color',

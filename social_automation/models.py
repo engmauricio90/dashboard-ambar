@@ -5,6 +5,8 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
+from .typography import FONT_FAMILY_CHOICES, FONT_SCALE_CHOICES, LINE_SPACING_CHOICES, TEXT_OUTLINE_CHOICES, TEXT_SHADOW_CHOICES
+
 from .token_crypto import decrypt_instagram_token, encrypt_instagram_token
 
 
@@ -192,11 +194,7 @@ class SocialProfile(models.Model):
 
 
 class SocialVisualIdentity(models.Model):
-    FONT_CHOICES = [
-        ('SYSTEM_BOLD', 'Sistema negrito'),
-        ('SYSTEM_REGULAR', 'Sistema regular'),
-        ('SANS_BOLD', 'Sans negrito'),
-    ]
+    FONT_CHOICES = FONT_FAMILY_CHOICES
 
     profile = models.ForeignKey(SocialProfile, on_delete=models.CASCADE, related_name='visual_identities')
     name = models.CharField(max_length=120, default='Identidade padrao')
@@ -211,6 +209,10 @@ class SocialVisualIdentity(models.Model):
     font_secondary = models.CharField(max_length=40, choices=FONT_CHOICES, default='SYSTEM_REGULAR')
     font_weight_title = models.PositiveSmallIntegerField(default=700)
     font_weight_body = models.PositiveSmallIntegerField(default=500)
+    font_scale = models.CharField(max_length=20, choices=FONT_SCALE_CHOICES, default='NORMAL')
+    line_spacing = models.CharField(max_length=20, choices=LINE_SPACING_CHOICES, default='NORMAL')
+    text_outline = models.CharField(max_length=20, choices=TEXT_OUTLINE_CHOICES, default='AUTO')
+    text_shadow = models.CharField(max_length=20, choices=TEXT_SHADOW_CHOICES, default='AUTO')
     brand_name = models.CharField(max_length=120, blank=True)
     brand_logo = models.ImageField(upload_to=social_visual_identity_logo_upload_to, blank=True, null=True)
     show_brand_name = models.BooleanField(default=True)

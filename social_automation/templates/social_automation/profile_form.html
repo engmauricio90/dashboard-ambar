@@ -46,6 +46,21 @@
             <div class="col-md-2 d-flex align-items-end"><div class="form-check mb-2">{{ form.carousel_allow_same_image }} <label class="form-check-label">{{ form.carousel_allow_same_image.label }}</label></div></div>
         </div>
         <hr>
+        <h5 class="mb-3">Tipografia das artes</h5>
+        <div class="row g-3">
+            <div class="col-md-4"><label class="form-label">{{ form.typography_font_family.label }}</label>{{ form.typography_font_family }}</div>
+            <div class="col-md-2"><label class="form-label">{{ form.typography_font_weight.label }}</label>{{ form.typography_font_weight }}</div>
+            <div class="col-md-2"><label class="form-label">{{ form.typography_font_scale.label }}</label>{{ form.typography_font_scale }}</div>
+            <div class="col-md-2"><label class="form-label">{{ form.typography_line_spacing.label }}</label>{{ form.typography_line_spacing }}</div>
+            <div class="col-md-1"><label class="form-label">{{ form.typography_text_outline.label }}</label>{{ form.typography_text_outline }}</div>
+            <div class="col-md-1"><label class="form-label">{{ form.typography_text_shadow.label }}</label>{{ form.typography_text_shadow }}</div>
+            <div class="col-12">
+                <div class="typography-preview border rounded p-4 bg-dark text-white" id="typography-preview">
+                    <div class="typography-preview-text" id="typography-preview-text">Eu disse que nao ia olhar.<br>Olhei.</div>
+                </div>
+            </div>
+        </div>
+        <hr>
         <h5 class="mb-3">Conteudo</h5>
         <div class="mb-3"><label class="form-label">{{ form.estilo.label }}</label>{{ form.estilo }}</div>
         <div class="mb-3"><label class="form-label">{{ form.instrucoes_ia.label }}</label>{{ form.instrucoes_ia }}</div>
@@ -68,4 +83,52 @@
         <a href="{% if profile %}{% url 'social_automation:profile_detail' profile.id %}{% else %}{% url 'social_automation:profile_list' %}{% endif %}" class="btn btn-outline-secondary">Cancelar</a>
     </div>
 </form>
+<style>
+    .typography-preview {
+        min-height: 160px;
+        display: flex;
+        align-items: center;
+    }
+    .typography-preview-text {
+        max-width: 680px;
+        font-size: 42px;
+        line-height: 1.08;
+        font-weight: 700;
+    }
+    .font-MODERN,
+    .font-SYSTEM_BOLD,
+    .font-SYSTEM_REGULAR,
+    .font-SANS_BOLD { font-family: Arial, Helvetica, sans-serif; }
+    .font-BOLD_SOCIAL,
+    .font-CONDENSED { font-family: Impact, "Arial Narrow", Arial, sans-serif; letter-spacing: .02em; }
+    .font-ROUNDED { font-family: "Trebuchet MS", Arial, sans-serif; }
+    .font-EDITORIAL { font-family: Georgia, "Times New Roman", serif; }
+</style>
+<script>
+    (function () {
+        const text = document.getElementById('typography-preview-text');
+        const family = document.getElementById('id_typography_font_family');
+        const weight = document.getElementById('id_typography_font_weight');
+        const scale = document.getElementById('id_typography_font_scale');
+        const spacing = document.getElementById('id_typography_line_spacing');
+        const outline = document.getElementById('id_typography_text_outline');
+        const shadow = document.getElementById('id_typography_text_shadow');
+        if (!text || !family) return;
+        const scales = {SMALL: 0.9, NORMAL: 1, LARGE: 1.1, XLARGE: 1.2};
+        const lines = {COMPACT: 0.94, NORMAL: 1.08, WIDE: 1.24};
+        const outlines = {AUTO: '0 0 2px rgba(0,0,0,.7)', NONE: 'none', SOFT: '0 0 1px rgba(0,0,0,.55)', MEDIUM: '0 0 2px rgba(0,0,0,.75)', STRONG: '0 0 3px rgba(0,0,0,.9)'};
+        const shadows = {AUTO: '3px 4px 0 rgba(0,0,0,.32)', NONE: 'none', SOFT: '2px 3px 0 rgba(0,0,0,.24)', MEDIUM: '3px 4px 0 rgba(0,0,0,.34)'};
+        function updatePreview() {
+            text.className = 'typography-preview-text font-' + family.value;
+            text.style.fontWeight = weight.value || 700;
+            text.style.fontSize = Math.round(42 * (scales[scale.value] || 1)) + 'px';
+            text.style.lineHeight = lines[spacing.value] || 1.08;
+            text.style.textShadow = shadows[shadow.value] || shadows.AUTO;
+            text.style.webkitTextStroke = outline.value === 'NONE' ? '0' : '1px rgba(0,0,0,.35)';
+            text.style.filter = outlines[outline.value] === 'none' ? 'none' : 'drop-shadow(0 0 1px rgba(0,0,0,.35))';
+        }
+        [family, weight, scale, spacing, outline, shadow].forEach((field) => field && field.addEventListener('change', updatePreview));
+        updatePreview();
+    })();
+</script>
 {% endblock %}

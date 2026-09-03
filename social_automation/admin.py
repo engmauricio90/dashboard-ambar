@@ -33,7 +33,21 @@ class SocialBaseImageProtectedRegionInline(admin.TabularInline):
 class SocialVisualIdentityInline(admin.StackedInline):
     model = SocialVisualIdentity
     extra = 0
-    fields = ['name', 'active', 'is_default', 'brand_name', 'primary_color', 'secondary_color', 'accent_color']
+    fields = [
+        'name',
+        'active',
+        'is_default',
+        'brand_name',
+        'primary_color',
+        'secondary_color',
+        'accent_color',
+        'font_primary',
+        'font_weight_title',
+        'font_scale',
+        'line_spacing',
+        'text_outline',
+        'text_shadow',
+    ]
 
 
 class SocialCarouselTemplateInline(admin.TabularInline):

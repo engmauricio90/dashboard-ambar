@@ -6,6 +6,7 @@ from PIL import Image, ImageDraw, ImageOps
 
 from .models import SocialCarouselSlide, SocialCarouselTemplate
 from .rendering import SocialRenderError, _font, _layout_text, _text_width
+from .typography import typography_for_identity
 from .visual_composer import VisualCompositionError, compose_carousel_slide
 
 
@@ -43,7 +44,7 @@ def _background(template):
     return image
 
 
-def _draw_aligned_lines(draw, lines, font, *, x, y, width, line_height, fill, align):
+def _draw_aligned_lines(draw, lines, font, *, x, y, width, line_height, fill, align, typography=None):
     for line in lines:
         line_width = _text_width(draw, line, font)
         if align == SocialCarouselTemplate.TextAlignment.RIGHT:
@@ -52,18 +53,31 @@ def _draw_aligned_lines(draw, lines, font, *, x, y, width, line_height, fill, al
             line_x = x + (width - line_width) // 2
         else:
             line_x = x
-        draw.text((line_x, y), line, font=font, fill=fill)
+        shadow_offset = getattr(typography, 'shadow_offset', (0, 0))
+        shadow_alpha = getattr(typography, 'shadow_alpha', 0)
+        outline_width = getattr(typography, 'outline_width', 0)
+        outline_alpha = getattr(typography, 'outline_alpha', 0)
+        if shadow_alpha and shadow_offset != (0, 0):
+            draw.text((line_x + shadow_offset[0], y + shadow_offset[1]), line, font=font, fill=(0, 0, 0, shadow_alpha))
+        draw.text(
+            (line_x, y),
+            line,
+            font=font,
+            fill=fill,
+            stroke_width=outline_width,
+            stroke_fill=(0, 0, 0, outline_alpha),
+        )
         y += line_height
     return y
 
 
-def _draw_label(draw, template, text, y, *, bold=False):
+def _draw_label(draw, template, text, y, *, bold=False, typography=None):
     if not text:
         return y
     width, height = template.canvas_size
     margin = 76
     font_size = 34 if bold else 28
-    font = _font(font_size)
+    font = _font(font_size, typography)
     fill = _hex_to_rgb(template.text_color, (255, 255, 255))
     draw.text((margin, y), text, font=font, fill=fill)
     return y + font_size + 16
@@ -92,7 +106,7 @@ def _apply_composed_overlay(canvas, decision):
     canvas.alpha_composite(overlay)
 
 
-def _draw_composed_text(draw, slide, decision):
+def _draw_composed_text(draw, slide, decision, typography):
     x, y, width, height = decision.text_box
     padding = min(34, max(width // 16, 12), max(height // 12, 12))
     inner_x = x + padding
@@ -106,7 +120,7 @@ def _draw_composed_text(draw, slide, decision):
     cursor_y = inner_y + 18
     if title:
         title_height = inner_height if not body else max(120, round(inner_height * 0.42))
-        title_font, title_lines, title_line_height, _ = _layout_text(draw, title, inner_width, title_height)
+        title_font, title_lines, title_line_height, _ = _layout_text(draw, title, inner_width, title_height, typography)
         cursor_y = _draw_aligned_lines(
             draw,
             title_lines,
@@ -117,11 +131,13 @@ def _draw_composed_text(draw, slide, decision):
             line_height=title_line_height,
             fill=decision.text_color,
             align=decision.align,
+            typography=typography,
         )
         cursor_y += 24
     if body:
         body_height = max(80, inner_y + inner_height - cursor_y)
-        body_font, body_lines, body_line_height, _ = _layout_text(draw, body, inner_width, body_height)
+        body_typography = typography
+        body_font, body_lines, body_line_height, _ = _layout_text(draw, body, inner_width, body_height, body_typography)
         _draw_aligned_lines(
             draw,
             body_lines,
@@ -132,6 +148,7 @@ def _draw_composed_text(draw, slide, decision):
             line_height=body_line_height,
             fill=decision.text_color,
             align=decision.align,
+            typography=body_typography,
         )
 
 
@@ -155,6 +172,10 @@ def _draw_composed_slide(canvas, slide, template, total_slides):
         decision = compose_carousel_slide(slide, template, total_slides)
     except VisualCompositionError as exc:
         raise SocialRenderError(str(exc)) from exc
+    identity = decision.source_base_image.profile.visual_identities.filter(active=True, is_default=True).first() if decision.source_base_image else slide.content.profile.visual_identities.filter(active=True, is_default=True).first()
+    if identity is None:
+        identity = slide.content.profile.visual_identities.filter(active=True).first()
+    typography = typography_for_identity(identity, context='carousel') if identity else None
     _paste_source(canvas, slide, decision)
     canvas_rgba = canvas.convert('RGBA')
     _apply_composed_overlay(canvas_rgba, decision)
@@ -163,16 +184,16 @@ def _draw_composed_slide(canvas, slide, template, total_slides):
     margin = 56
     if template.show_profile_name:
         label = decision.metadata.get('brand_name') or slide.content.profile.nome
-        draw.text((margin, margin), label, font=_font(28), fill=decision.text_color)
-    _draw_composed_text(draw, slide, decision)
+        draw.text((margin, margin), label, font=_font(28, typography), fill=decision.text_color)
+    _draw_composed_text(draw, slide, decision, typography)
     if template.show_slide_number:
         marker = f'{slide.order}/{total_slides}'
-        font = _font(28)
+        font = _font(28, typography)
         marker_width = _text_width(draw, marker, font)
         draw.text((width - margin - marker_width, height - margin), marker, font=font, fill=decision.text_color)
     if template.show_footer:
         footer = template.footer_text or slide.content.profile.username
-        draw.text((margin, height - margin), footer, font=_font(28), fill=decision.text_color)
+        draw.text((margin, height - margin), footer, font=_font(28, typography), fill=decision.text_color)
     slide.render_metadata = decision.metadata
     return canvas_rgba.convert('RGB')
 
@@ -183,6 +204,8 @@ def _draw_slide(canvas, slide, template, total_slides):
     margin = 76
     text_color = _hex_to_rgb(template.text_color, (255, 255, 255))
     accent_color = _hex_to_rgb(template.accent_color, (34, 197, 94))
+    identity = slide.content.profile.visual_identities.filter(active=True, is_default=True).first() or slide.content.profile.visual_identities.filter(active=True).first()
+    typography = typography_for_identity(identity, context='carousel') if identity else None
 
     if slide.source_image:
         with slide.source_image.open('rb') as arquivo:
@@ -193,7 +216,7 @@ def _draw_slide(canvas, slide, template, total_slides):
 
     y = margin
     if template.show_profile_name:
-        y = _draw_label(draw, template, slide.content.profile.nome, y)
+        y = _draw_label(draw, template, slide.content.profile.nome, y, typography=typography)
 
     draw.rectangle((margin, y + 12, margin + 92, y + 22), fill=accent_color)
     y += 58
@@ -210,7 +233,7 @@ def _draw_slide(canvas, slide, template, total_slides):
         body_height = 0
 
     if title:
-        title_font, title_lines, title_line_height, title_total_height = _layout_text(draw, title, max_width, title_height)
+        title_font, title_lines, title_line_height, title_total_height = _layout_text(draw, title, max_width, title_height, typography)
         y = _draw_aligned_lines(
             draw,
             title_lines,
@@ -221,11 +244,12 @@ def _draw_slide(canvas, slide, template, total_slides):
             line_height=title_line_height,
             fill=text_color,
             align=template.title_alignment,
+            typography=typography,
         )
         y += 28
 
     if body:
-        body_font, body_lines, body_line_height, body_total_height = _layout_text(draw, body, max_width, body_height)
+        body_font, body_lines, body_line_height, body_total_height = _layout_text(draw, body, max_width, body_height, typography)
         _draw_aligned_lines(
             draw,
             body_lines,
@@ -236,16 +260,17 @@ def _draw_slide(canvas, slide, template, total_slides):
             line_height=body_line_height,
             fill=text_color,
             align=template.body_alignment,
+            typography=typography,
         )
 
     if template.show_slide_number:
         marker = f'{slide.order}/{total_slides}'
-        font = _font(28)
+        font = _font(28, typography)
         marker_width = _text_width(draw, marker, font)
         draw.text((width - margin - marker_width, height - margin), marker, font=font, fill=text_color)
     if template.show_footer:
         footer = template.footer_text or slide.content.profile.username
-        font = _font(28)
+        font = _font(28, typography)
         draw.text((margin, height - margin), footer, font=font, fill=text_color)
 
 

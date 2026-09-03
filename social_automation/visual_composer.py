@@ -4,6 +4,7 @@ from hashlib import sha256
 from PIL import Image, ImageOps, ImageStat
 
 from .models import SocialBaseImage, SocialCarouselTemplateVariant, SocialVisualIdentity
+from .typography import typography_for_identity
 
 
 class VisualCompositionError(Exception):
@@ -269,6 +270,7 @@ def compose_carousel_slide(slide, template, total_slides):
     text_color = _choose_text_color(identity, slide, luminance)
     overlay_type, overlay_strength = _choose_overlay(variant, slide, candidate, luminance, identity)
     variant_name = variant.name if variant else f'AUTO {candidate.name}'
+    typography = typography_for_identity(identity, context='carousel')
     metadata = {
         'variant': variant_name,
         'layout_type': candidate.name,
@@ -282,6 +284,7 @@ def compose_carousel_slide(slide, template, total_slides):
         'protected_regions': regions,
         'luminance': luminance,
         'total_slides': total_slides,
+        'typography': typography.fingerprint_payload(),
     }
     return CompositionDecision(
         variant_name=variant_name,
