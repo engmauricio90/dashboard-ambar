@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
@@ -10,6 +11,36 @@ from django.db.models import Q
 
 from .models import SocialContent, SocialProfile
 from .services import registrar_evento
+
+RESERVED_STOCK_STATUSES = {
+    SocialContent.Status.RASCUNHO,
+    SocialContent.Status.APROVADO,
+    SocialContent.Status.AGENDADO,
+    SocialContent.Status.PUBLICANDO,
+    SocialContent.Status.ERRO,
+}
+
+READY_STOCK_STATUSES = {
+    SocialContent.Status.APROVADO,
+    SocialContent.Status.AGENDADO,
+}
+
+IN_PROGRESS_RUN_STATUSES = {
+    'IDEATING',
+    'IDEA_SELECTED',
+    'BLUEPRINT_READY',
+    'EDITORIAL_APPROVED',
+    'COMPOSING',
+    'REVIEWING',
+    'PARTIAL',
+}
+
+IN_PROGRESS_SLIDE_STATUSES = {
+    'PENDING',
+    'COMPOSING',
+    'REVIEWING',
+    'NEEDS_RECOMPOSE',
+}
 
 
 @dataclass
@@ -90,7 +121,7 @@ def estoque_pronto(profile: SocialProfile):
 
 
 def estoque_pronto_por_tipo(profile: SocialProfile):
-    approved_or_scheduled = profile.contents.filter(status__in=[SocialContent.Status.APROVADO, SocialContent.Status.AGENDADO])
+    approved_or_scheduled = profile.contents.filter(status__in=READY_STOCK_STATUSES)
     ready = approved_or_scheduled.filter(_ready_media_q()).distinct()
     ready_carousels = sum(
         1
@@ -101,6 +132,53 @@ def estoque_pronto_por_tipo(profile: SocialProfile):
         SocialContent.MediaType.IMAGE: ready.filter(media_type=SocialContent.MediaType.IMAGE).count(),
         SocialContent.MediaType.REEL: ready.filter(media_type=SocialContent.MediaType.REEL).count(),
         SocialContent.MediaType.CAROUSEL: ready_carousels,
+    }
+
+
+def estoque_reservado(profile: SocialProfile, *, now=None):
+    by_type = estoque_reservado_por_tipo(profile, now=now)
+    return sum(by_type.values())
+
+
+def estoque_reservado_por_tipo(profile: SocialProfile, *, now=None):
+    now = now or timezone.now()
+    contents = (
+        profile.contents.filter(status__in=RESERVED_STOCK_STATUSES)
+        .prefetch_related('carousel_slides', 'carousel_generation_runs', 'events')
+        .order_by('id')
+    )
+    totals = {
+        SocialContent.MediaType.IMAGE: 0,
+        SocialContent.MediaType.REEL: 0,
+        SocialContent.MediaType.CAROUSEL: 0,
+    }
+    for content in contents:
+        if _content_reserves_stock(content, now=now):
+            totals[content.media_type] += 1
+    return totals
+
+
+def estoque_em_andamento_por_tipo(profile: SocialProfile, *, now=None):
+    ready = estoque_pronto_por_tipo(profile)
+    reserved = estoque_reservado_por_tipo(profile, now=now)
+    return {
+        media_type: max(0, reserved[media_type] - ready[media_type])
+        for media_type in reserved
+    }
+
+
+def tipos_reservados_criados_desde(profile: SocialProfile, since, *, now=None, statuses=None):
+    now = now or timezone.now()
+    statuses = set(statuses or RESERVED_STOCK_STATUSES)
+    contents = (
+        profile.contents.filter(status__in=statuses, created_at__gte=since, created_at__lte=now)
+        .prefetch_related('carousel_slides', 'carousel_generation_runs', 'events')
+        .order_by('id')
+    )
+    return {
+        content.media_type
+        for content in contents
+        if _content_reserves_stock(content, now=now)
     }
 
 
@@ -137,7 +215,7 @@ def _target_counts(profile, target_total):
 
 
 def plano_geracao_por_deficit(profile, target_total, batch_limit):
-    current = estoque_pronto_por_tipo(profile)
+    current = estoque_reservado_por_tipo(profile)
     target = _target_counts(profile, target_total)
     missing = {
         SocialContent.MediaType.REEL: max(0, target[SocialContent.MediaType.REEL] - current[SocialContent.MediaType.REEL]),
@@ -155,6 +233,79 @@ def plano_geracao_por_deficit(profile, target_total, batch_limit):
         plan.append(media_type)
         missing[media_type] -= 1
     return plan
+
+
+def slot_reservado(profile, slot, media_type=None):
+    queryset = profile.contents.filter(status__in=RESERVED_STOCK_STATUSES, scheduled_at=slot)
+    if media_type:
+        queryset = queryset.filter(media_type=media_type)
+    return queryset.exists()
+
+
+def _content_reserves_stock(content, *, now):
+    if content.status in {SocialContent.Status.REJEITADO, SocialContent.Status.PUBLICADO}:
+        return False
+    if content.status in {SocialContent.Status.APROVADO, SocialContent.Status.AGENDADO, SocialContent.Status.PUBLICANDO}:
+        return True
+    if content.status == SocialContent.Status.ERRO:
+        return _content_error_can_reserve(content, now=now)
+    if content.status == SocialContent.Status.RASCUNHO:
+        return _content_has_auto_generation_signal(content) and (
+            _content_is_recent(content, now=now)
+            or _content_has_active_run(content, now=now)
+            or _carousel_has_pending_work(content)
+            or _content_has_final_media_file(content)
+        )
+    return False
+
+
+def _content_error_can_reserve(content, *, now):
+    max_retries = getattr(settings, 'SOCIAL_AUTOMATION_MAX_RETRIES', 3)
+    if content.tentativas < max_retries:
+        return True
+    return _content_has_active_run(content, now=now)
+
+
+def _content_has_active_run(content, *, now):
+    stale_before = now - timedelta(hours=_reserved_stock_stale_hours())
+    return any(
+        run.status in IN_PROGRESS_RUN_STATUSES and run.started_at >= stale_before
+        for run in content.carousel_generation_runs.all()
+    )
+
+
+def _carousel_has_pending_work(content):
+    if content.media_type != SocialContent.MediaType.CAROUSEL:
+        return False
+    return any(
+        slide.ai_composition_status in IN_PROGRESS_SLIDE_STATUSES
+        for slide in content.carousel_slides.all()
+    )
+
+
+def _content_has_auto_generation_signal(content):
+    if content.carousel_generation_runs.all():
+        return True
+    if content.events.all():
+        return True
+    return _content_has_final_media_file(content)
+
+
+def _content_has_final_media_file(content):
+    if content.media_type == SocialContent.MediaType.REEL:
+        return bool(content.final_video)
+    if content.media_type == SocialContent.MediaType.CAROUSEL:
+        return bool(content.carousel_slides.all())
+    return bool(content.final_image)
+
+
+def _content_is_recent(content, *, now):
+    timestamp = content.updated_at or content.created_at
+    return bool(timestamp and timestamp >= now - timedelta(hours=_reserved_stock_stale_hours()))
+
+
+def _reserved_stock_stale_hours():
+    return max(1, int(getattr(settings, 'SOCIAL_AUTOMATION_RESERVED_STOCK_STALE_HOURS', 72)))
 
 
 def proxima_publicacao(profile: SocialProfile, now=None):

@@ -86,7 +86,7 @@ from .instagram import (
 )
 from .rendering import CANVAS_SIZE, REEL_CANVAS_SIZE, SocialRenderError, renderizar_conteudo_social
 from .rendering import _draw_text_box, _layout_text, _reel_text_boxes, _region, _text_boxes
-from .scheduler import build_daily_media_plan, estoque_alvo_profile, estoque_minimo_profile, estoque_pronto, estoque_pronto_por_tipo, media_type_for_slot, plano_geracao_por_deficit, preencher_agenda
+from .scheduler import build_daily_media_plan, estoque_alvo_profile, estoque_minimo_profile, estoque_pronto, estoque_pronto_por_tipo, estoque_reservado_por_tipo, media_type_for_slot, plano_geracao_por_deficit, preencher_agenda, slot_reservado
 from .token_crypto import InstagramTokenEncryptionError, decrypt_instagram_token, encrypt_instagram_token
 from .video_rendering import (
     SocialVideoRenderError,
@@ -1674,6 +1674,144 @@ class SocialAutomationFullAutomationTests(TestCase):
                 else:
                     self.assertEqual(calls, [])
                     self.assertEqual(summary['profiles'][0]['generated'], 0)
+
+    @override_settings(
+        INSTAGRAM_EXPECTED_USERNAME='lailapistola',
+        SOCIAL_AUTOMATION_GENERATION_BATCH=5,
+        SOCIAL_AUTOMATION_MAX_CAROUSELS_PER_TICK=1,
+    )
+    def test_tick_nao_duplica_carrossel_rascunho_automatico_no_tick_seguinte(self):
+        self.profile.posts_por_dia = 1
+        self.profile.reels_por_dia = 0
+        self.profile.carousels_por_dia = 1
+        self.profile.carousel_generation_mode = SocialProfile.CarouselGenerationMode.AI_FINISHED
+        self.profile.save(update_fields=['posts_por_dia', 'reels_por_dia', 'carousels_por_dia', 'carousel_generation_mode', 'updated_at'])
+        created = []
+
+        def fake_generation(profile, quantidade, tema, usuario, media_types=None):
+            content = SocialContent.objects.create(profile=profile, media_type=SocialContent.MediaType.CAROUSEL, frase=f'Carousel {len(created)}', legenda='Legenda', status=SocialContent.Status.RASCUNHO)
+            SocialCarouselGenerationRun.objects.create(profile=profile, content=content, generation_mode=profile.carousel_generation_mode, status=SocialCarouselGenerationRun.Status.PARTIAL)
+            created.append(content.id)
+            return GenerationResult(solicitados=quantidade, criados=1, conteudos=[content])
+
+        now = timezone.now()
+        with mock.patch('social_automation.automation.gerar_lote_conteudos', side_effect=fake_generation):
+            first = executar_tick_social(use_lock=False, now=now)
+            second = executar_tick_social(use_lock=False, now=now + timedelta(minutes=5))
+
+        self.assertEqual(first['profiles'][0]['generated'], 1)
+        self.assertEqual(second['profiles'][0]['generated'], 0)
+        self.assertEqual(second['profiles'][0]['generation_reason'], 'RECENT_CREATION_GUARD')
+        self.assertEqual(SocialContent.objects.filter(profile=self.profile, media_type=SocialContent.MediaType.CAROUSEL).count(), 1)
+
+    @override_settings(
+        INSTAGRAM_EXPECTED_USERNAME='lailapistola',
+        SOCIAL_AUTOMATION_GENERATION_BATCH=5,
+        SOCIAL_AUTOMATION_MAX_CAROUSELS_PER_TICK=1,
+    )
+    def test_doze_ticks_nao_criam_um_carrossel_por_tick(self):
+        self.profile.posts_por_dia = 1
+        self.profile.reels_por_dia = 0
+        self.profile.carousels_por_dia = 1
+        self.profile.carousel_generation_mode = SocialProfile.CarouselGenerationMode.AI_FINISHED
+        self.profile.save(update_fields=['posts_por_dia', 'reels_por_dia', 'carousels_por_dia', 'carousel_generation_mode', 'updated_at'])
+
+        def fake_generation(profile, quantidade, tema, usuario, media_types=None):
+            content = SocialContent.objects.create(profile=profile, media_type=SocialContent.MediaType.CAROUSEL, frase='Carousel automatico', legenda='Legenda', status=SocialContent.Status.RASCUNHO)
+            SocialCarouselGenerationRun.objects.create(profile=profile, content=content, generation_mode=profile.carousel_generation_mode, status=SocialCarouselGenerationRun.Status.PARTIAL)
+            return GenerationResult(solicitados=quantidade, criados=1, conteudos=[content])
+
+        start = timezone.now()
+        with mock.patch('social_automation.automation.gerar_lote_conteudos', side_effect=fake_generation):
+            summaries = [executar_tick_social(use_lock=False, now=start + timedelta(minutes=5 * index)) for index in range(12)]
+
+        self.assertLessEqual(SocialContent.objects.filter(profile=self.profile, media_type=SocialContent.MediaType.CAROUSEL).count(), 3)
+        self.assertLess(sum(summary['profiles'][0]['generated'] for summary in summaries), 12)
+
+    def test_estoque_reservado_diferencia_status_de_carrossel(self):
+        statuses = [
+            SocialCarouselSlide.CompositionStatus.PENDING,
+            SocialCarouselSlide.CompositionStatus.COMPOSING,
+            SocialCarouselSlide.CompositionStatus.REVIEWING,
+            SocialCarouselSlide.CompositionStatus.READY,
+        ]
+        for index, status in enumerate(statuses, start=1):
+            content = SocialContent.objects.create(profile=self.profile, media_type=SocialContent.MediaType.CAROUSEL, frase=f'Reserva {index}', legenda='Legenda', status=SocialContent.Status.RASCUNHO)
+            SocialCarouselSlide.objects.create(content=content, order=1, title='Slide', render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED, ai_composition_status=status, ai_composed_image=imagem_social(f'reserva-{index}.jpg') if status == SocialCarouselSlide.CompositionStatus.READY else None)
+        agendado = SocialContent.objects.create(profile=self.profile, media_type=SocialContent.MediaType.CAROUSEL, frase='Agendado', legenda='Legenda', status=SocialContent.Status.AGENDADO, scheduled_at=timezone.now() + timedelta(hours=1))
+        SocialCarouselSlide.objects.create(content=agendado, order=1, title='Slide', rendered_image=imagem_social('agendado-carousel.jpg'))
+        rejeitado = SocialContent.objects.create(profile=self.profile, media_type=SocialContent.MediaType.CAROUSEL, frase='Rejeitado', legenda='Legenda', status=SocialContent.Status.REJEITADO)
+        SocialCarouselSlide.objects.create(content=rejeitado, order=1, title='Slide', render_mode=SocialCarouselSlide.RenderMode.AI_FINISHED, ai_composition_status=SocialCarouselSlide.CompositionStatus.PENDING)
+
+        reserved = estoque_reservado_por_tipo(self.profile)
+
+        self.assertEqual(reserved[SocialContent.MediaType.CAROUSEL], 5)
+
+    def test_error_recuperavel_reserva_e_rejeitado_nao_reserva(self):
+        erro = SocialContent.objects.create(profile=self.profile, media_type=SocialContent.MediaType.CAROUSEL, frase='Erro recuperavel', legenda='Legenda', status=SocialContent.Status.ERRO, tentativas=0)
+        SocialCarouselGenerationRun.objects.create(profile=self.profile, content=erro, generation_mode=SocialProfile.CarouselGenerationMode.AI_FINISHED, status=SocialCarouselGenerationRun.Status.PARTIAL)
+        SocialContent.objects.create(profile=self.profile, media_type=SocialContent.MediaType.CAROUSEL, frase='Rejeitado', legenda='Legenda', status=SocialContent.Status.REJEITADO)
+
+        reserved = estoque_reservado_por_tipo(self.profile)
+
+        self.assertEqual(reserved[SocialContent.MediaType.CAROUSEL], 1)
+
+    def test_slot_reservado_identifica_agendamento_existente(self):
+        slot = timezone.now() + timedelta(hours=2)
+        SocialContent.objects.create(profile=self.profile, media_type=SocialContent.MediaType.CAROUSEL, frase='Slot', legenda='Legenda', status=SocialContent.Status.AGENDADO, scheduled_at=slot)
+
+        self.assertTrue(slot_reservado(self.profile, slot, SocialContent.MediaType.CAROUSEL))
+
+    def test_profile_manual_e_semiautomatico_nao_criam_no_cron(self):
+        for mode in [SocialProfile.ModoOperacao.MANUAL, SocialProfile.ModoOperacao.SEMIAUTOMATICO]:
+            with self.subTest(mode=mode):
+                self.profile.modo_operacao = mode
+                self.profile.save(update_fields=['modo_operacao', 'updated_at'])
+                with mock.patch('social_automation.automation.gerar_lote_conteudos') as generator:
+                    summary = executar_tick_social(use_lock=False, now=timezone.now())
+                generator.assert_not_called()
+                self.assertEqual(summary['profiles'], [])
+        self.profile.modo_operacao = SocialProfile.ModoOperacao.AUTOMATICO
+        self.profile.save(update_fields=['modo_operacao', 'updated_at'])
+
+    @override_settings(
+        INSTAGRAM_EXPECTED_USERNAME='',
+        SOCIAL_AUTOMATION_GENERATION_BATCH=5,
+        SOCIAL_AUTOMATION_MAX_CAROUSELS_PER_TICK=1,
+    )
+    def test_multi_profile_estoque_completo_nao_bloqueia_outro_perfil(self):
+        millionow = self.profile
+        millionow.username = '@millionow'
+        millionow.posts_por_dia = 1
+        millionow.carousels_por_dia = 1
+        millionow.reels_por_dia = 0
+        millionow.carousel_generation_mode = SocialProfile.CarouselGenerationMode.AI_FINISHED
+        millionow.save(update_fields=['username', 'posts_por_dia', 'carousels_por_dia', 'reels_por_dia', 'carousel_generation_mode', 'updated_at'])
+        for index in range(3):
+            content = SocialContent.objects.create(profile=millionow, media_type=SocialContent.MediaType.CAROUSEL, frase=f'Millionow reservado {index}', legenda='Legenda', status=SocialContent.Status.RASCUNHO)
+            SocialCarouselGenerationRun.objects.create(profile=millionow, content=content, generation_mode=millionow.carousel_generation_mode, status=SocialCarouselGenerationRun.Status.PARTIAL)
+        laila = SocialProfile.objects.create(
+            nome='Laila 2',
+            username='@laila2',
+            modo_operacao=SocialProfile.ModoOperacao.AUTOMATICO,
+            posts_por_dia=1,
+            reels_por_dia=0,
+            carousels_por_dia=1,
+            carousel_generation_mode=SocialProfile.CarouselGenerationMode.AI_FINISHED,
+            horarios_publicacao=['12:00'],
+        )
+
+        def fake_generation(profile, quantidade, tema, usuario, media_types=None):
+            content = SocialContent.objects.create(profile=profile, media_type=SocialContent.MediaType.CAROUSEL, frase='Laila reservado', legenda='Legenda', status=SocialContent.Status.RASCUNHO)
+            SocialCarouselGenerationRun.objects.create(profile=profile, content=content, generation_mode=profile.carousel_generation_mode, status=SocialCarouselGenerationRun.Status.PARTIAL)
+            return GenerationResult(solicitados=quantidade, criados=1, conteudos=[content])
+
+        with mock.patch('social_automation.automation.gerar_lote_conteudos', side_effect=fake_generation):
+            summary = executar_tick_social(use_lock=False, now=timezone.now())
+
+        generated_by_profile = {profile['profile']: profile['generated'] for profile in summary['profiles']}
+        self.assertEqual(generated_by_profile['@millionow'], 0)
+        self.assertEqual(generated_by_profile['@laila2'], 1)
 
     @override_settings(INSTAGRAM_EXPECTED_USERNAME='lailapistola', SOCIAL_AUTOMATION_MIN_POST_GAP_MINUTES=30, SOCIAL_AUTOMATION_HARD_24H_CAP=30)
     def test_tick_publica_no_maximo_um_e_respeita_gap(self):

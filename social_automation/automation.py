@@ -13,7 +13,7 @@ from django.utils import timezone
 from .generation import gerar_lote_conteudos
 from .instagram import InstagramAPIError, InstagramConfigurationError, InstagramContainerPending, InstagramPublishError, auditar_imagem_final, publicar_conteudo_instagram
 from .models import SocialContent, SocialProfile
-from .scheduler import estoque_alvo_profile, estoque_minimo_profile, estoque_pronto, estoque_pronto_por_tipo, plano_geracao_por_deficit, preencher_agenda, proxima_publicacao, reagendar_vencidos
+from .scheduler import estoque_alvo_profile, estoque_em_andamento_por_tipo, estoque_minimo_profile, estoque_pronto, estoque_pronto_por_tipo, estoque_reservado_por_tipo, plano_geracao_por_deficit, preencher_agenda, proxima_publicacao, reagendar_vencidos, tipos_reservados_criados_desde
 from .services import registrar_evento
 from .video_rendering import auditar_video_reel
 
@@ -63,6 +63,16 @@ class ProfileTickSummary:
     inventory_images: int = 0
     inventory_reels: int = 0
     inventory_carousels: int = 0
+    reserved_inventory: int = 0
+    reserved_images: int = 0
+    reserved_reels: int = 0
+    reserved_carousels: int = 0
+    in_progress_inventory: int = 0
+    in_progress_images: int = 0
+    in_progress_reels: int = 0
+    in_progress_carousels: int = 0
+    needed_inventory: int = 0
+    generation_reason: str = ''
     next_post: str | None = None
     status: str = 'ok'
     message: str = ''
@@ -121,31 +131,62 @@ def _process_profile(profile, *, now):
         profile_summary.scheduled = schedule.scheduled
         inventory_by_type = estoque_pronto_por_tipo(profile)
         current_inventory = sum(inventory_by_type.values())
+        reserved_by_type = estoque_reservado_por_tipo(profile, now=now)
+        reserved_inventory = sum(reserved_by_type.values())
+        in_progress_by_type = estoque_em_andamento_por_tipo(profile, now=now)
+        target_inventory = estoque_alvo_profile(profile)
         profile_summary.inventory = current_inventory
         profile_summary.inventory_images = inventory_by_type[SocialContent.MediaType.IMAGE]
         profile_summary.inventory_reels = inventory_by_type[SocialContent.MediaType.REEL]
         profile_summary.inventory_carousels = inventory_by_type[SocialContent.MediaType.CAROUSEL]
+        profile_summary.reserved_inventory = reserved_inventory
+        profile_summary.reserved_images = reserved_by_type[SocialContent.MediaType.IMAGE]
+        profile_summary.reserved_reels = reserved_by_type[SocialContent.MediaType.REEL]
+        profile_summary.reserved_carousels = reserved_by_type[SocialContent.MediaType.CAROUSEL]
+        profile_summary.in_progress_inventory = sum(in_progress_by_type.values())
+        profile_summary.in_progress_images = in_progress_by_type[SocialContent.MediaType.IMAGE]
+        profile_summary.in_progress_reels = in_progress_by_type[SocialContent.MediaType.REEL]
+        profile_summary.in_progress_carousels = in_progress_by_type[SocialContent.MediaType.CAROUSEL]
+        profile_summary.needed_inventory = max(0, target_inventory - reserved_inventory)
         logger.info(
-            'social_automation.inventory profile_id=%s current=%s minimum=%s target=%s',
+            'social_automation.inventory profile_id=%s ready=%s reserved=%s in_progress=%s needed=%s minimum=%s target=%s',
             profile.id,
             current_inventory,
+            reserved_inventory,
+            profile_summary.in_progress_inventory,
+            profile_summary.needed_inventory,
             estoque_minimo_profile(profile),
-            estoque_alvo_profile(profile),
+            target_inventory,
         )
-        if not published and current_inventory < estoque_alvo_profile(profile):
-            generated, approved, errors = _gerar_e_aprovar(profile, current_inventory)
+        if not published and reserved_inventory < target_inventory:
+            generated, approved, errors, reason = _gerar_e_aprovar(profile, reserved_inventory, now=now)
             profile_summary.generated = generated
             profile_summary.approved = approved
             profile_summary.errors += errors
+            profile_summary.generation_reason = reason
             schedule_after = preencher_agenda(profile, now=now)
             profile_summary.scheduled += schedule_after.scheduled
             inventory_by_type = estoque_pronto_por_tipo(profile)
             current_inventory = sum(inventory_by_type.values())
+            reserved_by_type = estoque_reservado_por_tipo(profile, now=now)
+            reserved_inventory = sum(reserved_by_type.values())
+            in_progress_by_type = estoque_em_andamento_por_tipo(profile, now=now)
+        else:
+            profile_summary.generation_reason = 'STOCK_RESERVED'
         next_content = proxima_publicacao(profile, now=now)
         profile_summary.inventory = current_inventory
         profile_summary.inventory_images = inventory_by_type[SocialContent.MediaType.IMAGE]
         profile_summary.inventory_reels = inventory_by_type[SocialContent.MediaType.REEL]
         profile_summary.inventory_carousels = inventory_by_type[SocialContent.MediaType.CAROUSEL]
+        profile_summary.reserved_inventory = reserved_inventory
+        profile_summary.reserved_images = reserved_by_type[SocialContent.MediaType.IMAGE]
+        profile_summary.reserved_reels = reserved_by_type[SocialContent.MediaType.REEL]
+        profile_summary.reserved_carousels = reserved_by_type[SocialContent.MediaType.CAROUSEL]
+        profile_summary.in_progress_inventory = sum(in_progress_by_type.values())
+        profile_summary.in_progress_images = in_progress_by_type[SocialContent.MediaType.IMAGE]
+        profile_summary.in_progress_reels = in_progress_by_type[SocialContent.MediaType.REEL]
+        profile_summary.in_progress_carousels = in_progress_by_type[SocialContent.MediaType.CAROUSEL]
+        profile_summary.needed_inventory = max(0, target_inventory - reserved_inventory)
         profile_summary.next_post = next_content.scheduled_at.isoformat() if next_content and next_content.scheduled_at else None
     except Exception as exc:
         profile_summary.errors += 1
@@ -238,10 +279,12 @@ def _retry_delay(tentativas):
     return timedelta(minutes=60)
 
 
-def _gerar_e_aprovar(profile, inventory):
+def _gerar_e_aprovar(profile, inventory, *, now=None):
+    now = now or timezone.now()
     target = estoque_alvo_profile(profile)
     target_missing = max(0, target - inventory)
     media_plan = plano_geracao_por_deficit(profile, target, min(settings.SOCIAL_AUTOMATION_GENERATION_BATCH, target_missing))
+    media_plan, guard_reason = _apply_recent_creation_guard(profile, media_plan, now=now)
     max_carousels = max(0, settings.SOCIAL_AUTOMATION_MAX_CAROUSELS_PER_TICK)
     carousel_seen = 0
     capped_plan = []
@@ -253,7 +296,7 @@ def _gerar_e_aprovar(profile, inventory):
         capped_plan.append(media_type)
     media_plan = capped_plan
     if not media_plan:
-        return 0, 0, 0
+        return 0, 0, 0, guard_reason or 'HORIZON_FULL'
     tema = random.choice(AUTO_THEMES)
     logger.info(
         'social_automation.auto_generation_start profile_id=%s batch=%s reels=%s carousels=%s images=%s',
@@ -284,7 +327,23 @@ def _gerar_e_aprovar(profile, inventory):
         result.bloqueados,
         result.falhas,
     )
-    return result.criados, approved, errors
+    return result.criados, approved, errors, 'CREATED' if result.criados else (guard_reason or 'NO_CONTENT_CREATED')
+
+
+def _apply_recent_creation_guard(profile, media_plan, *, now):
+    minutes = max(0, int(getattr(settings, 'SOCIAL_AUTOMATION_RECENT_CREATION_GUARD_MINUTES', 15)))
+    if not minutes or not media_plan:
+        return media_plan, ''
+    since = now - timedelta(minutes=minutes)
+    recent_types = tipos_reservados_criados_desde(
+        profile,
+        since,
+        now=now,
+        statuses=[SocialContent.Status.RASCUNHO, SocialContent.Status.PUBLICANDO, SocialContent.Status.ERRO],
+    )
+    filtered = [media_type for media_type in media_plan if media_type not in recent_types]
+    reason = 'RECENT_CREATION_GUARD' if len(filtered) < len(media_plan) else ''
+    return filtered, reason
 
 
 def _quality_gate(content):
