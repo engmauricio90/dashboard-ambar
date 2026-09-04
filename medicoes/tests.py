@@ -2450,6 +2450,62 @@ class MedicoesTests(TestCase):
         self.assertEqual(medicao.issqn_calculado, Decimal('6.50'))
         self.assertEqual(medicao.inss_calculado, Decimal('4.21'))
 
+    def test_retencao_tecnica_pode_reduzir_base_da_nf(self):
+        orcamento, item = self._orcamento()
+        medicao = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=1,
+            periodo_inicio=date(2026, 1, 1),
+            periodo_fim=date(2026, 1, 31),
+            data_medicao=date(2026, 1, 31),
+            issqn_percentual=Decimal('5.00'),
+            inss_percentual=Decimal('11.00'),
+            retencao_tecnica=Decimal('40.00'),
+        )
+        ItemMedicaoConstrutora.objects.create(medicao=medicao, item_orcamento=item, quantidade_periodo=Decimal('10'))
+
+        self.assertEqual(medicao.subtotal_periodo, Decimal('170.00'))
+        self.assertEqual(medicao.retencao_tecnica_calculada, Decimal('40.00'))
+        self.assertEqual(medicao.base_impostos, Decimal('170.00'))
+        self.assertEqual(medicao.base_inss, Decimal('50.00'))
+        self.assertEqual(medicao.issqn_calculado, Decimal('8.50'))
+        self.assertEqual(medicao.inss_calculado, Decimal('5.50'))
+
+        medicao.retencao_tecnica_reduz_base_nf = True
+        medicao.save(update_fields=['retencao_tecnica_reduz_base_nf', 'updated_at'])
+
+        self.assertEqual(medicao.base_impostos, Decimal('130.00'))
+        self.assertEqual(medicao.base_inss, Decimal('38.24'))
+        self.assertEqual(medicao.valor_material_nf, Decimal('76.47'))
+        self.assertEqual(medicao.valor_mao_obra_nf, Decimal('38.24'))
+        self.assertEqual(medicao.valor_equipamentos_nf, Decimal('15.29'))
+        self.assertEqual(medicao.issqn_calculado, Decimal('6.50'))
+        self.assertEqual(medicao.inss_calculado, Decimal('4.21'))
+        self.assertEqual(medicao.total_liquido, Decimal('119.29'))
+
+    def test_retencao_tecnica_reduz_base_nf_nas_anotacoes_otimizadas(self):
+        orcamento, item = self._orcamento()
+        medicao = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=1,
+            periodo_inicio=date(2026, 1, 1),
+            periodo_fim=date(2026, 1, 31),
+            data_medicao=date(2026, 1, 31),
+            issqn_percentual=Decimal('5.00'),
+            inss_percentual=Decimal('11.00'),
+            retencao_tecnica=Decimal('40.00'),
+            retencao_tecnica_reduz_base_nf=True,
+        )
+        ItemMedicaoConstrutora.objects.create(medicao=medicao, item_orcamento=item, quantidade_periodo=Decimal('10'))
+
+        otimizada = anotar_resumo_medicoes_construtora(MedicaoConstrutora.objects.filter(id=medicao.id)).get()
+
+        self.assertEqual(otimizada.base_impostos_otimizada.quantize(Decimal('0.01')), Decimal('130.00'))
+        self.assertEqual(otimizada.base_inss_otimizada.quantize(Decimal('0.01')), Decimal('38.24'))
+        self.assertEqual(otimizada.issqn_otimizado.quantize(Decimal('0.01')), Decimal('6.50'))
+        self.assertEqual(otimizada.inss_otimizado.quantize(Decimal('0.01')), Decimal('4.21'))
+        self.assertEqual(otimizada.total_liquido_otimizado.quantize(Decimal('0.01')), Decimal('119.29'))
+
     def test_exclui_medicao_construtora(self):
         orcamento, item = self._orcamento()
         medicao = MedicaoConstrutora.objects.create(

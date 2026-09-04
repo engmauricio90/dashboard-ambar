@@ -327,6 +327,11 @@ def _pdf_medicao_construtora(medicao):
         if medicao.desconto_adicional_reduz_base_nf
         else Decimal('0')
     )
+    retencao_tecnica_nf = (
+        resumo.retencao_tecnica_calculada
+        if medicao.retencao_tecnica_reduz_base_nf
+        else Decimal('0')
+    )
     doc.add_totals_columns(
         [
             {
@@ -335,6 +340,7 @@ def _pdf_medicao_construtora(medicao):
                     ('Total medicao', _money(resumo.subtotal_periodo), False),
                     ('Desconto faturamento direto', f'- {_money(resumo.total_faturamento_direto)}', False),
                     ('Desconto adicional NF', f'- {_money(desconto_adicional_nf)}', False),
+                    ('Retencao tecnica NF', f'- {_money(retencao_tecnica_nf)}', False),
                     ('Total a faturar', _money(resumo.base_impostos), True),
                 ],
             },
@@ -2529,6 +2535,7 @@ def _xlsx_medicao(medicao, itens):
         ws.append(['Total equipamentos medido', medicao.total_equipamentos_periodo])
     ws.append(['Retencao tecnica', medicao.retencao_tecnica_calculada if isinstance(medicao, MedicaoConstrutora) else medicao.retencao_tecnica])
     if isinstance(medicao, MedicaoConstrutora):
+        ws.append(['Retencao tecnica reduz base da NF', 'Sim' if medicao.retencao_tecnica_reduz_base_nf else 'Nao'])
         ws.append(['ISSQN', medicao.issqn_calculado])
         ws.append(['INSS', medicao.inss_calculado])
         ws.append(['Faturamento direto descontado', medicao.total_faturamento_direto])
@@ -2541,7 +2548,8 @@ def _xlsx_medicao(medicao, itens):
     ws.append(['Total liquido', medicao.total_liquido])
     for row in ws.iter_rows(min_row=summary_start + 1, max_row=ws.max_row, min_col=1, max_col=2):
         row[0].font = Font(bold=row[0].value == 'Total liquido')
-        row[1].number_format = ExcelReportBuilder.MONEY_FORMAT
+        if isinstance(row[1].value, (Decimal, int, float)):
+            row[1].number_format = ExcelReportBuilder.MONEY_FORMAT
         row[1].font = Font(bold=row[0].value == 'Total liquido')
     return builder.build()
 

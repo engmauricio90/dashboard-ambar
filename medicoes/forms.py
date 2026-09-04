@@ -203,6 +203,7 @@ class MedicaoConstrutoraForm(BootstrapModelForm):
         for field in [
             'retencao_tecnica',
             'retencao_tecnica_percentual',
+            'retencao_tecnica_reduz_base_nf',
             'issqn',
             'issqn_percentual',
             'inss',
@@ -255,6 +256,7 @@ class MedicaoConstrutoraForm(BootstrapModelForm):
             'observacoes': 'Observações',
             'retencao_tecnica': 'Retenção técnica (R$)',
             'retencao_tecnica_percentual': 'Retenção técnica (%)',
+            'retencao_tecnica_reduz_base_nf': 'Retencao tecnica reduz base da NF',
             'issqn': 'ISSQN (R$)',
             'issqn_percentual': 'ISSQN (%)',
             'inss': 'INSS (R$)',

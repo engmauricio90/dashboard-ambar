@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from decimal import Decimal
 
-from django.db.models import Case, Count, DecimalField, ExpressionWrapper, F, IntegerField, OuterRef, Subquery, Sum, Value, When
-from django.db.models.functions import Coalesce
+from django.db.models import Case, Count, DecimalField, ExpressionWrapper, F, FloatField, IntegerField, OuterRef, Q, Subquery, Sum, Value, When
+from django.db.models.functions import Cast, Coalesce
 
 from .models import (
     FaturamentoDiretoMedicao,
@@ -128,18 +128,20 @@ def calcular_resumo_construtora(medicao, itens=None, faturamentos=None):
     equipamentos = _sum_decimal(item.valor_equipamentos_periodo for item in itens)
     faturamento_direto = _sum_decimal(v.valor_descontado for v in faturamentos) or medicao.valor_faturamento_direto
     desconto_adicional = _percent_decimal(subtotal, medicao.desconto_adicional_percentual) or medicao.desconto_adicional
+    retencao = _percent_decimal(subtotal, medicao.retencao_tecnica_percentual) or medicao.retencao_tecnica
     desconto_base = desconto_adicional if medicao.desconto_adicional_reduz_base_nf else ZERO
-    base_impostos = max(subtotal - faturamento_direto - desconto_base, ZERO)
+    retencao_base = retencao if medicao.retencao_tecnica_reduz_base_nf else ZERO
+    reducao_base_nf = desconto_base + retencao_base
+    base_impostos = max(subtotal - faturamento_direto - reducao_base_nf, ZERO)
     fator_componentes_nf = base_impostos / subtotal if subtotal else ZERO
     valor_material_nf = (material * fator_componentes_nf).quantize(Decimal('0.01'))
     valor_equipamentos_nf = (equipamentos * fator_componentes_nf).quantize(Decimal('0.01'))
     valor_mao_obra_nf = max(base_impostos - valor_material_nf - valor_equipamentos_nf, ZERO).quantize(Decimal('0.01'))
     base_inss = mao_obra
-    if medicao.desconto_adicional_reduz_base_nf and subtotal:
-        desconto = min(desconto_adicional, subtotal)
-        base_inss = mao_obra * ((subtotal - desconto) / subtotal)
+    if subtotal:
+        reducao_inss = min(reducao_base_nf, subtotal)
+        base_inss = mao_obra * ((subtotal - reducao_inss) / subtotal)
     base_inss = max(base_inss, ZERO).quantize(Decimal('0.01'))
-    retencao = _percent_decimal(subtotal, medicao.retencao_tecnica_percentual) or medicao.retencao_tecnica
     issqn = _percent_decimal(base_impostos, medicao.issqn_percentual) or medicao.issqn
     inss = _percent_decimal(base_inss, medicao.inss_percentual) or medicao.inss
     total_descontos = retencao + issqn + inss + desconto_adicional + faturamento_direto
@@ -407,24 +409,38 @@ def anotar_resumo_medicoes_construtora(qs):
             default=Value(ZERO),
             output_field=decimal_field,
         ),
-        desconto_inss_otimizado=Case(
-            When(desconto_adicional_otimizado__gt=F('subtotal_otimizado'), then=F('subtotal_otimizado')),
-            default=F('desconto_adicional_otimizado'),
+        retencao_base_nf_otimizada=Case(
+            When(retencao_tecnica_reduz_base_nf=True, then=F('retencao_tecnica_otimizada')),
+            default=Value(ZERO),
+            output_field=decimal_field,
+        ),
+    ).annotate(
+        reducao_base_nf_otimizada=ExpressionWrapper(
+            F('desconto_base_nf_otimizado') + F('retencao_base_nf_otimizada'),
+            output_field=decimal_field,
+        ),
+    ).annotate(
+        reducao_inss_otimizada=Case(
+            When(reducao_base_nf_otimizada__gt=F('subtotal_otimizado'), then=F('subtotal_otimizado')),
+            default=F('reducao_base_nf_otimizada'),
             output_field=decimal_field,
         ),
     ).annotate(
         base_impostos_raw_otimizada=ExpressionWrapper(
-            F('subtotal_otimizado') - F('faturamento_direto_otimizado') - F('desconto_base_nf_otimizado'),
+            F('subtotal_otimizado') - F('faturamento_direto_otimizado') - F('reducao_base_nf_otimizada'),
             output_field=decimal_field,
         ),
         base_inss_raw_otimizada=Case(
             When(
-                desconto_adicional_reduz_base_nf=True,
+                Q(desconto_adicional_reduz_base_nf=True) | Q(retencao_tecnica_reduz_base_nf=True),
                 subtotal_otimizado__gt=ZERO,
-                then=ExpressionWrapper(
-                    F('total_mao_obra_otimizado')
-                    * (F('subtotal_otimizado') - F('desconto_inss_otimizado'))
-                    / F('subtotal_otimizado'),
+                then=Cast(
+                    ExpressionWrapper(
+                        Cast(F('total_mao_obra_otimizado'), FloatField())
+                        * (Cast(F('subtotal_otimizado'), FloatField()) - Cast(F('reducao_inss_otimizada'), FloatField()))
+                        / Cast(F('subtotal_otimizado'), FloatField()),
+                        output_field=FloatField(),
+                    ),
                     output_field=decimal_field,
                 ),
             ),

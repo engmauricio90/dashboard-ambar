@@ -214,6 +214,7 @@ class MedicaoConstrutora(models.Model):
     data_medicao = models.DateField()
     retencao_tecnica = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     retencao_tecnica_percentual = models.DecimalField(max_digits=7, decimal_places=4, default=0)
+    retencao_tecnica_reduz_base_nf = models.BooleanField(default=False)
     issqn = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     issqn_percentual = models.DecimalField(max_digits=7, decimal_places=4, default=0)
     inss = models.DecimalField(max_digits=14, decimal_places=2, default=0)
@@ -285,7 +286,8 @@ class MedicaoConstrutora(models.Model):
         if resumo:
             return resumo.base_impostos
         desconto_base = self.desconto_adicional_calculado if self.desconto_adicional_reduz_base_nf else Decimal('0')
-        base = self.subtotal_periodo - self.total_faturamento_direto - desconto_base
+        retencao_base = self.retencao_tecnica_calculada if self.retencao_tecnica_reduz_base_nf else Decimal('0')
+        base = self.subtotal_periodo - self.total_faturamento_direto - desconto_base - retencao_base
         return max(base, Decimal('0'))
 
     @property
@@ -329,9 +331,14 @@ class MedicaoConstrutora(models.Model):
             return resumo.base_inss
         base = self.total_mao_obra_periodo
         subtotal = self.subtotal_periodo
-        if self.desconto_adicional_reduz_base_nf and subtotal:
-            desconto = min(self.desconto_adicional_calculado, subtotal)
-            fator_nf = (subtotal - desconto) / subtotal
+        if subtotal:
+            reducao = Decimal('0')
+            if self.desconto_adicional_reduz_base_nf:
+                reducao += self.desconto_adicional_calculado
+            if self.retencao_tecnica_reduz_base_nf:
+                reducao += self.retencao_tecnica_calculada
+            reducao = min(reducao, subtotal)
+            fator_nf = (subtotal - reducao) / subtotal
             base = base * fator_nf
         return max(base, Decimal('0')).quantize(Decimal('0.01'))
 

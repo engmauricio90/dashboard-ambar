@@ -173,7 +173,7 @@
                     </div>
                     <div class="row g-3 mb-3">
                         {% for field in form %}
-                        {% if field.name == 'numero' or field.name == 'periodo_inicio' or field.name == 'periodo_fim' or field.name == 'data_medicao' or field.name == 'observacoes' or field.name == 'retencao_tecnica' or field.name == 'retencao_tecnica_percentual' or field.name == 'issqn' or field.name == 'issqn_percentual' or field.name == 'inss' or field.name == 'inss_percentual' or field.name == 'desconto_adicional' or field.name == 'desconto_adicional_percentual' or field.name == 'desconto_adicional_reduz_base_nf' %}
+                        {% if field.name == 'numero' or field.name == 'periodo_inicio' or field.name == 'periodo_fim' or field.name == 'data_medicao' or field.name == 'observacoes' or field.name == 'retencao_tecnica' or field.name == 'retencao_tecnica_percentual' or field.name == 'retencao_tecnica_reduz_base_nf' or field.name == 'issqn' or field.name == 'issqn_percentual' or field.name == 'inss' or field.name == 'inss_percentual' or field.name == 'desconto_adicional' or field.name == 'desconto_adicional_percentual' or field.name == 'desconto_adicional_reduz_base_nf' %}
                         <div class="{% if field.name == 'observacoes' %}col-12{% elif field.field.widget.input_type == 'checkbox' %}col-md-4{% else %}col-md-3{% endif %}">
                             {% if field.field.widget.input_type == 'checkbox' %}
                             <div class="form-check mt-4">{{ field }} <label class="form-check-label">{{ field.label }}</label></div>
