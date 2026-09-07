@@ -57,6 +57,7 @@ from .rendering import SocialRenderError, renderizar_midia_social
 from .services import (
     agendar_conteudo,
     aprovar_conteudo,
+    confirmar_nao_publicado_e_liberar_tentativa,
     criar_evento_criacao,
     desagendar_conteudo,
     registrar_edicao,
@@ -437,7 +438,7 @@ def content_update(request, content_id):
 @staff_required
 def content_detail(request, content_id):
     content = get_object_or_404(_content_queryset(), pk=content_id)
-    schedule_form = SocialScheduleForm(profile=content.profile) if content.status == SocialContent.Status.APROVADO else None
+    schedule_form = SocialScheduleForm(profile=content.profile) if content.status in {SocialContent.Status.APROVADO, SocialContent.Status.RETRY_LIBERADO_MANUAL} else None
     events = content.events.select_related('usuario')[:20]
     latest_publish_attempt = content.publish_attempts.order_by('-started_at', '-id').first()
     instagram_connection = getattr(content.profile, 'instagram_connection', None)
@@ -829,6 +830,22 @@ def content_reconcile_publish(request, content_id):
         )
     else:
         messages.info(request, 'Nenhuma inconsistencia de publicacao foi encontrada para reconciliar.')
+    return redirect('social_automation:content_detail', content_id=content.id)
+
+
+@staff_required
+@require_POST
+def content_confirm_not_published(request, content_id):
+    content = get_object_or_404(_content_queryset(), pk=content_id)
+    confirmation = request.POST.get('confirmacao_manual') == 'confirmo_nao_publicado'
+    if not confirmation:
+        messages.error(request, 'Confirme manualmente que o conteudo nao foi publicado antes de liberar uma nova tentativa.')
+        return redirect('social_automation:content_detail', content_id=content.id)
+    try:
+        confirmar_nao_publicado_e_liberar_tentativa(content, usuario=request.user)
+        messages.success(request, 'Nova tentativa liberada manualmente. Nenhuma chamada para a Meta foi executada.')
+    except ValidationError as exc:
+        messages.error(request, '; '.join(exc.messages))
     return redirect('social_automation:content_detail', content_id=content.id)
 
 

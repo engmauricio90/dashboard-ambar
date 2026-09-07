@@ -46,6 +46,7 @@ from .models import (
 )
 from .ai import GeneratedCarouselBlueprint, GeneratedCarouselSlide, GeneratedContent, OpenAIUnavailable
 from .automation import executar_tick_social
+from .backlog import KEEP, LIKELY_RUNAWAY, REVIEW_REQUIRED, UNSAFE_TO_DELETE, audit_backlog
 from .container_versioning import (
     REEL_SHARE_TO_FEED,
     build_instagram_caption,
@@ -2721,6 +2722,131 @@ class SocialAutomationMediaRootTests(TestCase):
             with self.assertRaisesMessage(Exception, 'Conteudo ja esta publicado'):
                 publicar_conteudo_instagram(content, self.staff)
 
+    def _ambiguous_content(self):
+        content = self._content_ready(status=SocialContent.Status.PUBLISH_CONFIRMATION_PENDING)
+        content.instagram_container_id = '18096723875171090'
+        content.instagram_container_fingerprint = 'fingerprint-antigo'
+        content.erro = 'Media ID is not available'
+        content.save(update_fields=['instagram_container_id', 'instagram_container_fingerprint', 'erro', 'updated_at'])
+        attempt = SocialPublishAttempt.objects.create(
+            content=content,
+            provider=SocialPublishAttempt.Provider.INSTAGRAM,
+            status=SocialPublishAttempt.Status.AMBIGUOUS,
+            container_id='18096723875171090',
+            provider_called_at=timezone.now(),
+            error_message='Media ID is not available',
+            fingerprint='fingerprint-antigo',
+        )
+        return content, attempt
+
+    def test_operador_confirma_nao_publicado_e_libera_sem_chamar_meta(self):
+        content, attempt = self._ambiguous_content()
+
+        with mock.patch('social_automation.instagram._request') as meta, mock.patch('social_automation.ai._client') as ai_client, mock.patch('social_automation.video_rendering.ffmpeg_path') as ffmpeg:
+            response = self.client.post(
+                reverse('social_automation:content_confirm_not_published', args=[content.id]),
+                {'confirmacao_manual': 'confirmo_nao_publicado'},
+            )
+
+        self.assertRedirects(response, reverse('social_automation:content_detail', args=[content.id]))
+        meta.assert_not_called()
+        ai_client.assert_not_called()
+        ffmpeg.assert_not_called()
+        content.refresh_from_db()
+        attempt.refresh_from_db()
+        self.assertEqual(content.status, SocialContent.Status.RETRY_LIBERADO_MANUAL)
+        self.assertIsNone(content.scheduled_at)
+        self.assertFalse(content.external_post_id)
+        self.assertFalse(content.instagram_container_id)
+        self.assertEqual(attempt.status, SocialPublishAttempt.Status.NOT_PUBLISHED_CONFIRMED_BY_OPERATOR)
+        self.assertEqual(attempt.container_id, '18096723875171090')
+        self.assertEqual(attempt.metadata['operator_resolution']['operator_user_id'], self.staff.id)
+        self.assertEqual(content.publish_attempts.count(), 1)
+        self.assertTrue(content.events.filter(acao=SocialContentEvent.Acao.PUBLISH_NOT_PUBLISHED_OPERATOR, usuario=self.staff).exists())
+
+    def test_confirmar_nao_publicado_exige_precondicoes_e_staff(self):
+        content, attempt = self._ambiguous_content()
+        self.client.logout()
+        common = User.objects.create_user(username='common-ambiguous', password='senha')
+        self.client.force_login(common)
+        self.assertEqual(
+            self.client.post(reverse('social_automation:content_confirm_not_published', args=[content.id]), {'confirmacao_manual': 'confirmo_nao_publicado'}).status_code,
+            403,
+        )
+        self.client.force_login(self.staff)
+
+        for status in [SocialContent.Status.PUBLICADO, SocialContent.Status.AGENDADO, SocialContent.Status.APROVADO]:
+            content.status = status
+            content.save(update_fields=['status', 'updated_at'])
+            response = self.client.post(reverse('social_automation:content_confirm_not_published', args=[content.id]), {'confirmacao_manual': 'confirmo_nao_publicado'})
+            self.assertRedirects(response, reverse('social_automation:content_detail', args=[content.id]))
+            attempt.refresh_from_db()
+            self.assertEqual(attempt.status, SocialPublishAttempt.Status.AMBIGUOUS)
+
+        content.status = SocialContent.Status.PUBLISH_CONFIRMATION_PENDING
+        content.external_post_id = 'media-ja-existe'
+        content.save(update_fields=['status', 'external_post_id', 'updated_at'])
+        response = self.client.post(reverse('social_automation:content_confirm_not_published', args=[content.id]), {'confirmacao_manual': 'confirmo_nao_publicado'})
+        self.assertRedirects(response, reverse('social_automation:content_detail', args=[content.id]))
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.status, SocialPublishAttempt.Status.AMBIGUOUS)
+
+        content.external_post_id = ''
+        content.save(update_fields=['external_post_id', 'updated_at'])
+        attempt.status = SocialPublishAttempt.Status.CONFIRMED
+        attempt.save(update_fields=['status', 'updated_at'])
+        response = self.client.post(reverse('social_automation:content_confirm_not_published', args=[content.id]), {'confirmacao_manual': 'confirmo_nao_publicado'})
+        self.assertRedirects(response, reverse('social_automation:content_detail', args=[content.id]))
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.status, SocialPublishAttempt.Status.CONFIRMED)
+
+    def test_confirmar_nao_publicado_e_idempotente_em_duplo_post(self):
+        content, _attempt = self._ambiguous_content()
+        url = reverse('social_automation:content_confirm_not_published', args=[content.id])
+
+        first = self.client.post(url, {'confirmacao_manual': 'confirmo_nao_publicado'})
+        second = self.client.post(url, {'confirmacao_manual': 'confirmo_nao_publicado'})
+
+        self.assertRedirects(first, reverse('social_automation:content_detail', args=[content.id]))
+        self.assertRedirects(second, reverse('social_automation:content_detail', args=[content.id]))
+        content.refresh_from_db()
+        self.assertEqual(content.status, SocialContent.Status.RETRY_LIBERADO_MANUAL)
+        self.assertEqual(content.events.filter(acao=SocialContentEvent.Acao.PUBLISH_NOT_PUBLISHED_OPERATOR).count(), 1)
+        self.assertEqual(content.publish_attempts.filter(status=SocialPublishAttempt.Status.NOT_PUBLISHED_CONFIRMED_BY_OPERATOR).count(), 1)
+
+    @override_settings(
+        INSTAGRAM_ACCESS_TOKEN='token-teste',
+        INSTAGRAM_USER_ID='178000000000',
+        INSTAGRAM_EXPECTED_USERNAME='lailapistola',
+        PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com',
+    )
+    def test_nova_publicacao_posterior_cria_nova_tentativa_e_container(self):
+        content, old_attempt = self._ambiguous_content()
+        self.client.post(
+            reverse('social_automation:content_confirm_not_published', args=[content.id]),
+            {'confirmacao_manual': 'confirmo_nao_publicado'},
+        )
+
+        with mock.patch('social_automation.instagram.obter_conta_instagram', return_value={'username': 'lailapistola'}), mock.patch(
+            'social_automation.instagram.criar_container_imagem',
+            return_value='container-novo',
+        ) as create_container, mock.patch('social_automation.instagram.aguardar_container_pronto', return_value={'status_code': 'FINISHED'}), mock.patch(
+            'social_automation.instagram.publicar_container',
+            return_value='media-nova',
+        ) as publish_mock, mock.patch('social_automation.instagram.obter_midia_publicada', return_value={'id': 'media-nova'}):
+            publicar_conteudo_instagram(content, self.staff)
+
+        content.refresh_from_db()
+        old_attempt.refresh_from_db()
+        attempts = list(content.publish_attempts.order_by('id'))
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual(old_attempt.status, SocialPublishAttempt.Status.NOT_PUBLISHED_CONFIRMED_BY_OPERATOR)
+        self.assertEqual(attempts[-1].status, SocialPublishAttempt.Status.CONFIRMED)
+        self.assertEqual(attempts[-1].container_id, 'container-novo')
+        self.assertEqual(content.external_post_id, 'media-nova')
+        create_container.assert_called_once()
+        publish_mock.assert_called_once_with('container-novo')
+
 
 class SocialAutomationHealthDashboardTests(TestCase):
     def setUp(self):
@@ -2892,6 +3018,112 @@ class SocialAutomationHealthDashboardTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertLessEqual(len(queries), 120)
+
+    def test_health_sinaliza_backlog_anormal_por_threshold_relativo(self):
+        profile = self._profile(posts_por_dia=4, carousels_por_dia=4, username='millionow25')
+        self._connect(profile)
+        for index in range(30):
+            content = SocialContent.objects.create(profile=profile, media_type=SocialContent.MediaType.CAROUSEL, frase=f'Runaway {index}', status=SocialContent.Status.RASCUNHO)
+            SocialContentEvent.objects.create(content=content, acao='gerado_ia')
+            SocialCarouselGenerationRun.objects.create(profile=profile, content=content, generation_mode=SocialProfile.CarouselGenerationMode.AI_FINISHED, status=SocialCarouselGenerationRun.Status.PARTIAL)
+            for slide_index in range(8):
+                SocialCarouselSlide.objects.create(content=content, order=slide_index + 1, title=f'Slide {slide_index}', ai_composition_status=SocialCarouselSlide.CompositionStatus.PENDING)
+
+        health = build_profile_health(profile)
+
+        self.assertEqual(health.status, BLOCKED)
+        self.assertIn('BACKLOG_EXCESSIVE', ' '.join(health.reasons))
+        self.assertIn('TOO_MANY_PARTIAL_RUNS', ' '.join(health.reasons))
+        self.assertIn('TOO_MANY_PENDING_SLIDES', ' '.join(health.reasons))
+
+    def test_health_semiautomatico_estoque_baixo_vira_atencao(self):
+        profile = self._profile(modo_operacao=SocialProfile.ModoOperacao.SEMIAUTOMATICO, posts_por_dia=4)
+        self._connect(profile)
+        for index in range(5):
+            self._ready_content(profile, status=SocialContent.Status.APROVADO)
+
+        health = build_profile_health(profile)
+
+        self.assertEqual(health.status, ATTENTION)
+        self.assertIn('perfil semiautomatico', ' '.join(health.reasons))
+
+    def test_health_conexao_moderna_prevalece_sobre_warning_legado(self):
+        profile = self._profile()
+        self._connect(profile)
+
+        with override_settings(INSTAGRAM_ACCESS_TOKEN='', INSTAGRAM_USER_ID=''):
+            health = build_profile_health(profile)
+
+        self.assertEqual(health.instagram, 'Conectado')
+        self.assertNotIn('Instagram necessario e nao conectado.', health.reasons)
+
+    @override_settings(INSTAGRAM_ACCESS_TOKEN='token-legado', INSTAGRAM_USER_ID='178-legado')
+    def test_health_fallback_legado_sem_conexao_moderna(self):
+        profile = self._profile()
+
+        health = build_profile_health(profile)
+
+        self.assertEqual(health.instagram, 'Conectado (legado)')
+        self.assertNotIn('Instagram necessario e nao conectado.', health.reasons)
+
+    def test_retry_liberado_manual_nao_e_agendado_automaticamente(self):
+        profile = self._profile(posts_por_dia=1)
+        self._connect(profile)
+        content = self._ready_content(profile, status=SocialContent.Status.RETRY_LIBERADO_MANUAL)
+
+        preencher_agenda(profile)
+
+        content.refresh_from_db()
+        self.assertEqual(content.status, SocialContent.Status.RETRY_LIBERADO_MANUAL)
+        self.assertIsNone(content.scheduled_at)
+
+    def test_backlog_classificacao_e_cleanup_dry_run(self):
+        profile = self._profile(username='backlog')
+        base_time = timezone.now()
+        likely_ids = []
+        for index in range(6):
+            content = SocialContent.objects.create(profile=profile, media_type=SocialContent.MediaType.CAROUSEL, frase=f'Auto {index}', status=SocialContent.Status.RASCUNHO)
+            SocialContent.objects.filter(pk=content.pk).update(created_at=base_time, updated_at=base_time)
+            SocialContentEvent.objects.create(content=content, acao='gerado_ia')
+            likely_ids.append(content.id)
+        useful = SocialContent.objects.create(profile=profile, media_type=SocialContent.MediaType.CAROUSEL, frase='Util', status=SocialContent.Status.RASCUNHO)
+        SocialContentEvent.objects.create(content=useful, acao='gerado_ia')
+        SocialCarouselSlide.objects.create(content=useful, order=1, title='Pronto', ai_composition_status=SocialCarouselSlide.CompositionStatus.READY)
+        published = self._ready_content(profile, status=SocialContent.Status.PUBLICADO)
+        ambiguous = SocialContent.objects.create(profile=profile, frase='Ambiguo', status=SocialContent.Status.PUBLISH_CONFIRMATION_PENDING)
+        SocialPublishAttempt.objects.create(content=ambiguous, provider=SocialPublishAttempt.Provider.INSTAGRAM, status=SocialPublishAttempt.Status.AMBIGUOUS, container_id='container')
+        SocialAIUsage.objects.create(profile=profile, operation=SocialAIUsage.Operation.IMAGE_GENERATION, success=True)
+
+        audit = audit_backlog(username='backlog')[profile.id]
+        classifications = {item.content.id: item.classification for item in audit['items']}
+        output = StringIO()
+        call_command('cleanup_social_runaway', '--username', 'backlog', stdout=output)
+
+        self.assertTrue(all(classifications[item_id] == LIKELY_RUNAWAY for item_id in likely_ids))
+        self.assertEqual(classifications[useful.id], REVIEW_REQUIRED)
+        self.assertEqual(classifications[published.id], KEEP)
+        self.assertEqual(classifications[ambiguous.id], UNSAFE_TO_DELETE)
+        self.assertEqual(SocialContent.objects.filter(profile=profile).count(), 9)
+        self.assertEqual(SocialAIUsage.objects.filter(profile=profile).count(), 1)
+        self.assertIn('Modo: DRY RUN', output.getvalue())
+
+    def test_cleanup_execute_remove_somente_likely_runaway_e_preserva_usage(self):
+        profile = self._profile(username='cleanup')
+        base_time = timezone.now()
+        for index in range(5):
+            content = SocialContent.objects.create(profile=profile, media_type=SocialContent.MediaType.CAROUSEL, frase=f'Auto {index}', status=SocialContent.Status.RASCUNHO)
+            SocialContent.objects.filter(pk=content.pk).update(created_at=base_time, updated_at=base_time)
+            SocialContentEvent.objects.create(content=content, acao='gerado_ia')
+        protected = self._ready_content(profile, status=SocialContent.Status.AGENDADO, scheduled_at=timezone.now() + timedelta(hours=1))
+        SocialAIUsage.objects.create(profile=profile, operation=SocialAIUsage.Operation.IMAGE_GENERATION, success=True)
+
+        output = StringIO()
+        call_command('cleanup_social_runaway', '--username', 'cleanup', '--execute', stdout=output)
+
+        self.assertEqual(SocialContent.objects.filter(profile=profile).count(), 1)
+        self.assertTrue(SocialContent.objects.filter(pk=protected.pk).exists())
+        self.assertEqual(SocialAIUsage.objects.filter(profile=profile).count(), 1)
+        self.assertIn('deleted = 5', output.getvalue())
 
 
 class SocialAutomationMediaPathHardeningTests(TestCase):

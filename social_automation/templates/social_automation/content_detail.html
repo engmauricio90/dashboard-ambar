@@ -91,7 +91,10 @@
                 {% if content.status == 'rascunho' %}
                     <form method="post" action="{% url 'social_automation:content_approve' content.id %}">{% csrf_token %}<button class="btn btn-success w-100" type="submit">Aprovar</button></form>
                     <form method="post" action="{% url 'social_automation:content_reject' content.id %}">{% csrf_token %}<button class="btn btn-outline-danger w-100" type="submit">Rejeitar</button></form>
-                {% elif content.status == 'aprovado' %}
+                {% elif content.status == 'aprovado' or content.status == 'retry_liberado_manual' %}
+                    {% if content.status == 'retry_liberado_manual' %}
+                    <p class="text-info small mb-2">Nova tentativa liberada manualmente. Escolha publicar agora ou agendar em novo horario.</p>
+                    {% endif %}
                     {% if instagram_connection and instagram_connection.is_active %}
                     <form method="post" action="{% url 'social_automation:content_publish_instagram' content.id %}" onsubmit="return confirm('Este conteudo sera publicado agora em @{{ instagram_expected_username|default:content.profile.username }}. Confirmar?');">
                         {% csrf_token %}
@@ -123,6 +126,12 @@
                 {% elif content.status == 'publish_confirmation_pending' %}
                     <p class="text-warning small mb-2">A publicacao precisa ser reconciliada antes de qualquer nova tentativa.</p>
                     <form method="post" action="{% url 'social_automation:content_reconcile_publish' content.id %}">{% csrf_token %}<button class="btn btn-warning w-100" type="submit">Reconciliar publicacao</button></form>
+                    <form method="post" action="{% url 'social_automation:content_confirm_not_published' content.id %}" class="border rounded p-2 bg-light" onsubmit="return confirm('Confirme que voce verificou manualmente a conta do Instagram/Meta e que este conteudo NAO foi publicado. A acao nao chama a Meta e apenas libera uma nova tentativa controlada. Continuar?');">
+                        {% csrf_token %}
+                        <input type="hidden" name="confirmacao_manual" value="confirmo_nao_publicado">
+                        <div class="small text-muted mb-2">Use somente apos verificar manualmente a conta do Instagram/Meta.</div>
+                        <button class="btn btn-outline-danger w-100" type="submit">Confirmar nao publicado e liberar nova tentativa</button>
+                    </form>
                 {% endif %}
                 {% if content.base_image and content.status != 'publicado' %}
                 <form method="post" action="{% url 'social_automation:content_render' content.id %}">{% csrf_token %}<button class="btn btn-outline-secondary w-100" type="submit">Renderizar novamente</button></form>

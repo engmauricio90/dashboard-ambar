@@ -717,6 +717,7 @@ class SocialContent(models.Model):
     class Status(models.TextChoices):
         RASCUNHO = 'rascunho', 'Rascunho'
         APROVADO = 'aprovado', 'Aprovado'
+        RETRY_LIBERADO_MANUAL = 'retry_liberado_manual', 'Nova tentativa liberada manualmente'
         AGENDADO = 'agendado', 'Agendado'
         PUBLICANDO = 'publicando', 'Publicando'
         PUBLISH_CONFIRMATION_PENDING = 'publish_confirmation_pending', 'Publicacao pendente de confirmacao'
@@ -941,6 +942,7 @@ class SocialContentEvent(models.Model):
         PUBLISH_AMBIGUOUS = 'publish_ambiguous', 'Publicacao ambigua'
         PUBLISH_RECONCILIATION = 'publish_reconciliation', 'Reconciliacao de publicacao'
         PUBLISH_RETRY_RELEASED = 'publish_retry_released', 'Nova tentativa liberada'
+        PUBLISH_NOT_PUBLISHED_OPERATOR = 'publish_not_published_operator', 'Nao publicada - confirmado pelo operador'
 
     content = models.ForeignKey(SocialContent, on_delete=models.CASCADE, related_name='events')
     acao = models.CharField(max_length=30, choices=Acao.choices)
@@ -967,6 +969,7 @@ class SocialPublishAttempt(models.Model):
         PROVIDER_CALLED = 'PROVIDER_CALLED', 'Meta acionada'
         CONFIRMED = 'CONFIRMED', 'Confirmada'
         AMBIGUOUS = 'AMBIGUOUS', 'Pendente de confirmacao'
+        NOT_PUBLISHED_CONFIRMED_BY_OPERATOR = 'NOT_PUBLISHED_CONFIRMED_BY_OPERATOR', 'Nao publicada - confirmado pelo operador'
         FAILED_SAFE = 'FAILED_SAFE', 'Falha segura'
 
     content = models.ForeignKey(SocialContent, on_delete=models.CASCADE, related_name='publish_attempts')
@@ -977,7 +980,7 @@ class SocialPublishAttempt(models.Model):
     provider_called_at = models.DateTimeField(blank=True, null=True)
     provider_response_at = models.DateTimeField(blank=True, null=True)
     external_post_id = models.CharField(max_length=120, blank=True)
-    status = models.CharField(max_length=30, choices=Status.choices, default=Status.PREPARED)
+    status = models.CharField(max_length=40, choices=Status.choices, default=Status.PREPARED)
     error_class = models.CharField(max_length=120, blank=True)
     error_message = models.CharField(max_length=500, blank=True)
     metadata = models.JSONField(default=dict, blank=True)

@@ -21,6 +21,9 @@ TICK_BLOCKED_AFTER = timedelta(minutes=20)
 RUN_STALE_AFTER = timedelta(minutes=45)
 CONTENT_STALE_AFTER = timedelta(minutes=20)
 NEAR_LIMIT_RATIO = 0.8
+BACKLOG_EXCESSIVE_RATIO = 2.0
+PARTIAL_RUNS_BLOCK_RATIO = 1.5
+PENDING_SLIDES_BLOCK_RATIO = 4.0
 
 
 @dataclass
@@ -129,7 +132,8 @@ def build_profile_health(profile, *, now=None, usage=None, content_counts=None, 
         reasons.append('Timezone do perfil invalido.')
 
     instagram_status = _instagram_status(profile)
-    if profile.plataforma == SocialProfile.Plataforma.INSTAGRAM and profile.modo_operacao == SocialProfile.ModoOperacao.AUTOMATICO and instagram_status != 'Conectado':
+    instagram_connected = instagram_status in {'Conectado', 'Conectado (legado)'}
+    if profile.plataforma == SocialProfile.Plataforma.INSTAGRAM and profile.modo_operacao == SocialProfile.ModoOperacao.AUTOMATICO and not instagram_connected:
         reasons.append('Instagram necessario e nao conectado.')
 
     ready_by_type = estoque_pronto_por_tipo(profile)
@@ -148,6 +152,9 @@ def build_profile_health(profile, *, now=None, usage=None, content_counts=None, 
             reasons.append('Estoque reservado abaixo da meta.')
         if not proxima_publicacao(profile, now=now):
             reasons.append('Nenhum conteudo futuro agendado.')
+    elif profile.modo_operacao == SocialProfile.ModoOperacao.SEMIAUTOMATICO:
+        if reserved_stock < minimum_stock:
+            reasons.append('Estoque abaixo do minimo, perfil semiautomatico.')
     elif profile.modo_operacao == SocialProfile.ModoOperacao.MANUAL:
         reasons.append('Perfil em modo manual.')
 
@@ -170,6 +177,21 @@ def build_profile_health(profile, *, now=None, usage=None, content_counts=None, 
     partial_runs = run_counts[SocialCarouselGenerationRun.Status.PARTIAL]
     error_runs = run_counts[SocialCarouselGenerationRun.Status.ERROR]
     stale_runs = _stale_runs(now).filter(profile=profile).count()
+    pending_slides = (
+        slide_counts[SocialCarouselSlide.CompositionStatus.PENDING]
+        + slide_counts[SocialCarouselSlide.CompositionStatus.COMPOSING]
+        + slide_counts[SocialCarouselSlide.CompositionStatus.REVIEWING]
+        + slide_counts[SocialCarouselSlide.CompositionStatus.NEEDS_RECOMPOSE]
+    )
+    excessive_backlog = bool(target_stock and reserved_stock > target_stock * BACKLOG_EXCESSIVE_RATIO)
+    too_many_partial_runs = bool(target_stock and partial_runs > target_stock * PARTIAL_RUNS_BLOCK_RATIO)
+    too_many_pending_slides = bool(target_stock and pending_slides > target_stock * PENDING_SLIDES_BLOCK_RATIO)
+    if excessive_backlog:
+        reasons.append(f'BACKLOG_EXCESSIVE: reservado {reserved_stock} acima do alvo {target_stock}.')
+    if too_many_partial_runs:
+        reasons.append(f'TOO_MANY_PARTIAL_RUNS: {partial_runs} runs parciais.')
+    if too_many_pending_slides:
+        reasons.append(f'TOO_MANY_PENDING_SLIDES: {pending_slides} slides pendentes.')
     if stale_runs:
         reasons.append(f'{stale_runs} run AI_FINISHED travada.')
     elif error_runs:
@@ -190,7 +212,7 @@ def build_profile_health(profile, *, now=None, usage=None, content_counts=None, 
     next_post_local = _format_profile_datetime(profile, next_posts[0].scheduled_at) if next_posts else ''
     latest_error = _latest_error(profile)
 
-    blocked_terms = ['pendente de confirmacao', 'nao conectado', 'travada', 'tempo excessivo', 'sem retry', 'atingido', 'Timezone']
+    blocked_terms = ['pendente de confirmacao', 'nao conectado', 'travada', 'tempo excessivo', 'sem retry', 'atingido', 'Timezone', 'BACKLOG_EXCESSIVE', 'TOO_MANY_PARTIAL_RUNS', 'TOO_MANY_PENDING_SLIDES']
     status = BLOCKED if any(any(term in reason for term in blocked_terms) for reason in reasons) else (ATTENTION if reasons else HEALTHY)
 
     return ProfileHealth(
@@ -301,6 +323,8 @@ def _instagram_status(profile):
     try:
         connection = profile.instagram_connection
     except SocialInstagramConnection.DoesNotExist:
+        if getattr(settings, 'INSTAGRAM_ACCESS_TOKEN', '') and getattr(settings, 'INSTAGRAM_USER_ID', ''):
+            return 'Conectado (legado)'
         return 'Nao conectado'
     if not connection.is_active:
         return 'Nao conectado'

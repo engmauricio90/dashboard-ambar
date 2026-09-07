@@ -845,8 +845,8 @@ def validar_username_profile(content, *, credentials=None):
 def _marcar_publicando(content_id, *, credentials=None):
     with transaction.atomic():
         content = SocialContent.objects.select_for_update().select_related('profile').get(pk=content_id)
-        if content.status not in {SocialContent.Status.APROVADO, SocialContent.Status.AGENDADO, SocialContent.Status.ERRO}:
-            raise InstagramPublishError('Somente conteudos aprovados, agendados ou em erro podem ser publicados.')
+        if content.status not in {SocialContent.Status.APROVADO, SocialContent.Status.RETRY_LIBERADO_MANUAL, SocialContent.Status.AGENDADO, SocialContent.Status.ERRO}:
+            raise InstagramPublishError('Somente conteudos aprovados, liberados manualmente, agendados ou em erro podem ser publicados.')
         if not content.final_media_ready:
             raise InstagramPublishError('Renderize a midia final antes de publicar.')
         if content.external_post_id:
@@ -929,8 +929,8 @@ def _prepare_publish_attempt(content_id, *, credentials=None):
                 content.save(update_fields=['status', 'erro', 'updated_at'])
                 raise InstagramPublishError(PUBLISH_CONFIRMATION_PENDING_MESSAGE)
             raise InstagramPublishError('Ja existe uma tentativa de publicacao em andamento para este conteudo.')
-        if content.status not in {SocialContent.Status.APROVADO, SocialContent.Status.AGENDADO, SocialContent.Status.ERRO}:
-            raise InstagramPublishError('Somente conteudos aprovados, agendados ou em erro podem ser publicados.')
+        if content.status not in {SocialContent.Status.APROVADO, SocialContent.Status.RETRY_LIBERADO_MANUAL, SocialContent.Status.AGENDADO, SocialContent.Status.ERRO}:
+            raise InstagramPublishError('Somente conteudos aprovados, liberados manualmente, agendados ou em erro podem ser publicados.')
         if not content.final_media_ready:
             raise InstagramPublishError('Renderize a midia final antes de publicar.')
         validar_username_profile(content, credentials=credentials)
