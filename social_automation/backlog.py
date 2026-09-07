@@ -305,13 +305,26 @@ def detect_bursts(contents):
     return clusters, burst_by_content
 
 
-def cleanup_runaway(profile, *, execute=False, content_type='', include_technical_shell=False, expected_count=None, confirm_profile=''):
+def cleanup_runaway(
+    profile,
+    *,
+    execute=False,
+    content_type='',
+    include_technical_shell=False,
+    include_review_required=False,
+    expected_count=None,
+    expected_ids=None,
+    confirm_profile='',
+):
     audit = audit_backlog(profile_id=profile.id, content_type=content_type)[profile.id]
     executable_classifications = set(CLEANUP_EXECUTABLE_CLASSIFICATIONS)
     if include_technical_shell:
         executable_classifications.add(LIKELY_RUNAWAY_WITH_TECHNICAL_SHELL)
+    if include_review_required:
+        executable_classifications.add(REVIEW_REQUIRED)
     candidates_by_classification = Counter(item.classification for item in audit['items'] if item.classification in executable_classifications)
     candidates = [item.content for item in audit['items'] if item.classification in executable_classifications]
+    review_candidates = [item.content for item in audit['items'] if item.classification == REVIEW_REQUIRED]
     burst_by_content = {
         content_id: cluster
         for cluster in audit.get('bursts', [])
@@ -321,10 +334,12 @@ def cleanup_runaway(profile, *, execute=False, content_type='', include_technica
     hypothetical_deleted = len(candidates)
     after_reserved = max(0, before_reserved - hypothetical_deleted)
     technical_shell_eligible = candidates_by_classification[LIKELY_RUNAWAY_WITH_TECHNICAL_SHELL]
+    review_required_eligible = candidates_by_classification[REVIEW_REQUIRED]
     result = {
         'profile': profile,
         'execute': execute,
         'include_technical_shell': include_technical_shell,
+        'include_review_required': include_review_required,
         'before_reserved': before_reserved,
         'hypothetical_deleted': hypothetical_deleted,
         'after_reserved': after_reserved,
@@ -335,9 +350,14 @@ def cleanup_runaway(profile, *, execute=False, content_type='', include_technica
         'protected_skipped': len(audit['items']) - hypothetical_deleted,
         'eligible_empty': candidates_by_classification[LIKELY_RUNAWAY_EMPTY],
         'eligible_technical_shell': technical_shell_eligible,
+        'eligible_review_required': review_required_eligible,
         'review_required': audit['summary']['classifications'][REVIEW_REQUIRED],
         'protected': audit['summary']['classifications'][KEEP] + audit['summary']['classifications'][UNSAFE_TO_DELETE],
         'candidate_ids': [content.id for content in candidates],
+        'review_required_ids': [content.id for content in review_candidates],
+        'candidate_statuses': Counter(content.status for content in candidates),
+        'candidate_types': Counter(content.media_type for content in candidates),
+        'candidate_assets': sum((item.forensics.useful_asset_count if item.forensics else 0) for item in audit['items'] if item.classification in executable_classifications),
         'burst_count': len(audit.get('bursts', [])),
         'bursts': audit.get('bursts', []),
     }
@@ -355,6 +375,29 @@ def cleanup_runaway(profile, *, execute=False, content_type='', include_technica
             )
         if _normalize_username(confirm_profile) != _normalize_username(profile.username):
             raise CleanupRunawayError('Confirmacao de perfil invalida. Cleanup cancelado.')
+    if include_review_required:
+        expected_ids = set(expected_ids or [])
+        review_ids = set(result['review_required_ids'])
+        if expected_count is None:
+            raise CleanupRunawayError('Cleanup REVIEW_REQUIRED exige --expected-count.')
+        if not expected_ids:
+            raise CleanupRunawayError('Cleanup REVIEW_REQUIRED exige --expected-ids.')
+        if review_required_eligible != expected_count:
+            raise CleanupRunawayError(
+                'Quantidade REVIEW_REQUIRED elegivel mudou desde a auditoria.\n'
+                f'Esperado: {expected_count}\n'
+                f'Atual: {review_required_eligible}\n'
+                'Cleanup cancelado.'
+            )
+        if review_ids != expected_ids:
+            raise CleanupRunawayError(
+                'IDs REVIEW_REQUIRED elegiveis mudaram desde a auditoria.\n'
+                f'Esperado: {", ".join(str(item) for item in sorted(expected_ids))}\n'
+                f'Atual: {", ".join(str(item) for item in sorted(review_ids))}\n'
+                'Cleanup cancelado.'
+            )
+        if _normalize_username(confirm_profile) != _normalize_username(profile.username):
+            raise CleanupRunawayError('Confirmacao de perfil invalida. Cleanup cancelado.')
     if profile.modo_operacao == SocialProfile.ModoOperacao.AUTOMATICO:
         logger.warning(
             'social_runaway_cleanup_profile_automatic profile_id=%s username=%s',
@@ -363,13 +406,16 @@ def cleanup_runaway(profile, *, execute=False, content_type='', include_technica
         )
     logger.warning(
         'social_runaway_cleanup_manifest profile_id=%s username=%s execute=%s include_technical_shell=%s '
-        'eligible_empty=%s eligible_technical_shell=%s candidate_ids=%s reserved_before=%s reserved_after=%s target=%s minimum=%s',
+        'include_review_required=%s eligible_empty=%s eligible_technical_shell=%s eligible_review_required=%s '
+        'candidate_ids=%s reserved_before=%s reserved_after=%s target=%s minimum=%s',
         profile.id,
         profile.username,
         execute,
         include_technical_shell,
+        include_review_required,
         result['eligible_empty'],
         result['eligible_technical_shell'],
+        result['eligible_review_required'],
         result['candidate_ids'],
         before_reserved,
         after_reserved,
@@ -380,7 +426,12 @@ def cleanup_runaway(profile, *, execute=False, content_type='', include_technica
         for content in candidates:
             locked = SocialContent.objects.select_for_update().prefetch_related('publish_attempts', 'carousel_slides', 'carousel_generation_runs', 'events').get(pk=content.pk)
             checked = classify_content(locked, burst_by_content=burst_by_content, target=estoque_alvo_profile(profile), reserved_total=before_reserved)
-            if checked.classification not in executable_classifications or _has_delete_protection(locked) or checked.forensics.useful_asset_count:
+            if include_review_required and content.id in result['review_required_ids']:
+                if checked.classification != REVIEW_REQUIRED or _has_delete_protection(locked):
+                    raise CleanupRunawayError(
+                        f'Conteudo {locked.id} mudou desde a auditoria. Cleanup cancelado.'
+                    )
+            elif checked.classification not in executable_classifications or _has_delete_protection(locked) or checked.forensics.useful_asset_count:
                 continue
             SocialCarouselGenerationRun.objects.filter(content=locked).delete()
             locked.delete()

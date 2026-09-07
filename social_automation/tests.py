@@ -3495,6 +3495,244 @@ class SocialAutomationHealthDashboardTests(TestCase):
         self.assertIn('Eligible TECHNICAL_SHELL = 49', output.getvalue())
         self.assertIn('Apos o cleanup, o estoque reservado ficara abaixo do minimo.', output.getvalue())
 
+    def _review_content(self, profile, *, index=0, with_asset=False):
+        content = SocialContent.objects.create(
+            profile=profile,
+            media_type=SocialContent.MediaType.IMAGE,
+            frase=f'Revisao {index}',
+            status=SocialContent.Status.RASCUNHO,
+        )
+        if with_asset:
+            content.final_image.save(f'review-{index}.jpg', imagem_social(f'review-{index}.jpg'), save=True)
+        return content
+
+    def _expected_ids_arg(self, contents):
+        return ','.join(str(content.id) for content in contents)
+
+    def test_cleanup_review_required_so_e_apagavel_com_flag_explicita(self):
+        profile = self._profile(username='review-default', modo_operacao=SocialProfile.ModoOperacao.MANUAL)
+        contents = [self._review_content(profile, index=index) for index in range(3)]
+
+        output = StringIO()
+        call_command(
+            'cleanup_social_runaway',
+            '--username',
+            'review-default',
+            '--expected-count',
+            '3',
+            '--expected-ids',
+            self._expected_ids_arg(contents),
+            '--confirm-profile',
+            'review-default',
+            '--execute',
+            stdout=output,
+        )
+
+        self.assertEqual(SocialContent.objects.filter(profile=profile).count(), 3)
+        self.assertIn('Eligible REVIEW_REQUIRED = 0', output.getvalue())
+        self.assertIn('deleted = 0', output.getvalue())
+
+    def test_cleanup_review_required_sem_expected_count_aborta(self):
+        profile = self._profile(username='review-no-count', modo_operacao=SocialProfile.ModoOperacao.MANUAL)
+        contents = [self._review_content(profile, index=index) for index in range(2)]
+
+        with self.assertRaisesMessage(CommandError, 'Cleanup REVIEW_REQUIRED exige --expected-count.'):
+            call_command(
+                'cleanup_social_runaway',
+                '--username',
+                'review-no-count',
+                '--include-review-required',
+                '--expected-ids',
+                self._expected_ids_arg(contents),
+                '--confirm-profile',
+                'review-no-count',
+                '--execute',
+                stdout=StringIO(),
+            )
+
+        self.assertEqual(SocialContent.objects.filter(profile=profile).count(), 2)
+
+    def test_cleanup_review_required_count_incorreto_aborta(self):
+        profile = self._profile(username='review-wrong-count', modo_operacao=SocialProfile.ModoOperacao.MANUAL)
+        contents = [self._review_content(profile, index=index) for index in range(2)]
+
+        with self.assertRaisesMessage(CommandError, 'Quantidade REVIEW_REQUIRED elegivel mudou desde a auditoria.'):
+            call_command(
+                'cleanup_social_runaway',
+                '--username',
+                'review-wrong-count',
+                '--include-review-required',
+                '--expected-count',
+                '1',
+                '--expected-ids',
+                self._expected_ids_arg(contents),
+                '--confirm-profile',
+                'review-wrong-count',
+                '--execute',
+                stdout=StringIO(),
+            )
+
+        self.assertEqual(SocialContent.objects.filter(profile=profile).count(), 2)
+
+    def test_cleanup_review_required_expected_ids_diferentes_abortam(self):
+        profile = self._profile(username='review-wrong-ids', modo_operacao=SocialProfile.ModoOperacao.MANUAL)
+        contents = [self._review_content(profile, index=index) for index in range(2)]
+
+        with self.assertRaisesMessage(CommandError, 'IDs REVIEW_REQUIRED elegiveis mudaram desde a auditoria.'):
+            call_command(
+                'cleanup_social_runaway',
+                '--username',
+                'review-wrong-ids',
+                '--include-review-required',
+                '--expected-count',
+                '2',
+                '--expected-ids',
+                str(contents[0].id),
+                '--confirm-profile',
+                'review-wrong-ids',
+                '--execute',
+                stdout=StringIO(),
+            )
+
+        self.assertEqual(SocialContent.objects.filter(profile=profile).count(), 2)
+
+    def test_cleanup_review_required_confirm_profile_diferente_aborta(self):
+        profile = self._profile(username='review-confirm', modo_operacao=SocialProfile.ModoOperacao.MANUAL)
+        contents = [self._review_content(profile, index=index) for index in range(2)]
+
+        with self.assertRaisesMessage(CommandError, 'Confirmacao de perfil invalida.'):
+            call_command(
+                'cleanup_social_runaway',
+                '--username',
+                'review-confirm',
+                '--include-review-required',
+                '--expected-count',
+                '2',
+                '--expected-ids',
+                self._expected_ids_arg(contents),
+                '--confirm-profile',
+                'outro',
+                '--execute',
+                stdout=StringIO(),
+            )
+
+        self.assertEqual(SocialContent.objects.filter(profile=profile).count(), 2)
+
+    def test_cleanup_review_required_protege_publicado_external_id_e_meta(self):
+        profile = self._profile(username='review-protected', modo_operacao=SocialProfile.ModoOperacao.MANUAL)
+        review = self._review_content(profile)
+        published = self._ready_content(profile, status=SocialContent.Status.PUBLICADO)
+        external = self._review_content(profile, index=2)
+        external.external_post_id = 'media-1'
+        external.save(update_fields=['external_post_id', 'updated_at'])
+        provider = self._review_content(profile, index=3)
+        SocialPublishAttempt.objects.create(content=provider, provider=SocialPublishAttempt.Provider.INSTAGRAM, status=SocialPublishAttempt.Status.PROVIDER_CALLED)
+
+        output = StringIO()
+        call_command(
+            'cleanup_social_runaway',
+            '--username',
+            'review-protected',
+            '--include-review-required',
+            '--expected-count',
+            '1',
+            '--expected-ids',
+            str(review.id),
+            '--confirm-profile',
+            'review-protected',
+            '--execute',
+            stdout=output,
+        )
+
+        self.assertFalse(SocialContent.objects.filter(pk=review.pk).exists())
+        self.assertTrue(SocialContent.objects.filter(pk=published.pk).exists())
+        self.assertTrue(SocialContent.objects.filter(pk=external.pk).exists())
+        self.assertTrue(SocialContent.objects.filter(pk=provider.pk).exists())
+
+    def test_cleanup_review_required_drift_antes_do_delete_aborta_lote(self):
+        profile = self._profile(username='review-drift', modo_operacao=SocialProfile.ModoOperacao.MANUAL)
+        contents = [self._review_content(profile, index=index) for index in range(2)]
+        audit = audit_backlog(username='review-drift')
+        contents[0].external_post_id = 'media-drift'
+        contents[0].save(update_fields=['external_post_id', 'updated_at'])
+
+        with mock.patch('social_automation.backlog.audit_backlog', return_value=audit):
+            with self.assertRaisesMessage(CommandError, 'mudou desde a auditoria'):
+                call_command(
+                    'cleanup_social_runaway',
+                    '--username',
+                    'review-drift',
+                    '--include-review-required',
+                    '--expected-count',
+                    '2',
+                    '--expected-ids',
+                    self._expected_ids_arg(contents),
+                    '--confirm-profile',
+                    'review-drift',
+                    '--execute',
+                    stdout=StringIO(),
+                )
+
+        self.assertTrue(all(SocialContent.objects.filter(pk=content.pk).exists() for content in contents))
+
+    def test_cleanup_review_required_preserva_uso_ai_arquivos_e_remove_relacoes(self):
+        profile = self._profile(username='review-relations', modo_operacao=SocialProfile.ModoOperacao.MANUAL)
+        content = self._review_content(profile, with_asset=True)
+        file_path = content.final_image.path
+        run = SocialCarouselGenerationRun.objects.create(profile=profile, content=content, status=SocialCarouselGenerationRun.Status.PARTIAL)
+        slide = SocialCarouselSlide.objects.create(content=content, order=1, title='Pendente', ai_composition_status=SocialCarouselSlide.CompositionStatus.PENDING)
+        SocialAIUsage.objects.create(profile=profile, content=content, operation=SocialAIUsage.Operation.TEXT_GENERATION, success=True)
+
+        output = StringIO()
+        call_command(
+            'cleanup_social_runaway',
+            '--username',
+            'review-relations',
+            '--include-review-required',
+            '--expected-count',
+            '1',
+            '--expected-ids',
+            str(content.id),
+            '--confirm-profile',
+            'review-relations',
+            '--execute',
+            stdout=output,
+        )
+
+        self.assertFalse(SocialContent.objects.filter(pk=content.pk).exists())
+        self.assertFalse(SocialCarouselGenerationRun.objects.filter(pk=run.pk).exists())
+        self.assertFalse(SocialCarouselSlide.objects.filter(pk=slide.pk).exists())
+        self.assertEqual(SocialAIUsage.objects.filter(profile=profile).count(), 1)
+        self.assertTrue(os.path.exists(file_path))
+        self.assertIn('files_deleted = 0', output.getvalue())
+
+    def test_cleanup_review_required_treze_fixtures_remove_treze_e_preserva_publicados(self):
+        profile = self._profile(username='review-thirteen', modo_operacao=SocialProfile.ModoOperacao.MANUAL)
+        reviews = [self._review_content(profile, index=index, with_asset=index in {1, 5}) for index in range(13)]
+        published = [self._ready_content(profile, status=SocialContent.Status.PUBLICADO) for _ in range(4)]
+
+        output = StringIO()
+        call_command(
+            'cleanup_social_runaway',
+            '--username',
+            'review-thirteen',
+            '--include-review-required',
+            '--expected-count',
+            '13',
+            '--expected-ids',
+            self._expected_ids_arg(reviews),
+            '--confirm-profile',
+            'review-thirteen',
+            '--execute',
+            stdout=output,
+        )
+
+        self.assertFalse(SocialContent.objects.filter(id__in=[content.id for content in reviews]).exists())
+        self.assertEqual(SocialContent.objects.filter(id__in=[content.id for content in published], status=SocialContent.Status.PUBLICADO).count(), 4)
+        self.assertEqual(SocialContent.objects.filter(profile=profile, status=SocialContent.Status.RASCUNHO).count(), 0)
+        self.assertIn('Eligible REVIEW_REQUIRED = 13', output.getvalue())
+        self.assertIn('deleted = 13', output.getvalue())
+
 
 class SocialAutomationMediaPathHardeningTests(TestCase):
     def setUp(self):
