@@ -18,6 +18,7 @@ from django.core import signing
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
@@ -3143,15 +3144,31 @@ class SocialAutomationHealthDashboardTests(TestCase):
             SocialContentEvent.objects.create(content=content, acao='gerado_ia')
         return content
 
+    def _technical_shell(self, profile, *, index, base_time=None, with_event=True, status=SocialContent.Status.RASCUNHO):
+        content = self._burst_content(profile, index=index, base_time=base_time, with_event=with_event)
+        content.status = status
+        content.save(update_fields=['status', 'updated_at'])
+        SocialCarouselGenerationRun.objects.create(
+            profile=profile,
+            content=content,
+            generation_mode=SocialProfile.CarouselGenerationMode.AI_FINISHED,
+            status=SocialCarouselGenerationRun.Status.PARTIAL,
+        )
+        for slide_index in range(3):
+            SocialCarouselSlide.objects.create(
+                content=content,
+                order=slide_index + 1,
+                title=f'Slide {slide_index + 1}',
+                ai_composition_status=SocialCarouselSlide.CompositionStatus.PENDING,
+            )
+        return content
+
     def test_forense_auto_pending_shell_zero_assets_vira_technical_shell(self):
         profile = self._profile(username='shell', posts_por_dia=1)
         base_time = timezone.now()
         target_id = None
         for index in range(6):
-            content = self._burst_content(profile, index=index, base_time=base_time)
-            SocialCarouselGenerationRun.objects.create(profile=profile, content=content, generation_mode=SocialProfile.CarouselGenerationMode.AI_FINISHED, status=SocialCarouselGenerationRun.Status.PARTIAL)
-            for slide_index in range(6):
-                SocialCarouselSlide.objects.create(content=content, order=slide_index + 1, title=f'Slide {slide_index}', ai_composition_status=SocialCarouselSlide.CompositionStatus.PENDING)
+            content = self._technical_shell(profile, index=index, base_time=base_time)
             target_id = target_id or content.id
 
         audit = audit_backlog(username='shell')[profile.id]
@@ -3239,9 +3256,7 @@ class SocialAutomationHealthDashboardTests(TestCase):
         profile = self._profile(username='verbose', posts_por_dia=2)
         base_time = timezone.now()
         for index in range(5):
-            content = self._burst_content(profile, index=index, base_time=base_time)
-            SocialCarouselGenerationRun.objects.create(profile=profile, content=content, generation_mode=SocialProfile.CarouselGenerationMode.AI_FINISHED, status=SocialCarouselGenerationRun.Status.PARTIAL)
-            SocialCarouselSlide.objects.create(content=content, order=1, title='Pendente', ai_composition_status=SocialCarouselSlide.CompositionStatus.PENDING)
+            self._technical_shell(profile, index=index, base_time=base_time)
 
         output = StringIO()
         call_command('audit_social_backlog', '--username', 'verbose', '--verbose', stdout=output)
@@ -3264,6 +3279,221 @@ class SocialAutomationHealthDashboardTests(TestCase):
 
         self.assertIn('profile,id,created,status,type,origin,scheduled,run,run_status,slides,ready,pending,assets,reviewed,burst,classification,reasons', text)
         self.assertIn(LIKELY_RUNAWAY_EMPTY, text)
+
+    def test_cleanup_execute_sem_include_nao_remove_technical_shell(self):
+        profile = self._profile(username='cleanup-shell-default', posts_por_dia=1)
+        base_time = timezone.now()
+        for index in range(5):
+            self._technical_shell(profile, index=index, base_time=base_time)
+
+        output = StringIO()
+        call_command('cleanup_social_runaway', '--username', 'cleanup-shell-default', '--execute', stdout=output)
+
+        self.assertEqual(SocialContent.objects.filter(profile=profile).count(), 5)
+        self.assertIn('Eligible TECHNICAL_SHELL = 0', output.getvalue())
+        self.assertIn('deleted = 0', output.getvalue())
+
+    def test_cleanup_technical_shell_include_execute_sem_expected_count_aborta(self):
+        profile = self._profile(username='cleanup-shell-no-count', posts_por_dia=1)
+        base_time = timezone.now()
+        for index in range(5):
+            self._technical_shell(profile, index=index, base_time=base_time)
+
+        with self.assertRaisesMessage(CommandError, 'Cleanup TECHNICAL_SHELL exige --expected-count.'):
+            call_command(
+                'cleanup_social_runaway',
+                '--username',
+                'cleanup-shell-no-count',
+                '--include-technical-shell',
+                '--confirm-profile',
+                'cleanup-shell-no-count',
+                '--execute',
+                stdout=StringIO(),
+            )
+
+        self.assertEqual(SocialContent.objects.filter(profile=profile).count(), 5)
+
+    def test_cleanup_technical_shell_expected_count_incorreto_aborta(self):
+        profile = self._profile(username='cleanup-shell-wrong-count', posts_por_dia=1)
+        base_time = timezone.now()
+        for index in range(5):
+            self._technical_shell(profile, index=index, base_time=base_time)
+
+        with self.assertRaisesMessage(CommandError, 'Quantidade elegivel mudou desde a auditoria.'):
+            call_command(
+                'cleanup_social_runaway',
+                '--username',
+                'cleanup-shell-wrong-count',
+                '--include-technical-shell',
+                '--expected-count',
+                '4',
+                '--confirm-profile',
+                'cleanup-shell-wrong-count',
+                '--execute',
+                stdout=StringIO(),
+            )
+
+        self.assertEqual(SocialContent.objects.filter(profile=profile).count(), 5)
+
+    def test_cleanup_technical_shell_confirm_profile_incorreto_aborta(self):
+        profile = self._profile(username='cleanup-shell-confirm', posts_por_dia=1)
+        base_time = timezone.now()
+        for index in range(5):
+            self._technical_shell(profile, index=index, base_time=base_time)
+
+        with self.assertRaisesMessage(CommandError, 'Confirmacao de perfil invalida.'):
+            call_command(
+                'cleanup_social_runaway',
+                '--username',
+                'cleanup-shell-confirm',
+                '--include-technical-shell',
+                '--expected-count',
+                '5',
+                '--confirm-profile',
+                'outro-perfil',
+                '--execute',
+                stdout=StringIO(),
+            )
+
+        self.assertEqual(SocialContent.objects.filter(profile=profile).count(), 5)
+
+    def test_cleanup_technical_shell_valido_com_confirmacoes_remove_cascade_sem_uso_ai(self):
+        profile = self._profile(username='cleanup-shell-ok', posts_por_dia=1, modo_operacao=SocialProfile.ModoOperacao.MANUAL)
+        base_time = timezone.now()
+        protected = self._ready_content(profile, status=SocialContent.Status.AGENDADO, scheduled_at=timezone.now() + timedelta(days=1))
+        contents = [self._technical_shell(profile, index=index, base_time=base_time) for index in range(5)]
+        SocialAIUsage.objects.create(profile=profile, operation=SocialAIUsage.Operation.IMAGE_GENERATION, success=True)
+        run_ids = list(SocialCarouselGenerationRun.objects.filter(content__in=contents).values_list('id', flat=True))
+        slide_ids = list(SocialCarouselSlide.objects.filter(content__in=contents).values_list('id', flat=True))
+
+        output = StringIO()
+        call_command(
+            'cleanup_social_runaway',
+            '--username',
+            'cleanup-shell-ok',
+            '--include-technical-shell',
+            '--expected-count',
+            '5',
+            '--confirm-profile',
+            'cleanup-shell-ok',
+            '--execute',
+            stdout=output,
+        )
+
+        self.assertEqual(SocialContent.objects.filter(profile=profile).count(), 1)
+        self.assertTrue(SocialContent.objects.filter(pk=protected.pk).exists())
+        self.assertFalse(SocialCarouselGenerationRun.objects.filter(id__in=run_ids).exists())
+        self.assertFalse(SocialCarouselSlide.objects.filter(id__in=slide_ids).exists())
+        self.assertEqual(SocialAIUsage.objects.filter(profile=profile).count(), 1)
+        self.assertIn('deleted = 5', output.getvalue())
+        self.assertIn('files_deleted = 0', output.getvalue())
+
+    def test_cleanup_technical_shell_revalida_asset_publish_attempt_schedule_e_retry(self):
+        profile = self._profile(username='cleanup-shell-revalidate', posts_por_dia=1, modo_operacao=SocialProfile.ModoOperacao.MANUAL)
+        base_time = timezone.now()
+        contents = [self._technical_shell(profile, index=index, base_time=base_time) for index in range(9)]
+        contents[0].final_image.save('late-final.jpg', imagem_social('late-final.jpg'), save=True)
+        SocialPublishAttempt.objects.create(content=contents[1], provider=SocialPublishAttempt.Provider.INSTAGRAM, status=SocialPublishAttempt.Status.PROVIDER_CALLED)
+        contents[2].status = SocialContent.Status.AGENDADO
+        contents[2].scheduled_at = timezone.now() + timedelta(days=1)
+        contents[2].save(update_fields=['status', 'scheduled_at', 'updated_at'])
+        contents[3].status = SocialContent.Status.RETRY_LIBERADO_MANUAL
+        contents[3].save(update_fields=['status', 'updated_at'])
+
+        output = StringIO()
+        call_command(
+            'cleanup_social_runaway',
+            '--username',
+            'cleanup-shell-revalidate',
+            '--include-technical-shell',
+            '--expected-count',
+                '5',
+            '--confirm-profile',
+            'cleanup-shell-revalidate',
+            '--execute',
+            stdout=output,
+        )
+
+        remaining_ids = set(SocialContent.objects.filter(profile=profile).values_list('id', flat=True))
+        self.assertTrue(all(content.id in remaining_ids for content in contents[:4]))
+        self.assertFalse(any(content.id in remaining_ids for content in contents[4:]))
+        self.assertIn('deleted = 5', output.getvalue())
+
+    def test_cleanup_manual_technical_shell_nao_remove(self):
+        profile = self._profile(username='cleanup-manual-shell', posts_por_dia=1)
+        base_time = timezone.now()
+        for index in range(5):
+            content = self._burst_content(profile, index=index, base_time=base_time, with_event=False)
+            for slide_index in range(3):
+                SocialCarouselSlide.objects.create(
+                    content=content,
+                    order=slide_index + 1,
+                    title=f'Slide manual {slide_index + 1}',
+                    ai_composition_status=SocialCarouselSlide.CompositionStatus.PENDING,
+                )
+
+        output = StringIO()
+        call_command(
+            'cleanup_social_runaway',
+            '--username',
+            'cleanup-manual-shell',
+            '--include-technical-shell',
+            stdout=output,
+        )
+
+        self.assertEqual(SocialContent.objects.filter(profile=profile).count(), 5)
+        self.assertIn('Eligible TECHNICAL_SHELL = 0', output.getvalue())
+
+    def test_cleanup_technical_shell_nao_remove_arquivo_fisico_de_conteudo_preservado(self):
+        profile = self._profile(username='cleanup-shell-file', posts_por_dia=1, modo_operacao=SocialProfile.ModoOperacao.MANUAL)
+        base_time = timezone.now()
+        contents = [self._technical_shell(profile, index=index, base_time=base_time) for index in range(5)]
+        contents[0].final_image.save('preservado.jpg', imagem_social('preservado.jpg'), save=True)
+        file_path = contents[0].final_image.path
+
+        output = StringIO()
+        call_command(
+            'cleanup_social_runaway',
+            '--username',
+            'cleanup-shell-file',
+            '--include-technical-shell',
+            '--expected-count',
+            '4',
+            '--confirm-profile',
+            'cleanup-shell-file',
+            '--execute',
+            stdout=output,
+        )
+
+        self.assertTrue(os.path.exists(file_path))
+        self.assertTrue(SocialContent.objects.filter(pk=contents[0].pk).exists())
+        self.assertIn('files_deleted = 0', output.getvalue())
+
+    def test_cleanup_technical_shell_permite_reserved_after_abaixo_do_minimo(self):
+        profile = self._profile(username='cleanup-below-minimum', posts_por_dia=8, modo_operacao=SocialProfile.ModoOperacao.MANUAL)
+        base_time = timezone.now()
+        for index in range(49):
+            self._technical_shell(profile, index=index, base_time=base_time)
+        protected = self._ready_content(profile, status=SocialContent.Status.AGENDADO, scheduled_at=timezone.now() + timedelta(days=1))
+
+        output = StringIO()
+        call_command(
+            'cleanup_social_runaway',
+            '--username',
+            'cleanup-below-minimum',
+            '--include-technical-shell',
+            '--expected-count',
+            '49',
+            '--confirm-profile',
+            'cleanup-below-minimum',
+            '--execute',
+            stdout=output,
+        )
+
+        self.assertEqual(SocialContent.objects.filter(profile=profile).count(), 1)
+        self.assertTrue(SocialContent.objects.filter(pk=protected.pk).exists())
+        self.assertIn('Eligible TECHNICAL_SHELL = 49', output.getvalue())
+        self.assertIn('Apos o cleanup, o estoque reservado ficara abaixo do minimo.', output.getvalue())
 
 
 class SocialAutomationMediaPathHardeningTests(TestCase):

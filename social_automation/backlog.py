@@ -1,6 +1,7 @@
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import timedelta
+import logging
 
 from django.db import transaction
 from django.db.models import Q
@@ -8,6 +9,8 @@ from django.db.models import Q
 from .models import SocialCarouselGenerationRun, SocialCarouselSlide, SocialContent, SocialProfile, SocialPublishAttempt
 from .scheduler import estoque_alvo_profile, estoque_minimo_profile, estoque_reservado_por_tipo
 
+
+logger = logging.getLogger(__name__)
 
 KEEP = 'KEEP'
 LIKELY_RUNAWAY_EMPTY = 'LIKELY_RUNAWAY_EMPTY'
@@ -31,10 +34,12 @@ PROTECTED_CONTENT_STATUSES = {
     SocialContent.Status.AGENDADO,
     SocialContent.Status.PUBLICANDO,
     SocialContent.Status.PUBLISH_CONFIRMATION_PENDING,
+    SocialContent.Status.RETRY_LIBERADO_MANUAL,
 }
 UNSAFE_CONTENT_STATUSES = {
     SocialContent.Status.PUBLICANDO,
     SocialContent.Status.PUBLISH_CONFIRMATION_PENDING,
+    SocialContent.Status.RETRY_LIBERADO_MANUAL,
 }
 PROTECTED_ATTEMPT_STATUSES = {
     SocialPublishAttempt.Status.PROVIDER_CALLED,
@@ -96,6 +101,10 @@ class BacklogItem:
     classification: str
     reasons: list[str] = field(default_factory=list)
     forensics: ContentForensics | None = None
+
+
+class CleanupRunawayError(Exception):
+    pass
 
 
 def filtered_profiles(profile_id=None, username=''):
@@ -296,9 +305,13 @@ def detect_bursts(contents):
     return clusters, burst_by_content
 
 
-def cleanup_runaway(profile, *, execute=False, content_type=''):
+def cleanup_runaway(profile, *, execute=False, content_type='', include_technical_shell=False, expected_count=None, confirm_profile=''):
     audit = audit_backlog(profile_id=profile.id, content_type=content_type)[profile.id]
-    candidates = [item.content for item in audit['items'] if item.classification in CLEANUP_EXECUTABLE_CLASSIFICATIONS]
+    executable_classifications = set(CLEANUP_EXECUTABLE_CLASSIFICATIONS)
+    if include_technical_shell:
+        executable_classifications.add(LIKELY_RUNAWAY_WITH_TECHNICAL_SHELL)
+    candidates_by_classification = Counter(item.classification for item in audit['items'] if item.classification in executable_classifications)
+    candidates = [item.content for item in audit['items'] if item.classification in executable_classifications]
     burst_by_content = {
         content_id: cluster
         for cluster in audit.get('bursts', [])
@@ -307,9 +320,11 @@ def cleanup_runaway(profile, *, execute=False, content_type=''):
     before_reserved = audit['summary']['reserved_total']
     hypothetical_deleted = len(candidates)
     after_reserved = max(0, before_reserved - hypothetical_deleted)
+    technical_shell_eligible = candidates_by_classification[LIKELY_RUNAWAY_WITH_TECHNICAL_SHELL]
     result = {
         'profile': profile,
         'execute': execute,
+        'include_technical_shell': include_technical_shell,
         'before_reserved': before_reserved,
         'hypothetical_deleted': hypothetical_deleted,
         'after_reserved': after_reserved,
@@ -318,19 +333,63 @@ def cleanup_runaway(profile, *, execute=False, content_type=''):
         'deleted': 0,
         'files_deleted': 0,
         'protected_skipped': len(audit['items']) - hypothetical_deleted,
+        'eligible_empty': candidates_by_classification[LIKELY_RUNAWAY_EMPTY],
+        'eligible_technical_shell': technical_shell_eligible,
+        'review_required': audit['summary']['classifications'][REVIEW_REQUIRED],
+        'protected': audit['summary']['classifications'][KEEP] + audit['summary']['classifications'][UNSAFE_TO_DELETE],
         'candidate_ids': [content.id for content in candidates],
+        'burst_count': len(audit.get('bursts', [])),
+        'bursts': audit.get('bursts', []),
     }
     if not execute:
         return result
+    if include_technical_shell:
+        if expected_count is None:
+            raise CleanupRunawayError('Cleanup TECHNICAL_SHELL exige --expected-count.')
+        if technical_shell_eligible != expected_count:
+            raise CleanupRunawayError(
+                'Quantidade elegivel mudou desde a auditoria.\n'
+                f'Esperado: {expected_count}\n'
+                f'Atual: {technical_shell_eligible}\n'
+                'Cleanup cancelado.'
+            )
+        if _normalize_username(confirm_profile) != _normalize_username(profile.username):
+            raise CleanupRunawayError('Confirmacao de perfil invalida. Cleanup cancelado.')
+    if profile.modo_operacao == SocialProfile.ModoOperacao.AUTOMATICO:
+        logger.warning(
+            'social_runaway_cleanup_profile_automatic profile_id=%s username=%s',
+            profile.id,
+            profile.username,
+        )
+    logger.warning(
+        'social_runaway_cleanup_manifest profile_id=%s username=%s execute=%s include_technical_shell=%s '
+        'eligible_empty=%s eligible_technical_shell=%s candidate_ids=%s reserved_before=%s reserved_after=%s target=%s minimum=%s',
+        profile.id,
+        profile.username,
+        execute,
+        include_technical_shell,
+        result['eligible_empty'],
+        result['eligible_technical_shell'],
+        result['candidate_ids'],
+        before_reserved,
+        after_reserved,
+        result['target'],
+        result['minimum'],
+    )
     with transaction.atomic():
         for content in candidates:
             locked = SocialContent.objects.select_for_update().prefetch_related('publish_attempts', 'carousel_slides', 'carousel_generation_runs', 'events').get(pk=content.pk)
             checked = classify_content(locked, burst_by_content=burst_by_content, target=estoque_alvo_profile(profile), reserved_total=before_reserved)
-            if checked.classification not in CLEANUP_EXECUTABLE_CLASSIFICATIONS or _has_delete_protection(locked) or checked.forensics.useful_asset_count:
+            if checked.classification not in executable_classifications or _has_delete_protection(locked) or checked.forensics.useful_asset_count:
                 continue
+            SocialCarouselGenerationRun.objects.filter(content=locked).delete()
             locked.delete()
             result['deleted'] += 1
     return result
+
+
+def _normalize_username(username):
+    return (username or '').strip().lstrip('@').lower()
 
 
 def _finalize_cluster(contents, clusters, burst_by_content, cluster_id, profile_id):
