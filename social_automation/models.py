@@ -1003,6 +1003,35 @@ class SocialPublishAttempt(models.Model):
         return f'{self.content_id} - {self.provider} - {self.status}'
 
 
+class SocialAutomationTick(models.Model):
+    class Status(models.TextChoices):
+        OK = 'ok', 'OK'
+        ALREADY_RUNNING = 'already_running', 'Ja em execucao'
+        ERROR = 'error', 'Erro'
+
+    started_at = models.DateTimeField(default=timezone.now)
+    finished_at = models.DateTimeField(blank=True, null=True)
+    status = models.CharField(max_length=30, choices=Status.choices, default=Status.OK)
+    duration_ms = models.PositiveIntegerField(default=0)
+    profiles_processed = models.PositiveIntegerField(default=0)
+    created_count = models.PositiveIntegerField(default=0)
+    scheduled_count = models.PositiveIntegerField(default=0)
+    published_count = models.PositiveIntegerField(default=0)
+    error_count = models.PositiveIntegerField(default=0)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-started_at', '-id']
+        indexes = [
+            models.Index(fields=['status', '-started_at']),
+            models.Index(fields=['-started_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.started_at:%d/%m/%Y %H:%M} - {self.status}'
+
+
 class SocialCreativeReference(models.Model):
     class ReferenceType(models.TextChoices):
         VISUAL_STYLE = 'VISUAL_STYLE', 'Estilo visual'

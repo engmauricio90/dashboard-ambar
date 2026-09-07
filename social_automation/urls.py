@@ -7,6 +7,7 @@ app_name = 'social_automation'
 
 urlpatterns = [
     path('', views.home, name='home'),
+    path('saude/', views.health_dashboard, name='health'),
     path('perfis/', views.profile_list, name='profile_list'),
     path('perfis/novo/', views.profile_create, name='profile_create'),
     path('perfis/<int:profile_id>/', views.profile_detail, name='profile_detail'),

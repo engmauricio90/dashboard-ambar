@@ -4,6 +4,7 @@ from .models import (
     SocialBaseImage,
     SocialBaseImageProtectedRegion,
     SocialAIUsage,
+    SocialAutomationTick,
     SocialCarouselGenerationRun,
     SocialCarouselSlide,
     SocialCarouselTemplate,
@@ -255,3 +256,10 @@ class SocialAIUsageAdmin(admin.ModelAdmin):
     list_filter = ['operation', 'success', 'profile']
     search_fields = ['profile__nome', 'profile__username', 'model', 'error']
     readonly_fields = ['profile', 'content', 'slide', 'base_image', 'operation', 'provider', 'model', 'success', 'prompt_tokens', 'output_tokens', 'total_tokens', 'error', 'metadata', 'created_at']
+
+
+@admin.register(SocialAutomationTick)
+class SocialAutomationTickAdmin(admin.ModelAdmin):
+    list_display = ['started_at', 'finished_at', 'status', 'profiles_processed', 'created_count', 'scheduled_count', 'published_count', 'error_count', 'duration_ms']
+    list_filter = ['status']
+    readonly_fields = ['started_at', 'finished_at', 'status', 'duration_ms', 'profiles_processed', 'created_count', 'scheduled_count', 'published_count', 'error_count', 'metadata', 'created_at']

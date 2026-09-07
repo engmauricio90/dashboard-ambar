@@ -1,0 +1,162 @@
+{% extends 'social_automation/base.html' %}
+
+{% block social_title %}Saude da Automacao Social{% endblock %}
+{% block social_subtitle %}Visao operacional de perfis, estoque, quotas, runs, Meta e Cron.{% endblock %}
+{% block social_actions %}
+<a href="{% url 'social_automation:content_list' %}" class="btn btn-outline-primary">Ver fila</a>
+{% endblock %}
+
+{% block social_content %}
+<div class="row g-3 mb-4">
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Perfis ativos</div><h3 class="mb-0">{{ summary.active_profiles }}</h3></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Saudaveis</div><h3 class="text-success mb-0">{{ summary.healthy_profiles }}</h3></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Com atencao</div><h3 class="text-warning mb-0">{{ summary.attention_profiles }}</h3></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Bloqueados</div><h3 class="text-danger mb-0">{{ summary.blocked_profiles }}</h3></div></div></div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>Sistema</strong>
+        <span class="badge {% if system.status == 'SAUDAVEL' %}text-bg-success{% elif system.status == 'ATENCAO' %}text-bg-warning{% else %}text-bg-danger{% endif %}">{{ system.status }}</span>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3"><div class="text-muted small">Ultimo tick</div><strong>{% if system.last_tick %}{{ system.last_tick.finished_at|default:system.last_tick.started_at|date:'d/m/Y H:i' }}{% else %}-{% endif %}</strong><div class="small text-muted">{% if system.tick_age_minutes != None %}ha {{ system.tick_age_minutes }} min{% endif %}</div></div>
+            <div class="col-md-3"><div class="text-muted small">Resultado do tick</div><strong>{% if system.last_tick %}{{ system.last_tick.get_status_display }}{% else %}-{% endif %}</strong></div>
+            <div class="col-md-2"><div class="text-muted small">Runs ativas</div><strong>{{ system.active_runs }}</strong></div>
+            <div class="col-md-2"><div class="text-muted small">Pendentes Meta</div><strong>{{ system.ambiguous_publications }}</strong></div>
+            <div class="col-md-2"><div class="text-muted small">Erros</div><strong>{{ system.content_errors }}</strong></div>
+        </div>
+        {% if system.reasons %}
+        <hr>
+        <div class="small">
+            {% for reason in system.reasons %}
+            <span class="badge text-bg-light border me-1 mb-1">{{ reason }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header fw-bold">Fila</div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-4"><div class="text-muted small">Agendados</div><strong>{{ summary.scheduled_contents }}</strong></div>
+                    <div class="col-4"><div class="text-muted small">Com erro</div><strong>{{ summary.error_contents }}</strong></div>
+                    <div class="col-4"><div class="text-muted small">Meta pendente</div><strong>{{ summary.pending_confirmations }}</strong></div>
+                </div>
+                <hr>
+                <div class="text-muted small">Proximo conteudo</div>
+                {% if summary.next_content %}
+                <a href="{% url 'social_automation:content_detail' summary.next_content.id %}">{{ summary.next_content.scheduled_at|date:'d/m H:i' }} - {{ summary.next_content.get_media_type_display }} - {{ summary.next_content.profile.nome }}</a>
+                {% else %}
+                <span class="text-muted">Nenhum conteudo agendado.</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header fw-bold">IA hoje</div>
+            <div class="card-body">
+                <div class="row g-2 small">
+                    <div class="col-6">Texto: <strong>{{ system.ai_usage_global.TEXT_GENERATION|default:0 }}</strong></div>
+                    <div class="col-6">Imagens: <strong>{{ system.ai_usage_global.IMAGE_GENERATION|default:0 }}</strong></div>
+                    <div class="col-6">Composicao: <strong>{{ system.ai_usage_global.COMPOSED_SLIDE|default:0 }}</strong></div>
+                    <div class="col-6">Review: <strong>{{ system.ai_usage_global.COMPOSED_SLIDE_REVIEW|default:0 }}</strong></div>
+                </div>
+                <div class="small text-muted mt-3">Sem estimativa financeira: esta tela mostra unidades consumidas, nao custo.</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    {% for item in profiles %}
+    <div class="col-xl-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header d-flex justify-content-between align-items-start gap-3">
+                <div>
+                    <strong>{{ item.profile.nome }}</strong>
+                    <div class="small text-muted">{{ item.profile.username }}</div>
+                </div>
+                <span class="badge {% if item.status == 'SAUDAVEL' %}text-bg-success{% elif item.status == 'ATENCAO' %}text-bg-warning{% elif item.status == 'INATIVO' %}text-bg-secondary{% else %}text-bg-danger{% endif %}">{{ item.status }}</span>
+            </div>
+            <div class="card-body">
+                <div class="row g-3 small">
+                    <div class="col-md-4"><span class="text-muted">Modo</span><br><strong>{{ item.mode }}</strong></div>
+                    <div class="col-md-4"><span class="text-muted">Instagram</span><br><strong>{{ item.instagram }}</strong></div>
+                    <div class="col-md-4"><span class="text-muted">Proximo post</span><br><strong>{{ item.next_post_local|default:'-' }}</strong></div>
+                    <div class="col-md-4"><span class="text-muted">Ready</span><br><strong>{{ item.ready_stock }}</strong> <span class="text-muted">/ alvo {{ item.target_stock }}</span></div>
+                    <div class="col-md-4"><span class="text-muted">Reservado</span><br><strong>{{ item.reserved_stock }}</strong> <span class="text-muted">/ min {{ item.minimum_stock }}</span></div>
+                    <div class="col-md-4"><span class="text-muted">Em andamento</span><br><strong>{{ item.in_progress_stock }}</strong></div>
+                </div>
+
+                <div class="row g-3 small mt-1">
+                    <div class="col-md-6">
+                        <div class="text-muted">Estoque por tipo</div>
+                        <div>Foto: <strong>{{ item.ready_by_type.image|default:0 }}</strong> pronta / <strong>{{ item.reserved_by_type.image|default:0 }}</strong> reservada</div>
+                        <div>Reel: <strong>{{ item.ready_by_type.reel|default:0 }}</strong> pronto / <strong>{{ item.reserved_by_type.reel|default:0 }}</strong> reservado</div>
+                        <div>Carrossel: <strong>{{ item.ready_by_type.carousel|default:0 }}</strong> pronto / <strong>{{ item.reserved_by_type.carousel|default:0 }}</strong> reservado</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted">IA visual hoje</div>
+                        <div><strong>{{ item.ai_used_today }}</strong> / {{ item.ai_effective_limit }} usados</div>
+                        <div class="{% if item.ai_near_limit %}text-warning{% else %}text-muted{% endif %}">Restante: {{ item.ai_remaining_today }}</div>
+                    </div>
+                </div>
+
+                <hr>
+                <div class="row g-3 small">
+                    <div class="col-md-6">
+                        <div class="text-muted">Conteudos</div>
+                        <div>Erro: <strong>{{ item.content_counts.erro|default:0 }}</strong></div>
+                        <div>Rejeitado: <strong>{{ item.content_counts.rejeitado|default:0 }}</strong></div>
+                        <div>Publicacao pendente: <strong>{{ item.content_counts.publish_confirmation_pending|default:0 }}</strong></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted">AI_FINISHED</div>
+                        <div>Runs parciais: <strong>{{ item.run_counts.PARTIAL|default:0 }}</strong></div>
+                        <div>Runs com erro: <strong>{{ item.run_counts.ERROR|default:0 }}</strong></div>
+                        <div>Slides prontos: <strong>{{ item.slide_counts.READY|default:0 }}</strong> | Pendentes: <strong>{{ item.slide_counts.PENDING|default:0 }}</strong> | Erro: <strong>{{ item.slide_counts.ERROR|default:0 }}</strong></div>
+                    </div>
+                </div>
+
+                {% if item.latest_attempt %}
+                <hr>
+                <div class="small">
+                    <span class="text-muted">Ultima tentativa Meta:</span>
+                    <a href="{% url 'social_automation:content_detail' item.latest_attempt.content_id %}">conteudo {{ item.latest_attempt.content_id }}</a>
+                    - {{ item.latest_attempt.get_status_display }} - {{ item.latest_attempt.started_at|date:'d/m H:i' }}
+                </div>
+                {% endif %}
+
+                {% if item.latest_error %}
+                <div class="alert alert-light border small mt-3 mb-0">{{ item.latest_error }}</div>
+                {% endif %}
+
+                {% if item.reasons %}
+                <div class="mt-3">
+                    {% for reason in item.reasons %}
+                    <span class="badge text-bg-light border me-1 mb-1">{{ reason }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            <div class="card-footer d-flex gap-2 flex-wrap">
+                <a class="btn btn-sm btn-outline-primary" href="{% url 'social_automation:profile_detail' item.profile.id %}">Ver perfil</a>
+                <a class="btn btn-sm btn-outline-secondary" href="{% url 'social_automation:profile_content_list' item.profile.id %}">Ver conteudos</a>
+                <a class="btn btn-sm btn-outline-secondary" href="{% url 'social_automation:profile_update' item.profile.id %}">Editar perfil</a>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="col-12">
+        <div class="card shadow-sm"><div class="card-body text-center text-muted">Nenhum perfil social cadastrado.</div></div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

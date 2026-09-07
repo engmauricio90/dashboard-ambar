@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 import logging
 import random
 import time
@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from .generation import gerar_lote_conteudos
 from .instagram import InstagramAPIError, InstagramConfigurationError, InstagramContainerPending, InstagramPublishError, auditar_imagem_final, publicar_conteudo_instagram
-from .models import SocialContent, SocialProfile
+from .models import SocialAutomationTick, SocialContent, SocialProfile
 from .scheduler import estoque_alvo_profile, estoque_em_andamento_por_tipo, estoque_minimo_profile, estoque_pronto, estoque_pronto_por_tipo, estoque_reservado_por_tipo, plano_geracao_por_deficit, preencher_agenda, proxima_publicacao, reagendar_vencidos, tipos_reservados_criados_desde
 from .services import registrar_evento
 from .video_rendering import auditar_video_reel
@@ -96,7 +96,9 @@ class TickSummary:
 
 def executar_tick_social(*, use_lock=True, now=None):
     if use_lock and not cache.add(TICK_LOCK_KEY, timezone.now().isoformat(), settings.SOCIAL_AUTOMATION_TICK_LOCK_SECONDS):
-        return TickSummary(status='already_running', started_at=timezone.now().isoformat()).as_dict()
+        summary = TickSummary(status='already_running', started_at=timezone.now().isoformat()).as_dict()
+        _record_tick_summary(summary)
+        return summary
 
     started = timezone.now()
     started_monotonic = time.monotonic()
@@ -110,12 +112,31 @@ def executar_tick_social(*, use_lock=True, now=None):
         ).order_by('id')
         for profile in profiles:
             summary.profiles.append(_process_profile(profile, now=now or timezone.now()))
+        if any(profile.status == 'erro' for profile in summary.profiles):
+            summary.status = 'error'
     finally:
         summary.duration_ms = int((time.monotonic() - started_monotonic) * 1000)
         logger.info('social_automation.tick_end duration_ms=%s', summary.duration_ms)
+        _record_tick_summary(summary.as_dict())
         if use_lock:
             cache.delete(TICK_LOCK_KEY)
     return summary.as_dict()
+
+
+def _record_tick_summary(summary):
+    profiles = summary.get('profiles') or []
+    SocialAutomationTick.objects.create(
+        started_at=datetime.fromisoformat(summary['started_at']) if summary.get('started_at') else timezone.now(),
+        finished_at=timezone.now(),
+        status=summary.get('status') or SocialAutomationTick.Status.OK,
+        duration_ms=summary.get('duration_ms') or 0,
+        profiles_processed=len(profiles),
+        created_count=sum(item.get('generated', 0) for item in profiles),
+        scheduled_count=sum(item.get('scheduled', 0) for item in profiles),
+        published_count=sum(item.get('published', 0) for item in profiles),
+        error_count=sum(item.get('errors', 0) for item in profiles),
+        metadata={'profiles': profiles[:20]},
+    )
 
 
 def _process_profile(profile, *, now):

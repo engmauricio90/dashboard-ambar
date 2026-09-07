@@ -32,6 +32,7 @@ from .carousel_creative_blueprint import CarouselIdea, IdeaSelection
 from .carousel_ideation import generate_carousel_ideas
 from .composed_slide_review import rereview_ai_finished_slide
 from .generation import _historico, gerar_lote_conteudos
+from .health import build_social_health
 from .image_analysis import analyze_social_image
 from .image_generation import SocialImagePrompt, build_social_image_prompt, generate_social_image
 from .instagram import (
@@ -109,6 +110,12 @@ def home(request):
         'perfis_status': perfis_status,
     }
     return render(request, 'social_automation/home.html', contexto)
+
+
+@staff_required
+def health_dashboard(request):
+    contexto = build_social_health()
+    return render(request, 'social_automation/health.html', contexto)
 
 
 @staff_required

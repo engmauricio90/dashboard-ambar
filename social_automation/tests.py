@@ -19,14 +19,17 @@ from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
+from django.db import connection
 from PIL import Image, ImageDraw, ImageFont
 
 from empresas.models import Empresa, UsuarioEmpresa
 
 from .models import (
     SocialAIUsage,
+    SocialAutomationTick,
     SocialBaseImage,
     SocialBaseImageProtectedRegion,
     SocialCarouselGenerationRun,
@@ -52,6 +55,7 @@ from .container_versioning import (
 )
 from .forms import SocialCarouselSlideFormSet, SocialProfileForm
 from .generation import GenerationResult, _image_contexts, gerar_lote_conteudos
+from .health import ATTENTION, BLOCKED, HEALTHY, INACTIVE, build_profile_health, build_social_health, build_system_health
 from .image_selection import selecionar_imagem_base
 from .image_generation import SocialImageGenerationDisabled, SocialImagePrompt, build_image_generation_prompt, generate_social_image, image_generation_available
 from .image_analysis import ImageAnalysisResult, persist_image_analysis
@@ -2716,6 +2720,178 @@ class SocialAutomationMediaRootTests(TestCase):
 
             with self.assertRaisesMessage(Exception, 'Conteudo ja esta publicado'):
                 publicar_conteudo_instagram(content, self.staff)
+
+
+class SocialAutomationHealthDashboardTests(TestCase):
+    def setUp(self):
+        self.staff = User.objects.create_user(username='staff-health-social', password='senha', is_staff=True)
+        self.common = User.objects.create_user(username='common-health-social', password='senha')
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        media_override = override_settings(MEDIA_ROOT=self.tmp.name)
+        media_override.enable()
+        self.addCleanup(media_override.disable)
+
+    def _profile(self, **kwargs):
+        defaults = {
+            'nome': f'Perfil Health {SocialProfile.objects.count() + 1}',
+            'username': f'health{SocialProfile.objects.count() + 1}',
+            'modo_operacao': SocialProfile.ModoOperacao.AUTOMATICO,
+            'posts_por_dia': 1,
+            'reels_por_dia': 0,
+            'carousels_por_dia': 0,
+            'horarios_publicacao': ['12:00'],
+        }
+        defaults.update(kwargs)
+        return SocialProfile.objects.create(**defaults)
+
+    def _connect(self, profile):
+        return SocialInstagramConnection.objects.create(
+            profile=profile,
+            instagram_user_id=f'178-{profile.id}',
+            username=profile.username,
+            account_type=SocialInstagramConnection.AccountType.BUSINESS,
+            access_token_encrypted='ciphertext-test',
+            is_active=True,
+        )
+
+    def _ready_content(self, profile, *, status=SocialContent.Status.APROVADO, scheduled_at=None):
+        content = SocialContent.objects.create(profile=profile, frase='Conteudo pronto', status=status, scheduled_at=scheduled_at)
+        content.final_image.save(f'content-{profile.id}-{SocialContent.objects.count()}.jpg', imagem_social('ready.jpg'), save=True)
+        return content
+
+    def test_perfil_saudavel(self):
+        profile = self._profile()
+        self._connect(profile)
+        now = timezone.now()
+        for index in range(3):
+            self._ready_content(profile, status=SocialContent.Status.AGENDADO, scheduled_at=now + timedelta(hours=index + 1))
+
+        health = build_profile_health(profile, now=now)
+
+        self.assertEqual(health.status, HEALTHY)
+        self.assertEqual(health.reserved_stock, 3)
+        self.assertTrue(health.next_post_local)
+
+    def test_perfil_quota_esgotada(self):
+        profile = self._profile(ai_image_generation_enabled=True, ai_image_mode=SocialProfile.AIImagePolicy.AI_ALWAYS, ai_image_daily_limit=1)
+        self._connect(profile)
+        SocialAIUsage.objects.create(profile=profile, operation=SocialAIUsage.Operation.IMAGE_GENERATION, success=True)
+
+        health = build_profile_health(profile)
+
+        self.assertEqual(health.status, BLOCKED)
+        self.assertIn('Limite diario de IA visual atingido.', health.reasons)
+
+    def test_perfil_sem_instagram_bloqueado(self):
+        profile = self._profile()
+
+        health = build_profile_health(profile)
+
+        self.assertEqual(health.status, BLOCKED)
+        self.assertIn('Instagram necessario e nao conectado.', health.reasons)
+
+    def test_publicacao_ambigua_bloqueia_perfil(self):
+        profile = self._profile()
+        self._connect(profile)
+        content = SocialContent.objects.create(profile=profile, frase='Ambiguo', status=SocialContent.Status.PUBLISH_CONFIRMATION_PENDING)
+        SocialPublishAttempt.objects.create(content=content, provider=SocialPublishAttempt.Provider.INSTAGRAM, status=SocialPublishAttempt.Status.AMBIGUOUS)
+
+        health = build_profile_health(profile)
+
+        self.assertEqual(health.status, BLOCKED)
+        self.assertEqual(health.content_counts[SocialContent.Status.PUBLISH_CONFIRMATION_PENDING], 1)
+        self.assertEqual(health.latest_attempt.status, SocialPublishAttempt.Status.AMBIGUOUS)
+
+    def test_run_stale_bloqueia_perfil(self):
+        profile = self._profile()
+        self._connect(profile)
+        content = SocialContent.objects.create(profile=profile, media_type=SocialContent.MediaType.CAROUSEL, frase='Run')
+        run = SocialCarouselGenerationRun.objects.create(profile=profile, content=content, generation_mode=SocialProfile.CarouselGenerationMode.AI_FINISHED, status=SocialCarouselGenerationRun.Status.COMPOSING)
+        SocialCarouselGenerationRun.objects.filter(pk=run.pk).update(started_at=timezone.now() - timedelta(minutes=60))
+
+        health = build_profile_health(profile)
+
+        self.assertEqual(health.status, BLOCKED)
+        self.assertIn('run AI_FINISHED travada', ' '.join(health.reasons))
+
+    def test_perfil_manual_e_inativo(self):
+        manual = self._profile(modo_operacao=SocialProfile.ModoOperacao.MANUAL)
+        inactive = self._profile(ativo=False)
+
+        self.assertEqual(build_profile_health(manual).status, ATTENTION)
+        self.assertEqual(build_profile_health(inactive).status, INACTIVE)
+
+    def test_contagens_de_slides_sao_coerentes(self):
+        profile = self._profile()
+        content = SocialContent.objects.create(profile=profile, media_type=SocialContent.MediaType.CAROUSEL, frase='Slides')
+        statuses = [
+            SocialCarouselSlide.CompositionStatus.READY,
+            SocialCarouselSlide.CompositionStatus.READY,
+            SocialCarouselSlide.CompositionStatus.PENDING,
+            SocialCarouselSlide.CompositionStatus.ERROR,
+            SocialCarouselSlide.CompositionStatus.REVIEWING,
+            SocialCarouselSlide.CompositionStatus.COMPOSING,
+        ]
+        for index, status in enumerate(statuses, start=1):
+            SocialCarouselSlide.objects.create(content=content, order=index, title=f'Slide {index}', ai_composition_status=status)
+
+        health = build_social_health()['profiles'][0]
+        total = sum(health.slide_counts.values())
+
+        self.assertEqual(total, 6)
+        self.assertEqual(health.slide_counts[SocialCarouselSlide.CompositionStatus.READY], 2)
+
+    def test_cron_health_recente_atrasado_bloqueado_e_erro(self):
+        now = timezone.now()
+        tick = SocialAutomationTick.objects.create(started_at=now - timedelta(minutes=1), finished_at=now - timedelta(minutes=1), status=SocialAutomationTick.Status.OK)
+        self.assertEqual(build_system_health(now=now).status, HEALTHY)
+
+        SocialAutomationTick.objects.filter(pk=tick.pk).update(finished_at=now - timedelta(minutes=12))
+        self.assertEqual(build_system_health(now=now).status, ATTENTION)
+
+        SocialAutomationTick.objects.filter(pk=tick.pk).update(finished_at=now - timedelta(minutes=25))
+        self.assertEqual(build_system_health(now=now).status, BLOCKED)
+
+        SocialAutomationTick.objects.filter(pk=tick.pk).update(finished_at=now, status=SocialAutomationTick.Status.ERROR)
+        self.assertEqual(build_system_health(now=now).status, BLOCKED)
+
+    def test_tick_persiste_resumo_sem_chamar_provider(self):
+        executar_tick_social(use_lock=False)
+
+        tick = SocialAutomationTick.objects.latest('id')
+        self.assertEqual(tick.status, SocialAutomationTick.Status.OK)
+        self.assertEqual(tick.profiles_processed, 0)
+
+    def test_dashboard_exige_staff_e_nao_expoe_secrets(self):
+        profile = self._profile()
+        self._connect(profile)
+        self.client.force_login(self.common)
+        self.assertEqual(self.client.get(reverse('social_automation:health')).status_code, 403)
+
+        self.client.force_login(self.staff)
+        with mock.patch('social_automation.instagram._request') as meta, mock.patch('social_automation.ai._client') as ai_client, mock.patch('social_automation.video_rendering.ffmpeg_path') as ffmpeg:
+            response = self.client.get(reverse('social_automation:health'))
+
+        self.assertEqual(response.status_code, 200)
+        meta.assert_not_called()
+        ai_client.assert_not_called()
+        ffmpeg.assert_not_called()
+        self.assertNotContains(response, 'ciphertext-test')
+        self.assertContains(response, 'Saude da Automacao Social')
+
+    def test_dashboard_query_count_sem_n_plus_one_grosseiro(self):
+        for index in range(4):
+            profile = self._profile(username=f'query{index}', nome=f'Query {index}')
+            self._connect(profile)
+            self._ready_content(profile, status=SocialContent.Status.AGENDADO, scheduled_at=timezone.now() + timedelta(hours=index + 1))
+
+        self.client.force_login(self.staff)
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(reverse('social_automation:health'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertLessEqual(len(queries), 120)
 
 
 class SocialAutomationMediaPathHardeningTests(TestCase):
