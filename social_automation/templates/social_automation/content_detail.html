@@ -12,6 +12,12 @@
     <div class="col-lg-8">
         <div class="card shadow-sm mb-3">
             <div class="card-body">
+                {% if content.status == 'publish_confirmation_pending' %}
+                <div class="alert alert-warning">
+                    <strong>Publicacao pendente de confirmacao.</strong>
+                    <div>A Meta pode ja ter publicado este conteudo. Uma nova publicacao automatica foi bloqueada para evitar duplicidade.</div>
+                </div>
+                {% endif %}
                 <div class="d-flex gap-4 align-items-start flex-wrap">
                     {% if content.final_video %}
                         <video src="{{ content.final_video.url }}" class="social-preview-lg" controls muted playsinline></video>
@@ -114,6 +120,9 @@
                     {% else %}
                     <button class="btn btn-outline-primary w-100" type="button" disabled>Instagram nao conectado</button>
                     {% endif %}
+                {% elif content.status == 'publish_confirmation_pending' %}
+                    <p class="text-warning small mb-2">A publicacao precisa ser reconciliada antes de qualquer nova tentativa.</p>
+                    <form method="post" action="{% url 'social_automation:content_reconcile_publish' content.id %}">{% csrf_token %}<button class="btn btn-warning w-100" type="submit">Reconciliar publicacao</button></form>
                 {% endif %}
                 {% if content.base_image and content.status != 'publicado' %}
                 <form method="post" action="{% url 'social_automation:content_render' content.id %}">{% csrf_token %}<button class="btn btn-outline-secondary w-100" type="submit">Renderizar novamente</button></form>
@@ -137,6 +146,15 @@
                 <div><strong>Container:</strong> {{ content.instagram_container_id|default:'-' }}</div>
                 <div><strong>ID externo:</strong> {{ content.external_post_id|default:'-' }}</div>
                 <div><strong>Permalink:</strong> {% if content.external_permalink %}<a href="{{ content.external_permalink }}" target="_blank">abrir</a>{% else %}-{% endif %}</div>
+                {% if latest_publish_attempt %}
+                <hr>
+                <div><strong>Tentativa:</strong> #{{ latest_publish_attempt.id }} - {{ latest_publish_attempt.get_status_display }}</div>
+                <div><strong>Provider:</strong> {{ latest_publish_attempt.get_provider_display }}</div>
+                <div><strong>Container tentativa:</strong> {{ latest_publish_attempt.container_id|default:'-' }}</div>
+                <div><strong>Meta acionada:</strong> {{ latest_publish_attempt.provider_called_at|date:'d/m/Y H:i'|default:'-' }}</div>
+                <div><strong>Confirmacao:</strong> {{ latest_publish_attempt.provider_response_at|date:'d/m/Y H:i'|default:'-' }}</div>
+                {% if latest_publish_attempt.error_message %}<div class="mt-2 text-warning"><strong>Ultimo erro:</strong> {{ latest_publish_attempt.error_message }}</div>{% endif %}
+                {% endif %}
                 {% if content.erro %}<div class="mt-2 text-danger"><strong>Erro:</strong> {{ content.erro }}</div>{% endif %}
             </div>
         </div>

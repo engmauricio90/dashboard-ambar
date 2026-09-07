@@ -3,6 +3,7 @@ from zoneinfo import available_timezones
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 from .typography import FONT_FAMILY_CHOICES, FONT_SCALE_CHOICES, LINE_SPACING_CHOICES, TEXT_OUTLINE_CHOICES, TEXT_SHADOW_CHOICES
@@ -717,6 +718,7 @@ class SocialContent(models.Model):
         APROVADO = 'aprovado', 'Aprovado'
         AGENDADO = 'agendado', 'Agendado'
         PUBLICANDO = 'publicando', 'Publicando'
+        PUBLISH_CONFIRMATION_PENDING = 'publish_confirmation_pending', 'Publicacao pendente de confirmacao'
         PUBLICADO = 'publicado', 'Publicado'
         ERRO = 'erro', 'Erro'
         REJEITADO = 'rejeitado', 'Rejeitado'
@@ -932,6 +934,12 @@ class SocialContentEvent(models.Model):
         DESAGENDADO = 'desagendado', 'Desagendado'
         RESTAURADO = 'restaurado', 'Restaurado'
         EXCLUIDO = 'excluido', 'Excluido'
+        PUBLISH_PREPARED = 'publish_prepared', 'Publicacao preparada'
+        PUBLISH_PROVIDER_CALLED = 'publish_provider_called', 'Meta acionada'
+        PUBLISH_CONFIRMED = 'publish_confirmed', 'Publicacao confirmada'
+        PUBLISH_AMBIGUOUS = 'publish_ambiguous', 'Publicacao ambigua'
+        PUBLISH_RECONCILIATION = 'publish_reconciliation', 'Reconciliacao de publicacao'
+        PUBLISH_RETRY_RELEASED = 'publish_retry_released', 'Nova tentativa liberada'
 
     content = models.ForeignKey(SocialContent, on_delete=models.CASCADE, related_name='events')
     acao = models.CharField(max_length=30, choices=Acao.choices)
@@ -947,6 +955,51 @@ class SocialContentEvent(models.Model):
 
     def __str__(self):
         return f'{self.content_id} - {self.get_acao_display()}'
+
+
+class SocialPublishAttempt(models.Model):
+    class Provider(models.TextChoices):
+        INSTAGRAM = 'instagram', 'Instagram'
+
+    class Status(models.TextChoices):
+        PREPARED = 'PREPARED', 'Preparada'
+        PROVIDER_CALLED = 'PROVIDER_CALLED', 'Meta acionada'
+        CONFIRMED = 'CONFIRMED', 'Confirmada'
+        AMBIGUOUS = 'AMBIGUOUS', 'Pendente de confirmacao'
+        FAILED_SAFE = 'FAILED_SAFE', 'Falha segura'
+
+    content = models.ForeignKey(SocialContent, on_delete=models.CASCADE, related_name='publish_attempts')
+    provider = models.CharField(max_length=30, choices=Provider.choices, default=Provider.INSTAGRAM)
+    container_id = models.CharField(max_length=120, blank=True)
+    fingerprint = models.CharField(max_length=64, blank=True, default='')
+    started_at = models.DateTimeField(auto_now_add=True)
+    provider_called_at = models.DateTimeField(blank=True, null=True)
+    provider_response_at = models.DateTimeField(blank=True, null=True)
+    external_post_id = models.CharField(max_length=120, blank=True)
+    status = models.CharField(max_length=30, choices=Status.choices, default=Status.PREPARED)
+    error_class = models.CharField(max_length=120, blank=True)
+    error_message = models.CharField(max_length=500, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-started_at', '-id']
+        indexes = [
+            models.Index(fields=['content', 'provider', 'status']),
+            models.Index(fields=['status', '-started_at']),
+            models.Index(fields=['external_post_id']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['content', 'provider'],
+                condition=Q(status__in=['PREPARED', 'PROVIDER_CALLED', 'AMBIGUOUS']),
+                name='unique_active_social_publish_attempt',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.content_id} - {self.provider} - {self.status}'
 
 
 class SocialCreativeReference(models.Model):

@@ -18,7 +18,7 @@ from django.urls import reverse
 from django.utils import timezone
 from PIL import Image
 
-from .models import SocialCarouselSlide, SocialContent, SocialInstagramConnection, SocialProfile
+from .models import SocialCarouselSlide, SocialContent, SocialContentEvent, SocialInstagramConnection, SocialProfile, SocialPublishAttempt
 from .token_crypto import InstagramTokenEncryptionError
 from .container_versioning import (
     REEL_SHARE_TO_FEED,
@@ -39,6 +39,15 @@ MEDIA_META_SIGNING_SALT = 'social-automation-instagram-meta-media'
 VIDEO_META_SIGNING_SALT = 'social-automation-instagram-meta-video'
 CAROUSEL_META_SIGNING_SALT = 'social-automation-instagram-meta-carousel'
 PUBLICADO_INSTAGRAM = 'publicado_instagram'
+PUBLISH_CONFIRMATION_PENDING_MESSAGE = (
+    'Publicacao pendente de confirmacao. A Meta pode ja ter publicado este conteudo. '
+    'Uma nova publicacao automatica foi bloqueada para evitar duplicidade.'
+)
+PUBLISH_ACTIVE_STATUSES = {
+    SocialPublishAttempt.Status.PREPARED,
+    SocialPublishAttempt.Status.PROVIDER_CALLED,
+    SocialPublishAttempt.Status.AMBIGUOUS,
+}
 
 
 class InstagramConfigurationError(Exception):
@@ -851,6 +860,97 @@ def _marcar_publicando(content_id, *, credentials=None):
         return content
 
 
+def _latest_publish_attempt(content):
+    return content.publish_attempts.filter(provider=SocialPublishAttempt.Provider.INSTAGRAM).order_by('-started_at', '-id').first()
+
+
+def reconcile_publish_state(content, usuario=None):
+    with transaction.atomic():
+        content = SocialContent.objects.select_for_update().select_related('profile').get(pk=content.pk)
+        attempt = _latest_publish_attempt(content)
+        external_post_id = content.external_post_id or (attempt.external_post_id if attempt else '')
+        if external_post_id:
+            now = timezone.now()
+            content.status = SocialContent.Status.PUBLICADO
+            content.published_at = content.published_at or now
+            content.external_post_id = external_post_id
+            content.erro = ''
+            content.instagram_container_id = ''
+            content.instagram_container_fingerprint = ''
+            content.save(
+                update_fields=[
+                    'status',
+                    'published_at',
+                    'external_post_id',
+                    'erro',
+                    'instagram_container_id',
+                    'instagram_container_fingerprint',
+                    'updated_at',
+                ]
+            )
+            if content.is_carousel:
+                content.carousel_slides.exclude(instagram_container_id='').update(
+                    instagram_container_id='',
+                    instagram_container_fingerprint='',
+                    updated_at=now,
+                )
+            if attempt and attempt.status != SocialPublishAttempt.Status.CONFIRMED:
+                attempt.status = SocialPublishAttempt.Status.CONFIRMED
+                attempt.external_post_id = external_post_id
+                attempt.provider_response_at = attempt.provider_response_at or now
+                attempt.error_class = ''
+                attempt.error_message = ''
+                attempt.save(update_fields=['status', 'external_post_id', 'provider_response_at', 'error_class', 'error_message', 'updated_at'])
+            registrar_evento(content, SocialContentEvent.Acao.PUBLISH_RECONCILIATION, usuario, f'Estado local reconciliado. Media ID: {external_post_id}')
+            return content
+        if attempt and attempt.status == SocialPublishAttempt.Status.AMBIGUOUS:
+            content.status = SocialContent.Status.PUBLISH_CONFIRMATION_PENDING
+            content.erro = PUBLISH_CONFIRMATION_PENDING_MESSAGE
+            content.save(update_fields=['status', 'erro', 'updated_at'])
+        return content
+
+
+def _prepare_publish_attempt(content_id, *, credentials=None):
+    with transaction.atomic():
+        content = SocialContent.objects.select_for_update().select_related('profile').get(pk=content_id)
+        content = reconcile_publish_state(content)
+        content = SocialContent.objects.select_for_update().select_related('profile').get(pk=content_id)
+        if content.status == SocialContent.Status.PUBLICADO:
+            return content, None
+        if content.external_post_id:
+            return reconcile_publish_state(content), None
+        if content.status == SocialContent.Status.PUBLISH_CONFIRMATION_PENDING:
+            raise InstagramPublishError(PUBLISH_CONFIRMATION_PENDING_MESSAGE)
+        active_attempt = content.publish_attempts.filter(provider=SocialPublishAttempt.Provider.INSTAGRAM, status__in=PUBLISH_ACTIVE_STATUSES).first()
+        if active_attempt:
+            if active_attempt.status == SocialPublishAttempt.Status.AMBIGUOUS:
+                content.status = SocialContent.Status.PUBLISH_CONFIRMATION_PENDING
+                content.erro = PUBLISH_CONFIRMATION_PENDING_MESSAGE
+                content.save(update_fields=['status', 'erro', 'updated_at'])
+                raise InstagramPublishError(PUBLISH_CONFIRMATION_PENDING_MESSAGE)
+            raise InstagramPublishError('Ja existe uma tentativa de publicacao em andamento para este conteudo.')
+        if content.status not in {SocialContent.Status.APROVADO, SocialContent.Status.AGENDADO, SocialContent.Status.ERRO}:
+            raise InstagramPublishError('Somente conteudos aprovados, agendados ou em erro podem ser publicados.')
+        if not content.final_media_ready:
+            raise InstagramPublishError('Renderize a midia final antes de publicar.')
+        validar_username_profile(content, credentials=credentials)
+        fingerprint = calculate_instagram_container_fingerprint(content, credentials.instagram_user_id if credentials else '')
+        attempt = SocialPublishAttempt.objects.create(
+            content=content,
+            provider=SocialPublishAttempt.Provider.INSTAGRAM,
+            fingerprint=fingerprint,
+            status=SocialPublishAttempt.Status.PREPARED,
+            metadata={'media_type': content.media_type, 'profile_id': content.profile_id},
+        )
+        content.status = SocialContent.Status.PUBLICANDO
+        content.tentativas += 1
+        content.ultima_tentativa = timezone.now()
+        content.erro = ''
+        content.save(update_fields=['status', 'tentativas', 'ultima_tentativa', 'erro', 'updated_at'])
+        registrar_evento(content, SocialContentEvent.Acao.PUBLISH_PREPARED, None, f'Tentativa #{attempt.id} preparada.')
+        return content, attempt
+
+
 def _salvar_container_reel(content_id, container_id, fingerprint):
     with transaction.atomic():
         content = SocialContent.objects.select_for_update().get(pk=content_id)
@@ -883,9 +983,71 @@ def _marcar_reel_pendente(content_id, message='Container de Reel ainda em proces
         return content
 
 
-def _marcar_publicado(content_id, media_id, permalink, usuario=None):
+def _mark_attempt_failed_safe(attempt_id, exc):
+    if not attempt_id:
+        return None
+    with transaction.atomic():
+        attempt = SocialPublishAttempt.objects.select_for_update().get(pk=attempt_id)
+        attempt.status = SocialPublishAttempt.Status.FAILED_SAFE
+        attempt.error_class = type(exc).__name__
+        attempt.error_message = _sanitize_error(str(exc))
+        attempt.save(update_fields=['status', 'error_class', 'error_message', 'updated_at'])
+        registrar_evento(attempt.content, SocialContentEvent.Acao.PUBLISH_RETRY_RELEASED, None, f'Tentativa #{attempt.id} falhou antes do media_publish; retry permanece seguro.')
+        return attempt
+
+
+def _mark_attempt_provider_called(attempt_id, container_id, fingerprint=''):
+    with transaction.atomic():
+        attempt = SocialPublishAttempt.objects.select_for_update().get(pk=attempt_id)
+        attempt.status = SocialPublishAttempt.Status.PROVIDER_CALLED
+        attempt.container_id = container_id or attempt.container_id
+        attempt.fingerprint = fingerprint or attempt.fingerprint
+        attempt.provider_called_at = timezone.now()
+        attempt.save(update_fields=['status', 'container_id', 'fingerprint', 'provider_called_at', 'updated_at'])
+        registrar_evento(attempt.content, SocialContentEvent.Acao.PUBLISH_PROVIDER_CALLED, None, f'Tentativa #{attempt.id}; container {container_id}.')
+        return attempt
+
+
+def _mark_publish_ambiguous(content_id, attempt_id, exc):
     with transaction.atomic():
         content = SocialContent.objects.select_for_update().get(pk=content_id)
+        attempt = SocialPublishAttempt.objects.select_for_update().filter(pk=attempt_id).first()
+        message = _sanitize_error(str(exc))
+        if attempt and attempt.external_post_id:
+            return reconcile_publish_state(content)
+        if content.external_post_id:
+            return reconcile_publish_state(content)
+        if attempt:
+            attempt.status = SocialPublishAttempt.Status.AMBIGUOUS
+            attempt.error_class = type(exc).__name__
+            attempt.error_message = message
+            attempt.save(update_fields=['status', 'error_class', 'error_message', 'updated_at'])
+        content.status = SocialContent.Status.PUBLISH_CONFIRMATION_PENDING
+        content.erro = PUBLISH_CONFIRMATION_PENDING_MESSAGE
+        content.ultima_tentativa = timezone.now()
+        content.save(update_fields=['status', 'erro', 'ultima_tentativa', 'updated_at'])
+        registrar_evento(content, SocialContentEvent.Acao.PUBLISH_AMBIGUOUS, None, f'Tentativa #{attempt_id}: {message}')
+        logger.warning('instagram_publish_ambiguous content_id=%s attempt_id=%s error_class=%s', content_id, attempt_id, type(exc).__name__)
+        return content
+
+
+def _persist_external_post_id(content_id, attempt_id, media_id):
+    with transaction.atomic():
+        content = SocialContent.objects.select_for_update().get(pk=content_id)
+        attempt = SocialPublishAttempt.objects.select_for_update().get(pk=attempt_id)
+        attempt.external_post_id = media_id
+        attempt.provider_response_at = timezone.now()
+        attempt.save(update_fields=['external_post_id', 'provider_response_at', 'updated_at'])
+        content.external_post_id = media_id
+        content.save(update_fields=['external_post_id', 'updated_at'])
+        return content
+
+
+def _marcar_publicado(content_id, media_id, permalink, usuario=None, attempt_id=None):
+    with transaction.atomic():
+        content = SocialContent.objects.select_for_update().get(pk=content_id)
+        if content.external_post_id and content.external_post_id != media_id:
+            raise InstagramPublishError('Conteudo ja possui outra publicacao vinculada.')
         content.status = SocialContent.Status.PUBLICADO
         content.published_at = timezone.now()
         content.external_post_id = media_id
@@ -911,6 +1073,15 @@ def _marcar_publicado(content_id, media_id, permalink, usuario=None):
                 instagram_container_fingerprint='',
                 updated_at=timezone.now(),
             )
+        if attempt_id:
+            attempt = SocialPublishAttempt.objects.select_for_update().get(pk=attempt_id)
+            attempt.status = SocialPublishAttempt.Status.CONFIRMED
+            attempt.external_post_id = media_id
+            attempt.provider_response_at = attempt.provider_response_at or timezone.now()
+            attempt.error_class = ''
+            attempt.error_message = ''
+            attempt.save(update_fields=['status', 'external_post_id', 'provider_response_at', 'error_class', 'error_message', 'updated_at'])
+            registrar_evento(content, SocialContentEvent.Acao.PUBLISH_CONFIRMED, usuario, f'Tentativa #{attempt.id}; Media ID: {media_id}')
         registrar_evento(content, PUBLICADO_INSTAGRAM, usuario, f'Media ID: {media_id}')
         return content
 
@@ -995,16 +1166,32 @@ def _marcar_erro(content_id, message):
 
 def publicar_conteudo_instagram(content, usuario=None):
     logger.info('publication_start content_id=%s', content.id)
+    attempt = None
+    media_id = ''
+    provider_called = False
     try:
         credentials = get_instagram_credentials(content.profile)
-        content = _marcar_publicando(content.id, credentials=credentials)
+        was_already_published = (
+            SocialContent.objects.filter(pk=content.pk).values_list('status', flat=True).first()
+            == SocialContent.Status.PUBLICADO
+        )
+        content = reconcile_publish_state(content, usuario=usuario)
+        if content.status == SocialContent.Status.PUBLICADO:
+            if was_already_published:
+                raise InstagramPublishError('Conteudo ja esta publicado.')
+            return content
+        content, attempt = _prepare_publish_attempt(content.id, credentials=credentials)
+        if attempt is None:
+            return content
         verificar_configuracao_instagram(content.profile)
         obter_conta_instagram(credentials=credentials)
         caption = montar_caption(content)
+        fingerprint = calculate_instagram_container_fingerprint(content, credentials.instagram_user_id)
         if content.is_reel:
             auditar_video_reel(content)
             container_id = _container_reel_atual_ou_novo(content, caption, credentials=credentials)
             if not _call_with_optional_credentials(status_container_pronto, container_id, credentials=credentials):
+                _mark_attempt_failed_safe(attempt.id, InstagramContainerPending('Container de Reel ainda em processamento.'))
                 _marcar_reel_pendente(content.id)
                 raise InstagramContainerPending('Container de Reel ainda em processamento; publicacao sera retomada no proximo tick.')
         elif content.is_carousel:
@@ -1016,14 +1203,41 @@ def publicar_conteudo_instagram(content, usuario=None):
             auditar_imagem_final(content)
             image_url = url_midia_temporaria(content)
             container_id = _call_with_optional_credentials(criar_container_imagem, image_url, caption, credentials=credentials)
+            _salvar_container_reel(content.id, container_id, fingerprint)
             _call_with_optional_credentials(aguardar_container_pronto, container_id, credentials=credentials)
+        _mark_attempt_provider_called(attempt.id, container_id, fingerprint)
+        provider_called = True
         media_id = _call_with_optional_credentials(publicar_container, container_id, credentials=credentials)
-        media = _call_with_optional_credentials(obter_midia_publicada, media_id, credentials=credentials)
-        return _marcar_publicado(content.id, media_id, media.get('permalink'), usuario)
+        _persist_external_post_id(content.id, attempt.id, media_id)
+        try:
+            media = _call_with_optional_credentials(obter_midia_publicada, media_id, credentials=credentials)
+        except Exception as exc:
+            logger.warning('instagram_permalink_lookup_failed content_id=%s attempt_id=%s error_class=%s', content.id, attempt.id, type(exc).__name__)
+            media = {'id': media_id}
+        return _marcar_publicado(content.id, media_id, media.get('permalink'), usuario, attempt_id=attempt.id)
     except InstagramContainerPending:
         raise
     except Exception as exc:
-        _marcar_erro(content.id, str(exc))
+        if attempt and provider_called:
+            reconciled = _mark_publish_ambiguous(content.id, attempt.id, exc)
+            if reconciled.status == SocialContent.Status.PUBLICADO:
+                return reconciled
+        else:
+            if attempt:
+                _mark_attempt_failed_safe(attempt.id, exc)
+                _marcar_erro(content.id, str(exc))
+            else:
+                current_status = SocialContent.objects.filter(pk=content.id).values_list('status', flat=True).first()
+                safe_publish_block = isinstance(exc, InstagramPublishError) and (
+                    current_status == SocialContent.Status.PUBLISH_CONFIRMATION_PENDING
+                    or 'tentativa de publicacao em andamento' in str(exc)
+                    or 'pendente de confirmacao' in str(exc)
+                    or 'Somente conteudos aprovados' in str(exc)
+                    or 'Conteudo ja esta publicado' in str(exc)
+                    or 'publicacao vinculada' in str(exc)
+                )
+                if not safe_publish_block:
+                    _marcar_erro(content.id, str(exc))
         if isinstance(exc, (InstagramConfigurationError, InstagramAPIError, InstagramPublishError)):
             raise
         raise InstagramPublishError('Falha inesperada ao publicar no Instagram.') from exc

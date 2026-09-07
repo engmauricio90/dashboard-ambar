@@ -59,7 +59,7 @@
                         <td><span class="badge {% if content.media_type == 'reel' %}text-bg-primary{% else %}text-bg-light border{% endif %}">{{ content.get_media_type_display }}</span></td>
                         <td>{{ content.profile.nome }}</td>
                         <td>{{ content.frase|truncatechars:110 }}</td>
-                        <td><span class="badge text-bg-secondary">{{ content.get_status_display }}</span></td>
+                        <td><span class="badge {% if content.status == 'publish_confirmation_pending' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">{{ content.get_status_display }}</span></td>
                         <td>{{ content.scheduled_at|date:'d/m/Y H:i'|default:'-' }}</td>
                         <td>{{ content.created_at|date:'d/m/Y H:i' }}</td>
                         <td class="text-end"><a href="{% url 'social_automation:content_detail' content.id %}" class="btn btn-sm btn-outline-primary">Abrir</a></td>

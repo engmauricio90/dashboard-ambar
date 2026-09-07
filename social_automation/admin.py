@@ -12,6 +12,7 @@ from .models import (
     SocialContentEvent,
     SocialCreativeReference,
     SocialInstagramConnection,
+    SocialPublishAttempt,
     SocialProfile,
     SocialVisualIdentity,
 )
@@ -131,6 +132,14 @@ class SocialContentEventInline(admin.TabularInline):
     can_delete = False
 
 
+class SocialPublishAttemptInline(admin.TabularInline):
+    model = SocialPublishAttempt
+    extra = 0
+    fields = ['provider', 'status', 'container_id', 'external_post_id', 'started_at', 'provider_called_at', 'provider_response_at', 'error_class']
+    readonly_fields = ['provider', 'status', 'container_id', 'external_post_id', 'started_at', 'provider_called_at', 'provider_response_at', 'error_class']
+    can_delete = False
+
+
 class SocialCarouselSlideInline(admin.TabularInline):
     model = SocialCarouselSlide
     extra = 0
@@ -154,7 +163,7 @@ class SocialContentAdmin(admin.ModelAdmin):
         'tentativas',
         'ultima_tentativa',
     ]
-    inlines = [SocialCarouselSlideInline, SocialContentEventInline]
+    inlines = [SocialCarouselSlideInline, SocialPublishAttemptInline, SocialContentEventInline]
 
 
 @admin.register(SocialCarouselTemplate)
@@ -215,6 +224,29 @@ class SocialContentEventAdmin(admin.ModelAdmin):
     list_filter = ['acao']
     search_fields = ['content__frase', 'detalhe', 'usuario__username']
     readonly_fields = ['content', 'acao', 'usuario', 'detalhe', 'created_at']
+
+
+@admin.register(SocialPublishAttempt)
+class SocialPublishAttemptAdmin(admin.ModelAdmin):
+    list_display = ['content', 'provider', 'status', 'container_id', 'external_post_id', 'started_at', 'provider_called_at', 'provider_response_at']
+    list_filter = ['provider', 'status']
+    search_fields = ['content__frase', 'container_id', 'external_post_id', 'error_message']
+    readonly_fields = [
+        'content',
+        'provider',
+        'container_id',
+        'fingerprint',
+        'started_at',
+        'provider_called_at',
+        'provider_response_at',
+        'external_post_id',
+        'status',
+        'error_class',
+        'error_message',
+        'metadata',
+        'created_at',
+        'updated_at',
+    ]
 
 
 @admin.register(SocialAIUsage)

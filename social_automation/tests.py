@@ -37,6 +37,7 @@ from .models import (
     SocialContentEvent,
     SocialCreativeReference,
     SocialInstagramConnection,
+    SocialPublishAttempt,
     SocialProfile,
     SocialVisualIdentity,
 )
@@ -1442,6 +1443,34 @@ class SocialAutomationReelTests(TestCase):
             publish_mock.assert_not_called()
 
     @override_settings(PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com')
+    def test_publicacao_reel_media_publish_ambiguo_bloqueia_retry(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            content = self._content()
+            content.status = SocialContent.Status.APROVADO
+            content.final_video = video_mp4_teste()
+            content.save(update_fields=['status', 'final_video'])
+
+            with mock.patch('social_automation.instagram.verificar_configuracao_instagram'), mock.patch(
+                'social_automation.instagram.obter_conta_instagram',
+                return_value={'username': 'lailapistola'},
+            ), mock.patch('social_automation.instagram.criar_container_reel', return_value='container-reel-1'), mock.patch(
+                'social_automation.instagram.status_container_pronto',
+                return_value=True,
+            ), mock.patch(
+                'social_automation.instagram.publicar_container',
+                side_effect=InstagramAPIError('timeout ambiguo', is_transient=True),
+            ) as publish_mock:
+                with self.assertRaises(InstagramAPIError):
+                    __import__('social_automation.instagram').instagram.publicar_conteudo_instagram(content)
+                with self.assertRaisesMessage(InstagramPublishError, 'pendente de confirmacao'):
+                    __import__('social_automation.instagram').instagram.publicar_conteudo_instagram(content)
+
+            content.refresh_from_db()
+            self.assertEqual(content.status, SocialContent.Status.PUBLISH_CONFIRMATION_PENDING)
+            self.assertEqual(content.publish_attempts.get().status, SocialPublishAttempt.Status.AMBIGUOUS)
+            self.assertEqual(publish_mock.call_count, 1)
+
+    @override_settings(PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com')
     def test_publicacao_reel_reusa_container_existente(self):
         with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
             content = self._content()
@@ -2402,13 +2431,16 @@ class SocialAutomationInstagramIntegrationTests(TestCase):
         with mock.patch('social_automation.instagram.obter_conta_instagram', return_value={'username': 'lailapistola'}), mock.patch(
             'social_automation.instagram.criar_container_imagem',
             side_effect=InstagramAPIError('Container recusado', status=400, code=10),
-        ):
+        ), mock.patch('social_automation.instagram.publicar_container') as publish_mock:
             with self.assertRaises(InstagramAPIError):
                 publicar_conteudo_instagram(content, self.staff)
 
         content.refresh_from_db()
         self.assertEqual(content.status, SocialContent.Status.ERRO)
         self.assertIn('Container recusado', content.erro)
+        publish_mock.assert_not_called()
+        attempt = content.publish_attempts.get()
+        self.assertEqual(attempt.status, SocialPublishAttempt.Status.FAILED_SAFE)
 
     @override_settings(
         INSTAGRAM_ACCESS_TOKEN='token-teste',
@@ -2416,7 +2448,7 @@ class SocialAutomationInstagramIntegrationTests(TestCase):
         INSTAGRAM_EXPECTED_USERNAME='lailapistola',
         PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com',
     )
-    def test_falha_media_publish_vai_para_erro(self):
+    def test_falha_media_publish_vai_para_confirmacao_pendente(self):
         content = self._content_ready()
         with mock.patch('social_automation.instagram.obter_conta_instagram', return_value={'username': 'lailapistola'}), mock.patch(
             'social_automation.instagram.criar_container_imagem',
@@ -2429,8 +2461,11 @@ class SocialAutomationInstagramIntegrationTests(TestCase):
                 publicar_conteudo_instagram(content, self.staff)
 
         content.refresh_from_db()
-        self.assertEqual(content.status, SocialContent.Status.ERRO)
+        self.assertEqual(content.status, SocialContent.Status.PUBLISH_CONFIRMATION_PENDING)
         self.assertFalse(content.external_post_id)
+        attempt = content.publish_attempts.get()
+        self.assertEqual(attempt.status, SocialPublishAttempt.Status.AMBIGUOUS)
+        self.assertEqual(attempt.container_id, 'container-1')
 
     @override_settings(INSTAGRAM_ACCESS_TOKEN='', INSTAGRAM_USER_ID='', PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com')
     def test_configuracao_ausente_nao_gera_500(self):
@@ -2449,10 +2484,126 @@ class SocialAutomationInstagramIntegrationTests(TestCase):
         PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com',
     )
     def test_status_nao_aprovado_nao_publica(self):
-        for status in [SocialContent.Status.RASCUNHO, SocialContent.Status.REJEITADO, SocialContent.Status.PUBLICADO]:
+        for status in [SocialContent.Status.RASCUNHO, SocialContent.Status.REJEITADO]:
             content = self._content_ready(status=status)
             with self.assertRaisesMessage(Exception, 'Somente conteudos aprovados'):
                 publicar_conteudo_instagram(content, self.staff)
+        content = self._content_ready(status=SocialContent.Status.PUBLICADO)
+        with self.assertRaisesMessage(Exception, 'Conteudo ja esta publicado'):
+            publicar_conteudo_instagram(content, self.staff)
+
+    @override_settings(
+        INSTAGRAM_ACCESS_TOKEN='token-teste',
+        INSTAGRAM_USER_ID='178000000000',
+        INSTAGRAM_EXPECTED_USERNAME='lailapistola',
+        PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com',
+    )
+    def test_timeout_media_publish_bloqueia_retry_automatico(self):
+        content = self._content_ready()
+        with mock.patch('social_automation.instagram.obter_conta_instagram', return_value={'username': 'lailapistola'}), mock.patch(
+            'social_automation.instagram.criar_container_imagem',
+            return_value='container-1',
+        ), mock.patch('social_automation.instagram.aguardar_container_pronto', return_value={'status_code': 'FINISHED'}), mock.patch(
+            'social_automation.instagram.publicar_container',
+            side_effect=InstagramAPIError('timeout ambiguo', is_transient=True),
+        ) as publish_mock:
+            with self.assertRaises(InstagramAPIError):
+                publicar_conteudo_instagram(content, self.staff)
+            with self.assertRaisesMessage(InstagramPublishError, 'pendente de confirmacao'):
+                publicar_conteudo_instagram(content, self.staff)
+
+        content.refresh_from_db()
+        self.assertEqual(content.status, SocialContent.Status.PUBLISH_CONFIRMATION_PENDING)
+        self.assertEqual(publish_mock.call_count, 1)
+
+    @override_settings(
+        INSTAGRAM_ACCESS_TOKEN='token-teste',
+        INSTAGRAM_USER_ID='178000000000',
+        INSTAGRAM_EXPECTED_USERNAME='lailapistola',
+        PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com',
+    )
+    def test_provider_retorna_media_id_mas_persistencia_falha_vira_ambiguo(self):
+        content = self._content_ready()
+        with mock.patch('social_automation.instagram.obter_conta_instagram', return_value={'username': 'lailapistola'}), mock.patch(
+            'social_automation.instagram.criar_container_imagem',
+            return_value='container-1',
+        ), mock.patch('social_automation.instagram.aguardar_container_pronto', return_value={'status_code': 'FINISHED'}), mock.patch(
+            'social_automation.instagram.publicar_container',
+            return_value='media-1',
+        ) as publish_mock, mock.patch(
+            'social_automation.instagram._persist_external_post_id',
+            side_effect=RuntimeError('falha controlada de banco'),
+        ):
+            with self.assertRaises(InstagramPublishError):
+                publicar_conteudo_instagram(content, self.staff)
+
+        content.refresh_from_db()
+        self.assertEqual(content.status, SocialContent.Status.PUBLISH_CONFIRMATION_PENDING)
+        self.assertEqual(publish_mock.call_count, 1)
+        self.assertEqual(content.publish_attempts.get().status, SocialPublishAttempt.Status.AMBIGUOUS)
+
+    @override_settings(
+        INSTAGRAM_ACCESS_TOKEN='token-teste',
+        INSTAGRAM_USER_ID='178000000000',
+        INSTAGRAM_EXPECTED_USERNAME='lailapistola',
+        PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com',
+    )
+    def test_external_post_id_existente_reconcilia_sem_republicar(self):
+        content = self._content_ready(status=SocialContent.Status.ERRO)
+        content.external_post_id = 'media-ja-publicada'
+        content.save(update_fields=['external_post_id', 'updated_at'])
+        with mock.patch('social_automation.instagram.publicar_container') as publish_mock:
+            result = publicar_conteudo_instagram(content, self.staff)
+
+        result.refresh_from_db()
+        self.assertEqual(result.status, SocialContent.Status.PUBLICADO)
+        self.assertEqual(result.external_post_id, 'media-ja-publicada')
+        publish_mock.assert_not_called()
+
+    @override_settings(
+        INSTAGRAM_ACCESS_TOKEN='token-teste',
+        INSTAGRAM_USER_ID='178000000000',
+        INSTAGRAM_EXPECTED_USERNAME='lailapistola',
+        PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com',
+    )
+    def test_permalink_falha_nao_republica_e_mantem_publicado(self):
+        content = self._content_ready()
+        with mock.patch('social_automation.instagram.obter_conta_instagram', return_value={'username': 'lailapistola'}), mock.patch(
+            'social_automation.instagram.criar_container_imagem',
+            return_value='container-1',
+        ), mock.patch('social_automation.instagram.aguardar_container_pronto', return_value={'status_code': 'FINISHED'}), mock.patch(
+            'social_automation.instagram.publicar_container',
+            return_value='media-1',
+        ) as publish_mock, mock.patch('social_automation.instagram.obter_midia_publicada', side_effect=InstagramAPIError('permalink indisponivel')):
+            publicar_conteudo_instagram(content, self.staff)
+            with self.assertRaisesMessage(Exception, 'Conteudo ja esta publicado'):
+                publicar_conteudo_instagram(content, self.staff)
+
+        content.refresh_from_db()
+        self.assertEqual(content.status, SocialContent.Status.PUBLICADO)
+        self.assertEqual(content.external_post_id, 'media-1')
+        self.assertEqual(content.external_permalink, '')
+        self.assertEqual(publish_mock.call_count, 1)
+
+    @override_settings(
+        INSTAGRAM_ACCESS_TOKEN='token-teste',
+        INSTAGRAM_USER_ID='178000000000',
+        INSTAGRAM_EXPECTED_USERNAME='lailapistola',
+        PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com',
+    )
+    def test_tentativa_ativa_bloqueia_segundo_worker_sem_meta(self):
+        content = self._content_ready()
+        SocialPublishAttempt.objects.create(
+            content=content,
+            provider=SocialPublishAttempt.Provider.INSTAGRAM,
+            status=SocialPublishAttempt.Status.PREPARED,
+            fingerprint='abc123',
+        )
+        with mock.patch('social_automation.instagram.publicar_container') as publish_mock:
+            with self.assertRaisesMessage(InstagramPublishError, 'tentativa de publicacao em andamento'):
+                publicar_conteudo_instagram(content, self.staff)
+
+        publish_mock.assert_not_called()
 
 
 class SocialAutomationMediaRootTests(TestCase):
@@ -2563,7 +2714,7 @@ class SocialAutomationMediaRootTests(TestCase):
         ), mock.patch('social_automation.instagram.obter_midia_publicada', return_value={'id': 'media-1'}):
             publicar_conteudo_instagram(content, self.staff)
 
-            with self.assertRaisesMessage(Exception, 'Somente conteudos aprovados'):
+            with self.assertRaisesMessage(Exception, 'Conteudo ja esta publicado'):
                 publicar_conteudo_instagram(content, self.staff)
 
 
@@ -3801,7 +3952,7 @@ class SocialAutomationCarouselHardeningTests(TestCase):
         self.assertEqual(slide.instagram_container_id, '')
         self.assertEqual(slide.instagram_container_fingerprint, '')
 
-    def test_media_publish_ambiguo_preserva_parent_e_publicado_nao_republica(self):
+    def test_media_publish_ambiguo_preserva_parent_e_bloqueia_republicacao(self):
         content = self._carousel()
         from .rendering import renderizar_midia_social
 
@@ -3812,13 +3963,12 @@ class SocialAutomationCarouselHardeningTests(TestCase):
             with self.assertRaises(InstagramAPIError):
                 publicar_conteudo_instagram(content)
         content.refresh_from_db()
-        self.assertEqual(content.status, SocialContent.Status.ERRO)
+        self.assertEqual(content.status, SocialContent.Status.PUBLISH_CONFIRMATION_PENDING)
         self.assertEqual(content.instagram_container_id, 'parent-1')
-        content.status = SocialContent.Status.PUBLICADO
-        content.external_post_id = 'media-ja-publicada'
-        content.save(update_fields=['status', 'external_post_id', 'updated_at'])
         with self.assertRaises(InstagramPublishError):
             publicar_conteudo_instagram(content)
+        publish_calls = [call for call in calls if call[1] == 'POST' and call[2].endswith('/media_publish')]
+        self.assertEqual(len(publish_calls), 1)
 
     def test_scheduler_tres_tipos_e_sem_fallback(self):
         expected_laila = [

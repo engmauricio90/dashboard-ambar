@@ -37,6 +37,7 @@ urlpatterns = [
     path('conteudos/<int:content_id>/retomar-ai-finished/', views.content_resume_ai_finished, name='content_resume_ai_finished'),
     path('conteudos/<int:content_id>/retomar-ai-finished/advance/', views.content_resume_ai_finished_advance, name='content_resume_ai_finished_advance'),
     path('conteudos/<int:content_id>/publicar-instagram/', views.content_publish_instagram, name='content_publish_instagram'),
+    path('conteudos/<int:content_id>/reconciliar-publicacao/', views.content_reconcile_publish, name='content_reconcile_publish'),
     path('conteudos/<int:content_id>/aprovar/', views.content_approve, name='content_approve'),
     path('conteudos/<int:content_id>/rejeitar/', views.content_reject, name='content_reject'),
     path('conteudos/<int:content_id>/restaurar/', views.content_restore, name='content_restore'),

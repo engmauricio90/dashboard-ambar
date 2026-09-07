@@ -44,13 +44,14 @@ from .instagram import (
     exchange_instagram_code,
     obter_conta_instagram,
     publicar_conteudo_instagram,
+    reconcile_publish_state,
     validar_conexao_instagram,
     validar_assinatura_midia_meta,
     validar_assinatura_carousel_slide_meta,
     validar_assinatura_video_meta,
     validar_token_midia_temporaria,
 )
-from .models import SocialAIUsage, SocialBaseImage, SocialCarouselSlide, SocialCarouselTemplate, SocialContent, SocialInstagramConnection, SocialProfile, SocialVisualIdentity
+from .models import SocialAIUsage, SocialBaseImage, SocialCarouselSlide, SocialCarouselTemplate, SocialContent, SocialInstagramConnection, SocialProfile, SocialPublishAttempt, SocialVisualIdentity
 from .rendering import SocialRenderError, renderizar_midia_social
 from .services import (
     agendar_conteudo,
@@ -431,6 +432,7 @@ def content_detail(request, content_id):
     content = get_object_or_404(_content_queryset(), pk=content_id)
     schedule_form = SocialScheduleForm(profile=content.profile) if content.status == SocialContent.Status.APROVADO else None
     events = content.events.select_related('usuario')[:20]
+    latest_publish_attempt = content.publish_attempts.order_by('-started_at', '-id').first()
     instagram_connection = getattr(content.profile, 'instagram_connection', None)
     carousel_quality = None
     if content.is_carousel:
@@ -449,6 +451,7 @@ def content_detail(request, content_id):
             'carousel_quality': carousel_quality,
             'carousel_ai_progress': carousel_ai_progress,
             'latest_generation_run': latest_generation_run,
+            'latest_publish_attempt': latest_publish_attempt,
             'instagram_expected_username': instagram_connection.username if instagram_connection and instagram_connection.is_active else content.profile.username,
             'instagram_connection': instagram_connection,
         },
@@ -802,6 +805,23 @@ def content_publish_instagram(request, content_id):
         messages.warning(request, str(exc))
     except (InstagramConfigurationError, InstagramAPIError, InstagramPublishError) as exc:
         messages.error(request, str(exc))
+    return redirect('social_automation:content_detail', content_id=content.id)
+
+
+@staff_required
+@require_POST
+def content_reconcile_publish(request, content_id):
+    content = get_object_or_404(_content_queryset(), pk=content_id)
+    reconciled = reconcile_publish_state(content, usuario=request.user)
+    if reconciled.status == SocialContent.Status.PUBLICADO:
+        messages.success(request, 'Publicacao reconciliada localmente sem nova chamada para a Meta.')
+    elif reconciled.status == SocialContent.Status.PUBLISH_CONFIRMATION_PENDING:
+        messages.warning(
+            request,
+            'Publicacao segue pendente de confirmacao. Verifique a conta na Meta antes de liberar qualquer nova tentativa.',
+        )
+    else:
+        messages.info(request, 'Nenhuma inconsistencia de publicacao foi encontrada para reconciliar.')
     return redirect('social_automation:content_detail', content_id=content.id)
 
 
