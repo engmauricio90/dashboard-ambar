@@ -46,7 +46,16 @@ from .models import (
 )
 from .ai import GeneratedCarouselBlueprint, GeneratedCarouselSlide, GeneratedContent, OpenAIUnavailable
 from .automation import executar_tick_social
-from .backlog import KEEP, LIKELY_RUNAWAY, REVIEW_REQUIRED, UNSAFE_TO_DELETE, audit_backlog
+from .backlog import (
+    KEEP,
+    LIKELY_RUNAWAY,
+    LIKELY_RUNAWAY_EMPTY,
+    LIKELY_RUNAWAY_WITH_TECHNICAL_SHELL,
+    REVIEW_REQUIRED,
+    UNSAFE_TO_DELETE,
+    audit_backlog,
+    detect_bursts,
+)
 from .container_versioning import (
     REEL_SHARE_TO_FEED,
     build_instagram_caption,
@@ -3124,6 +3133,137 @@ class SocialAutomationHealthDashboardTests(TestCase):
         self.assertTrue(SocialContent.objects.filter(pk=protected.pk).exists())
         self.assertEqual(SocialAIUsage.objects.filter(profile=profile).count(), 1)
         self.assertIn('deleted = 5', output.getvalue())
+
+    def _burst_content(self, profile, *, index, media_type=SocialContent.MediaType.CAROUSEL, base_time=None, with_event=True):
+        content = SocialContent.objects.create(profile=profile, media_type=media_type, frase=f'Burst {index}', status=SocialContent.Status.RASCUNHO)
+        created_at = (base_time or timezone.now()) + timedelta(minutes=5 * index)
+        SocialContent.objects.filter(pk=content.pk).update(created_at=created_at, updated_at=created_at)
+        content.refresh_from_db()
+        if with_event:
+            SocialContentEvent.objects.create(content=content, acao='gerado_ia')
+        return content
+
+    def test_forense_auto_pending_shell_zero_assets_vira_technical_shell(self):
+        profile = self._profile(username='shell', posts_por_dia=1)
+        base_time = timezone.now()
+        target_id = None
+        for index in range(6):
+            content = self._burst_content(profile, index=index, base_time=base_time)
+            SocialCarouselGenerationRun.objects.create(profile=profile, content=content, generation_mode=SocialProfile.CarouselGenerationMode.AI_FINISHED, status=SocialCarouselGenerationRun.Status.PARTIAL)
+            for slide_index in range(6):
+                SocialCarouselSlide.objects.create(content=content, order=slide_index + 1, title=f'Slide {slide_index}', ai_composition_status=SocialCarouselSlide.CompositionStatus.PENDING)
+            target_id = target_id or content.id
+
+        audit = audit_backlog(username='shell')[profile.id]
+        classifications = {item.content.id: item for item in audit['items']}
+
+        self.assertEqual(classifications[target_id].classification, LIKELY_RUNAWAY_WITH_TECHNICAL_SHELL)
+        self.assertEqual(classifications[target_id].forensics.ready_slides, 0)
+        self.assertEqual(classifications[target_id].forensics.useful_asset_count, 0)
+
+    def test_forense_auto_sem_run_sem_assets_em_burst_vira_empty(self):
+        profile = self._profile(username='empty', posts_por_dia=1)
+        base_time = timezone.now()
+        for index in range(6):
+            self._burst_content(profile, index=index, base_time=base_time)
+
+        audit = audit_backlog(username='empty')[profile.id]
+
+        self.assertEqual(audit['summary']['classifications'][LIKELY_RUNAWAY_EMPTY], 6)
+
+    def test_forense_ready_ou_ai_composed_preserva_para_revisao(self):
+        profile = self._profile(username='useful', posts_por_dia=2)
+        base_time = timezone.now()
+        ready = self._burst_content(profile, index=0, base_time=base_time)
+        SocialCarouselSlide.objects.create(content=ready, order=1, title='Ready', ai_composition_status=SocialCarouselSlide.CompositionStatus.READY)
+        composed = self._burst_content(profile, index=1, base_time=base_time)
+        slide = SocialCarouselSlide.objects.create(content=composed, order=1, title='Composed', ai_composition_status=SocialCarouselSlide.CompositionStatus.PENDING)
+        slide.ai_composed_image.save('composed.jpg', imagem_social('composed.jpg'), save=True)
+        for index in range(2, 6):
+            self._burst_content(profile, index=index, base_time=base_time)
+
+        audit = audit_backlog(username='useful')[profile.id]
+        classifications = {item.content.id: item.classification for item in audit['items']}
+
+        self.assertEqual(classifications[ready.id], REVIEW_REQUIRED)
+        self.assertEqual(classifications[composed.id], REVIEW_REQUIRED)
+
+    def test_forense_manual_vazio_nao_vira_runaway(self):
+        profile = self._profile(username='manual-empty', posts_por_dia=2)
+        base_time = timezone.now()
+        manual = None
+        for index in range(6):
+            content = self._burst_content(profile, index=index, base_time=base_time, with_event=False)
+            manual = manual or content
+
+        audit = audit_backlog(username='manual-empty')[profile.id]
+        classifications = {item.content.id: item.classification for item in audit['items']}
+
+        self.assertEqual(classifications[manual.id], REVIEW_REQUIRED)
+
+    def test_forense_publicado_external_id_e_provider_called_protegidos(self):
+        profile = self._profile(username='unsafe')
+        published = self._ready_content(profile, status=SocialContent.Status.PUBLICADO)
+        external = SocialContent.objects.create(profile=profile, frase='External', status=SocialContent.Status.RASCUNHO, external_post_id='media-1')
+        provider = SocialContent.objects.create(profile=profile, frase='Provider', status=SocialContent.Status.RASCUNHO)
+        SocialPublishAttempt.objects.create(content=provider, provider=SocialPublishAttempt.Provider.INSTAGRAM, status=SocialPublishAttempt.Status.PROVIDER_CALLED)
+
+        audit = audit_backlog(username='unsafe')[profile.id]
+        classifications = {item.content.id: item.classification for item in audit['items']}
+
+        self.assertEqual(classifications[published.id], KEEP)
+        self.assertEqual(classifications[external.id], UNSAFE_TO_DELETE)
+        self.assertEqual(classifications[provider.id], UNSAFE_TO_DELETE)
+
+    def test_forense_rascunho_automatico_isolado_exige_revisao(self):
+        profile = self._profile(username='isolated', posts_por_dia=2)
+        content = self._burst_content(profile, index=0)
+
+        audit = audit_backlog(username='isolated')[profile.id]
+
+        self.assertEqual(audit['items'][0].content.id, content.id)
+        self.assertEqual(audit['items'][0].classification, REVIEW_REQUIRED)
+
+    def test_forense_detecta_vinte_rascunhos_a_cada_cinco_minutos(self):
+        profile = self._profile(username='twenty', posts_por_dia=8)
+        base_time = timezone.now()
+        contents = [self._burst_content(profile, index=index, base_time=base_time) for index in range(20)]
+
+        clusters, burst_by_content = detect_bursts(contents)
+
+        self.assertEqual(len(clusters), 1)
+        self.assertEqual(clusters[0].size, 20)
+        self.assertEqual(burst_by_content[contents[0].id].id, clusters[0].id)
+
+    def test_audit_social_backlog_verbose_exibe_tabela_forense(self):
+        profile = self._profile(username='verbose', posts_por_dia=2)
+        base_time = timezone.now()
+        for index in range(5):
+            content = self._burst_content(profile, index=index, base_time=base_time)
+            SocialCarouselGenerationRun.objects.create(profile=profile, content=content, generation_mode=SocialProfile.CarouselGenerationMode.AI_FINISHED, status=SocialCarouselGenerationRun.Status.PARTIAL)
+            SocialCarouselSlide.objects.create(content=content, order=1, title='Pendente', ai_composition_status=SocialCarouselSlide.CompositionStatus.PENDING)
+
+        output = StringIO()
+        call_command('audit_social_backlog', '--username', 'verbose', '--verbose', stdout=output)
+        text = output.getvalue()
+
+        self.assertIn('LIKELY_RUNAWAY_WITH_TECHNICAL_SHELL', text)
+        self.assertIn('Burst clusters found: 1', text)
+        self.assertIn('ID=', text)
+        self.assertIn('Classification=', text)
+
+    def test_audit_social_backlog_csv_exibe_campos_forenses(self):
+        profile = self._profile(username='csv-backlog', posts_por_dia=1)
+        base_time = timezone.now()
+        for index in range(5):
+            self._burst_content(profile, index=index, base_time=base_time)
+
+        output = StringIO()
+        call_command('audit_social_backlog', '--username', 'csv-backlog', '--format', 'csv', stdout=output)
+        text = output.getvalue()
+
+        self.assertIn('profile,id,created,status,type,origin,scheduled,run,run_status,slides,ready,pending,assets,reviewed,burst,classification,reasons', text)
+        self.assertIn(LIKELY_RUNAWAY_EMPTY, text)
 
 
 class SocialAutomationMediaPathHardeningTests(TestCase):
