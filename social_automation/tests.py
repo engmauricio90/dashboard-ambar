@@ -7210,3 +7210,86 @@ class SocialAutomationAIVisionTests(TestCase):
         refs = _creative_references(self.profile)
         self.assertEqual(len(refs), 1)
         self.assertEqual(refs[0]['tags'], own.style_tags)
+
+
+class SocialAutomationDiagnosticsTests(TestCase):
+    def test_audit_social_ai_usage_separa_health_de_quota_visual(self):
+        profile = SocialProfile.objects.create(
+            nome='Millionow Teste',
+            username='millionow25',
+            timezone='America/Sao_Paulo',
+            horarios_publicacao=['09:00'],
+            ai_image_daily_limit=8,
+        )
+        content = SocialContent.objects.create(
+            profile=profile,
+            media_type=SocialContent.MediaType.CAROUSEL,
+            frase='Carrossel teste',
+            legenda='Legenda',
+        )
+        slide = SocialCarouselSlide.objects.create(
+            content=content,
+            order=1,
+            slide_type=SocialCarouselSlide.SlideType.COVER,
+            title='Capa',
+        )
+        SocialAIUsage.objects.create(profile=profile, content=content, operation=SocialAIUsage.Operation.TEXT_GENERATION, success=True, metadata={'stage': 'ideation'})
+        SocialAIUsage.objects.create(profile=profile, content=content, slide=slide, operation=SocialAIUsage.Operation.COMPOSED_SLIDE, success=True, metadata={'purpose': 'CAROUSEL_COMPOSED_SLIDE', 'provider_called': True})
+        SocialAIUsage.objects.create(profile=profile, content=content, slide=slide, operation=SocialAIUsage.Operation.COMPOSED_SLIDE_REVIEW, success=True, metadata={'score_scale': 100})
+        SocialAIUsage.objects.create(profile=profile, content=content, slide=slide, operation=SocialAIUsage.Operation.COMPOSED_SLIDE, success=False, metadata={'purpose': 'CAROUSEL_COMPOSED_SLIDE', 'provider_called': True})
+
+        output = StringIO()
+        with override_settings(SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=8):
+            call_command('audit_social_ai_usage', '--username', 'millionow25', '--date', timezone.localdate().isoformat(), stdout=output)
+
+        text = output.getvalue()
+        self.assertIn('Limite efetivo: 8', text)
+        self.assertIn('Total mostrado pelo health do perfil: 3', text)
+        self.assertIn('Total relevante para quota de imagem/composicao: 1', text)
+        self.assertIn('Chamadas provedoras de imagem/composicao: 2', text)
+        self.assertIn('CAROUSEL_COMPOSED_SLIDE | COMPOSED_SLIDE | 2 | 1 | 1', text)
+        self.assertIn('COMPOSED_SLIDE_REVIEW', text)
+
+    def test_audit_social_ai_finished_separa_runs_operacionais_de_historicos(self):
+        profile = SocialProfile.objects.create(
+            nome='Millionow Teste',
+            username='millionow25',
+            timezone='America/Sao_Paulo',
+            horarios_publicacao=['09:00'],
+            carousel_generation_mode=SocialProfile.CarouselGenerationMode.AI_FINISHED,
+        )
+        content_current = SocialContent.objects.create(
+            profile=profile,
+            media_type=SocialContent.MediaType.CAROUSEL,
+            status=SocialContent.Status.RASCUNHO,
+            frase='Atual',
+            legenda='Legenda',
+        )
+        SocialCarouselSlide.objects.create(content=content_current, order=1, title='Pronto', ai_composition_status=SocialCarouselSlide.CompositionStatus.READY)
+        SocialCarouselSlide.objects.create(content=content_current, order=2, title='Pendente', ai_composition_status=SocialCarouselSlide.CompositionStatus.PENDING)
+        old_run = SocialCarouselGenerationRun.objects.create(profile=profile, content=content_current, generation_mode=SocialProfile.CarouselGenerationMode.AI_FINISHED, status=SocialCarouselGenerationRun.Status.PARTIAL)
+        SocialCarouselGenerationRun.objects.filter(pk=old_run.pk).update(finished_at=timezone.now())
+        latest_partial = SocialCarouselGenerationRun.objects.create(profile=profile, content=content_current, generation_mode=SocialProfile.CarouselGenerationMode.AI_FINISHED, status=SocialCarouselGenerationRun.Status.PARTIAL)
+
+        content_ready = SocialContent.objects.create(
+            profile=profile,
+            media_type=SocialContent.MediaType.CAROUSEL,
+            status=SocialContent.Status.RASCUNHO,
+            frase='Historico',
+            legenda='Legenda',
+        )
+        SocialCarouselSlide.objects.create(content=content_ready, order=1, title='Pronto', ai_composition_status=SocialCarouselSlide.CompositionStatus.READY)
+        historical_partial = SocialCarouselGenerationRun.objects.create(profile=profile, content=content_ready, generation_mode=SocialProfile.CarouselGenerationMode.AI_FINISHED, status=SocialCarouselGenerationRun.Status.PARTIAL)
+        SocialCarouselGenerationRun.objects.filter(pk=historical_partial.pk).update(finished_at=timezone.now())
+        SocialCarouselGenerationRun.objects.create(profile=profile, content=content_ready, generation_mode=SocialProfile.CarouselGenerationMode.AI_FINISHED, status=SocialCarouselGenerationRun.Status.READY, finished_at=timezone.now())
+
+        output = StringIO()
+        call_command('audit_social_ai_finished', '--username', '@millionow25', stdout=output)
+
+        text = output.getvalue()
+        self.assertIn('Conteudos carrossel reservados: 2', text)
+        self.assertIn('Runs AI_FINISHED totais: 4', text)
+        self.assertIn('Runs parciais totais: 3', text)
+        self.assertIn('Runs parciais operacionais: 1', text)
+        self.assertIn('Runs parciais historicos: 2', text)
+        self.assertIn(f'{content_current.id} | 2 | {latest_partial.id} | PARTIAL | 1 | 1 | 0', text)
