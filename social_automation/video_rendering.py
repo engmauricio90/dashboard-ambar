@@ -4,12 +4,12 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
-from uuid import uuid4
 
 from django.conf import settings
 from django.core.files.base import ContentFile
 from PIL import Image, ImageFilter, ImageOps
 
+from .media_paths import unique_media_filename
 from .rendering import CANVAS_SIZE, SocialRenderError, _apply_gradient, _draw_text_box, _reel_text_boxes
 from .typography import typography_for_identity
 from .visual_composer import visual_identity_for_profile
@@ -233,7 +233,7 @@ def renderizar_reel_social(content, *, return_diagnostics=False):
             raise
         video_bytes = output_path.read_bytes()
 
-    filename = f'social/{content.profile_id}/reels/{uuid4().hex}.mp4'
+    filename = unique_media_filename('.mp4')
     storage_start = time.monotonic()
     logger.info('reel_storage_save_start content_id=%s', content.id)
     content.final_video.save(filename, ContentFile(video_bytes), save=True)

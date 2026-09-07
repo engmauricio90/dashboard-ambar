@@ -3,7 +3,6 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from io import BytesIO
-from uuid import uuid4
 
 from django.conf import settings
 from django.core.files.base import ContentFile
@@ -11,6 +10,7 @@ from django.utils import timezone
 from PIL import Image, ImageOps
 
 from .ai import OpenAINotConfigured, OpenAIUnavailable, moderar_conteudo
+from .media_paths import unique_media_filename
 from .models import SocialAIUsage, SocialBaseImage, SocialProfile
 
 
@@ -247,7 +247,7 @@ def generate_social_image(prompt: SocialImagePrompt):
         generated_at=timezone.now(),
         ativa=bool(profile.ai_generated_images_reusable),
     )
-    filename = f'social/{profile.id}/base/ai/{uuid4().hex}.jpg'
+    filename = unique_media_filename('.jpg')
     image.arquivo.save(filename, ContentFile(image_bytes), save=False)
     image.analysis_metadata = {'width': width, 'height': height, 'request_fingerprint': fingerprint, **_sanitize_metadata(prompt.metadata)}
     image.save()

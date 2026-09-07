@@ -1,9 +1,9 @@
 from io import BytesIO
-from uuid import uuid4
 
 from django.core.files.base import ContentFile
 from PIL import Image, ImageDraw, ImageOps
 
+from .media_paths import unique_media_filename
 from .models import SocialCarouselSlide, SocialCarouselTemplate
 from .rendering import SocialRenderError, _font, _layout_text, _text_width
 from .typography import typography_for_identity
@@ -298,7 +298,7 @@ def renderizar_carrossel_social(content):
         canvas = _draw_composed_slide(canvas, slide, template, total_slides)
         buffer = BytesIO()
         canvas.save(buffer, format='JPEG', quality=92, optimize=True)
-        filename = f'social/{content.profile_id}/carousels/{content.id}/slides/{uuid4().hex}.jpg'
+        filename = unique_media_filename('.jpg')
         slide.rendered_image.save(filename, ContentFile(buffer.getvalue()), save=True)
         if slide.instagram_container_id or slide.instagram_container_fingerprint:
             slide.instagram_container_id = ''

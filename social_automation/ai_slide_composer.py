@@ -11,6 +11,7 @@ from .ai import OpenAINotConfigured, OpenAIUnavailable, _client, moderar_conteud
 from .carousel_creative_blueprint import composition_fingerprint, slide_text_snapshot
 from .composed_slide_review import ComposedSlideReviewResult, review_composed_slide
 from .image_generation import SocialImageGenerationDisabled, _extract_image_bytes, _sanitize_metadata, _sanitize_value, _validate_image_bytes, image_generation_available
+from .media_paths import social_storage_path
 from .models import SocialAIUsage, SocialCarouselSlide, SocialProfile
 
 
@@ -332,7 +333,7 @@ def _persist_composed_slide(slide, image_bytes, fingerprint, response_id, attemp
 def _raw_composed_image_name(slide, fingerprint):
     profile_id = slide.content.profile_id if slide.content_id else 'sem-perfil'
     content_id = slide.content_id or 'sem-conteudo'
-    return f'social/{profile_id}/carousels/{content_id}/composed_raw/{fingerprint}.jpg'
+    return social_storage_path(profile_id, 'carousels', content_id, 'composed_raw', filename=f'{fingerprint}.jpg')
 
 
 def _daily_quota_remaining(profile):

@@ -1,9 +1,9 @@
 from io import BytesIO
-from uuid import uuid4
 
 from django.core.files.base import ContentFile
 from PIL import Image, ImageDraw, ImageOps
 
+from .media_paths import unique_media_filename
 from .typography import load_font, typography_for_identity
 from .visual_composer import visual_identity_for_profile
 
@@ -364,7 +364,7 @@ def renderizar_conteudo_social(content):
     final = Image.alpha_composite(image.convert('RGBA'), overlay).convert('RGB')
     buffer = BytesIO()
     final.save(buffer, format='JPEG', quality=90, optimize=True)
-    filename = f'social/{content.profile_id}/posts/{uuid4().hex}.jpg'
+    filename = unique_media_filename('.jpg')
     content.final_image.save(filename, ContentFile(buffer.getvalue()), save=True)
     if content.status != content.Status.PUBLICADO:
         from .container_versioning import invalidate_instagram_container

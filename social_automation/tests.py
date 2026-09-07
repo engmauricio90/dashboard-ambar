@@ -2718,6 +2718,95 @@ class SocialAutomationMediaRootTests(TestCase):
                 publicar_conteudo_instagram(content, self.staff)
 
 
+class SocialAutomationMediaPathHardeningTests(TestCase):
+    def setUp(self):
+        self.profile = SocialProfile.objects.create(nome='Perfil Paths', username='paths', horarios_publicacao=['12:00'])
+        self.other_profile = SocialProfile.objects.create(nome='Outro Paths', username='paths2', horarios_publicacao=['13:00'])
+
+    def test_filefields_normalizam_prefixo_windows_e_absoluto(self):
+        from .media_paths import classify_social_media_path
+
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            image = SocialBaseImage.objects.create(profile=self.other_profile, nome='Base')
+            image.arquivo.save(rf'social\{self.profile.id}\base\social\{self.profile.id}\base\base.jpg', imagem_social('base.jpg'), save=True)
+
+            content = SocialContent.objects.create(profile=self.profile, base_image=image, frase='Teste', status=SocialContent.Status.APROVADO)
+            content.final_image.save(f'social/{self.other_profile.id}/posts/social/{self.other_profile.id}/posts/card.jpg', imagem_social('card.jpg'), save=True)
+            content.final_video.save(r'C:\temp\reel.mp4', video_mp4_teste('reel.mp4'), save=True)
+
+            self.assertEqual(image.arquivo.name, f'social/{self.other_profile.id}/base/base.jpg')
+            self.assertEqual(content.final_image.name, f'social/{self.profile.id}/posts/card.jpg')
+            self.assertEqual(content.final_video.name, f'social/{self.profile.id}/reels/reel.mp4')
+            self.assertNotIn('\\', content.final_image.name)
+            self.assertNotIn('C:', content.final_video.name)
+            self.assertEqual(classify_social_media_path(content.final_image.name, expected_profile_id=self.profile.id), 'canonical')
+            self.assertEqual(classify_social_media_path(content.final_video.name, expected_profile_id=self.profile.id), 'canonical')
+
+    def test_carousel_system_e_ai_finished_usam_paths_canonicos(self):
+        from .media_paths import classify_social_media_path
+
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            content = SocialContent.objects.create(profile=self.profile, media_type=SocialContent.MediaType.CAROUSEL, frase='Carrossel')
+            slide = SocialCarouselSlide.objects.create(content=content, order=1, title='Slide')
+
+            slide.rendered_image.save(f'social/{self.other_profile.id}/carousels/999/slides/render.jpg', imagem_social('render.jpg'), save=True)
+            slide.ai_composed_image.save('/tmp/composed.jpg', imagem_social('composed.jpg'), save=False)
+            slide.rendered_image.name = slide.ai_composed_image.name
+            slide.render_mode = SocialCarouselSlide.RenderMode.AI_FINISHED
+            slide.ai_composition_status = SocialCarouselSlide.CompositionStatus.READY
+            slide.save(update_fields=['ai_composed_image', 'rendered_image', 'render_mode', 'ai_composition_status', 'updated_at'])
+
+            self.assertEqual(slide.ai_composed_image.name, f'social/{self.profile.id}/carousels/{content.id}/composed/composed.jpg')
+            self.assertEqual(slide.rendered_image.name, slide.ai_composed_image.name)
+            self.assertEqual(classify_social_media_path(slide.ai_composed_image.name, expected_profile_id=self.profile.id), 'canonical')
+
+    def test_legacy_path_duplicado_continua_servido_por_signed_url(self):
+        from django.core.files.storage import default_storage
+
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root, INSTAGRAM_MEDIA_URL_TTL_SECONDS=3600):
+            content = SocialContent.objects.create(profile=self.profile, frase='Legacy', status=SocialContent.Status.APROVADO)
+            legacy_name = f'social/{self.profile.id}/posts/social/{self.profile.id}/posts/legacy.jpg'
+            stored_name = default_storage.save(legacy_name, imagem_social('legacy.jpg'))
+            content.final_image.name = stored_name
+            content.save(update_fields=['final_image', 'updated_at'])
+
+            token = gerar_token_midia_temporaria(content)
+            response = self.client.get(reverse('social_public_final_image', args=[token]))
+
+            self.assertEqual(content.final_image.name, stored_name)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response['Content-Type'], 'image/jpeg')
+            b''.join(response.streaming_content)
+            response.close()
+
+    def test_audit_command_read_only_classifica_paths(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            canonical = SocialContent.objects.create(profile=self.profile, frase='Canonico')
+            canonical.final_image.save('card.jpg', imagem_social('card.jpg'), save=True)
+            original_canonical = canonical.final_image.name
+
+            duplicated = SocialContent.objects.create(profile=self.profile, frase='Duplicado')
+            duplicated.final_image.name = f'social/{self.profile.id}/posts/social/{self.profile.id}/posts/duplicado.jpg'
+            duplicated.save(update_fields=['final_image', 'updated_at'])
+
+            cross = SocialContent.objects.create(profile=self.profile, frase='Cross')
+            cross.final_image.name = f'social/{self.other_profile.id}/posts/cross.jpg'
+            cross.save(update_fields=['final_image', 'updated_at'])
+
+            output = StringIO()
+            call_command('audit_social_media_paths', '--details', stdout=output)
+            text = output.getvalue()
+
+            canonical.refresh_from_db()
+            duplicated.refresh_from_db()
+            cross.refresh_from_db()
+            self.assertEqual(canonical.final_image.name, original_canonical)
+            self.assertIn('duplicated_prefix = 1', text)
+            self.assertIn('cross_profile_suspect = 1', text)
+            self.assertIn('SocialContent', text)
+            self.assertIn('duplicado.jpg', text)
+
+
 @override_settings(
     PLATFORM_BASE_URL='https://dashboard-ambar.onrender.com',
     SOCIAL_INSTAGRAM_LEGACY_FALLBACK=False,

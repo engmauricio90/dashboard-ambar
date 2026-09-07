@@ -9,54 +9,55 @@ from django.utils import timezone
 from .typography import FONT_FAMILY_CHOICES, FONT_SCALE_CHOICES, LINE_SPACING_CHOICES, TEXT_OUTLINE_CHOICES, TEXT_SHADOW_CHOICES
 
 from .token_crypto import decrypt_instagram_token, encrypt_instagram_token
+from .media_paths import social_upload_to
 
 
 def social_base_image_upload_to(instance, filename):
     profile_id = instance.profile_id or 'sem-perfil'
-    return f'social/{profile_id}/base/{filename}'
+    return social_upload_to(profile_id, 'base', filename)
 
 
 def social_final_image_upload_to(instance, filename):
     profile_id = instance.profile_id or 'sem-perfil'
-    return f'social/{profile_id}/posts/{filename}'
+    return social_upload_to(profile_id, 'posts', filename)
 
 
 def social_final_video_upload_to(instance, filename):
     profile_id = instance.profile_id or 'sem-perfil'
-    return f'social/{profile_id}/reels/{filename}'
+    return social_upload_to(profile_id, 'reels', filename, default_extension='.mp4')
 
 
 def social_carousel_template_upload_to(instance, filename):
     profile_id = instance.profile_id or 'sem-perfil'
-    return f'social/{profile_id}/carousel_templates/{filename}'
+    return social_upload_to(profile_id, 'carousel_templates', filename)
 
 
 def social_visual_identity_logo_upload_to(instance, filename):
     profile_id = instance.profile_id or 'sem-perfil'
-    return f'social/{profile_id}/identity/{filename}'
+    return social_upload_to(profile_id, 'identity', filename)
 
 
 def social_carousel_slide_source_upload_to(instance, filename):
     profile_id = instance.content.profile_id if instance.content_id else 'sem-perfil'
     content_id = instance.content_id or 'sem-conteudo'
-    return f'social/{profile_id}/carousels/{content_id}/sources/{filename}'
+    return social_upload_to(profile_id, f'carousels/{content_id}/sources', filename)
 
 
 def social_carousel_slide_rendered_upload_to(instance, filename):
     profile_id = instance.content.profile_id if instance.content_id else 'sem-perfil'
     content_id = instance.content_id or 'sem-conteudo'
-    return f'social/{profile_id}/carousels/{content_id}/slides/{filename}'
+    return social_upload_to(profile_id, f'carousels/{content_id}/slides', filename)
 
 
 def social_carousel_slide_composed_upload_to(instance, filename):
     profile_id = instance.content.profile_id if instance.content_id else 'sem-perfil'
     content_id = instance.content_id or 'sem-conteudo'
-    return f'social/{profile_id}/carousels/{content_id}/composed/{filename}'
+    return social_upload_to(profile_id, f'carousels/{content_id}/composed', filename)
 
 
 def social_creative_reference_upload_to(instance, filename):
     profile_id = instance.profile_id or 'global'
-    return f'social/{profile_id}/creative_references/{filename}'
+    return social_upload_to(profile_id, 'creative_references', filename)
 
 
 def validate_timezone_name(value):
