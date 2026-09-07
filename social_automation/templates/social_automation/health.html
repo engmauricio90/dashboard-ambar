@@ -60,15 +60,16 @@
     </div>
     <div class="col-lg-6">
         <div class="card shadow-sm h-100">
-            <div class="card-header fw-bold">IA hoje</div>
+            <div class="card-header fw-bold">Uso de IA hoje</div>
             <div class="card-body">
                 <div class="row g-2 small">
-                    <div class="col-6">Texto: <strong>{{ system.ai_usage_global.TEXT_GENERATION|default:0 }}</strong></div>
-                    <div class="col-6">Imagens: <strong>{{ system.ai_usage_global.IMAGE_GENERATION|default:0 }}</strong></div>
-                    <div class="col-6">Composicao: <strong>{{ system.ai_usage_global.COMPOSED_SLIDE|default:0 }}</strong></div>
-                    <div class="col-6">Review: <strong>{{ system.ai_usage_global.COMPOSED_SLIDE_REVIEW|default:0 }}</strong></div>
+                    <div class="col-6">Texto/ideacao: <strong>{{ system.ai_usage_categories.TEXT|default:0 }}</strong></div>
+                    <div class="col-6">Imagens: <strong>{{ system.ai_usage_categories.IMAGE|default:0 }}</strong></div>
+                    <div class="col-6">Composicao: <strong>{{ system.ai_usage_categories.COMPOSITION|default:0 }}</strong></div>
+                    <div class="col-6">Review: <strong>{{ system.ai_usage_categories.REVIEW|default:0 }}</strong></div>
+                    <div class="col-6">Outros: <strong>{{ system.ai_usage_categories.OTHER|default:0 }}</strong></div>
                 </div>
-                <div class="small text-muted mt-3">Sem estimativa financeira: esta tela mostra unidades consumidas, nao custo.</div>
+                <div class="small text-muted mt-3">Uso operacional. Estes numeros nao representam necessariamente quota visual.</div>
             </div>
         </div>
     </div>
@@ -103,9 +104,23 @@
                         <div>Carrossel: <strong>{{ item.ready_by_type.carousel|default:0 }}</strong> pronto / <strong>{{ item.reserved_by_type.carousel|default:0 }}</strong> reservado</div>
                     </div>
                     <div class="col-md-6">
-                        <div class="text-muted">IA visual hoje</div>
-                        <div><strong>{{ item.ai_used_today }}</strong> / {{ item.ai_effective_limit }} usados</div>
+                        <div class="text-muted">Quota visual</div>
+                        <div><strong>{{ item.ai_used_today }}</strong> / {{ item.ai_effective_limit }} utilizadas</div>
                         <div class="{% if item.ai_near_limit %}text-warning{% else %}text-muted{% endif %}">Restante: {{ item.ai_remaining_today }}</div>
+                    </div>
+                </div>
+
+                <div class="row g-3 small mt-1">
+                    <div class="col-12">
+                        <div class="text-muted">Uso de IA hoje</div>
+                        <div>
+                            Texto/ideacao: <strong>{{ item.ai_usage_categories.TEXT|default:0 }}</strong> |
+                            Imagens: <strong>{{ item.ai_usage_categories.IMAGE|default:0 }}</strong> |
+                            Composicao: <strong>{{ item.ai_usage_categories.COMPOSITION|default:0 }}</strong> |
+                            Review: <strong>{{ item.ai_usage_categories.REVIEW|default:0 }}</strong> |
+                            Outros: <strong>{{ item.ai_usage_categories.OTHER|default:0 }}</strong>
+                        </div>
+                        <div class="text-muted">Total IA: {{ item.ai_total_today }}</div>
                     </div>
                 </div>
 
@@ -119,9 +134,11 @@
                     </div>
                     <div class="col-md-6">
                         <div class="text-muted">AI_FINISHED</div>
-                        <div>Runs parciais: <strong>{{ item.run_counts.PARTIAL|default:0 }}</strong></div>
-                        <div>Runs com erro: <strong>{{ item.run_counts.ERROR|default:0 }}</strong></div>
-                        <div>Slides prontos: <strong>{{ item.slide_counts.READY|default:0 }}</strong> | Pendentes: <strong>{{ item.slide_counts.PENDING|default:0 }}</strong> | Erro: <strong>{{ item.slide_counts.ERROR|default:0 }}</strong></div>
+                        <div>Carrosseis em andamento: <strong>{{ item.operational_carousel_count }}</strong></div>
+                        <div>Runs operacionais parciais: <strong>{{ item.run_counts.PARTIAL|default:0 }}</strong></div>
+                        <div>Runs operacionais com erro: <strong>{{ item.run_counts.ERROR|default:0 }}</strong></div>
+                        <div>Runs historicas parciais: <strong>{{ item.historical_run_counts.PARTIAL|default:0 }}</strong></div>
+                        <div>Slides atuais: Prontos <strong>{{ item.slide_counts.READY|default:0 }}</strong> | Pendentes <strong>{{ item.slide_counts.PENDING|default:0 }}</strong> | Compondo <strong>{{ item.slide_counts.COMPOSING|default:0 }}</strong> | Revisando <strong>{{ item.slide_counts.REVIEWING|default:0 }}</strong> | Erro <strong>{{ item.slide_counts.ERROR|default:0 }}</strong></div>
                     </div>
                 </div>
 

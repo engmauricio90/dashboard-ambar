@@ -2960,7 +2960,7 @@ class SocialAutomationHealthDashboardTests(TestCase):
 
     def test_contagens_de_slides_sao_coerentes(self):
         profile = self._profile()
-        content = SocialContent.objects.create(profile=profile, media_type=SocialContent.MediaType.CAROUSEL, frase='Slides')
+        content = SocialContent.objects.create(profile=profile, media_type=SocialContent.MediaType.CAROUSEL, frase='Slides', status=SocialContent.Status.APROVADO)
         statuses = [
             SocialCarouselSlide.CompositionStatus.READY,
             SocialCarouselSlide.CompositionStatus.READY,
@@ -2977,6 +2977,65 @@ class SocialAutomationHealthDashboardTests(TestCase):
 
         self.assertEqual(total, 6)
         self.assertEqual(health.slide_counts[SocialCarouselSlide.CompositionStatus.READY], 2)
+
+    @override_settings(SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=8)
+    def test_health_separa_quota_visual_do_total_de_ia(self):
+        profile = self._profile(ai_image_generation_enabled=True, ai_image_mode=SocialProfile.AIImagePolicy.AI_ALWAYS, ai_image_daily_limit=8)
+        self._connect(profile)
+        content = SocialContent.objects.create(profile=profile, media_type=SocialContent.MediaType.CAROUSEL, frase='IA')
+        slide = SocialCarouselSlide.objects.create(content=content, order=1, title='Slide')
+        for _index in range(5):
+            SocialAIUsage.objects.create(profile=profile, content=content, slide=slide, operation=SocialAIUsage.Operation.COMPOSED_SLIDE, success=True)
+        for _index in range(5):
+            SocialAIUsage.objects.create(profile=profile, content=content, slide=slide, operation=SocialAIUsage.Operation.COMPOSED_SLIDE_REVIEW, success=True)
+        for _index in range(8):
+            SocialAIUsage.objects.create(profile=profile, content=content, operation=SocialAIUsage.Operation.IDEATION, success=True)
+
+        health = build_profile_health(profile)
+
+        self.assertEqual(health.ai_used_today, 5)
+        self.assertEqual(health.ai_total_today, 18)
+        self.assertEqual(health.ai_remaining_today, 3)
+        self.assertEqual(health.ai_usage_categories['TEXT'], 8)
+        self.assertEqual(health.ai_usage_categories['COMPOSITION'], 5)
+        self.assertEqual(health.ai_usage_categories['REVIEW'], 5)
+        self.assertNotIn('Limite diario de IA visual atingido.', health.reasons)
+
+    @override_settings(SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=8)
+    def test_health_bloqueia_quando_quota_visual_real_atinge_limite(self):
+        profile = self._profile(ai_image_generation_enabled=True, ai_image_mode=SocialProfile.AIImagePolicy.AI_ALWAYS, ai_image_daily_limit=8)
+        self._connect(profile)
+        for _index in range(8):
+            SocialAIUsage.objects.create(profile=profile, operation=SocialAIUsage.Operation.COMPOSED_SLIDE, success=True)
+
+        health = build_profile_health(profile)
+
+        self.assertEqual(health.ai_used_today, 8)
+        self.assertEqual(health.ai_effective_limit, 8)
+        self.assertEqual(health.ai_remaining_today, 0)
+        self.assertIn('Limite diario de IA visual atingido.', health.reasons)
+
+    def test_health_ai_finished_conta_apenas_run_operacional_por_conteudo(self):
+        profile = self._profile(posts_por_dia=4, carousels_por_dia=4, username='millionow25')
+        self._connect(profile)
+        contents = []
+        for index in range(3):
+            content = SocialContent.objects.create(profile=profile, media_type=SocialContent.MediaType.CAROUSEL, frase=f'Carrossel {index}', status=SocialContent.Status.APROVADO)
+            contents.append(content)
+            for slide_index in range(5):
+                SocialCarouselSlide.objects.create(content=content, order=slide_index + 1, title=f'Slide {slide_index}', ai_composition_status=SocialCarouselSlide.CompositionStatus.PENDING)
+            for _run_index in range(2):
+                old = SocialCarouselGenerationRun.objects.create(profile=profile, content=content, generation_mode=SocialProfile.CarouselGenerationMode.AI_FINISHED, status=SocialCarouselGenerationRun.Status.PARTIAL)
+                SocialCarouselGenerationRun.objects.filter(pk=old.pk).update(finished_at=timezone.now())
+            SocialCarouselGenerationRun.objects.create(profile=profile, content=content, generation_mode=SocialProfile.CarouselGenerationMode.AI_FINISHED, status=SocialCarouselGenerationRun.Status.PARTIAL)
+
+        health = build_profile_health(profile)
+
+        self.assertEqual(health.operational_carousel_count, 3)
+        self.assertEqual(health.run_counts[SocialCarouselGenerationRun.Status.PARTIAL], 3)
+        self.assertEqual(health.historical_run_counts[SocialCarouselGenerationRun.Status.PARTIAL], 6)
+        self.assertEqual(health.slide_counts[SocialCarouselSlide.CompositionStatus.PENDING], 15)
+        self.assertNotIn('TOO_MANY_PARTIAL_RUNS', ' '.join(health.reasons))
 
     def test_cron_health_recente_atrasado_bloqueado_e_erro(self):
         now = timezone.now()
@@ -3015,6 +3074,8 @@ class SocialAutomationHealthDashboardTests(TestCase):
         ffmpeg.assert_not_called()
         self.assertNotContains(response, 'ciphertext-test')
         self.assertContains(response, 'Saude da Automacao Social')
+        self.assertContains(response, 'Quota visual')
+        self.assertContains(response, 'Uso de IA hoje')
 
     def test_dashboard_query_count_sem_n_plus_one_grosseiro(self):
         for index in range(4):

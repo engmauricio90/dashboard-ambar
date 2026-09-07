@@ -7,6 +7,7 @@ from django.db.models import F
 from django.utils import timezone
 
 from .ai import formatar_hashtags, gerar_carrossel_blueprint_ia, moderar_conteudo
+from .ai_usage_policy import VISUAL_QUOTA_OPERATIONS
 from .ai_slide_composer import BRAND_OVERLAY_VERSION, compose_slide_image_with_ai, compose_slide_with_ai, reapply_system_brand_overlay
 from .carousel_creative_blueprint import IdeaSelection, is_ai_directed, is_ai_finished
 from .carousel_creative_director import build_creative_direction
@@ -57,7 +58,7 @@ def _usage_today(profile):
     today = timezone.localdate()
     return SocialAIUsage.objects.filter(
         profile=profile,
-        operation__in=[SocialAIUsage.Operation.IMAGE_GENERATION, SocialAIUsage.Operation.COMPOSED_SLIDE],
+        operation__in=VISUAL_QUOTA_OPERATIONS,
         success=True,
         created_at__date=today,
     ).count()

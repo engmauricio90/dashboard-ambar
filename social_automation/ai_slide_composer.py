@@ -8,6 +8,7 @@ from django.utils import timezone
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from .ai import OpenAINotConfigured, OpenAIUnavailable, _client, moderar_conteudo
+from .ai_usage_policy import VISUAL_QUOTA_OPERATIONS
 from .carousel_creative_blueprint import composition_fingerprint, slide_text_snapshot
 from .composed_slide_review import ComposedSlideReviewResult, review_composed_slide
 from .image_generation import SocialImageGenerationDisabled, _extract_image_bytes, _sanitize_metadata, _sanitize_value, _validate_image_bytes, image_generation_available
@@ -342,7 +343,7 @@ def _daily_quota_remaining(profile):
     limit = min(profile_limit, settings.SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY)
     used = SocialAIUsage.objects.filter(
         profile=profile,
-        operation__in=[SocialAIUsage.Operation.IMAGE_GENERATION, SocialAIUsage.Operation.COMPOSED_SLIDE],
+        operation__in=VISUAL_QUOTA_OPERATIONS,
         success=True,
         created_at__date=today,
     ).count()

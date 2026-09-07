@@ -6,43 +6,16 @@ from django.conf import settings
 from django.db.models import Count
 from django.utils import timezone
 
+from .ai_usage_policy import (
+    COMPOSITION_OPERATIONS,
+    REVIEW_OPERATIONS,
+    VISUAL_QUOTA_OPERATIONS,
+    ai_usage_policy,
+)
 from .health import _effective_ai_limit
 from .models import SocialAIUsage, SocialCarouselGenerationRun, SocialCarouselSlide, SocialContent, SocialProfile
 from .scheduler import _content_reserves_stock
 
-
-QUOTA_OPERATIONS = {
-    SocialAIUsage.Operation.IMAGE_GENERATION,
-    SocialAIUsage.Operation.COMPOSED_SLIDE,
-}
-
-COMPOSITION_OPERATIONS = {
-    SocialAIUsage.Operation.COMPOSED_SLIDE,
-}
-
-REVIEW_OPERATIONS = {
-    SocialAIUsage.Operation.COMPOSED_SLIDE_REVIEW,
-}
-
-PROVIDER_OPERATIONS = {
-    SocialAIUsage.Operation.TEXT_GENERATION,
-    SocialAIUsage.Operation.IMAGE_GENERATION,
-    SocialAIUsage.Operation.IMAGE_ANALYSIS,
-    SocialAIUsage.Operation.IDEATION,
-    SocialAIUsage.Operation.CREATIVE_BLUEPRINT,
-    SocialAIUsage.Operation.COMPOSED_SLIDE,
-    SocialAIUsage.Operation.COMPOSED_SLIDE_REVIEW,
-}
-
-OPERATION_DESCRIPTIONS = {
-    SocialAIUsage.Operation.TEXT_GENERATION: 'Texto/legenda',
-    SocialAIUsage.Operation.IMAGE_GENERATION: 'Imagem IA avulsa',
-    SocialAIUsage.Operation.IMAGE_ANALYSIS: 'Analise visual',
-    SocialAIUsage.Operation.IDEATION: 'Ideacao de carrossel',
-    SocialAIUsage.Operation.CREATIVE_BLUEPRINT: 'Blueprint criativo',
-    SocialAIUsage.Operation.COMPOSED_SLIDE: 'Arte final de slide',
-    SocialAIUsage.Operation.COMPOSED_SLIDE_REVIEW: 'Review visual/editorial',
-}
 
 AI_FINISHED_ACTIVE_RUN_STATUSES = {
     SocialCarouselGenerationRun.Status.IDEATING,
@@ -93,19 +66,6 @@ def configured_ai_limit(profile):
     return profile_limit, _effective_ai_limit(profile), source
 
 
-def purpose_policy(operation):
-    return {
-        'operation': operation,
-        'description': OPERATION_DESCRIPTIONS.get(operation, operation),
-        'provider_called_by_design': operation in PROVIDER_OPERATIONS,
-        'quota': operation in QUOTA_OPERATIONS,
-        'composition': operation in COMPOSITION_OPERATIONS,
-        'review': operation in REVIEW_OPERATIONS,
-        'health': True,
-        'daily_profile_limit': operation in QUOTA_OPERATIONS,
-    }
-
-
 def audit_ai_usage(profile, target_date=None):
     target_date = target_date or timezone.localdate(timezone.now(), profile_timezone(profile))
     local_start, local_end, start_utc, end_utc = usage_window(profile, target_date)
@@ -132,7 +92,7 @@ def audit_ai_usage(profile, target_date=None):
                 'content_ids': set(),
                 'carousel_content_ids': set(),
                 'slide_ids': set(),
-                'quota': usage.operation in QUOTA_OPERATIONS,
+                'quota': usage.operation in VISUAL_QUOTA_OPERATIONS,
                 'composition': usage.operation in COMPOSITION_OPERATIONS,
                 'review': usage.operation in REVIEW_OPERATIONS,
                 'health': True,
@@ -165,11 +125,11 @@ def audit_ai_usage(profile, target_date=None):
 
     configured_limit, effective_limit, source = configured_ai_limit(profile)
     health_total = sum(operation_counts.values())
-    quota_relevant_success = sum(operation_counts[operation] for operation in QUOTA_OPERATIONS)
+    quota_relevant_success = sum(operation_counts[operation] for operation in VISUAL_QUOTA_OPERATIONS)
     provider_image_composition = sum(
         row['provider_called']
         for row in breakdown
-        if row['operation'] in QUOTA_OPERATIONS
+        if row['operation'] in VISUAL_QUOTA_OPERATIONS
     )
     return {
         'profile': profile,
@@ -187,7 +147,7 @@ def audit_ai_usage(profile, target_date=None):
         'provider_image_composition_calls': provider_image_composition,
         'operation_counts': dict(operation_counts),
         'breakdown': breakdown,
-        'policies': [purpose_policy(operation) for operation, _label in SocialAIUsage.Operation.choices],
+        'policies': [ai_usage_policy(operation) for operation, _label in SocialAIUsage.Operation.choices],
     }
 
 

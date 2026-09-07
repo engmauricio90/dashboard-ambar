@@ -7,8 +7,17 @@ from django.conf import settings
 from django.db.models import Count, Q
 from django.utils import timezone
 
+from .ai_usage_policy import (
+    COMPOSITION_CATEGORY,
+    IMAGE_CATEGORY,
+    OTHER_CATEGORY,
+    REVIEW_CATEGORY,
+    TEXT_CATEGORY,
+    VISUAL_QUOTA_OPERATIONS,
+    ai_usage_category,
+)
 from .models import SocialAIUsage, SocialAutomationTick, SocialCarouselGenerationRun, SocialCarouselSlide, SocialContent, SocialInstagramConnection, SocialProfile, SocialPublishAttempt
-from .scheduler import estoque_alvo_profile, estoque_em_andamento_por_tipo, estoque_minimo_profile, estoque_pronto_por_tipo, estoque_reservado_por_tipo, proxima_publicacao
+from .scheduler import RESERVED_STOCK_STATUSES, _content_reserves_stock, estoque_alvo_profile, estoque_em_andamento_por_tipo, estoque_minimo_profile, estoque_pronto_por_tipo, estoque_reservado_por_tipo, proxima_publicacao
 
 
 HEALTHY = 'SAUDAVEL'
@@ -44,11 +53,15 @@ class ProfileHealth:
     reserved_by_type: dict = field(default_factory=dict)
     in_progress_by_type: dict = field(default_factory=dict)
     ai_used_today: int = 0
+    ai_total_today: int = 0
     ai_effective_limit: int = 0
     ai_remaining_today: int = 0
     ai_near_limit: bool = False
+    ai_usage_categories: dict = field(default_factory=dict)
+    operational_carousel_count: int = 0
     content_counts: dict = field(default_factory=dict)
     run_counts: dict = field(default_factory=dict)
+    historical_run_counts: dict = field(default_factory=dict)
     slide_counts: dict = field(default_factory=dict)
     latest_error: str = ''
     latest_attempt: SocialPublishAttempt | None = None
@@ -64,6 +77,7 @@ class SystemHealth:
     ambiguous_publications: int
     content_errors: int
     ai_usage_global: dict
+    ai_usage_categories: dict = field(default_factory=dict)
 
 
 def build_social_health(now=None):
@@ -74,8 +88,7 @@ def build_social_health(now=None):
     )
     usage_by_profile, usage_global = _ai_usage_maps(now)
     content_counts = _content_count_map()
-    run_counts = _run_count_map()
-    slide_counts = _slide_count_map()
+    operational_runs = _operational_ai_finished_maps(now)
     latest_attempts = _latest_attempt_map()
     profile_cards = [
         build_profile_health(
@@ -83,8 +96,11 @@ def build_social_health(now=None):
             now=now,
             usage=usage_by_profile.get(profile.id, {}),
             content_counts=content_counts.get(profile.id, {}),
-            run_counts=run_counts.get(profile.id, {}),
-            slide_counts=slide_counts.get(profile.id, {}),
+            run_counts=operational_runs['run_counts'].get(profile.id, {}),
+            slide_counts=operational_runs['slide_counts'].get(profile.id, {}),
+            historical_run_counts=operational_runs['historical_run_counts'].get(profile.id, {}),
+            operational_carousel_count=operational_runs['content_counts'].get(profile.id, 0),
+            stale_run_count=operational_runs['stale_run_counts'].get(profile.id, 0),
             latest_attempt=latest_attempts.get(profile.id),
         )
         for profile in profiles
@@ -106,22 +122,32 @@ def build_social_health(now=None):
     return {'summary': summary, 'profiles': profile_cards, 'system': system}
 
 
-def build_profile_health(profile, *, now=None, usage=None, content_counts=None, run_counts=None, slide_counts=None, latest_attempt=None):
+def build_profile_health(profile, *, now=None, usage=None, content_counts=None, run_counts=None, slide_counts=None, historical_run_counts=None, operational_carousel_count=0, stale_run_count=None, latest_attempt=None):
     now = now or timezone.now()
     if usage is None:
         usage = _ai_usage_maps(now)[0].get(profile.id, {})
     if content_counts is None:
         content_counts = _content_count_map().get(profile.id, {})
     if run_counts is None:
-        run_counts = _run_count_map().get(profile.id, {})
+        operational_runs = _operational_ai_finished_maps(now)
+        run_counts = operational_runs['run_counts'].get(profile.id, {})
+        slide_counts = operational_runs['slide_counts'].get(profile.id, {})
+        historical_run_counts = operational_runs['historical_run_counts'].get(profile.id, {})
+        operational_carousel_count = operational_runs['content_counts'].get(profile.id, 0)
+        stale_run_count = operational_runs['stale_run_counts'].get(profile.id, 0)
     if slide_counts is None:
-        slide_counts = _slide_count_map().get(profile.id, {})
+        slide_counts = {}
+    if historical_run_counts is None:
+        historical_run_counts = {}
+    if stale_run_count is None:
+        stale_run_count = 0
     if latest_attempt is None:
         latest_attempt = _latest_attempt_map().get(profile.id)
     usage = usage or {}
     content_counts = defaultdict(int, content_counts or {})
     run_counts = defaultdict(int, run_counts or {})
     slide_counts = defaultdict(int, slide_counts or {})
+    historical_run_counts = defaultdict(int, historical_run_counts or {})
     reasons = []
 
     if not profile.ativo:
@@ -176,7 +202,7 @@ def build_profile_health(profile, *, now=None, usage=None, content_counts=None, 
 
     partial_runs = run_counts[SocialCarouselGenerationRun.Status.PARTIAL]
     error_runs = run_counts[SocialCarouselGenerationRun.Status.ERROR]
-    stale_runs = _stale_runs(now).filter(profile=profile).count()
+    stale_runs = stale_run_count
     pending_slides = (
         slide_counts[SocialCarouselSlide.CompositionStatus.PENDING]
         + slide_counts[SocialCarouselSlide.CompositionStatus.COMPOSING]
@@ -200,7 +226,9 @@ def build_profile_health(profile, *, now=None, usage=None, content_counts=None, 
         reasons.append(f'{partial_runs} run AI_FINISHED parcial.')
 
     ai_limit = _effective_ai_limit(profile)
-    ai_used = sum(usage.values())
+    ai_used = _visual_quota_used(usage)
+    ai_total = sum(usage.values())
+    ai_categories = _ai_usage_categories(usage)
     ai_remaining = max(0, ai_limit - ai_used)
     ai_near_limit = bool(ai_limit and ai_used >= ai_limit * NEAR_LIMIT_RATIO)
     if _profile_uses_ai_images(profile) and ai_limit and ai_remaining <= 0:
@@ -232,11 +260,15 @@ def build_profile_health(profile, *, now=None, usage=None, content_counts=None, 
         reserved_by_type=reserved_by_type,
         in_progress_by_type=in_progress_by_type,
         ai_used_today=ai_used,
+        ai_total_today=ai_total,
         ai_effective_limit=ai_limit,
         ai_remaining_today=ai_remaining,
         ai_near_limit=ai_near_limit,
+        ai_usage_categories=ai_categories,
+        operational_carousel_count=operational_carousel_count,
         content_counts=dict(content_counts),
         run_counts=dict(run_counts),
+        historical_run_counts=dict(historical_run_counts),
         slide_counts=dict(slide_counts),
         latest_error=latest_error,
         latest_attempt=latest_attempt,
@@ -266,10 +298,10 @@ def build_system_health(*, now=None, usage_global=None):
     errors = SocialContent.objects.filter(status=SocialContent.Status.ERRO).count()
     if ambiguous:
         reasons.append(f'{ambiguous} publicacao pendente de confirmacao.')
-    if _stale_runs(now).exists():
+    if _operational_stale_run_count(now):
         reasons.append('Existem runs em andamento ha tempo excessivo.')
     status = BLOCKED if any(term in ' '.join(reasons) for term in ['muito atrasado', 'pendente de confirmacao', 'erro', 'tempo excessivo']) else (ATTENTION if reasons else HEALTHY)
-    return SystemHealth(status=status, reasons=reasons, last_tick=last_tick, tick_age_minutes=tick_age_minutes, active_runs=active_runs, ambiguous_publications=ambiguous, content_errors=errors, ai_usage_global=usage_global)
+    return SystemHealth(status=status, reasons=reasons, last_tick=last_tick, tick_age_minutes=tick_age_minutes, active_runs=active_runs, ambiguous_publications=ambiguous, content_errors=errors, ai_usage_global=usage_global, ai_usage_categories=_ai_usage_categories(usage_global))
 
 
 def _ai_usage_maps(now):
@@ -303,12 +335,68 @@ def _run_count_map():
     return data
 
 
-def _slide_count_map():
-    rows = SocialCarouselSlide.objects.filter(is_active=True).values('content__profile_id', 'ai_composition_status').annotate(total=Count('id'))
-    data = defaultdict(dict)
-    for row in rows:
-        data[row['content__profile_id']][row['ai_composition_status']] = row['total']
-    return data
+def _visual_quota_used(usage):
+    return sum(usage.get(operation, 0) for operation in VISUAL_QUOTA_OPERATIONS)
+
+
+def _ai_usage_categories(usage):
+    categories = defaultdict(int)
+    for operation, total in (usage or {}).items():
+        categories[ai_usage_category(operation)] += total
+    return {
+        TEXT_CATEGORY: categories[TEXT_CATEGORY],
+        IMAGE_CATEGORY: categories[IMAGE_CATEGORY],
+        COMPOSITION_CATEGORY: categories[COMPOSITION_CATEGORY],
+        REVIEW_CATEGORY: categories[REVIEW_CATEGORY],
+        OTHER_CATEGORY: categories[OTHER_CATEGORY],
+    }
+
+
+def _operational_ai_finished_maps(now):
+    contents = (
+        SocialContent.objects.filter(media_type=SocialContent.MediaType.CAROUSEL, status__in=RESERVED_STOCK_STATUSES)
+        .prefetch_related('carousel_slides', 'carousel_generation_runs', 'events')
+        .order_by('profile_id', 'id')
+    )
+    run_counts = defaultdict(lambda: defaultdict(int))
+    historical_run_counts = defaultdict(lambda: defaultdict(int))
+    slide_counts = defaultdict(lambda: defaultdict(int))
+    content_counts = defaultdict(int)
+    stale_run_counts = defaultdict(int)
+    stale_before = now - RUN_STALE_AFTER
+
+    for content in contents:
+        if not _content_reserves_stock(content, now=now):
+            continue
+        profile_id = content.profile_id
+        content_counts[profile_id] += 1
+        runs = [
+            run
+            for run in content.carousel_generation_runs.all()
+            if run.generation_mode == SocialProfile.CarouselGenerationMode.AI_FINISHED
+        ]
+        latest_run = runs[0] if runs else None
+        if latest_run:
+            run_counts[profile_id][latest_run.status] += 1
+            for run in runs[1:]:
+                historical_run_counts[profile_id][run.status] += 1
+            if latest_run.status in _active_run_statuses() and latest_run.finished_at is None and latest_run.started_at < stale_before:
+                stale_run_counts[profile_id] += 1
+        for slide in content.carousel_slides.all():
+            if slide.is_active:
+                slide_counts[profile_id][slide.ai_composition_status] += 1
+
+    return {
+        'run_counts': {key: dict(value) for key, value in run_counts.items()},
+        'historical_run_counts': {key: dict(value) for key, value in historical_run_counts.items()},
+        'slide_counts': {key: dict(value) for key, value in slide_counts.items()},
+        'content_counts': dict(content_counts),
+        'stale_run_counts': dict(stale_run_counts),
+    }
+
+
+def _operational_stale_run_count(now):
+    return sum(_operational_ai_finished_maps(now)['stale_run_counts'].values())
 
 
 def _latest_attempt_map():
