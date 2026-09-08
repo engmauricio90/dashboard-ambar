@@ -33,19 +33,19 @@ def _historico(profile):
 
 def _phrase_size(area_percent):
     if area_percent < 13:
-        return 'curta, preferencialmente ate 55 caracteres'
+        return 'default visual compacto, aproximadamente 55 caracteres quando o perfil nao pedir outro formato'
     if area_percent < 22:
-        return 'media, preferencialmente ate 90 caracteres'
-    return 'um pouco maior, ainda objetiva, preferencialmente ate 130 caracteres'
+        return 'default visual padrao, aproximadamente 90 caracteres quando o perfil nao pedir outro formato'
+    return 'espaco maior disponivel; pode aceitar texto mais narrativo, respeitando o limite tecnico'
 
 
 def _phrase_size_for_media(area_percent, media_type):
     if media_type == SocialContent.MediaType.REEL:
         if area_percent < 10:
-            return 'curta, preferencialmente em 1 linha'
+            return 'default visual compacto para video vertical; usar texto curto salvo instrucao narrativa do perfil'
         if area_percent < 20:
-            return 'media, preferencialmente em 1 a 2 linhas'
-        return 'pode usar ate 3 linhas curtas, mantendo leitura rapida'
+            return 'default visual padrao para video vertical; aceita algumas frases curtas se o perfil pedir'
+        return 'espaco vertical maior; pode usar micro-historia legivel dentro do limite tecnico'
     return _phrase_size(area_percent)
 
 

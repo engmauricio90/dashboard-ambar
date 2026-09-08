@@ -26,6 +26,13 @@ class GeneratedContent:
 
 
 @dataclass(frozen=True)
+class SocialContentPromptInspection:
+    prompt: str
+    blocks: list[tuple[str, str]]
+    schema: dict
+
+
+@dataclass(frozen=True)
 class GeneratedCarouselSlide:
     order: int
     slide_type: str
@@ -95,6 +102,55 @@ def _schema():
             },
         },
     }
+
+
+def build_social_content_prompt(profile, quantidade, tema, historico, image_contexts=None):
+    image_contexts = image_contexts or []
+    image_guidance = []
+    for context in image_contexts:
+        image_guidance.append(
+            {
+                'imagem': context.get('nome'),
+                'tags': context.get('tags'),
+                'posicao_texto': context.get('posicao_texto'),
+                'area_disponivel_percentual': context.get('area_disponivel_percentual'),
+                'tamanho_recomendado_frase': context.get('tamanho_recomendado_frase'),
+                'tipo_midia': context.get('tipo_midia'),
+            }
+        )
+    blocks = [
+        (
+            'GENERIC',
+            'Voce gera rascunhos para Instagram de um perfil interno. '
+            'Responda somente no JSON solicitado. '
+            'O campo frase e o texto principal do post e pode conter uma frase curta, duas ou mais frases curtas, dialogo breve, microcena ou mini-historia curta quando isso combinar com o perfil. '
+            'Nao encurte uma ideia narrativa apenas para transforma-la em one-liner. '
+            'Crie legenda complementar e hashtags. '
+            'Considere as imagens-base disponiveis e o espaco de texto delas. '
+            'Use as recomendacoes de tamanho como defaults visuais condicionais: area pequena pede texto compacto, area media aceita texto padrao, area maior permite texto mais narrativo dentro do limite tecnico. '
+            'Para tipo_midia REEL, mantenha leitura boa em video vertical; pode ser uma frase curta, algumas frases curtas, dialogo breve ou micro-historia conforme o estilo do perfil. '
+            'Nao force one-liner quando o perfil pede narrativa. '
+            'Priorize frases que caibam sem cobrir rosto/corpo da pessoa da foto. '
+            'Evite repetir ideias, palavras e estruturas do historico. ',
+        ),
+        (
+            'EDITORIAL_PRIORITY',
+            'Prioridade editorial: 1. seguranca e politicas; 2. schema e limites tecnicos obrigatorios; '
+            '3. instrucoes especificas do perfil; 4. estilo do perfil; 5. defaults genericos de midia. '
+            'As instrucoes especificas do perfil definem a voz e o formato editorial desejados e prevalecem sobre preferencias genericas de concisao, exceto limites tecnicos obrigatorios. ',
+        ),
+        ('PROFILE', f'Perfil: {profile.nome} ({profile.username}). '),
+        ('PROFILE_STYLE', f'Estilo: {profile.estilo or "sem estilo cadastrado"}. '),
+        ('PROFILE_AI_INSTRUCTIONS', f'Instrucoes: {profile.instrucoes_ia or "sem instrucoes adicionais"}. '),
+        ('TYPE_AND_BATCH', f'Tema opcional: {tema or "livre"}. Quantidade: {quantidade}. '),
+        ('IMAGE_CONTEXT', f'Imagens e areas de texto: {image_guidance}. '),
+        ('RECENT_CONTENT', f'Historico recente: {historico or []}.'),
+    ]
+    return SocialContentPromptInspection(
+        prompt=''.join(text for _name, text in blocks),
+        blocks=blocks,
+        schema=_schema(),
+    )
 
 
 def _carousel_schema():
@@ -175,35 +231,7 @@ def _carousel_schema():
 
 
 def gerar_conteudos_ia(profile, quantidade, tema, historico, image_contexts=None):
-    image_contexts = image_contexts or []
-    image_guidance = []
-    for context in image_contexts:
-        image_guidance.append(
-            {
-                'imagem': context.get('nome'),
-                'tags': context.get('tags'),
-                'posicao_texto': context.get('posicao_texto'),
-                'area_disponivel_percentual': context.get('area_disponivel_percentual'),
-                'tamanho_recomendado_frase': context.get('tamanho_recomendado_frase'),
-            }
-        )
-    prompt = (
-        'Voce gera rascunhos para Instagram de um perfil interno. '
-        'Responda somente no JSON solicitado. '
-        'Crie frases curtas para card, legenda complementar e hashtags. '
-        'Considere as imagens-base disponiveis e o espaco de texto delas. '
-        'Quando a area disponivel for pequena, gere frase curta; quando for media, frase media; quando for grande, a frase pode ser um pouco maior. '
-        'Se tipo_midia for REEL, gere uma unica frase ainda mais curta, sem roteiro, sem cenas e sem chamadas para audio. '
-        'Priorize frases que caibam sem cobrir rosto/corpo da pessoa da foto. '
-        'Evite repetir ideias, palavras e estruturas do historico. '
-        f'Perfil: {profile.nome} ({profile.username}). '
-        f'Estilo: {profile.estilo or "sem estilo cadastrado"}. '
-        f'Instrucoes: {profile.instrucoes_ia or "sem instrucoes adicionais"}. '
-        f'Tema opcional: {tema or "livre"}. '
-        f'Quantidade: {quantidade}. '
-        f'Imagens e areas de texto: {image_guidance}. '
-        f'Historico recente: {historico or []}.'
-    )
+    prompt = build_social_content_prompt(profile, quantidade, tema, historico, image_contexts=image_contexts).prompt
     try:
         response = _client().responses.create(
             model=settings.OPENAI_SOCIAL_MODEL,

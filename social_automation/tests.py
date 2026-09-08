@@ -1,5 +1,6 @@
 from datetime import timedelta
 import base64
+import json
 from io import BytesIO, StringIO
 from hashlib import sha256
 import importlib.util
@@ -45,7 +46,14 @@ from .models import (
     SocialProfile,
     SocialVisualIdentity,
 )
-from .ai import GeneratedCarouselBlueprint, GeneratedCarouselSlide, GeneratedContent, OpenAIUnavailable
+from .ai import (
+    GeneratedCarouselBlueprint,
+    GeneratedCarouselSlide,
+    GeneratedContent,
+    OpenAIUnavailable,
+    build_social_content_prompt,
+    gerar_conteudos_ia,
+)
 from .automation import executar_tick_social
 from .backlog import (
     KEEP,
@@ -1145,9 +1153,10 @@ class SocialAutomationRenderingPositionTests(TestCase):
 
         self.assertEqual(contexts[0]['nome'], image.nome)
         self.assertIn('area_disponivel_percentual', contexts[0])
-        self.assertIn('curta', contexts[0]['tamanho_recomendado_frase'])
+        self.assertIn('default visual compacto', contexts[0]['tamanho_recomendado_frase'])
+        self.assertIn('perfil', contexts[0]['tamanho_recomendado_frase'])
 
-    def test_contexto_de_ia_para_reel_usa_layout_vertical_e_ate_tres_linhas(self):
+    def test_contexto_de_ia_para_reel_usa_layout_vertical_sem_forcar_one_liner(self):
         image = self._image(SocialBaseImage.TextPosition.AUTO_SMART)
         image.reel_primary_text_box_x = 10
         image.reel_primary_text_box_y = 60
@@ -1159,7 +1168,8 @@ class SocialAutomationRenderingPositionTests(TestCase):
 
         self.assertEqual(contexts[0]['tipo_midia'], SocialContent.MediaType.REEL)
         self.assertEqual(contexts[0]['area_disponivel_percentual'], 22.81)
-        self.assertIn('ate 3 linhas', contexts[0]['tamanho_recomendado_frase'])
+        self.assertIn('micro-historia', contexts[0]['tamanho_recomendado_frase'])
+        self.assertIn('limite tecnico', contexts[0]['tamanho_recomendado_frase'])
 
 
 @override_settings(
@@ -7274,6 +7284,137 @@ class SocialAutomationAIVisionTests(TestCase):
 
 
 class SocialAutomationDiagnosticsTests(TestCase):
+    def test_prompt_prioriza_perfil_narrativo_sem_forcar_one_liner(self):
+        profile = SocialProfile.objects.create(
+            nome='Perfil Narrativo',
+            username='perfil_narrativo',
+            timezone='America/Sao_Paulo',
+            horarios_publicacao=['09:00'],
+            estilo='Humor de relacionamento com mini-historias.',
+            instrucoes_ia='Priorize mini-historias de 3 a 4 frases curtas com situacao, escalada e punchline.',
+        )
+        SocialBaseImage.objects.create(profile=profile, nome='Base narrativa', arquivo=imagem_social('narrativa.jpg'), tags='relacionamento')
+
+        prompt = build_social_content_prompt(profile, 1, 'relacionamento', [], image_contexts=_image_contexts(profile)).prompt
+
+        self.assertIn('instrucoes especificas do perfil', prompt)
+        self.assertIn('microcena ou mini-historia curta', prompt)
+        self.assertIn('Nao encurte uma ideia narrativa apenas para transforma-la em one-liner', prompt)
+        self.assertIn('Priorize mini-historias de 3 a 4 frases curtas', prompt)
+        self.assertNotIn('Crie frases curtas para card', prompt)
+        self.assertNotIn('gere uma unica frase ainda mais curta', prompt)
+
+    def test_prompt_de_reel_narrativo_permite_micro_historia(self):
+        profile = SocialProfile.objects.create(
+            nome='Perfil Reel Narrativo',
+            username='reel_narrativo',
+            timezone='America/Sao_Paulo',
+            horarios_publicacao=['09:00'],
+            instrucoes_ia='Use dialogo curto e micro-historia quando fizer sentido.',
+        )
+        SocialBaseImage.objects.create(profile=profile, nome='Base reel narrativa', arquivo=imagem_social('reel-narrativa.jpg', tamanho=(1080, 1920)), tags='reel')
+
+        prompt = build_social_content_prompt(
+            profile,
+            1,
+            'segunda-feira',
+            [],
+            image_contexts=_image_contexts(profile, SocialContent.MediaType.REEL),
+        ).prompt
+
+        self.assertIn('Para tipo_midia REEL', prompt)
+        self.assertIn('dialogo breve ou micro-historia', prompt)
+        self.assertIn('Nao force one-liner quando o perfil pede narrativa', prompt)
+        self.assertNotIn('uma unica frase ainda mais curta', prompt)
+
+    def test_prompt_preserva_perfil_que_pede_copy_curta(self):
+        profile = SocialProfile.objects.create(
+            nome='Perfil Curto',
+            username='perfil_curto',
+            timezone='America/Sao_Paulo',
+            horarios_publicacao=['09:00'],
+            instrucoes_ia='Prefira frases curtas e objetivas.',
+        )
+        SocialBaseImage.objects.create(profile=profile, nome='Base curta', arquivo=imagem_social('curta.jpg'), tags='curto')
+
+        prompt = build_social_content_prompt(profile, 1, '', [], image_contexts=_image_contexts(profile)).prompt
+
+        self.assertIn('Prefira frases curtas e objetivas.', prompt)
+        self.assertIn('preferencias genericas de concisao', prompt)
+        self.assertIn('schema e limites tecnicos obrigatorios', prompt)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_MODEL='gpt-text-test')
+    def test_parser_aceita_texto_principal_com_multiplas_frases(self):
+        profile = SocialProfile.objects.create(
+            nome='Perfil Multifrases',
+            username='perfil_multifrases',
+            timezone='America/Sao_Paulo',
+            horarios_publicacao=['09:00'],
+        )
+        payload = {
+            'conteudos': [
+                {
+                    'frase': 'Falei que nao ia mandar mensagem. Pedi opiniao no grupo. Duas amigas disseram pra nao mandar. A terceira perguntou o que eu ja tinha escrito.',
+                    'legenda': 'Legenda de teste.',
+                    'hashtags': ['teste'],
+                    'tags_imagem': ['relacionamento'],
+                }
+            ]
+        }
+        response = type('Response', (), {'output_text': json.dumps(payload)})()
+        client = mock.Mock()
+        client.responses.create.return_value = response
+
+        with mock.patch('social_automation.ai._client', return_value=client):
+            result = gerar_conteudos_ia(profile, 1, 'teste', [], image_contexts=[])
+
+        self.assertEqual(len(result), 1)
+        self.assertIn('Pedi opiniao no grupo.', result[0].frase)
+        self.assertIn('A terceira perguntou', result[0].frase)
+
+    def test_inspect_social_prompt_nao_chama_openai_e_mostra_instrucoes(self):
+        profile = SocialProfile.objects.create(
+            nome='Laila Pistola',
+            username='lailapistola',
+            timezone='America/Sao_Paulo',
+            horarios_publicacao=['09:00'],
+            estilo='Humor de relacionamento com mini-historias.',
+            instrucoes_ia='Criar situacao concreta, escalada e punchline sem formula pronta.',
+        )
+        SocialBaseImage.objects.create(profile=profile, nome='Base Laila', arquivo=imagem_social('laila-base.jpg'), tags='relacionamento')
+        SocialContent.objects.create(profile=profile, media_type=SocialContent.MediaType.IMAGE, frase='Historico um', legenda='Legenda')
+
+        output = StringIO()
+        with mock.patch('social_automation.ai._client') as client:
+            call_command('inspect_social_prompt', '--username', 'lailapistola', '--type', 'image', '--tema', 'relacionamento', stdout=output)
+
+        client.assert_not_called()
+        text = output.getvalue()
+        self.assertIn('Provider calls: 0', text)
+        self.assertIn('Criar situacao concreta, escalada e punchline sem formula pronta.', text)
+        self.assertIn('Base Laila', text)
+        self.assertIn('Historico recente: 1', text)
+        self.assertNotIn('OPENAI_API_KEY', text)
+
+    def test_inspect_social_prompt_permite_reel(self):
+        profile = SocialProfile.objects.create(
+            nome='Laila Pistola',
+            username='@lailapistola',
+            timezone='America/Sao_Paulo',
+            horarios_publicacao=['09:00'],
+            instrucoes_ia='Mini-historia com virada.',
+        )
+        SocialBaseImage.objects.create(profile=profile, nome='Base Reel', arquivo=imagem_social('laila-reel.jpg', tamanho=(1080, 1920)), tags='reel')
+
+        output = StringIO()
+        call_command('inspect_social_prompt', '--username', '@lailapistola', '--type', 'reel', stdout=output)
+
+        text = output.getvalue()
+        self.assertIn('Tipo: reel', text)
+        self.assertIn('Mini-historia com virada.', text)
+        self.assertIn('Para tipo_midia REEL', text)
+        self.assertNotIn('uma unica frase ainda mais curta', text)
+
     def test_audit_social_ai_usage_separa_health_de_quota_visual(self):
         profile = SocialProfile.objects.create(
             nome='Millionow Teste',
