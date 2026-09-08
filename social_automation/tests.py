@@ -7033,6 +7033,105 @@ class SocialAutomationAIVisionTests(TestCase):
         result.failed_slides = failed
         return result
 
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AUTOMATION_QUEUE_MIN=1, SOCIAL_AUTOMATION_QUEUE_TARGET=1, SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=20, SOCIAL_AI_IMAGE_MAX_PER_TICK=1, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=8, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
+    def test_tick_automatico_avanca_ai_finished_reservado_antes_de_criar_novo(self):
+        content = self._partial_ai_finished_content(error_attempts=0)
+        self.profile.modo_operacao = SocialProfile.ModoOperacao.AUTOMATICO
+        self.profile.posts_por_dia = 1
+        self.profile.carousels_por_dia = 1
+        self.profile.reels_por_dia = 0
+        self.profile.save(update_fields=['modo_operacao', 'posts_por_dia', 'carousels_por_dia', 'reels_por_dia', 'updated_at'])
+        client, provider = self._provider()
+
+        with mock.patch('social_automation.ai_slide_composer._client', return_value=client), mock.patch('social_automation.ai_slide_composer.moderar_conteudo', return_value=False), mock.patch('social_automation.automation.gerar_lote_conteudos') as generator, mock.patch('social_automation.instagram._request'):
+            summary = executar_tick_social(use_lock=False, now=timezone.now())
+
+        content.refresh_from_db()
+        generator.assert_not_called()
+        self.assertEqual(provider.call_count, 1)
+        self.assertEqual(summary['profiles'][0]['generation_reason'], 'AI_FINISHED_ADVANCED')
+        self.assertEqual(content.carousel_slides.get(order=2).ai_composition_status, SocialCarouselSlide.CompositionStatus.REVIEWING)
+        self.assertEqual(content.status, SocialContent.Status.RASCUNHO)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=20, SOCIAL_AI_IMAGE_MAX_PER_TICK=1, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=8, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
+    def test_semiautomatico_avanca_ai_finished_sem_autoaprovar(self):
+        from .autonomous_carousel import advance_automatic_ai_finished
+        from .composed_slide_review import ComposedSlideReviewResult
+
+        content = self._partial_ai_finished_content(ready_orders={1, 3, 4, 5, 6}, error_attempts=0)
+        self.profile.modo_operacao = SocialProfile.ModoOperacao.SEMIAUTOMATICO
+        self.profile.save(update_fields=['modo_operacao', 'updated_at'])
+        client, provider = self._provider()
+        good = ComposedSlideReviewResult(True, 100, 94, 92, 91, 93, [])
+
+        with mock.patch('social_automation.ai_slide_composer._client', return_value=client), mock.patch('social_automation.ai_slide_composer.moderar_conteudo', return_value=False), mock.patch('social_automation.composed_slide_review.review_composed_slide', return_value=good), mock.patch('social_automation.instagram._request'):
+            first = advance_automatic_ai_finished(self.profile)
+            second = advance_automatic_ai_finished(self.profile)
+
+        content.refresh_from_db()
+        self.assertEqual(first.step, 'COMPOSE')
+        self.assertEqual(second.step, 'REVIEW')
+        self.assertEqual(provider.call_count, 1)
+        self.assertTrue(content.final_media_ready)
+        self.assertEqual(content.status, SocialContent.Status.RASCUNHO)
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AUTOMATION_QUEUE_MIN=1, SOCIAL_AUTOMATION_QUEUE_TARGET=1, SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=20, SOCIAL_AI_IMAGE_MAX_PER_TICK=1, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=8, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
+    def test_tick_automatico_autoaprova_ai_finished_quando_gate_passa(self):
+        from .composed_slide_review import ComposedSlideReviewResult
+
+        content = self._partial_ai_finished_content(ready_orders={1, 3, 4, 5, 6}, error_attempts=0)
+        self.profile.modo_operacao = SocialProfile.ModoOperacao.AUTOMATICO
+        self.profile.posts_por_dia = 1
+        self.profile.carousels_por_dia = 1
+        self.profile.reels_por_dia = 0
+        self.profile.save(update_fields=['modo_operacao', 'posts_por_dia', 'carousels_por_dia', 'reels_por_dia', 'updated_at'])
+        client, provider = self._provider()
+        good = ComposedSlideReviewResult(True, 100, 94, 92, 91, 93, [])
+
+        with mock.patch('social_automation.ai_slide_composer._client', return_value=client), mock.patch('social_automation.ai_slide_composer.moderar_conteudo', return_value=False), mock.patch('social_automation.composed_slide_review.review_composed_slide', return_value=good), mock.patch('social_automation.instagram._request'):
+            first = executar_tick_social(use_lock=False, now=timezone.now())
+            second = executar_tick_social(use_lock=False, now=timezone.now() + timedelta(minutes=5))
+
+        content.refresh_from_db()
+        self.assertEqual(provider.call_count, 1)
+        self.assertEqual(first['profiles'][0]['generation_reason'], 'AI_FINISHED_ADVANCED')
+        self.assertEqual(second['profiles'][0]['generation_reason'], 'AI_FINISHED_APPROVED')
+        self.assertEqual(second['profiles'][0]['approved'], 1)
+        self.assertIn(content.status, [SocialContent.Status.APROVADO, SocialContent.Status.AGENDADO])
+
+    @override_settings(OPENAI_API_KEY='key-test', OPENAI_SOCIAL_IMAGE_MODEL='gpt-image-test', OPENAI_SOCIAL_VISION_MODEL='gpt-vision-test', SOCIAL_AUTOMATION_QUEUE_MIN=1, SOCIAL_AUTOMATION_QUEUE_TARGET=1, SOCIAL_AI_IMAGE_MAX_PER_PROFILE_PER_DAY=1, SOCIAL_AI_IMAGE_MAX_PER_TICK=1, SOCIAL_AI_COMPOSED_MAX_CALLS_PER_CAROUSEL=8, SOCIAL_AI_COMPOSED_SLIDE_MAX_ATTEMPTS=2)
+    def test_tick_quota_esgotada_nao_cria_substituto_nem_marca_erro_definitivo(self):
+        content = self._partial_ai_finished_content()
+        self.profile.modo_operacao = SocialProfile.ModoOperacao.AUTOMATICO
+        self.profile.posts_por_dia = 1
+        self.profile.carousels_por_dia = 1
+        self.profile.reels_por_dia = 0
+        self.profile.ai_image_daily_limit = 1
+        self.profile.save(update_fields=['modo_operacao', 'posts_por_dia', 'carousels_por_dia', 'reels_por_dia', 'ai_image_daily_limit', 'updated_at'])
+
+        with mock.patch('social_automation.autonomous_carousel.compose_slide_image_with_ai') as composer, mock.patch('social_automation.automation.gerar_lote_conteudos') as generator, mock.patch('social_automation.instagram._request'):
+            summary = executar_tick_social(use_lock=False, now=timezone.now())
+
+        content.refresh_from_db()
+        composer.assert_not_called()
+        generator.assert_not_called()
+        self.assertEqual(summary['profiles'][0]['generation_reason'], 'AI_FINISHED_BLOCKED')
+        self.assertNotEqual(content.status, SocialContent.Status.ERRO)
+
+    def test_modo_manual_nao_avanca_ai_finished_automaticamente(self):
+        from .autonomous_carousel import advance_automatic_ai_finished
+
+        content = self._partial_ai_finished_content()
+        self.profile.modo_operacao = SocialProfile.ModoOperacao.MANUAL
+        self.profile.save(update_fields=['modo_operacao', 'updated_at'])
+
+        with mock.patch('social_automation.autonomous_carousel.compose_slide_image_with_ai') as composer:
+            result = advance_automatic_ai_finished(self.profile)
+
+        composer.assert_not_called()
+        self.assertEqual(result.step, 'MANUAL_MODE')
+        self.assertEqual(content.carousel_slides.get(order=2).ai_composition_status, SocialCarouselSlide.CompositionStatus.PENDING)
+
     def test_work_queue_ordering_deterministico_pending_antes_retry(self):
         from .autonomous_carousel import get_composition_work_queue
 

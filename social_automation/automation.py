@@ -10,6 +10,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
+from .autonomous_carousel import advance_automatic_ai_finished
 from .generation import gerar_lote_conteudos
 from .instagram import InstagramAPIError, InstagramConfigurationError, InstagramContainerPending, InstagramPublishError, auditar_imagem_final, publicar_conteudo_instagram
 from .models import SocialAutomationTick, SocialContent, SocialProfile
@@ -42,6 +43,7 @@ AUTO_THEMES = [
 class AutoEvent:
     GERADO = 'gerado_auto'
     APROVADO = 'aprovado_auto'
+    AI_FINISHED = 'ai_finished_auto'
     PUBLICADO = 'publicado_auto'
     ERRO = 'erro_auto'
     RETRY = 'retry_auto'
@@ -179,7 +181,23 @@ def _process_profile(profile, *, now):
             estoque_minimo_profile(profile),
             target_inventory,
         )
-        if not published and reserved_inventory < target_inventory:
+        advanced_ai_finished = None
+        if not published:
+            advanced_ai_finished = _advance_ai_finished_reserved(profile)
+        if advanced_ai_finished:
+            generated, approved, errors, reason = advanced_ai_finished
+            profile_summary.generated += generated
+            profile_summary.approved += approved
+            profile_summary.errors += errors
+            profile_summary.generation_reason = reason
+            schedule_after = preencher_agenda(profile, now=now)
+            profile_summary.scheduled += schedule_after.scheduled
+            inventory_by_type = estoque_pronto_por_tipo(profile)
+            current_inventory = sum(inventory_by_type.values())
+            reserved_by_type = estoque_reservado_por_tipo(profile, now=now)
+            reserved_inventory = sum(reserved_by_type.values())
+            in_progress_by_type = estoque_em_andamento_por_tipo(profile, now=now)
+        elif not published and reserved_inventory < target_inventory:
             generated, approved, errors, reason = _gerar_e_aprovar(profile, reserved_inventory, now=now)
             profile_summary.generated = generated
             profile_summary.approved = approved
@@ -349,6 +367,37 @@ def _gerar_e_aprovar(profile, inventory, *, now=None):
         result.falhas,
     )
     return result.criados, approved, errors, 'CREATED' if result.criados else (guard_reason or 'NO_CONTENT_CREATED')
+
+
+def _advance_ai_finished_reserved(profile):
+    result = advance_automatic_ai_finished(profile)
+    if not result.content:
+        return None
+    reason = 'AI_FINISHED_ADVANCED'
+    errors = 0
+    approved = 0
+    content = result.content
+    if result.step == 'REVIEW':
+        registrar_evento(content, AutoEvent.AI_FINISHED, None, f'Review automatico AI_FINISHED slide {result.slide_order}.')
+    elif result.step == 'COMPOSE':
+        registrar_evento(content, AutoEvent.AI_FINISHED, None, f'Composicao automatica AI_FINISHED slide {result.slide_order}.')
+    elif result.blocking_reason:
+        registrar_evento(content, AutoEvent.AI_FINISHED, None, f'AI_FINISHED automatico aguardando: {result.blocking_reason[:180]}')
+        reason = 'AI_FINISHED_BLOCKED'
+
+    content.refresh_from_db()
+    if profile.modo_operacao == SocialProfile.ModoOperacao.AUTOMATICO and _quality_gate(content):
+        with transaction.atomic():
+            locked = SocialContent.objects.select_for_update().get(pk=content.pk)
+            if locked.status == SocialContent.Status.RASCUNHO:
+                locked.status = SocialContent.Status.APROVADO
+                locked.save(update_fields=['status', 'updated_at'])
+                registrar_evento(locked, AutoEvent.APROVADO, None, 'Aprovacao automatica de carrossel AI_FINISHED apos quality gate.')
+                approved = 1
+                reason = 'AI_FINISHED_APPROVED'
+    elif not result.has_more_work and result.blocking_reason:
+        errors = 1
+    return 0, approved, errors, reason
 
 
 def _apply_recent_creation_guard(profile, media_plan, *, now):

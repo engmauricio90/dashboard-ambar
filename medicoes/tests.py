@@ -2034,6 +2034,51 @@ class MedicoesTests(TestCase):
         self.assertEqual(item_medicao.quantidade_periodo, Decimal('15'))
         self.assertFalse(medicao.itens.filter(item_orcamento=grupo).exists())
 
+    def test_edicao_financeira_salva_retencao_tecnica_reduz_base_nf(self):
+        orcamento, item = self._orcamento()
+        medicao = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=1,
+            periodo_inicio=date(2026, 1, 1),
+            periodo_fim=date(2026, 1, 31),
+            data_medicao=date(2026, 1, 31),
+            retencao_tecnica=Decimal('40.00'),
+        )
+        item_medicao = ItemMedicaoConstrutora.objects.create(medicao=medicao, item_orcamento=item)
+
+        response = self.client.post(
+            reverse('editar_medicao_construtora', args=[medicao.id]),
+            {
+                'numero': '1',
+                'periodo_inicio': '2026-01-01',
+                'periodo_fim': '2026-01-31',
+                'data_medicao': '2026-01-31',
+                'retencao_tecnica': '40',
+                'retencao_tecnica_percentual': '0',
+                'retencao_tecnica_reduz_base_nf': 'on',
+                'issqn': '0',
+                'issqn_percentual': '0',
+                'inss': '0',
+                'inss_percentual': '0',
+                'desconto_adicional': '0',
+                'desconto_adicional_percentual': '0',
+                'desconto_adicional_reduz_base_nf': '',
+                'observacoes': '',
+                'active_tab': 'financeiro',
+                'itens-TOTAL_FORMS': '1',
+                'itens-INITIAL_FORMS': '1',
+                'itens-MIN_NUM_FORMS': '0',
+                'itens-MAX_NUM_FORMS': '1000',
+                'itens-0-id': str(item_medicao.id),
+                'itens-0-quantidade_periodo': '10',
+            },
+        )
+
+        self.assertRedirects(response, f"{reverse('editar_medicao_construtora', args=[medicao.id])}?tab=financeiro")
+        medicao.refresh_from_db()
+        self.assertTrue(medicao.retencao_tecnica_reduz_base_nf)
+        self.assertEqual(medicao.base_impostos, Decimal('130.00'))
+
     def test_editar_grupo_construtora_preserva_itens_nao_renderizados(self):
         orcamento = OrcamentoMedicao.objects.create(
             obra=self.obra,

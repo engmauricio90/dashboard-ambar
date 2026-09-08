@@ -225,6 +225,7 @@ class MedicaoConstrutoraForm(BootstrapModelForm):
             'data_medicao',
             'retencao_tecnica',
             'retencao_tecnica_percentual',
+            'retencao_tecnica_reduz_base_nf',
             'issqn',
             'issqn_percentual',
             'inss',
