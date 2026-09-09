@@ -288,7 +288,7 @@ class MedicoesTests(TestCase):
         self.assertContains(response, 'Fornecedor livre')
         self.assertContains(response, 'R$ 1.000,00')
         self.assertContains(response, '100,00%')
-        self.assertContains(response, 'Historico de faturamento direto ja descontado')
+        self.assertContains(response, 'Histórico de faturamento direto já descontado')
         self.assertContains(response, 'Fornecedor usado')
 
     def test_importacao_sem_cabecalho_retorna_erro_no_formulario(self):
@@ -573,7 +573,7 @@ class MedicoesTests(TestCase):
         self.assertContains(response_detalhe, 'R$ 300,00')
         self.assertContains(response_detalhe, 'R$ 75,00')
         self.assertContains(response_detalhe, 'R$ 225,00')
-        self.assertContains(response_detalhe, '25,00% concluida')
+        self.assertContains(response_detalhe, '25,00% concluída')
 
     def test_edicao_medicao_cumulativa_empreiteiro_salva_itens_visiveis(self):
         empreiteiro = Empreiteiro.objects.create(empresa=self.empresa, nome='Contratado Cumulativo')
@@ -2191,6 +2191,61 @@ class MedicoesTests(TestCase):
 
         self.assertContains(response, '25,00%')
 
+    def test_edicao_construtora_exibe_redesign_operacional_sem_alterar_resumo(self):
+        orcamento, item = self._orcamento()
+        primeira = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=1,
+            periodo_inicio=date(2026, 1, 1),
+            periodo_fim=date(2026, 1, 31),
+            data_medicao=date(2026, 1, 31),
+        )
+        ItemMedicaoConstrutora.objects.create(
+            medicao=primeira,
+            item_orcamento=item,
+            quantidade_periodo=Decimal('10'),
+        )
+        segunda = MedicaoConstrutora.objects.create(
+            orcamento=orcamento,
+            numero=2,
+            periodo_inicio=date(2026, 2, 1),
+            periodo_fim=date(2026, 2, 28),
+            data_medicao=date(2026, 2, 28),
+        )
+        ItemMedicaoConstrutora.objects.create(
+            medicao=segunda,
+            item_orcamento=item,
+            quantidade_periodo=Decimal('15'),
+        )
+
+        response = self.client.get(reverse('editar_medicao_construtora', args=[segunda.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Resumo operacional da medição')
+        self.assertContains(response, 'Medido anterior')
+        self.assertContains(response, 'Medição atual')
+        self.assertContains(response, 'Com medição atual')
+        self.assertContains(response, 'editable-col')
+        self.assertContains(response, 'calculated-cell')
+        self.assertEqual(response.context['resumo_operacional']['anterior'], Decimal('170.00000000'))
+        self.assertEqual(response.context['resumo_operacional']['atual'], Decimal('255.00'))
+        self.assertEqual(response.context['resumo_operacional']['acumulado'], Decimal('425.00000000'))
+
+    def test_edicao_empreiteiro_exibe_redesign_operacional_e_filtros_visuais(self):
+        _, _, primeira, segunda = self._medicao_empreiteiro_cumulativa_com_itens(quantidade=3)
+
+        response = self.client.get(reverse('editar_medicao_empreiteiro', args=[segunda.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Resumo operacional da medição')
+        self.assertContains(response, 'Pago/líquido acumulado')
+        self.assertContains(response, 'Com saldo')
+        self.assertContains(response, 'Concluídos')
+        self.assertContains(response, 'editable-col')
+        self.assertContains(response, 'calculated-cell')
+        self.assertEqual(response.context['resumo_operacional']['anterior'], primeira.subtotal_periodo)
+        self.assertEqual(response.context['resumo_operacional']['atual'], segunda.subtotal_periodo)
+
     def test_medicao_empreiteiro_grande_renderiza_apenas_pagina_atual(self):
         _, _, _, segunda = self._medicao_empreiteiro_cumulativa_com_itens(quantidade=300)
 
@@ -2199,7 +2254,7 @@ class MedicoesTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['escopo_itens']['total_itens'], 300)
         self.assertEqual(response.context['escopo_itens']['total_renderizado'], 50)
-        self.assertContains(response, 'Pagina 2 de 6')
+        self.assertContains(response, 'Página 2 de 6')
         self.assertContains(response, 'itens-TOTAL_FORMS" value="50"')
 
     def test_grupo_grande_construtora_renderiza_apenas_pagina_atual(self):
@@ -2241,7 +2296,7 @@ class MedicoesTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['escopo_itens']['total_renderizado'], 50)
-        self.assertContains(response, 'Pagina 1 de 3')
+        self.assertContains(response, 'Página 1 de 3')
         self.assertContains(response, 'itens-TOTAL_FORMS" value="50"')
 
     def test_medicao_construtora_desconta_faturamento_direto_fora_da_base_de_impostos(self):

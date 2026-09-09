@@ -1676,7 +1676,8 @@ def _queryset_itens_empreiteiro_escopo(medicao, escopo):
     return medicao.itens.select_related('item_orcamento').filter(item_orcamento_id__in=item_ids)
 
 
-def _linhas_medicao_construtora_escopo(escopo, formset):
+def _linhas_medicao_construtora_escopo(escopo, formset, acumulados=None):
+    acumulados = acumulados or {}
     forms_by_item = {form.instance.item_orcamento_id: form for form in formset.forms}
     linhas = []
     if escopo['modo'] == 'grupo' and escopo['grupo_key'] != 'sem-grupo':
@@ -1686,11 +1687,26 @@ def _linhas_medicao_construtora_escopo(escopo, formset):
     for item in escopo['itens']:
         form = forms_by_item.get(item.id)
         if form:
-            linhas.append({'tipo': 'item', 'form': form, 'percentual': _percent_from_item(form.instance)})
+            item_medicao = form.instance
+            item_medicao._quantidade_acumulada_anterior_cache = acumulados.get(item_medicao.item_orcamento_id, Decimal('0'))
+            linhas.append(
+                {
+                    'tipo': 'item',
+                    'form': form,
+                    'percentual': _percent_from_item(item_medicao),
+                    'quantidade_periodo': item_medicao.quantidade_periodo,
+                    'quantidade_acumulada': item_medicao.quantidade_acumulada_atual,
+                    'saldo_quantidade': item_medicao.saldo_quantidade,
+                    'valor_periodo': item_medicao.valor_periodo,
+                    'tem_medicao_atual': item_medicao.quantidade_periodo > 0,
+                    'concluido': item_medicao.saldo_quantidade <= 0,
+                }
+            )
     return linhas
 
 
-def _linhas_medicao_empreiteiro_escopo(escopo, formset):
+def _linhas_medicao_empreiteiro_escopo(escopo, formset, acumulados=None):
+    acumulados = acumulados or {}
     forms_by_item = {form.instance.item_orcamento_id: form for form in formset.forms}
     linhas = []
     if escopo['modo'] == 'grupo' and escopo['grupo_key'] != 'sem-grupo':
@@ -1700,8 +1716,77 @@ def _linhas_medicao_empreiteiro_escopo(escopo, formset):
     for item in escopo['itens']:
         form = forms_by_item.get(item.id)
         if form:
-            linhas.append({'tipo': 'item', 'form': form})
+            item_medicao = form.instance
+            item_medicao._quantidade_acumulada_anterior_cache = acumulados.get(item_medicao.item_orcamento_id, Decimal('0'))
+            linhas.append(
+                {
+                    'tipo': 'item',
+                    'form': form,
+                    'quantidade_periodo': item_medicao.quantidade_periodo,
+                    'quantidade_acumulada': item_medicao.quantidade_acumulada_atual,
+                    'saldo_quantidade': item_medicao.saldo_quantidade,
+                    'valor_periodo': item_medicao.valor_periodo,
+                    'tem_medicao_atual': item_medicao.quantidade_periodo > 0,
+                    'concluido': item_medicao.saldo_quantidade <= 0,
+                }
+            )
     return linhas
+
+
+def _total_orcamento_em_memoria(orcamento):
+    return sum(
+        (item.valor_total for item in orcamento.itens.all() if not item.eh_grupo),
+        Decimal('0'),
+    )
+
+
+def _total_acumulado_medicao_em_memoria(itens):
+    return sum(
+        (
+            item.quantidade_acumulada_atual * item.item_orcamento.preco_unitario_total
+            for item in itens
+            if item.item_orcamento_id and item.item_orcamento
+        ),
+        Decimal('0'),
+    )
+
+
+def _resumo_operacional_construtora(medicao, resumo, itens):
+    contrato = _total_orcamento_em_memoria(medicao.orcamento)
+    acumulado = _total_acumulado_medicao_em_memoria(itens)
+    atual = resumo.subtotal_periodo
+    anterior = max(acumulado - atual, Decimal('0'))
+    saldo = max(contrato - acumulado, Decimal('0'))
+    return {
+        'contrato': contrato,
+        'anterior': anterior,
+        'atual': atual,
+        'acumulado': acumulado,
+        'saldo': saldo,
+    }
+
+
+def _resumo_operacional_empreiteiro(medicao, itens):
+    if not medicao.orcamento_id:
+        return {
+            'contrato': medicao.subtotal_periodo,
+            'anterior': Decimal('0'),
+            'atual': medicao.subtotal_periodo,
+            'acumulado': medicao.subtotal_periodo,
+            'saldo': Decimal('0'),
+        }
+    contrato = _total_orcamento_em_memoria(medicao.orcamento)
+    acumulado = _total_acumulado_medicao_em_memoria(itens)
+    atual = medicao.subtotal_periodo
+    anterior = max(acumulado - atual, Decimal('0'))
+    saldo = max(contrato - acumulado, Decimal('0'))
+    return {
+        'contrato': contrato,
+        'anterior': anterior,
+        'atual': atual,
+        'acumulado': acumulado,
+        'saldo': saldo,
+    }
 
 
 def _sincronizar_itens_medicao_construtora(medicao):
@@ -2039,12 +2124,13 @@ def editar_medicao_construtora(request, medicao_id):
             'form': form,
             'formset': formset,
             'resumo_medicao': resumo_medicao,
+            'resumo_operacional': _resumo_operacional_construtora(medicao, resumo_medicao, todos_itens),
             'total_retido_medicao': (
                 resumo_medicao.retencao_tecnica_calculada
                 + resumo_medicao.inss_calculado
                 + resumo_medicao.issqn_calculado
             ),
-            'linhas_medicao': _linhas_medicao_construtora_escopo(escopo, formset),
+            'linhas_medicao': _linhas_medicao_construtora_escopo(escopo, formset, acumulados),
             'escopo_itens': escopo,
             'query_escopo': _query_preservando_escopo(request),
             'active_tab': request.POST.get('active_tab') or request.GET.get('tab') or 'itens',
@@ -2226,6 +2312,7 @@ def editar_medicao_empreiteiro(request, medicao_id):
     todos_itens = list(medicao.itens.select_related('item_orcamento'))
     aplicar_acumulados_itens(todos_itens, acumulados)
     calcular_resumo_empreiteiro(medicao, itens=todos_itens)
+    resumo_operacional = _resumo_operacional_empreiteiro(medicao, todos_itens)
     historico_medicoes = []
     if medicao.tipo == MedicaoEmpreiteiro.TIPO_CUMULATIVA and medicao.orcamento_id:
         historico_medicoes = list(
@@ -2247,7 +2334,8 @@ def editar_medicao_empreiteiro(request, medicao_id):
             'medicao': medicao,
             'form': form,
             'formset': formset,
-            'linhas_medicao': _linhas_medicao_empreiteiro_escopo(escopo, formset) if escopo else [],
+            'resumo_operacional': resumo_operacional,
+            'linhas_medicao': _linhas_medicao_empreiteiro_escopo(escopo, formset, acumulados) if escopo else [],
             'escopo_itens': escopo,
             'query_escopo': _query_preservando_escopo(request),
             'active_tab': request.POST.get('active_tab') or request.GET.get('tab') or 'itens',

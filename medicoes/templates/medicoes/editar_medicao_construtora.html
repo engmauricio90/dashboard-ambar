@@ -1,23 +1,73 @@
 {% extends 'base.html' %}
 
-{% block title %}Medicao da construtora{% endblock %}
+{% block title %}Medição da construtora{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-3">
     <div>
-        <h1 class="mb-1">Medicao {{ medicao.numero }} - Construtora</h1>
+        <div class="text-muted small mb-1">
+            <a href="{% url 'medicoes_home' %}" class="text-muted">Medições</a>
+            <span>/</span>
+            <a href="{% url 'medicoes_construtora_home' %}" class="text-muted">Construtora</a>
+            <span>/</span>
+            <a href="{% url 'lista_planilhas_construtora' %}" class="text-muted">Planilhas</a>
+            <span>/ Medição {{ medicao.numero }}</span>
+        </div>
+        <h1 class="mb-1">Medição {{ medicao.numero }} - Contrato da construtora</h1>
         <p class="text-muted mb-0">
             {{ medicao.orcamento.obra }} | {{ medicao.orcamento.nome }} |
             {{ medicao.periodo_inicio|date:'d/m/Y' }} a {{ medicao.periodo_fim|date:'d/m/Y' }}
         </p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a class="btn btn-outline-secondary" href="{% url 'lista_medicoes_construtora' %}">Lista de medicoes</a>
+        <a class="btn btn-outline-secondary" href="{% url 'lista_medicoes_construtora' %}">Lista de medições</a>
         <a class="btn btn-secondary" href="{% url 'detalhe_orcamento_medicao' medicao.orcamento.id %}">Planilha</a>
     </div>
 </div>
 
-<div class="medicao-summary shadow-sm mb-4">
+<div class="operational-header shadow-sm mb-3">
+    <div>
+        <span>Obra</span>
+        <strong>{{ medicao.orcamento.obra }}</strong>
+    </div>
+    <div>
+        <span>Planilha</span>
+        <strong>{{ medicao.orcamento.nome }}</strong>
+    </div>
+    <div>
+        <span>Período</span>
+        <strong>{{ medicao.periodo_inicio|date:'d/m/Y' }} a {{ medicao.periodo_fim|date:'d/m/Y' }}</strong>
+    </div>
+    <div>
+        <span>Data da medição</span>
+        <strong>{{ medicao.data_medicao|date:'d/m/Y' }}</strong>
+    </div>
+</div>
+
+<div class="medicao-summary shadow-sm mb-3" aria-label="Resumo operacional da medição">
+    <div>
+        <span>Contrato</span>
+        <strong>R$ {{ resumo_operacional.contrato|floatformat:2 }}</strong>
+    </div>
+    <div>
+        <span>Medido anterior</span>
+        <strong>R$ {{ resumo_operacional.anterior|floatformat:2 }}</strong>
+    </div>
+    <div>
+        <span>Medição atual</span>
+        <strong>R$ {{ resumo_operacional.atual|floatformat:2 }}</strong>
+    </div>
+    <div>
+        <span>Acumulado</span>
+        <strong>R$ {{ resumo_operacional.acumulado|floatformat:2 }}</strong>
+    </div>
+    <div>
+        <span>Saldo</span>
+        <strong>R$ {{ resumo_operacional.saldo|floatformat:2 }}</strong>
+    </div>
+</div>
+
+<div class="medicao-summary medicao-summary-secondary shadow-sm mb-4">
     <div>
         <span>Total medido</span>
         <strong>R$ {{ resumo_medicao.subtotal_periodo|floatformat:2 }}</strong>
@@ -31,11 +81,11 @@
         <strong>R$ {{ resumo_medicao.total_descontos|floatformat:2 }}</strong>
     </div>
     <div>
-        <span>Retencoes e impostos</span>
+        <span>Retenções e impostos</span>
         <strong>R$ {{ total_retido_medicao|floatformat:2 }}</strong>
     </div>
     <div>
-        <span>Total liquido</span>
+        <span>Total líquido</span>
         <strong class="text-success">R$ {{ resumo_medicao.total_liquido|floatformat:2 }}</strong>
     </div>
 </div>
@@ -52,10 +102,10 @@
             <button class="nav-link {% if active_tab == 'financeiro' %}active{% endif %}" id="financeiro-tab" data-bs-toggle="tab" data-bs-target="#financeiro-pane" type="button" role="tab">Financeiro</button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link {% if active_tab == 'historico' %}active{% endif %}" id="historico-tab" data-bs-toggle="tab" data-bs-target="#historico-pane" type="button" role="tab">Historico</button>
+            <button class="nav-link {% if active_tab == 'historico' %}active{% endif %}" id="historico-tab" data-bs-toggle="tab" data-bs-target="#historico-pane" type="button" role="tab">Histórico</button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link {% if active_tab == 'relatorios' %}active{% endif %}" id="relatorios-tab" data-bs-toggle="tab" data-bs-target="#relatorios-pane" type="button" role="tab">Relatorios</button>
+            <button class="nav-link {% if active_tab == 'relatorios' %}active{% endif %}" id="relatorios-tab" data-bs-toggle="tab" data-bs-target="#relatorios-pane" type="button" role="tab">Relatórios</button>
         </li>
     </ul>
 
@@ -67,10 +117,10 @@
                         <div>
                             <h5 class="mb-1">Itens medidos</h5>
                             <p class="text-muted small mb-0">
-                                Exibindo {{ escopo_itens.total_renderizado }} de {{ escopo_itens.total_itens }} item(ns). Salvar aqui altera somente os itens visiveis.
+                                Escopo: {{ escopo_itens.titulo }}. Exibindo {{ escopo_itens.total_renderizado }} de {{ escopo_itens.total_itens }} item(ns). Salvar aqui altera somente os itens visíveis.
                             </p>
                         </div>
-                        <button class="btn btn-primary" type="submit">Salvar itens</button>
+                        <button class="btn btn-primary" type="submit">Salvar alterações</button>
                     </div>
 
                     <div class="item-scope-toolbar mb-3">
@@ -90,7 +140,7 @@
                             <div class="col-lg-5">
                                 <label class="form-label small text-muted">Buscar item</label>
                                 <div class="input-group input-group-sm">
-                                    <input class="form-control" type="search" id="item-search-field" value="{{ escopo_itens.busca }}" placeholder="Referencia ou descricao">
+                                    <input class="form-control" type="search" id="item-search-field" value="{{ escopo_itens.busca }}" placeholder="Referência ou descrição">
                                     <button class="btn btn-outline-secondary" type="button" id="item-search-button">Buscar</button>
                                     {% if escopo_itens.busca %}
                                     <a class="btn btn-outline-secondary" href="?tab=itens">Limpar</a>
@@ -100,62 +150,84 @@
                         </div>
                     </div>
 
-                    {% if formset.non_form_errors %}<div class="alert alert-danger">{{ formset.non_form_errors }}</div>{% endif %}
+                    {% if form.errors or formset.non_form_errors %}
+                    <div class="alert alert-danger">
+                        Revise os campos destacados antes de salvar a medição.
+                        {% if formset.non_form_errors %}<div>{{ formset.non_form_errors }}</div>{% endif %}
+                    </div>
+                    {% endif %}
                     {{ formset.management_form }}
+                    <div class="visual-filter-bar mb-3" aria-label="Filtros visuais dos itens carregados">
+                        <button class="btn btn-sm btn-dark js-item-filter active" type="button" data-filter="all">Todos</button>
+                        <button class="btn btn-sm btn-outline-secondary js-item-filter" type="button" data-filter="measuring">Com medição atual</button>
+                        <button class="btn btn-sm btn-outline-secondary js-item-filter" type="button" data-filter="balance">Com saldo</button>
+                        <button class="btn btn-sm btn-outline-secondary js-item-filter" type="button" data-filter="done">Concluídos</button>
+                    </div>
                     <div class="table-responsive medicao-edit-table">
                         <table class="table table-sm align-middle mb-0">
                             <thead>
                                 <tr>
                                     <th scope="col">Ref.</th>
-                                    <th scope="col">Descricao</th>
+                                    <th scope="col">Descrição</th>
+                                    <th scope="col" class="editable-col">Medição atual</th>
                                     <th scope="col">Un.</th>
-                                    <th scope="col">Contratada</th>
+                                    <th scope="col">Qtde contrato</th>
+                                    <th scope="col">Anterior</th>
                                     <th scope="col">Acumulado</th>
                                     <th scope="col">Saldo</th>
-                                    <th scope="col" style="width: 150px;">Qtd. periodo</th>
+                                    <th scope="col">Valor atual</th>
                                     <th scope="col">%</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for linha in linhas_medicao %}
                                 {% if linha.tipo == 'grupo' %}
-                                <tr class="table-secondary fw-semibold">
+                                <tr class="table-secondary fw-semibold group-row">
                                     <td>{{ linha.item.item }}</td>
-                                    <td colspan="7">{{ linha.item.descricao }}</td>
+                                    <td colspan="9">{{ linha.item.descricao }}</td>
                                 </tr>
                                 {% else %}
                                 {% with item_form=linha.form %}
-                                <tr>
+                                <tr class="measurement-row" data-qtd="{{ linha.quantidade_periodo|stringformat:'f' }}" data-saldo="{{ linha.saldo_quantidade|stringformat:'f' }}">
                                     <td class="text-center text-nowrap">{{ item_form.instance.item_orcamento.item }}{{ item_form.id }}</td>
                                     <td class="medicao-description">{{ item_form.instance.item_orcamento.descricao }}</td>
+                                    <td class="editable-col">
+                                        {{ item_form.quantidade_periodo }}
+                                        {% if linha.tem_medicao_atual %}<span class="badge text-bg-primary mt-1">Medindo</span>{% endif %}
+                                    </td>
                                     <td class="text-center">{{ item_form.instance.item_orcamento.unidade }}</td>
-                                    <td class="text-center">{{ item_form.instance.item_orcamento.quantidade|floatformat:4 }}</td>
-                                    <td class="text-center">{{ item_form.instance.quantidade_acumulada_anterior|floatformat:4 }}</td>
-                                    <td class="text-center">{{ item_form.instance.saldo_quantidade|floatformat:4 }}</td>
-                                    <td>{{ item_form.quantidade_periodo }}</td>
-                                    <td class="text-center">{{ linha.percentual|floatformat:2 }}%</td>
+                                    <td class="text-center calculated-cell">{{ item_form.instance.item_orcamento.quantidade|floatformat:4 }}</td>
+                                    <td class="text-center calculated-cell">{{ item_form.instance.quantidade_acumulada_anterior|floatformat:4 }}</td>
+                                    <td class="text-center calculated-cell">{{ linha.quantidade_acumulada|floatformat:4 }}</td>
+                                    <td class="text-center calculated-cell">
+                                        {{ linha.saldo_quantidade|floatformat:4 }}
+                                        {% if linha.concluido %}<span class="badge text-bg-success mt-1">Concluído</span>{% endif %}
+                                    </td>
+                                    <td class="text-end calculated-cell">R$ {{ linha.valor_periodo|floatformat:2 }}</td>
+                                    <td class="text-center calculated-cell">{{ linha.percentual|floatformat:2 }}%</td>
                                 </tr>
                                 {% if item_form.errors %}
-                                <tr><td colspan="8" class="text-danger small">{{ item_form.errors }}</td></tr>
+                                <tr><td colspan="10" class="text-danger small form-error-row">{{ item_form.errors }}</td></tr>
                                 {% endif %}
                                 {% endwith %}
                                 {% endif %}
                                 {% empty %}
-                                <tr><td colspan="8" class="text-muted">Nenhum item encontrado neste escopo.</td></tr>
+                                <tr><td colspan="10" class="text-muted">Nenhum item encontrado neste escopo.</td></tr>
                                 {% endfor %}
                             </tbody>
                         </table>
                     </div>
+                    <div class="text-muted small mt-2 js-filter-empty d-none">Nenhum item visível corresponde a este filtro.</div>
 
                     {% if escopo_itens.pagina %}
                     <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
-                        <span class="text-muted small">Pagina {{ escopo_itens.pagina.number }} de {{ escopo_itens.pagina.paginator.num_pages }}</span>
+                        <span class="text-muted small">Página {{ escopo_itens.pagina.number }} de {{ escopo_itens.pagina.paginator.num_pages }}</span>
                         <div class="btn-group btn-group-sm">
                             {% if escopo_itens.pagina.has_previous %}
                             <a class="btn btn-outline-secondary js-scope-link" href="?{% if escopo_itens.grupo_key %}grupo={{ escopo_itens.grupo_key }}&{% endif %}page={{ escopo_itens.pagina.previous_page_number }}{% if escopo_itens.busca %}&q={{ escopo_itens.busca }}{% endif %}&tab=itens">Anterior</a>
                             {% endif %}
                             {% if escopo_itens.pagina.has_next %}
-                            <a class="btn btn-outline-secondary js-scope-link" href="?{% if escopo_itens.grupo_key %}grupo={{ escopo_itens.grupo_key }}&{% endif %}page={{ escopo_itens.pagina.next_page_number }}{% if escopo_itens.busca %}&q={{ escopo_itens.busca }}{% endif %}&tab=itens">Proxima</a>
+                            <a class="btn btn-outline-secondary js-scope-link" href="?{% if escopo_itens.grupo_key %}grupo={{ escopo_itens.grupo_key }}&{% endif %}page={{ escopo_itens.pagina.next_page_number }}{% if escopo_itens.busca %}&q={{ escopo_itens.busca }}{% endif %}&tab=itens">Próxima</a>
                             {% endif %}
                         </div>
                     </div>
@@ -189,7 +261,7 @@
                         <div class="col-md-3"><strong>Base da NF</strong><span>R$ {{ resumo_medicao.base_impostos|floatformat:2 }}</span></div>
                         <div class="col-md-3"><strong>Base INSS</strong><span>R$ {{ resumo_medicao.base_inss|floatformat:2 }}</span></div>
                         <div class="col-md-3"><strong>Material NF</strong><span>R$ {{ resumo_medicao.valor_material_nf|floatformat:2 }}</span></div>
-                        <div class="col-md-3"><strong>Mao de obra NF</strong><span>R$ {{ resumo_medicao.valor_mao_obra_nf|floatformat:2 }}</span></div>
+                        <div class="col-md-3"><strong>Mão de obra NF</strong><span>R$ {{ resumo_medicao.valor_mao_obra_nf|floatformat:2 }}</span></div>
                     </div>
                 </div>
             </div>
@@ -197,7 +269,7 @@
             <div class="card shadow-sm mb-4">
                 <div class="card-body">
                     <h5 class="mb-3">Faturamento direto</h5>
-                    <p class="text-muted small mb-3">Informe o percentual descontado nesta medicao. Estes valores nao entram na base de ISSQN e INSS.</p>
+                    <p class="text-muted small mb-3">Informe o percentual descontado nesta medição. Estes valores não entram na base de ISSQN e INSS.</p>
                     {% if faturamentos_diretos_linhas %}
                     <div class="table-responsive">
                         <table class="table table-sm align-middle mb-0">
@@ -205,12 +277,12 @@
                                 <tr>
                                     <th>NF/OC</th>
                                     <th>Empresa</th>
-                                    <th>Descricao</th>
+                                    <th>Descrição</th>
                                     <th>Valor NF</th>
-                                    <th>Ja descontado</th>
-                                    <th>Disponivel</th>
-                                    <th style="width: 150px;">% nesta medicao</th>
-                                    <th>Valor nesta medicao</th>
+                                    <th>Já descontado</th>
+                                    <th>Disponível</th>
+                                    <th style="width: 150px;">% nesta medição</th>
+                                    <th>Valor nesta medição</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -232,7 +304,7 @@
                         </table>
                     </div>
                     {% else %}
-                    <div class="text-muted">Nenhum faturamento direto disponivel para desconto nesta obra.</div>
+                    <div class="text-muted">Nenhum faturamento direto disponível para desconto nesta obra.</div>
                     {% endif %}
                 </div>
             </div>
@@ -241,11 +313,11 @@
         <div class="tab-pane fade {% if active_tab == 'historico' %}show active{% endif %}" id="historico-pane" role="tabpanel" aria-labelledby="historico-tab">
             <div class="card shadow-sm mb-4">
                 <div class="card-body">
-                    <h5 class="mb-3">Historico de faturamento direto ja descontado</h5>
+                    <h5 class="mb-3">Histórico de faturamento direto já descontado</h5>
                     {% if faturamentos_ja_descontados %}
                     <div class="table-responsive">
                         <table class="table table-sm align-middle mb-0">
-                            <thead><tr><th>NF/OC</th><th>Empresa</th><th>Descricao</th><th>Valor</th><th>Descontos</th></tr></thead>
+                            <thead><tr><th>NF/OC</th><th>Empresa</th><th>Descrição</th><th>Valor</th><th>Descontos</th></tr></thead>
                             <tbody>
                                 {% for faturamento in faturamentos_ja_descontados %}
                                 <tr>
@@ -260,7 +332,7 @@
                         </table>
                     </div>
                     {% else %}
-                    <div class="text-muted">Nenhum faturamento direto foi descontado em medicoes anteriores desta obra.</div>
+                    <div class="text-muted">Nenhum faturamento direto foi descontado em medições anteriores desta obra.</div>
                     {% endif %}
                 </div>
             </div>
@@ -269,14 +341,14 @@
         <div class="tab-pane fade {% if active_tab == 'relatorios' %}show active{% endif %}" id="relatorios-pane" role="tabpanel" aria-labelledby="relatorios-tab">
             <div class="card shadow-sm mb-4">
                 <div class="card-body">
-                    <h5 class="mb-3">Relatorios</h5>
+                    <h5 class="mb-3">Relatórios</h5>
                     <div class="d-flex gap-2 flex-wrap">
-                        <a class="btn btn-outline-danger" href="{% url 'medicao_construtora_pdf' medicao.id %}" target="_blank">PDF da medicao</a>
-                        <a class="btn btn-outline-success" href="{% url 'medicao_construtora_excel' medicao.id %}">Excel da medicao</a>
+                        <a class="btn btn-outline-danger" href="{% url 'medicao_construtora_pdf' medicao.id %}" target="_blank">PDF da medição</a>
+                        <a class="btn btn-outline-success" href="{% url 'medicao_construtora_excel' medicao.id %}">Excel da medição</a>
                         <a class="btn btn-outline-primary" href="{% url 'saldo_contratual_construtora' medicao.orcamento.id %}">Saldo contratual</a>
                     </div>
                     <hr>
-                    <a class="btn btn-outline-danger" href="{% url 'excluir_medicao_construtora' medicao.id %}">Excluir medicao</a>
+                    <a class="btn btn-outline-danger" href="{% url 'excluir_medicao_construtora' medicao.id %}">Excluir medição</a>
                 </div>
             </div>
         </div>
@@ -286,6 +358,19 @@
 
 {% block extra_styles %}
 <style>
+    .operational-header {
+        display: grid;
+        grid-template-columns: 1.4fr 1.4fr 1fr .9fr;
+        border: 1px solid #dee2e6;
+        border-radius: .5rem;
+        overflow: hidden;
+        background: #fff;
+    }
+    .operational-header > div {
+        padding: .75rem 1rem;
+        border-right: 1px solid #e9ecef;
+    }
+    .operational-header > div:last-child { border-right: 0; }
     .medicao-summary {
         display: grid;
         grid-template-columns: repeat(5, minmax(140px, 1fr));
@@ -300,27 +385,65 @@
         border-right: 1px solid #e9ecef;
     }
     .medicao-summary > div:last-child { border-right: 0; }
+    .operational-header span,
     .medicao-summary span {
         display: block;
         color: #6c757d;
         font-size: .82rem;
     }
+    .operational-header strong,
     .medicao-summary strong {
         display: block;
         font-size: 1.05rem;
         margin-top: .15rem;
     }
+    .medicao-summary-secondary {
+        grid-template-columns: repeat(5, minmax(130px, 1fr));
+        box-shadow: none !important;
+    }
+    .visual-filter-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .4rem;
+    }
     .medicao-edit-table thead th {
         position: sticky;
         top: 0;
         z-index: 2;
-        background: #f8f9fa;
+        background: #eef3f6;
         vertical-align: middle;
+        border-bottom: 1px solid #adb5bd;
+        color: #1f2937;
+        font-size: .82rem;
     }
     .medicao-description {
         min-width: 300px;
         white-space: normal;
         line-height: 1.25;
+    }
+    .editable-col {
+        min-width: 150px;
+        background: #fff7ed;
+    }
+    .editable-col input {
+        border-color: #d97706;
+        font-weight: 700;
+        text-align: center;
+    }
+    .calculated-cell {
+        background: #f8fafc;
+        color: #334155;
+        font-variant-numeric: tabular-nums;
+    }
+    .group-row td {
+        background: #e8eef5 !important;
+        border-top: 2px solid #94a3b8;
+    }
+    .measurement-row.is-hidden {
+        display: none;
+    }
+    .form-error-row {
+        background: #fff5f5;
     }
     .financeiro-fechamento > div {
         border: 1px solid #e9ecef;
@@ -333,9 +456,11 @@
         display: block;
     }
     @media (max-width: 992px) {
+        .operational-header { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
         .medicao-summary { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
     }
     @media (max-width: 576px) {
+        .operational-header,
         .medicao-summary { grid-template-columns: 1fr; }
     }
 </style>
@@ -365,7 +490,7 @@
     });
 
     function confirmarSaida(url) {
-        if (formChanged && !window.confirm('Existem alteracoes nao salvas. Deseja sair sem salvar?')) {
+        if (formChanged && !window.confirm('Existem alterações não salvas. Deseja sair sem salvar?')) {
             return;
         }
         window.location.href = url;
@@ -377,7 +502,7 @@
 
     document.querySelectorAll('.js-scope-link').forEach((link) => {
         link.addEventListener('click', (event) => {
-            if (formChanged && !window.confirm('Existem alteracoes nao salvas. Deseja sair sem salvar?')) {
+            if (formChanged && !window.confirm('Existem alterações não salvas. Deseja sair sem salvar?')) {
                 event.preventDefault();
             }
         });
@@ -409,6 +534,43 @@
         }
         field.addEventListener('input', atualizarValor);
         atualizarValor();
+    });
+
+    const filterButtons = document.querySelectorAll('.js-item-filter');
+    const itemRows = document.querySelectorAll('.measurement-row');
+    const filterEmpty = document.querySelector('.js-filter-empty');
+
+    function asNumber(value) {
+        return Number(String(value || '0').replace(',', '.')) || 0;
+    }
+
+    function applyItemFilter(filter) {
+        let visible = 0;
+        itemRows.forEach((row) => {
+            const qtd = asNumber(row.dataset.qtd);
+            const saldo = asNumber(row.dataset.saldo);
+            const show = filter === 'all'
+                || (filter === 'measuring' && qtd > 0)
+                || (filter === 'balance' && saldo > 0)
+                || (filter === 'done' && saldo <= 0);
+            row.classList.toggle('is-hidden', !show);
+            if (show) visible += 1;
+        });
+        if (filterEmpty) {
+            filterEmpty.classList.toggle('d-none', visible > 0);
+        }
+    }
+
+    filterButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            filterButtons.forEach((item) => {
+                item.classList.remove('active', 'btn-dark');
+                item.classList.add('btn-outline-secondary');
+            });
+            button.classList.add('active', 'btn-dark');
+            button.classList.remove('btn-outline-secondary');
+            applyItemFilter(button.dataset.filter || 'all');
+        });
     });
 </script>
 {% endblock %}

@@ -5,6 +5,12 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
+        <div class="text-muted small mb-1">
+            <a href="{% url 'medicoes_home' %}" class="text-muted">Medições</a>
+            <span>/</span>
+            <a href="{% url 'detalhe_orcamento_medicao' orcamento.id %}" class="text-muted">{{ orcamento.nome }}</a>
+            <span>/ Editar itens</span>
+        </div>
         <h1 class="mb-1">Editar itens da planilha</h1>
         <p class="text-muted mb-0">{{ orcamento.nome }} - {{ orcamento.obra }}</p>
     </div>
@@ -15,19 +21,42 @@
     {% csrf_token %}
     {% if formset.non_form_errors %}<div class="alert alert-danger">{{ formset.non_form_errors }}</div>{% endif %}
     {{ formset.management_form }}
+    <div class="operation-panel mb-3">
+        <div>
+            <span class="text-muted small d-block">Planilha</span>
+            <strong>{{ orcamento.nome }}</strong>
+        </div>
+        <div>
+            <span class="text-muted small d-block">Obra</span>
+            <strong>{{ orcamento.obra }}</strong>
+        </div>
+        <div>
+            <span class="text-muted small d-block">Tipo</span>
+            <strong>{% if orcamento.tipo == 'empreiteiro' %}Contratados{% else %}Construtora{% endif %}</strong>
+        </div>
+        <div>
+            <span class="text-muted small d-block">Total contratual</span>
+            <strong>R$ {{ orcamento.total_orcamento|floatformat:2 }}</strong>
+        </div>
+    </div>
+
+    <div class="alert alert-info small">
+        Use <strong>Grupo</strong> para criar divisórias de disciplina. Grupos aparecem destacados, mas não entram diretamente nas medições.
+    </div>
+
     <div class="card shadow-sm mb-4">
         <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0">
+            <table class="table table-sm align-middle mb-0 item-editor-table">
                 <thead>
                     <tr>
-                        <th style="min-width: 160px;">Acoes</th>
+                        <th style="min-width: 160px;">Ações</th>
                         <th>Item</th>
                         <th>Tipo</th>
                         <th>Descrição</th>
                         <th>Und</th>
                         <th>Qtd</th>
                         <th>Unit. material</th>
-                        <th>Unit. mao obra</th>
+                        <th>Unit. mão obra</th>
                         <th>Unit. equip.</th>
                         <th>Excluir</th>
                     </tr>
@@ -63,12 +92,12 @@
         </div>
         <div class="card-body border-top">
             <button type="button" class="btn btn-sm btn-outline-primary" id="adicionar-item-orcamento">Adicionar item</button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="adicionar-grupo-inicio">Adicionar grupo no inicio</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="adicionar-grupo-inicio">Adicionar grupo no início</button>
         </div>
     </div>
 
     <div class="alert alert-warning">
-        Alterar ou excluir itens de uma planilha que ja possui medições pode alterar os valores historicos vinculados a ela.
+        Alterar ou excluir itens de uma planilha que já possui medições pode alterar os valores históricos vinculados a ela.
     </div>
 
     <div class="d-flex gap-2 mb-4">
@@ -116,7 +145,14 @@
             if (ordem) {
                 ordem.value = index;
             }
+            aplicarEstiloTipoLinha(row);
         });
+    }
+
+    function aplicarEstiloTipoLinha(row) {
+        const tipoField = row ? row.querySelector('select[name$="-tipo"]') : null;
+        if (!row || !tipoField) return;
+        row.classList.toggle('is-group', tipoField.value === 'grupo');
     }
 
     function novaLinhaOrcamento(tipo = 'item') {
@@ -138,6 +174,7 @@
                 }
             });
         }
+        aplicarEstiloTipoLinha(row);
         totalItensOrcamento.value = index + 1;
         return row;
     }
@@ -195,9 +232,58 @@
                 renumerarOrdemItens();
             }
         });
+
+        itensOrcamentoBody.addEventListener('change', (event) => {
+            const tipoField = event.target.closest('select[name$="-tipo"]');
+            if (!tipoField) return;
+            aplicarEstiloTipoLinha(tipoField.closest('.item-orcamento-row'));
+        });
     }
 
     document.querySelector('form')?.addEventListener('submit', renumerarOrdemItens);
     renumerarOrdemItens();
 </script>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .operation-panel {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: .75rem;
+    }
+    .operation-panel > div {
+        border: 1px solid #dee2e6;
+        border-radius: .5rem;
+        background: #fff;
+        padding: .75rem;
+        box-shadow: 0 .125rem .25rem rgba(0, 0, 0, .04);
+    }
+    .item-editor-table {
+        min-width: 1280px;
+    }
+    .item-editor-table thead th {
+        background: #eef3f6;
+        border-bottom-color: #adb5bd;
+        font-size: .82rem;
+        white-space: nowrap;
+    }
+    .item-editor-table input,
+    .item-editor-table select {
+        min-width: 90px;
+    }
+    .item-editor-table input[name$="-descricao"],
+    .item-editor-table textarea {
+        min-width: 320px;
+    }
+    .item-orcamento-row.is-group {
+        background: #e9edf3;
+        font-weight: 600;
+    }
+    @media (max-width: 992px) {
+        .operation-panel {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+</style>
 {% endblock %}

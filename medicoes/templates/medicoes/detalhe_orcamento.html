@@ -5,15 +5,25 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
+        <div class="text-muted small mb-1">
+            <a href="{% url 'medicoes_home' %}" class="text-muted">Medições</a>
+            <span>/</span>
+            {% if orcamento.tipo == 'empreiteiro' %}
+            <a href="{% url 'lista_planilhas_empreiteiros' %}" class="text-muted">Planilhas de contratados</a>
+            {% else %}
+            <a href="{% url 'lista_planilhas_construtora' %}" class="text-muted">Planilhas da construtora</a>
+            {% endif %}
+            <span>/ Detalhe</span>
+        </div>
         <h1 class="mb-1">{{ orcamento.nome }}</h1>
         <p class="text-muted mb-0">{{ orcamento.obra }} - {% if orcamento.tipo == 'empreiteiro' %}Contratados{% else %}Construtora{% endif %}</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         {% if orcamento.tipo == 'construtora' %}
-        <a class="btn btn-primary" href="{% url 'nova_medicao_construtora' orcamento.id %}">Nova medicao</a>
+        <a class="btn btn-primary" href="{% url 'nova_medicao_construtora' orcamento.id %}">Nova medição</a>
         <a class="btn btn-outline-success" href="{% url 'saldo_contratual_construtora' orcamento.id %}">Saldo contratual</a>
         {% else %}
-        <a class="btn btn-primary" href="{% url 'nova_medicao_empreiteiro_cumulativa' orcamento.id %}">Nova medicao cumulativa</a>
+        <a class="btn btn-primary" href="{% url 'nova_medicao_empreiteiro_cumulativa' orcamento.id %}">Nova medição cumulativa</a>
         {% endif %}
         <a class="btn btn-outline-primary" href="{% url 'editar_itens_orcamento_medicao' orcamento.id %}">Editar itens</a>
         <a class="btn btn-outline-danger" href="{% url 'excluir_orcamento_medicao' orcamento.id %}">Excluir planilha</a>
@@ -37,14 +47,14 @@
         <div class="card shadow-sm h-100"><div class="card-body">
             <h6>Medido</h6>
             <h4>R$ {{ orcamento.total_medido_empreiteiro|floatformat:2 }}</h4>
-            <small class="text-muted">{{ orcamento.percentual_medido_empreiteiro|floatformat:2 }}% concluida</small>
+            <small class="text-muted">{{ orcamento.percentual_medido_empreiteiro|floatformat:2 }}% concluída</small>
         </div></div>
     </div>
     <div class="col-md-3">
         <div class="card shadow-sm h-100"><div class="card-body">
-            <h6>Pago/Liquido</h6>
+            <h6>Pago/Líquido</h6>
             <h4>R$ {{ orcamento.total_liquido_empreiteiro|floatformat:2 }}</h4>
-            <small class="text-muted">Medido menos retencoes/descontos</small>
+            <small class="text-muted">Medido menos retenções/descontos</small>
         </div></div>
     </div>
     <div class="col-md-3">
@@ -56,7 +66,7 @@
     </div>
     {% else %}
     <div class="col-md-3"><div class="card shadow-sm"><div class="card-body"><h6>Material</h6><h4>R$ {{ orcamento.total_material|floatformat:2 }}</h4></div></div></div>
-    <div class="col-md-3"><div class="card shadow-sm"><div class="card-body"><h6>Mao de obra</h6><h4>R$ {{ orcamento.total_mao_obra|floatformat:2 }}</h4></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm"><div class="card-body"><h6>Mão de obra</h6><h4>R$ {{ orcamento.total_mao_obra|floatformat:2 }}</h4></div></div></div>
     <div class="col-md-3"><div class="card shadow-sm"><div class="card-body"><h6>Equipamentos</h6><h4>R$ {{ orcamento.total_equipamentos|floatformat:2 }}</h4></div></div></div>
     <div class="col-md-3"><div class="card shadow-sm"><div class="card-body"><h6>Total</h6><h4>R$ {{ orcamento.total_orcamento|floatformat:2 }}</h4></div></div></div>
     {% endif %}
@@ -67,18 +77,21 @@
         <h5 class="mb-3">Itens da planilha</h5>
         <div class="table-responsive">
             <table class="table table-sm align-middle">
-                <thead><tr><th>Item</th><th>Descricao</th><th>Und</th><th>Qtd</th><th>Unitario</th><th>Total</th></tr></thead>
+                <thead><tr><th>Item</th><th>Descrição</th><th>Tipo</th><th>Und</th><th>Qtd</th><th>Unitário</th><th>Total</th></tr></thead>
                 <tbody>
                     {% for item in itens %}
                     {% if item.eh_grupo %}
                     <tr class="table-secondary fw-semibold">
                         <td>{{ item.item }}</td>
-                        <td colspan="5">{{ item.descricao }}</td>
+                        <td>{{ item.descricao }}</td>
+                        <td><span class="badge text-bg-secondary">Grupo</span></td>
+                        <td colspan="4" class="text-muted">Divisória visual da planilha, sem medição direta.</td>
                     </tr>
                     {% else %}
                     <tr>
                         <td>{{ item.item }}</td>
                         <td>{{ item.descricao }}</td>
+                        <td><span class="badge text-bg-light border">Item medível</span></td>
                         <td>{{ item.unidade }}</td>
                         <td>{{ item.quantidade|floatformat:4 }}</td>
                         <td>R$ {{ item.preco_unitario_total|floatformat:4 }}</td>
@@ -86,7 +99,7 @@
                     </tr>
                     {% endif %}
                     {% empty %}
-                    <tr><td colspan="6">Nenhum item importado.</td></tr>
+                    <tr><td colspan="7">Nenhum item importado.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -97,28 +110,28 @@
 <div class="row g-4">
     <div class="col-lg-6">
         <div class="card shadow-sm h-100"><div class="card-body">
-            <h5 class="mb-3">Medicoes da construtora</h5>
+            <h5 class="mb-3">Medições da construtora</h5>
             <div class="list-group list-group-flush">
                 {% for medicao in medicoes_construtora %}
-                <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_construtora' medicao.id %}">Medicao {{ medicao.numero }} - R$ {{ medicao.total_liquido|floatformat:2 }}</a>
-                {% empty %}<div class="text-muted">Nenhuma medicao.</div>{% endfor %}
+                <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_construtora' medicao.id %}">Medição {{ medicao.numero }} - R$ {{ medicao.total_liquido|floatformat:2 }}</a>
+                {% empty %}<div class="text-muted">Nenhuma medição.</div>{% endfor %}
             </div>
         </div></div>
     </div>
     <div class="col-lg-6">
         <div class="card shadow-sm h-100"><div class="card-body">
-            <h5 class="mb-3">Medicoes de contratados</h5>
+            <h5 class="mb-3">Medições de contratados</h5>
             <div class="list-group list-group-flush">
                 {% for medicao in medicoes_empreiteiro %}
                 <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_empreiteiro' medicao.id %}">
-                    {{ medicao.empreiteiro }} - Medicao {{ medicao.numero }} - {{ medicao.data_medicao|date:'d/m/Y' }}<br>
+                    {{ medicao.empreiteiro }} - Medição {{ medicao.numero }} - {{ medicao.data_medicao|date:'d/m/Y' }}<br>
                     <small class="text-muted">
                         Medido R$ {{ medicao.subtotal_periodo|floatformat:2 }} |
                         Descontos R$ {{ medicao.total_descontos|floatformat:2 }} |
-                        Pago/Liquido R$ {{ medicao.total_liquido|floatformat:2 }}
+                        Pago/Líquido R$ {{ medicao.total_liquido|floatformat:2 }}
                     </small>
                 </a>
-                {% empty %}<div class="text-muted">Nenhuma medicao.</div>{% endfor %}
+                {% empty %}<div class="text-muted">Nenhuma medição.</div>{% endfor %}
             </div>
         </div></div>
     </div>

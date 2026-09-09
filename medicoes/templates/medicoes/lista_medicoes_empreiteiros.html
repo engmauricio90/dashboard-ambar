@@ -1,18 +1,18 @@
 {% extends 'base.html' %}
 
-{% block title %}Medicoes de Contratados{% endblock %}
+{% block title %}Medições de Contratados{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-3">
     <div>
         <div class="text-muted small mb-1">
-            <a href="{% url 'medicoes_home' %}" class="text-muted">Medicoes</a>
+            <a href="{% url 'medicoes_home' %}" class="text-muted">Medições</a>
             <span>/</span>
             <a href="{% url 'medicoes_empreiteiros_home' %}" class="text-muted">Contratados</a>
-            <span>/ Medicoes</span>
+            <span>/ Medições</span>
         </div>
-        <h1 class="mb-1">Medicoes de Contratados</h1>
-        <p class="text-muted mb-0">Consulta operacional paginada para recibos simples e medicoes cumulativas.</p>
+        <h1 class="mb-1">Medições de Contratados</h1>
+        <p class="text-muted mb-0">Consulta operacional paginada para recibos simples e medições cumulativas.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-primary" href="{% url 'nova_medicao_empreiteiro_simples' %}">Nova simples</a>
@@ -62,7 +62,7 @@
             </select>
         </div>
         <div class="col-lg-1">
-            <label class="form-label" for="filtro-numero">No</label>
+            <label class="form-label" for="filtro-numero">Nº</label>
             <input id="filtro-numero" class="form-control" type="number" min="1" name="numero" value="{{ numero }}">
         </div>
         <div class="col-lg-2">
@@ -70,7 +70,7 @@
             <input id="filtro-data-inicio" class="form-control" type="date" name="data_inicio" value="{{ data_inicio }}">
         </div>
         <div class="col-lg-2">
-            <label class="form-label" for="filtro-data-fim">Ate</label>
+            <label class="form-label" for="filtro-data-fim">Até</label>
             <input id="filtro-data-fim" class="form-control" type="date" name="data_fim" value="{{ data_fim }}">
         </div>
         <div class="col-lg-3">
@@ -90,8 +90,8 @@
 
 <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
     <div class="text-muted small">
-        {{ total_resultados }} medicao(oes) encontrada(s)
-        {% if total_resultados != total_empresa %}de {{ total_empresa }} medicao(oes) de contratados{% endif %}
+        {{ total_resultados }} medição(ões) encontrada(s)
+        {% if total_resultados != total_empresa %}de {{ total_empresa }} medição(ões) de contratados{% endif %}
     </div>
 </div>
 
@@ -101,17 +101,17 @@
             <thead>
                 <tr>
                     <th>Tipo</th>
-                    <th>No</th>
+                    <th>Nº</th>
                     <th>Data</th>
                     <th>Contratado</th>
                     <th>Obra</th>
                     <th>Planilha</th>
-                    <th>Periodo</th>
+                    <th>Período</th>
                     <th class="text-end">Total medido</th>
                     <th class="text-end">Desconto</th>
-                    <th class="text-end">Retencao</th>
-                    <th class="text-end">Liquido</th>
-                    <th class="text-end">Acoes</th>
+                    <th class="text-end">Retenção</th>
+                    <th class="text-end">Líquido</th>
+                    <th class="text-end">Ações</th>
                 </tr>
             </thead>
             <tbody>
@@ -124,7 +124,7 @@
                         <span class="badge text-bg-primary">Cumulativa</span>
                         {% endif %}
                     </td>
-                    <td class="fw-semibold numeric">Medicao {{ medicao.numero }}</td>
+                    <td class="fw-semibold numeric">Medição {{ medicao.numero }}</td>
                     <td class="numeric">{{ medicao.data_medicao|date:'d/m/Y' }}</td>
                     <td>{{ medicao.empreiteiro }}</td>
                     <td>
@@ -146,7 +146,7 @@
                         <div class="btn-group btn-group-sm">
                             <a class="btn btn-primary" href="{% url 'editar_medicao_empreiteiro' medicao.id %}">Abrir</a>
                             <button class="btn btn-outline-secondary dropdown-toggle dropdown-toggle-split" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                <span class="visually-hidden">Mais acoes</span>
+                                <span class="visually-hidden">Mais ações</span>
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end">
                                 <li><a class="dropdown-item" href="{% url 'medicao_empreiteiro_pdf' medicao.id %}" target="_blank">PDF</a></li>
@@ -164,15 +164,15 @@
                 <tr>
                     <td colspan="12" class="empty-state">
                         {% if total_empresa == 0 %}
-                        <strong>Nenhuma medicao de contratado encontrada.</strong>
-                        <span>Crie uma medicao simples ou uma medicao cumulativa a partir de uma planilha.</span>
+                        <strong>Nenhuma medição de contratado encontrada.</strong>
+                        <span>Crie uma medição simples ou uma medição cumulativa a partir de uma planilha.</span>
                         <div class="mt-3 d-flex justify-content-center gap-2 flex-wrap">
                             <a class="btn btn-primary btn-sm" href="{% url 'nova_medicao_empreiteiro_simples' %}">Nova simples</a>
                             <a class="btn btn-outline-primary btn-sm" href="{% url 'novo_orcamento_manual_medicao' %}?tipo=empreiteiro">Nova cumulativa</a>
                         </div>
                         {% else %}
-                        <strong>Nenhuma medicao corresponde aos filtros informados.</strong>
-                        <span>Ajuste os filtros ou limpe a busca para visualizar todas as medicoes.</span>
+                        <strong>Nenhuma medição corresponde aos filtros informados.</strong>
+                        <span>Ajuste os filtros ou limpe a busca para visualizar todas as medições.</span>
                         <div class="mt-3">
                             <a class="btn btn-outline-secondary btn-sm" href="{% url 'lista_medicoes_empreiteiros' %}">Limpar filtros</a>
                         </div>
@@ -186,18 +186,18 @@
 </div>
 
 {% if page_obj.paginator.num_pages > 1 %}
-<nav class="mt-3" aria-label="Paginacao das medicoes de contratados">
+<nav class="mt-3" aria-label="Paginação das medições de contratados">
     <ul class="pagination justify-content-end mb-0">
         {% if page_obj.has_previous %}
         <li class="page-item"><a class="page-link" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.previous_page_number }}">Anterior</a></li>
         {% else %}
         <li class="page-item disabled"><span class="page-link">Anterior</span></li>
         {% endif %}
-        <li class="page-item disabled"><span class="page-link">Pagina {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span></li>
+        <li class="page-item disabled"><span class="page-link">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span></li>
         {% if page_obj.has_next %}
-        <li class="page-item"><a class="page-link" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.next_page_number }}">Proxima</a></li>
+        <li class="page-item"><a class="page-link" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.next_page_number }}">Próxima</a></li>
         {% else %}
-        <li class="page-item disabled"><span class="page-link">Proxima</span></li>
+        <li class="page-item disabled"><span class="page-link">Próxima</span></li>
         {% endif %}
     </ul>
 </nav>
