@@ -559,8 +559,8 @@ class MedicoesTests(TestCase):
 
         response_obra = self.client.get(reverse('medicoes_obra', args=[self.obra.id]))
 
-        self.assertContains(response_obra, 'Pago/Liquido')
-        self.assertContains(response_obra, '% concluida')
+        self.assertContains(response_obra, 'Pago/Líquido')
+        self.assertContains(response_obra, '% concluída')
         self.assertContains(response_obra, 'R$ 300,00')
         self.assertContains(response_obra, 'R$ 75,00')
         self.assertContains(response_obra, 'R$ 225,00')
@@ -706,7 +706,7 @@ class MedicoesTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Relatorio gerencial de medicoes')
+        self.assertContains(response, 'Relatório gerencial de medições')
         self.assertContains(response, 'Empreiteiro Relatorio')
         self.assertContains(response, '30/04/2026')
         self.assertContains(response, 'R$ 100,00')
@@ -772,9 +772,9 @@ class MedicoesTests(TestCase):
         response_empreiteiros = self.client.get(reverse('medicoes_empreiteiros_home'))
         response_obra = self.client.get(reverse('medicoes_obra', args=[self.obra.id]))
 
-        self.assertContains(response_construtora, 'Medicao da construtora')
+        self.assertContains(response_construtora, 'Medição da construtora')
         self.assertNotContains(response_construtora, orcamento.nome)
-        self.assertContains(response_empreiteiros, 'Medicoes de contratados')
+        self.assertContains(response_empreiteiros, 'Medições de contratados')
         self.assertContains(response_obra, 'Medições da construtora')
 
     def test_homes_de_medicoes_sao_paineis_leves(self):
@@ -814,10 +814,10 @@ class MedicoesTests(TestCase):
         self.assertContains(response_home, 'Painel operacional')
         self.assertNotContains(response_home, orcamento.nome)
         self.assertNotContains(response_home, 'Contratado Oculto')
-        self.assertNotContains(response_home, 'Ultimas medicoes')
-        self.assertNotContains(response_construtora, 'Obras com medicao da construtora')
+        self.assertNotContains(response_home, 'Últimas medições')
+        self.assertNotContains(response_construtora, 'Obras com medição da construtora')
         self.assertNotContains(response_construtora, orcamento.nome)
-        self.assertNotContains(response_construtora, 'Ultimas medicoes')
+        self.assertNotContains(response_construtora, 'Últimas medições')
         self.assertNotContains(response_contratados, 'Servico que nao deve aparecer na home')
         self.assertNotContains(response_contratados, 'Empreiteiros')
         self.assertContains(response_contratados, 'Contratados')
@@ -1779,7 +1779,7 @@ class MedicoesTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, reverse('lista_medicoes_empreiteiros'))
-        self.assertContains(response, 'Ver medicoes')
+        self.assertContains(response, 'Ver medições')
 
     def test_medicao_construtora_calcula_acumulado_e_liquido(self):
         orcamento, item = self._orcamento()

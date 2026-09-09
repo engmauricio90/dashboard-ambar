@@ -88,15 +88,15 @@
         <p class="text-muted mb-0">{{ obra.cliente }} | {{ obra.get_status_obra_display }}</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a href="{% url 'nova_conta_receber' %}?obra={{ obra.id }}" class="btn btn-success">Nova Receita/NF</a>
-        <a href="{% url 'nova_conta_pagar' %}?obra={{ obra.id }}" class="btn btn-outline-danger">Nova Despesa</a>
-        <a href="{% url 'novo_faturamento_direto' %}?obra={{ obra.id }}" class="btn btn-outline-primary">Faturamento Direto</a>
+        <a href="{% url 'nova_conta_receber' %}?obra={{ obra.id }}" class="btn btn-success">Nova receita/NF</a>
+        <a href="{% url 'nova_conta_pagar' %}?obra={{ obra.id }}" class="btn btn-outline-danger">Nova despesa</a>
+        <a href="{% url 'novo_faturamento_direto' %}?obra={{ obra.id }}" class="btn btn-outline-primary">Faturamento direto</a>
         <a href="{% url 'medicoes_obra' obra.id %}" class="btn btn-outline-primary">Medições</a>
-        <a href="{% url 'lista_diarios_obra' obra.id %}" class="btn btn-outline-dark">Diários de Obra</a>
-        <a href="{% url 'nova_retencao_tecnica' obra.id %}" class="btn btn-outline-warning">Nova Retenção Técnica</a>
-        <a href="{% url 'novo_aditivo' obra.id %}" class="btn btn-outline-info">Novo Aditivo/Supressao</a>
-        <a href="{% url 'historico_financeiro' obra.id %}" class="btn btn-outline-dark">Historico Financeiro</a>
-        <a href="{% url 'relatorio_obra' obra.id %}" class="btn btn-outline-secondary">Relatorio</a>
+        <a href="{% url 'lista_diarios_obra' obra.id %}" class="btn btn-outline-dark">Diários de obra</a>
+        <a href="{% url 'nova_retencao_tecnica' obra.id %}" class="btn btn-outline-warning">Nova retenção técnica</a>
+        <a href="{% url 'novo_aditivo' obra.id %}" class="btn btn-outline-info">Novo aditivo/supressão</a>
+        <a href="{% url 'historico_financeiro' obra.id %}" class="btn btn-outline-dark">Histórico financeiro</a>
+        <a href="{% url 'relatorio_obra' obra.id %}" class="btn btn-outline-secondary">Relatório</a>
         <a href="{% url 'editar_obra' obra.id %}" class="btn btn-primary">Editar</a>
         <a href="{% url 'excluir_obra' obra.id %}" class="btn btn-outline-danger">Excluir</a>
         <a href="{% url 'lista_obras' %}" class="btn btn-secondary">Voltar</a>
@@ -209,7 +209,7 @@
     <div class="col-md-3">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h6>Retenção tecnica</h6>
+                <h6>Retenção técnica</h6>
                 <h4>R$ {{ obra.total_retencoes_tecnicas|floatformat:2 }}</h4>
                 <small class="text-muted">Saldo a recuperar/devolver</small>
             </div>
@@ -221,7 +221,7 @@
             <div class="card-body">
                 <h6>INSS retido</h6>
                 <h4>R$ {{ obra.total_retencoes_inss|floatformat:2 }}</h4>
-                <small class="text-muted">Separado da retencao tecnica</small>
+                <small class="text-muted">Separado da retenção técnica</small>
             </div>
         </div>
     </div>
@@ -229,9 +229,9 @@
     <div class="col-md-3">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h6>Total recebido liquido</h6>
+                <h6>Total recebido líquido</h6>
                 <h4>R$ {{ obra.total_recebido_liquido|floatformat:2 }}</h4>
-                <small class="text-muted">Bruto menos retencoes e impostos</small>
+                <small class="text-muted">Bruto menos retenções e impostos</small>
             </div>
         </div>
     </div>
@@ -247,8 +247,8 @@
         <div class="card shadow-sm h-100">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="mb-0">Evolucao mensal da obra</h5>
-                    <span class="text-muted small">Faturamento, despesas e aditivos por mes</span>
+                    <h5 class="mb-0">Evolução mensal da obra</h5>
+                    <span class="text-muted small">Faturamento, despesas e aditivos por mês</span>
                 </div>
                 <div style="position: relative; height: 320px;">
                     <canvas id="graficoEvolucaoObra"></canvas>
@@ -260,7 +260,7 @@
     <div class="col-lg-4">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h5 class="mb-3">Composicao financeira</h5>
+                <h5 class="mb-3">Composição financeira</h5>
                 <div style="position: relative; height: 320px;">
                     <canvas id="graficoComposicaoObra"></canvas>
                 </div>
@@ -275,16 +275,16 @@
         <div class="row">
             <div class="col-md-4"><strong>Cliente:</strong> {{ obra.cliente|default:'-' }}</div>
             <div class="col-md-4"><strong>Status:</strong> {{ obra.get_status_obra_display }}</div>
-            <div class="col-md-4"><strong>Responsavel:</strong> {{ obra.responsavel|default:'-' }}</div>
+            <div class="col-md-4"><strong>Responsável:</strong> {{ obra.responsavel|default:'-' }}</div>
         </div>
         <div class="row mt-3">
-            <div class="col-md-4"><strong>Data de inicio:</strong> {{ obra.data_inicio|default:'-' }}</div>
+            <div class="col-md-4"><strong>Data de início:</strong> {{ obra.data_inicio|default:'-' }}</div>
             <div class="col-md-4"><strong>Valor do contrato:</strong> R$ {{ obra.valor_contrato|floatformat:2 }}</div>
-            <div class="col-md-4"><strong>Projecao de despesa:</strong> R$ {{ obra.projecao_despesa|floatformat:2 }}</div>
+            <div class="col-md-4"><strong>Projeção de despesa:</strong> R$ {{ obra.projecao_despesa|floatformat:2 }}</div>
         </div>
         <div class="row mt-3">
             <div class="col-md-4"><strong>Faturamento direto:</strong> R$ {{ obra.total_faturamento_direto|floatformat:2 }}</div>
-            <div class="col-md-8"><span class="text-muted">Valor considerado como deducao do saldo contratual.</span></div>
+            <div class="col-md-8"><span class="text-muted">Valor considerado como dedução do saldo contratual.</span></div>
         </div>
         <div class="row mt-3">
             <div class="col-12"><strong>Observações:</strong> {{ obra.observacoes|default:'-' }}</div>
@@ -297,7 +297,7 @@
         <div class="card shadow-sm h-100">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="mb-0">Ultimas notas fiscais</h5>
+                    <h5 class="mb-0">Últimas notas fiscais</h5>
                     <div class="d-flex gap-2">
                         <a href="{% url 'lista_notas_obra' obra.id %}" class="btn btn-sm btn-outline-dark">Ver todos</a>
                         <a href="{% url 'nova_conta_receber' %}?obra={{ obra.id }}" class="btn btn-sm btn-outline-success">Adicionar pelo financeiro</a>
@@ -341,7 +341,7 @@
         <div class="card shadow-sm h-100">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="mb-0">Ultimas despesas</h5>
+                    <h5 class="mb-0">Últimas despesas</h5>
                     <div class="d-flex gap-2">
                         <a href="{% url 'lista_despesas_obra' obra.id %}" class="btn btn-sm btn-outline-dark">Ver todos</a>
                         <a href="{% url 'nova_conta_pagar' %}?obra={{ obra.id }}" class="btn btn-sm btn-outline-danger">Adicionar pelo financeiro</a>
@@ -386,7 +386,7 @@
                     <h5 class="mb-0">Diários de obra</h5>
                     <div class="d-flex gap-2">
                         <a href="{% url 'lista_diarios_obra' obra.id %}" class="btn btn-sm btn-outline-dark">Ver todos</a>
-                        <a href="{% url 'novo_diario_obra' obra.id %}" class="btn btn-sm btn-outline-primary">Novo diario</a>
+                        <a href="{% url 'novo_diario_obra' obra.id %}" class="btn btn-sm btn-outline-primary">Novo diário</a>
                     </div>
                 </div>
                 <div class="table-responsive">
@@ -394,7 +394,7 @@
                         <thead>
                             <tr>
                                 <th>Data</th>
-                                <th>Responsavel</th>
+                                <th>Responsável</th>
                                 <th>Situação</th>
                                 <th>Clima</th>
                                 <th>Status</th>
@@ -415,7 +415,7 @@
                                 </td>
                             </tr>
                             {% empty %}
-                            <tr><td colspan="6">Nenhum diario cadastrado para esta obra.</td></tr>
+                            <tr><td colspan="6">Nenhum diário cadastrado para esta obra.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>
@@ -559,7 +559,7 @@
         <div class="card shadow-sm">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="mb-0">Ultimas movimentacoes contratuais</h5>
+                    <h5 class="mb-0">Últimas movimentações contratuais</h5>
                     <div class="d-flex gap-2">
                         <a href="{% url 'lista_aditivos_obra' obra.id %}" class="btn btn-sm btn-outline-dark">Ver todos</a>
                         <a href="{% url 'novo_aditivo' obra.id %}" class="btn btn-sm btn-outline-info">Adicionar</a>
@@ -589,7 +589,7 @@
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="5">Nenhuma movimentacao contratual cadastrada.</td>
+                                <td colspan="5">Nenhuma movimentação contratual cadastrada.</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -603,7 +603,7 @@
         <div class="card shadow-sm">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="mb-0">Ultimas retencoes tecnicas</h5>
+                    <h5 class="mb-0">Últimas retenções técnicas</h5>
                     <div class="d-flex gap-2">
                         <a href="{% url 'lista_retencoes_tecnicas_obra' obra.id %}" class="btn btn-sm btn-outline-dark">Ver todos</a>
                         <a href="{% url 'nova_retencao_tecnica' obra.id %}" class="btn btn-sm btn-outline-warning">Adicionar</a>
@@ -616,8 +616,8 @@
                                 <th>Data</th>
                                 <th>Tipo</th>
                                 <th>Descrição</th>
-                                <th>Previsao devolucao</th>
-                                <th>Data devolucao</th>
+                                <th>Previsão devolução</th>
+                                <th>Data devolução</th>
                                 <th>Valor</th>
                                 <th></th>
                             </tr>
@@ -633,14 +633,14 @@
                                 <td>R$ {{ retencao.valor|floatformat:2 }}</td>
                                 <td class="text-end">
                                     {% if retencao.tipo == 'retencao' %}
-                                    <a href="{% url 'devolver_retencao_tecnica' obra.id retencao.id %}" class="btn btn-sm btn-outline-success">Registrar devolucao</a>
+                                    <a href="{% url 'devolver_retencao_tecnica' obra.id retencao.id %}" class="btn btn-sm btn-outline-success">Registrar devolução</a>
                                     {% endif %}
                                     <a href="{% url 'excluir_retencao_tecnica' obra.id retencao.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
                                 </td>
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="7">Nenhuma retencao tecnica cadastrada.</td>
+                                <td colspan="7">Nenhuma retenção técnica cadastrada.</td>
                             </tr>
                             {% endfor %}
                         </tbody>

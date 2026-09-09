@@ -173,13 +173,13 @@
                         <td>R$ {{ retencao.valor|floatformat:2 }}</td>
                         <td class="text-end">
                             {% if retencao.tipo == 'retencao' %}
-                            <a href="{% url 'devolver_retencao_tecnica' obra.id retencao.id %}" class="btn btn-sm btn-outline-success">Registrar devolucao</a>
+                            <a href="{% url 'devolver_retencao_tecnica' obra.id retencao.id %}" class="btn btn-sm btn-outline-success">Registrar devolução</a>
                             {% endif %}
                             <a href="{% url 'excluir_retencao_tecnica' obra.id retencao.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
                         </td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="7">Nenhuma retencao tecnica cadastrada.</td></tr>
+                    <tr><td colspan="7">Nenhuma retenção técnica cadastrada.</td></tr>
                     {% endfor %}
                 </tbody>
                 {% endif %}

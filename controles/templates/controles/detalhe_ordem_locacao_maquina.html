@@ -33,7 +33,7 @@
             <div class="col-md-3"><strong>Cobranca:</strong> {{ ordem.get_tipo_cobranca_display }}</div>
             <div class="col-md-3"><strong>Solicitante:</strong> {{ ordem.solicitante|default:'-' }}</div>
             <div class="col-md-3"><strong>Responsavel:</strong> {{ ordem.responsavel|default:'-' }}</div>
-            <div class="col-md-3"><strong>Prev. inicio:</strong> {{ ordem.data_prevista_inicio|default:'-' }}</div>
+            <div class="col-md-3"><strong>Prev. início:</strong> {{ ordem.data_prevista_inicio|default:'-' }}</div>
             <div class="col-md-3"><strong>Prev. fim:</strong> {{ ordem.data_prevista_fim|default:'-' }}</div>
             <div class="col-md-3"><strong>Mobilizacao:</strong> {{ ordem.data_mobilizacao|default:'-' }}</div>
             <div class="col-md-3"><strong>Desmobilizacao:</strong> {{ ordem.data_desmobilizacao|default:'-' }}</div>
@@ -106,7 +106,7 @@
 
 <div class="card shadow-sm">
     <div class="card-body">
-        <h5 class="mb-3">Historico</h5>
+        <h5 class="mb-3">Histórico</h5>
         <div class="table-responsive">
             <table class="table table-bordered align-middle mb-0">
                 <thead><tr><th>Data/Hora</th><th>Evento</th><th>Descrição</th><th>Status</th></tr></thead>
@@ -119,7 +119,7 @@
                         <td>{% if item.status_anterior or item.status_novo %}{{ item.status_anterior|default:'-' }} &gt; {{ item.status_novo|default:'-' }}{% else %}-{% endif %}</td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="4">Nenhum historico registrado para esta OS.</td></tr>
+                    <tr><td colspan="4">Nenhum histórico registrado para esta OS.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

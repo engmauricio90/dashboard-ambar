@@ -939,7 +939,7 @@ class FinanceiroIntegracaoObraTests(TestCase):
         response = self.client.get(reverse('lista_previsoes_financeiras'))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Previsoes Financeiras')
+        self.assertContains(response, 'Previsões financeiras')
 
     def test_relatorio_pdf_responde_pdf(self):
         response = self.client.get(

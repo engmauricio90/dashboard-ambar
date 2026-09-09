@@ -18,11 +18,11 @@
     {% endif %}
 
     <div class="card shadow-sm mb-4">
-        <div class="card-header fw-bold">Dados do usuario</div>
+        <div class="card-header fw-bold">Dados do usuário</div>
         <div class="card-body">
             {% if modo == 'editar' %}
                 <div class="alert alert-light border mb-3">
-                    <strong>Usuario:</strong> {{ vinculo.usuario.username }}
+                    <strong>Usuário:</strong> {{ vinculo.usuario.username }}
                     {% if vinculo.usuario.is_staff %}<span class="badge text-bg-warning ms-2">Staff</span>{% endif %}
                     {% if vinculo.usuario.is_superuser %}<span class="badge text-bg-dark ms-2">Superuser</span>{% endif %}
                 </div>
@@ -54,14 +54,14 @@
             </div>
             {% if modo == 'novo' %}
                 <div class="form-text mt-3">
-                    O usuario recebera um convite por e-mail para definir a propria senha. Nenhuma senha temporaria sera exibida ou enviada.
+                    O usuário receberá um convite por e-mail para definir a própria senha. Nenhuma senha temporária será exibida ou enviada.
                 </div>
             {% endif %}
         </div>
     </div>
 
     <div class="card shadow-sm mb-4">
-        <div class="card-header fw-bold">Vinculo na empresa</div>
+        <div class="card-header fw-bold">Vínculo na empresa</div>
         <div class="card-body">
             <div class="row g-3">
                 <div class="col-md-4">
@@ -93,6 +93,6 @@
         </div>
     </div>
 
-    <button type="submit" class="btn btn-primary">{% if modo == 'novo' %}Enviar convite{% else %}Salvar{% endif %}</button>
+    <button type="submit" class="btn btn-primary">{% if modo == 'novo' %}Enviar convite{% else %}Salvar alterações{% endif %}</button>
 </form>
 {% endblock %}

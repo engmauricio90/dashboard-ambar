@@ -1,17 +1,17 @@
 {% extends 'base.html' %}
 
-{% block title %}Medicoes{% endblock %}
+{% block title %}Medições{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-3">
     <div>
-        <h1 class="mb-1">Medicoes</h1>
-        <p class="text-muted mb-0">Painel operacional para acessar construtora, contratados e relatorios.</p>
+        <h1 class="mb-1">Medições</h1>
+        <p class="text-muted mb-0">Painel operacional para acessar construtora, contratados e relatórios.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-primary" href="{% url 'importar_orcamento_medicao' %}">Importar planilha</a>
         <a class="btn btn-outline-primary" href="{% url 'novo_orcamento_manual_medicao' %}">Nova planilha manual</a>
-        <a class="btn btn-outline-secondary" href="{% url 'relatorio_medicoes' %}">Relatorios</a>
+        <a class="btn btn-outline-secondary" href="{% url 'relatorio_medicoes' %}">Relatórios</a>
     </div>
 </div>
 
@@ -42,7 +42,7 @@
             <div>
                 <h2>Construtora</h2>
                 <p>Planilhas acumulativas da empresa, impostos, descontos e faturamento direto.</p>
-                <small>{{ total_medicoes_construtora }} medicao(oes) registrada(s)</small>
+                <small>{{ total_medicoes_construtora }} medição(ões) registrada(s)</small>
             </div>
             <a class="btn btn-primary" href="{% url 'medicoes_construtora_home' %}">Acessar</a>
         </div>
@@ -51,8 +51,8 @@
         <div class="module-card h-100">
             <div>
                 <h2>Contratados</h2>
-                <p>Recibos simples e medicoes cumulativas dos terceiros vinculados as obras.</p>
-                <small>{{ total_medicoes_contratados }} medicao(oes) registrada(s)</small>
+                <p>Recibos simples e medições cumulativas dos terceiros vinculados às obras.</p>
+                <small>{{ total_medicoes_contratados }} medição(ões) registrada(s)</small>
             </div>
             <a class="btn btn-primary" href="{% url 'medicoes_empreiteiros_home' %}">Acessar</a>
         </div>
@@ -60,11 +60,11 @@
     <div class="col-lg-4">
         <div class="module-card h-100">
             <div>
-                <h2>Relatorios</h2>
-                <p>Consulta gerencial por obra, contratado, periodo, tipo e colunas selecionadas.</p>
-                <small>PDF e Excel disponiveis na tela de filtros.</small>
+                <h2>Relatórios</h2>
+                <p>Consulta gerencial por obra, contratado, período, tipo e colunas selecionadas.</p>
+                <small>PDF e Excel disponíveis na tela de filtros.</small>
             </div>
-            <a class="btn btn-outline-secondary" href="{% url 'relatorio_medicoes' %}">Abrir relatorios</a>
+            <a class="btn btn-outline-secondary" href="{% url 'relatorio_medicoes' %}">Abrir relatórios</a>
         </div>
     </div>
 </div>

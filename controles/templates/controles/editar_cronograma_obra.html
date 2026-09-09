@@ -173,7 +173,7 @@
                             <td class="servico-col">
                                 <input type="hidden" name="linhas-{{ forloop.counter0 }}-id" value="{{ linha.id }}">
                                 <input type="text" name="linhas-{{ forloop.counter0 }}-servico" value="{{ linha.servico }}" class="form-control form-control-sm">
-                                <input type="text" name="linhas-{{ forloop.counter0 }}-observacao_periodo" value="{{ linha.observacao_periodo }}" class="form-control form-control-sm cronograma-observacao-input" placeholder="Observacao na faixa de datas">
+                                <input type="text" name="linhas-{{ forloop.counter0 }}-observacao_periodo" value="{{ linha.observacao_periodo }}" class="form-control form-control-sm cronograma-observacao-input" placeholder="Observação na faixa de datas">
                             </td>
                             {% for periodo in periodos %}
                             <td class="text-center cronograma-date-cell {% if periodo.is_weekend %}weekend{% endif %}">
@@ -221,7 +221,7 @@
         <td class="servico-col">
             <input type="hidden" name="linhas-__prefix__-id" value="">
             <input type="text" name="linhas-__prefix__-servico" class="form-control form-control-sm">
-            <input type="text" name="linhas-__prefix__-observacao_periodo" class="form-control form-control-sm cronograma-observacao-input" placeholder="Observacao na faixa de datas">
+            <input type="text" name="linhas-__prefix__-observacao_periodo" class="form-control form-control-sm cronograma-observacao-input" placeholder="Observação na faixa de datas">
         </td>
         {% for periodo in periodos %}
         <td class="text-center cronograma-date-cell {% if periodo.is_weekend %}weekend{% endif %}">

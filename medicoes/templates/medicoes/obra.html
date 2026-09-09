@@ -1,18 +1,18 @@
 {% extends 'base.html' %}
 
-{% block title %}Medicoes - {{ obra.nome_obra }}{% endblock %}
+{% block title %}Medições - {{ obra.nome_obra }}{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-3">
     <div>
-        <h1 class="mb-1">Medicoes da obra</h1>
+        <h1 class="mb-1">Medições da obra</h1>
         <p class="text-muted mb-0">{{ obra.nome_obra }}</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-primary" href="{% url 'importar_orcamento_medicao' %}?obra={{ obra.id }}">Importar planilha</a>
         <a class="btn btn-outline-primary" href="{% url 'novo_orcamento_manual_medicao' %}?tipo=construtora&obra={{ obra.id }}">Planilha manual construtora</a>
         <a class="btn btn-outline-primary" href="{% url 'novo_orcamento_manual_medicao' %}?tipo=empreiteiro&obra={{ obra.id }}">Planilha manual contratado</a>
-        <a class="btn btn-outline-dark" href="{% url 'nova_medicao_empreiteiro_simples' %}?obra={{ obra.id }}">Medicao simples</a>
+        <a class="btn btn-outline-dark" href="{% url 'nova_medicao_empreiteiro_simples' %}?obra={{ obra.id }}">Medição simples</a>
         <a class="btn btn-secondary" href="{% url 'medicoes_home' %}">Voltar</a>
     </div>
 </div>
@@ -68,7 +68,7 @@
                         <th>Medido</th>
                         <th>Pago/Líquido</th>
                         <th>Saldo</th>
-                        <th>% concluida</th>
+                        <th>% concluída</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -103,11 +103,11 @@
                 <div class="list-group list-group-flush">
                     {% for medicao in medicoes_construtora %}
                     <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_construtora' medicao.id %}">
-                        Medicao {{ medicao.numero }} - {{ medicao.orcamento.nome }}<br>
+                        Medição {{ medicao.numero }} - {{ medicao.orcamento.nome }}<br>
                         <small class="text-muted">
                             Bruto R$ {{ medicao.total_bruto|floatformat:2 }} |
                             Faturamento direto R$ {{ medicao.total_faturamento_direto|floatformat:2 }} |
-                            Liquido R$ {{ medicao.total_liquido|floatformat:2 }}
+                            Líquido R$ {{ medicao.total_liquido|floatformat:2 }}
                         </small>
                     </a>
                     {% empty %}
@@ -124,12 +124,12 @@
                 <div class="list-group list-group-flush">
                     {% for medicao in medicoes_empreiteiro %}
                     <a class="list-group-item list-group-item-action" href="{% url 'editar_medicao_empreiteiro' medicao.id %}">
-                        {{ medicao.empreiteiro }} - {{ medicao.get_tipo_display }} - Medicao {{ medicao.numero }} - {{ medicao.data_medicao|date:'d/m/Y' }}<br>
+                        {{ medicao.empreiteiro }} - {{ medicao.get_tipo_display }} - Medição {{ medicao.numero }} - {{ medicao.data_medicao|date:'d/m/Y' }}<br>
                         <small class="text-muted">
                             {{ medicao.orcamento.nome|default:'Sem planilha' }} |
                             Medido R$ {{ medicao.subtotal_periodo|floatformat:2 }} |
                             Descontos R$ {{ medicao.total_descontos|floatformat:2 }} |
-                            Pago/Liquido R$ {{ medicao.total_liquido|floatformat:2 }}
+                            Pago/Líquido R$ {{ medicao.total_liquido|floatformat:2 }}
                         </small>
                     </a>
                     {% empty %}

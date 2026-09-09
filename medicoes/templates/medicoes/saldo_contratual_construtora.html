@@ -28,7 +28,7 @@
     <div class="col-md-3">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h6>Mao de obra a medir</h6>
+                <h6>Mão de obra a medir</h6>
                 <h4>R$ {{ totais.mao_obra|floatformat:2 }}</h4>
             </div>
         </div>
@@ -56,7 +56,7 @@
         <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
             <div>
                 <h5 class="mb-0">Itens com saldo a medir</h5>
-                <span class="text-muted small">Mostra somente itens que ainda possuem quantidade contratual disponivel.</span>
+                <span class="text-muted small">Mostra somente itens que ainda possuem quantidade contratual disponível.</span>
             </div>
             <span class="badge text-bg-light">{{ linhas|length }} item(ns)</span>
         </div>
@@ -65,16 +65,16 @@
                 <thead class="table-light">
                     <tr>
                         <th>Ref.</th>
-                        <th>Descricao</th>
+                        <th>Descrição</th>
                         <th>Un.</th>
                         <th class="text-center">Qtde contrato</th>
                         <th class="text-center">Acum. medido</th>
                         <th class="text-center">Saldo</th>
                         <th class="text-end">Unit. material</th>
-                        <th class="text-end">Unit. mao obra</th>
+                        <th class="text-end">Unit. mão obra</th>
                         <th class="text-end">Unit. equip.</th>
                         <th class="text-end">Material saldo</th>
-                        <th class="text-end">Mao obra saldo</th>
+                        <th class="text-end">Mão obra saldo</th>
                         <th class="text-end">Equip. saldo</th>
                         <th class="text-end">Total saldo</th>
                     </tr>
@@ -98,7 +98,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="13" class="text-muted">Todos os itens desta planilha ja foram medidos integralmente.</td>
+                        <td colspan="13" class="text-muted">Todos os itens desta planilha já foram medidos integralmente.</td>
                     </tr>
                     {% endfor %}
                 </tbody>

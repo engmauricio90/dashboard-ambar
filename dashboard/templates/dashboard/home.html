@@ -6,12 +6,12 @@
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
         <h1 class="mb-1">Dashboard Geral</h1>
-        <p class="text-muted mb-0">Painel consolidado a partir dos lancamentos reais de obras, notas, despesas e aditivos.</p>
+        <p class="text-muted mb-0">Painel consolidado a partir dos lançamentos reais de obras, notas, despesas e aditivos.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a href="{% url 'nova_obra' %}" class="btn btn-primary">Nova Obra</a>
-        <a href="{% url 'lista_obras' %}" class="btn btn-outline-dark">Ver Obras</a>
-        <a href="{% url 'relatorio_geral' %}" class="btn btn-outline-secondary">Relatorio Geral</a>
+        <a href="{% url 'nova_obra' %}" class="btn btn-primary">Nova obra</a>
+        <a href="{% url 'lista_obras' %}" class="btn btn-outline-dark">Ver obras</a>
+        <a href="{% url 'relatorio_geral' %}" class="btn btn-outline-secondary">Relatório geral</a>
     </div>
 </div>
 
@@ -21,7 +21,7 @@
             <div class="card-body">
                 <h6>Valor total de contratos ativos</h6>
                 <h4>R$ {{ total_contratos|floatformat:2 }}</h4>
-                <small class="text-muted">Contratos atualizados, sem obras concluidas</small>
+                <small class="text-muted">Contratos atualizados, sem obras concluídas</small>
             </div>
         </div>
     </div>
@@ -31,7 +31,7 @@
             <div class="card-body">
                 <h6>Total de aditivos</h6>
                 <h4>R$ {{ total_aditivos|floatformat:2 }}</h4>
-                <small class="text-muted">Supressoes: R$ {{ total_supressoes|floatformat:2 }}</small>
+                <small class="text-muted">Supressões: R$ {{ total_supressoes|floatformat:2 }}</small>
             </div>
         </div>
     </div>
@@ -49,9 +49,9 @@
     <div class="col-md-3">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h6>Total recebido liquido</h6>
+                <h6>Total recebido líquido</h6>
                 <h4>R$ {{ total_recebido_liquido|floatformat:2 }}</h4>
-                <small class="text-muted">Bruto menos retencoes e impostos</small>
+                <small class="text-muted">Bruto menos retenções e impostos</small>
             </div>
         </div>
     </div>
@@ -63,7 +63,7 @@
             <div class="card-body">
                 <h6>Total de despesas</h6>
                 <h4>R$ {{ total_despesas|floatformat:2 }}</h4>
-                <small class="text-muted">Despesas lancadas</small>
+                <small class="text-muted">Despesas lançadas</small>
             </div>
         </div>
     </div>
@@ -81,7 +81,7 @@
     <div class="col-md-3">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h6>Retenção tecnica</h6>
+                <h6>Retenção técnica</h6>
                 <h4>R$ {{ total_retencoes_tecnicas|floatformat:2 }}</h4>
                 <small class="text-muted">Saldo a recuperar/devolver</small>
             </div>
@@ -107,7 +107,7 @@
                 <h4 class="{% if total_resultado_projetado < 0 %}text-danger{% else %}text-success{% endif %}">
                     R$ {{ total_resultado_projetado|floatformat:2 }}
                 </h4>
-                <small class="text-muted">Baseado nas metas e projecoes das obras ativas</small>
+                <small class="text-muted">Baseado nas metas e projeções das obras ativas</small>
             </div>
         </div>
     </div>
@@ -118,7 +118,7 @@
                 <h4 class="{% if total_resultado_real < 0 %}text-danger{% else %}text-success{% endif %}">
                     R$ {{ total_resultado_real|floatformat:2 }}
                 </h4>
-                <small class="text-muted">Faturamento menos despesas, impostos e retencoes das obras ativas</small>
+                <small class="text-muted">Faturamento menos despesas, impostos e retenções das obras ativas</small>
             </div>
         </div>
     </div>
@@ -146,7 +146,7 @@
     <div class="col-lg-4">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h5 class="mb-3">Composicao por status</h5>
+                <h5 class="mb-3">Composição por status</h5>
                 <div style="position: relative; height: 320px;">
                     <canvas id="graficoStatus"></canvas>
                 </div>
@@ -206,7 +206,7 @@
         <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
             <div>
                 <h5 class="mb-1">Lista de obras</h5>
-                <p class="text-muted small mb-0">{{ quantidade_obras_lista }} obra(s) na listagem. Os filtros abaixo nao alteram os cards do dashboard.</p>
+                <p class="text-muted small mb-0">{{ quantidade_obras_lista }} obra(s) na listagem. Os filtros abaixo não alteram os cards do dashboard.</p>
             </div>
         </div>
 

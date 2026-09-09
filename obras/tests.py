@@ -192,7 +192,7 @@ class ObraFluxoFinanceiroTests(TestCase):
         response = self.client.get(reverse('editar_nota_fiscal', args=[self.obra.id, nota.id]))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Adicionar retencao')
+        self.assertContains(response, 'Adicionar retenção')
         self.assertContains(response, 'Adicionar imposto')
         self.assertContains(response, 'name="retencoes-TOTAL_FORMS" value="0"')
         self.assertContains(response, 'name="impostos-TOTAL_FORMS" value="0"')

@@ -883,7 +883,7 @@ class Fase6PilotoCassoniUsuariosTests(TestCase):
         response = self.client.get(confirm_path)
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Link invalido')
+        self.assertContains(response, 'Link inválido')
         usuario.refresh_from_db()
         self.assertTrue(usuario.check_password('senha-nova-forte-123'))
 

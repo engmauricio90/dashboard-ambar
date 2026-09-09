@@ -1,15 +1,15 @@
 {% extends 'base.html' %}
 
-{% block title %}Previsoes Financeiras{% endblock %}
+{% block title %}Previsões financeiras{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
-        <h1 class="mb-1">Previsoes Financeiras</h1>
-        <p class="text-muted mb-0">Lancamentos planejados para simular entradas e saidas futuras sem criar contas reais.</p>
+        <h1 class="mb-1">Previsões financeiras</h1>
+        <p class="text-muted mb-0">Lançamentos planejados para simular entradas e saídas futuras sem criar contas reais.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a href="{% url 'nova_previsao_financeira' %}" class="btn btn-primary">Nova Previsao</a>
+        <a href="{% url 'nova_previsao_financeira' %}" class="btn btn-primary">Nova previsão</a>
         <a href="{% url 'financeiro_home' %}" class="btn btn-secondary">Voltar</a>
     </div>
 </div>
@@ -22,7 +22,7 @@
                 <select name="tipo" class="form-select">
                     <option value="">Todos</option>
                     <option value="receber" {% if tipo_atual == 'receber' %}selected{% endif %}>Entrada prevista</option>
-                    <option value="pagar" {% if tipo_atual == 'pagar' %}selected{% endif %}>Saida prevista</option>
+                    <option value="pagar" {% if tipo_atual == 'pagar' %}selected{% endif %}>Saída prevista</option>
                 </select>
             </div>
             <div class="col-md-3">
@@ -50,7 +50,7 @@
                     <tr>
                         <th>Data prevista</th>
                         <th>Tipo</th>
-                        <th>Descricao</th>
+                        <th>Descrição</th>
                         <th>Cliente/Fornecedor</th>
                         <th>Obra</th>
                         <th>Centro</th>
@@ -77,7 +77,7 @@
                         </td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="9">Nenhuma previsao cadastrada.</td></tr>
+                    <tr><td colspan="9">Nenhuma previsão cadastrada.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

@@ -573,14 +573,14 @@ class ControleAbastecimentoTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.context['ordens']), 20)
-        self.assertContains(response, 'Pagina 1 de 2')
+        self.assertContains(response, 'Página 1 de 2')
         self.assertContains(response, f'obra={obra.id}&page=2')
         self.assertContains(response, 'R$ 250,00')
 
         segunda_pagina = self.client.get(reverse('lista_ordens_compra_gerais'), {'obra': obra.id, 'page': 2})
 
         self.assertEqual(len(segunda_pagina.context['ordens']), 5)
-        self.assertContains(segunda_pagina, 'Pagina 2 de 2')
+        self.assertContains(segunda_pagina, 'Página 2 de 2')
 
     def test_botao_nf_ordem_compra_direciona_para_conta_pagar(self):
         obra = self._obra(nome_obra='Obra OC', cliente='Cliente')

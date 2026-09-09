@@ -29,7 +29,7 @@ class UsuariosTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(PerfilUsuario.objects.filter(user=self.user).exists())
-        self.assertContains(response, 'Minha area')
+        self.assertContains(response, 'Minha área')
         self.assertContains(response, 'usuario')
 
     def test_usuario_comum_nao_acessa_administracao(self):
@@ -118,7 +118,7 @@ class UsuariosTests(TestCase):
         response = self.client.get(reverse('lista_usuarios'))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Usuarios')
+        self.assertContains(response, 'Usuários')
 
     def test_usuario_edita_proprio_perfil(self):
         response = self.client.post(
@@ -219,7 +219,7 @@ class PasswordResetTests(TestCase):
         self.assertTrue(self.user.check_password('senha-nova-forte-123'))
         self.assertTrue(self.client.login(username='reset-user', password='senha-nova-forte-123'))
         response = self.client.get(confirm_path)
-        self.assertContains(response, 'Link invalido')
+        self.assertContains(response, 'Link inválido')
 
 
 class RateLimitAutenticacaoTests(TestCase):

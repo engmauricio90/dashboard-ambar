@@ -1,16 +1,16 @@
 {% extends 'base.html' %}
 
-{% block title %}Medicoes de contratados{% endblock %}
+{% block title %}Medições de contratados{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-3">
     <div>
-        <h1 class="mb-1">Medicoes de contratados</h1>
+        <h1 class="mb-1">Medições de contratados</h1>
         <p class="text-muted mb-0">Painel operacional para recibos simples, planilhas cumulativas e cadastro de contratados.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a class="btn btn-primary" href="{% url 'lista_medicoes_empreiteiros' %}">Ver medicoes</a>
-        <a class="btn btn-primary" href="{% url 'nova_medicao_empreiteiro_simples' %}">Nova medicao simples</a>
+        <a class="btn btn-primary" href="{% url 'lista_medicoes_empreiteiros' %}">Ver medições</a>
+        <a class="btn btn-primary" href="{% url 'nova_medicao_empreiteiro_simples' %}">Nova medição simples</a>
         <a class="btn btn-outline-primary" href="{% url 'novo_orcamento_manual_medicao' %}?tipo=empreiteiro">Criar cumulativa manual</a>
         <a class="btn btn-outline-secondary" href="{% url 'lista_empreiteiros_medicao' %}">Contratados</a>
     </div>
@@ -19,13 +19,13 @@
 <div class="row g-3 mb-4">
     <div class="col-md-3">
         <div class="metric-card">
-            <span>Medicoes simples</span>
+            <span>Medições simples</span>
             <strong>{{ total_simples }}</strong>
         </div>
     </div>
     <div class="col-md-3">
         <div class="metric-card">
-            <span>Medicoes cumulativas</span>
+            <span>Medições cumulativas</span>
             <strong>{{ total_cumulativas }}</strong>
         </div>
     </div>
@@ -48,25 +48,25 @@
         <div class="module-card h-100">
             <div>
                 <h2>Recibo simples</h2>
-                <p>Use para lancamentos rapidos por periodo, com itens digitaveis e PDF do recibo.</p>
+                <p>Use para lançamentos rápidos por período, com itens digitáveis e PDF do recibo.</p>
             </div>
-            <a class="btn btn-primary" href="{% url 'nova_medicao_empreiteiro_simples' %}">Nova medicao simples</a>
+            <a class="btn btn-primary" href="{% url 'nova_medicao_empreiteiro_simples' %}">Nova medição simples</a>
         </div>
     </div>
     <div class="col-lg-4">
         <div class="module-card h-100">
             <div>
-                <h2>Medicoes</h2>
-                <p>Consulte recibos simples e medicoes cumulativas em uma lista paginada, com filtros e acoes rapidas.</p>
+                <h2>Medições</h2>
+                <p>Consulte recibos simples e medições cumulativas em uma lista paginada, com filtros e ações rápidas.</p>
             </div>
-            <a class="btn btn-outline-primary" href="{% url 'lista_medicoes_empreiteiros' %}">Ver medicoes</a>
+            <a class="btn btn-outline-primary" href="{% url 'lista_medicoes_empreiteiros' %}">Ver medições</a>
         </div>
     </div>
     <div class="col-lg-4">
         <div class="module-card h-100">
             <div>
                 <h2>Cumulativas</h2>
-                <p>Acesse a lista de planilhas para abrir saldos, acumulados e criar nova medicao cumulativa.</p>
+                <p>Acesse a lista de planilhas para abrir saldos, acumulados e criar nova medição cumulativa.</p>
             </div>
             <a class="btn btn-outline-primary" href="{% url 'lista_planilhas_empreiteiros' %}">Ver planilhas</a>
         </div>
@@ -78,7 +78,7 @@
         <div class="module-card h-100">
             <div>
                 <h2>Contratados</h2>
-                <p>Consulte, cadastre e mantenha os dados usados automaticamente nas medicoes.</p>
+                <p>Consulte, cadastre e mantenha os dados usados automaticamente nas medições.</p>
             </div>
             <a class="btn btn-outline-secondary" href="{% url 'lista_empreiteiros_medicao' %}">Abrir cadastro</a>
         </div>
@@ -86,8 +86,8 @@
     <div class="col-lg-4">
         <div class="module-card module-card-compact h-100">
             <div>
-                <h2>Importacao</h2>
-                <p>Importe uma planilha quando a medicao cumulativa precisar partir de uma base de contrato.</p>
+                <h2>Importação</h2>
+                <p>Importe uma planilha quando a medição cumulativa precisar partir de uma base de contrato.</p>
             </div>
             <a class="btn btn-outline-secondary" href="{% url 'importar_orcamento_medicao' %}">Importar planilha</a>
         </div>
@@ -95,10 +95,10 @@
     <div class="col-lg-4">
         <div class="module-card module-card-compact h-100">
             <div>
-                <h2>Relatorios</h2>
-                <p>Gere consulta gerencial por contratado, obra, periodo, tipo e colunas escolhidas.</p>
+                <h2>Relatórios</h2>
+                <p>Gere consulta gerencial por contratado, obra, período, tipo e colunas escolhidas.</p>
             </div>
-            <a class="btn btn-outline-secondary" href="{% url 'relatorio_medicoes' %}?tipo=empreiteiro">Abrir relatorio</a>
+            <a class="btn btn-outline-secondary" href="{% url 'relatorio_medicoes' %}?tipo=empreiteiro">Abrir relatório</a>
         </div>
     </div>
 </div>

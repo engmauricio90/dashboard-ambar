@@ -43,7 +43,7 @@
                     <li>{% if checklist.primeiro_admin %}OK{% else %}-{% endif %} Primeiro administrador</li>
                     <li>{% if checklist.identidade_configurada %}OK{% else %}-{% endif %} Identidade configurada</li>
                     <li>{% if checklist.primeira_obra %}OK{% else %}-{% endif %} Primeira obra criada</li>
-                    <li>{% if checklist.outros_usuarios %}OK{% else %}-{% endif %} Outros usuarios adicionados</li>
+                    <li>{% if checklist.outros_usuarios %}OK{% else %}-{% endif %} Outros usuários adicionados</li>
                 </ul>
             </div>
         </div>
@@ -51,7 +51,7 @@
     <div class="col-md-4">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h2 class="h6">Proximos passos</h2>
+                <h2 class="h6">Próximos passos</h2>
                 <ol class="mb-0 ps-3">
                     <li>Confirmar entrega do convite.</li>
                     <li>Completar identidade visual.</li>
@@ -64,18 +64,18 @@
 </div>
 
 <div class="card shadow-sm">
-    <div class="card-header fw-bold">Usuarios vinculados</div>
+    <div class="card-header fw-bold">Usuários vinculados</div>
     <div class="table-responsive">
         <table class="table table-striped align-middle mb-0">
             <thead>
                 <tr>
-                    <th>Usuario</th>
+                    <th>Usuário</th>
                     <th>Nome</th>
                     <th>E-mail</th>
                     <th>Grupo</th>
-                    <th>Admin empresa</th>
+                    <th>Admin. da empresa</th>
                     <th>Status</th>
-                    <th class="text-end">Acoes</th>
+                    <th class="text-end">Ações</th>
                 </tr>
             </thead>
             <tbody>
@@ -85,7 +85,7 @@
                     <td>{{ vinculo.usuario.get_full_name|default:'-' }}</td>
                     <td>{{ vinculo.usuario.email|default:'-' }}</td>
                     <td>{% if vinculo.grupo %}{{ vinculo.grupo.name }}{% else %}-{% endif %}</td>
-                    <td>{% if vinculo.administrador_empresa %}Sim{% else %}Nao{% endif %}</td>
+                    <td>{% if vinculo.administrador_empresa %}Sim{% else %}Não{% endif %}</td>
                     <td>
                         {% if not vinculo.ativo %}
                             <span class="badge text-bg-secondary">Inativo</span>
@@ -108,7 +108,7 @@
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="7" class="text-center text-muted py-4">Nenhum usuario vinculado.</td>
+                    <td colspan="7" class="text-center text-muted py-4">Nenhum usuário vinculado.</td>
                 </tr>
                 {% endfor %}
             </tbody>

@@ -1,13 +1,13 @@
 {% extends 'base.html' %}
 {% load dict_extras %}
 
-{% block title %}Relatorio gerencial financeiro{% endblock %}
+{% block title %}Relatório gerencial financeiro{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
-        <h1 class="mb-1">Relatorio gerencial financeiro</h1>
-        <p class="text-muted mb-0">Filtre contas, previsoes, obras, centros de custo e escolha as colunas que devem aparecer.</p>
+        <h1 class="mb-1">Relatório gerencial financeiro</h1>
+        <p class="text-muted mb-0">Filtre contas, previsões, obras, centros de custo e escolha as colunas que devem aparecer.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-outline-danger" href="?{% if query_string %}{{ query_string }}&{% endif %}export=pdf" target="_blank">PDF</a>
@@ -127,7 +127,7 @@
                     </tr>
                     {% endfor %}
                     {% empty %}
-                    <tr><td colspan="{{ colunas|length }}" class="text-muted">Nenhum lancamento encontrado para os filtros informados.</td></tr>
+                    <tr><td colspan="{{ colunas|length }}" class="text-muted">Nenhum lançamento encontrado para os filtros informados.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

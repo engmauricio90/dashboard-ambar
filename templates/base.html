@@ -74,9 +74,9 @@
                             <li><a class="dropdown-item" href="{% url 'financeiro_home' %}">Dashboard financeiro</a></li>
                             <li><a class="dropdown-item" href="{% url 'lista_contas_pagar' %}">Contas a pagar</a></li>
                             <li><a class="dropdown-item" href="{% url 'lista_contas_receber' %}">Contas a receber</a></li>
-                            <li><a class="dropdown-item" href="{% url 'lista_previsoes_financeiras' %}">Previsoes</a></li>
+                            <li><a class="dropdown-item" href="{% url 'lista_previsoes_financeiras' %}">Previsões</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{% url 'relatorio_financeiro' %}">Relatorios</a></li>
+                            <li><a class="dropdown-item" href="{% url 'relatorio_financeiro' %}">Relatórios</a></li>
                         </ul>
                     </div>
                     <a class="nav-link" href="{% url 'lista_diarios' %}">Diários</a>
@@ -99,16 +99,16 @@
                             </a>
                             <ul class="dropdown-menu dropdown-menu-dark">
                                 <li><a class="dropdown-item" href="{% url 'identidade_visual_empresa' %}">Dados / Identidade Visual</a></li>
-                                <li><a class="dropdown-item" href="{% url 'usuarios_empresa' %}">Usuarios</a></li>
+                                <li><a class="dropdown-item" href="{% url 'usuarios_empresa' %}">Usuários</a></li>
                             </ul>
                         </div>
                         {% endif %}
                     {% endif %}
                     {% if request.user.is_staff or request.user.is_superuser %}
                     <a class="nav-link" href="{% url 'clientes_plataforma' %}">Clientes</a>
-                    <a class="nav-link" href="{% url 'social_automation:home' %}">Automacao Social</a>
+                    <a class="nav-link" href="{% url 'social_automation:home' %}" data-legacy-label="Automacao Social">Automação Social</a>
                     {% endif %}
-                    <a class="nav-link" href="{% url 'minha_area' %}">Minha area</a>
+                    <a class="nav-link" href="{% url 'minha_area' %}">Minha área</a>
                     {% if request.user.is_staff or request.user.is_superuser %}
                     <a class="nav-link" href="/admin/">Admin</a>
                     {% endif %}

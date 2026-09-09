@@ -1,16 +1,16 @@
 {% extends 'base.html' %}
 
-{% block title %}Usuarios{% endblock %}
+{% block title %}Usuários{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
-        <h1 class="mb-1">Usuarios</h1>
+        <h1 class="mb-1">Usuários</h1>
         <p class="text-muted mb-0">Cadastro, grupos e obras vinculadas.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a class="btn btn-primary" href="{% url 'novo_usuario' %}">Novo usuario</a>
-        <a class="btn btn-secondary" href="{% url 'minha_area' %}">Minha area</a>
+        <a class="btn btn-primary" href="{% url 'novo_usuario' %}">Novo usuário</a>
+        <a class="btn btn-secondary" href="{% url 'minha_area' %}">Minha área</a>
     </div>
 </div>
 
@@ -19,7 +19,7 @@
         <form method="get" class="row g-2 align-items-end">
             <div class="col-md-10">
                 <label class="form-label">Busca</label>
-                <input type="search" name="busca" value="{{ busca }}" class="form-control" placeholder="Nome, usuario ou e-mail">
+                <input type="search" name="busca" value="{{ busca }}" class="form-control" placeholder="Nome, usuário ou e-mail">
             </div>
             <div class="col-md-2">
                 <button class="btn btn-primary w-100" type="submit">Filtrar</button>
@@ -34,7 +34,7 @@
             <table class="table table-sm align-middle">
                 <thead>
                     <tr>
-                        <th>Usuario</th>
+                        <th>Usuário</th>
                         <th>Nome</th>
                         <th>E-mail</th>
                         <th>Grupos</th>
@@ -67,7 +67,7 @@
                         </td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="7" class="text-muted">Nenhum usuario encontrado.</td></tr>
+                    <tr><td colspan="7" class="text-muted">Nenhum usuário encontrado.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

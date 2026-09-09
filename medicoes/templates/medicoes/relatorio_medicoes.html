@@ -1,12 +1,12 @@
 {% extends 'base.html' %}
 {% load dict_extras %}
 
-{% block title %}Relatorio gerencial de medicoes{% endblock %}
+{% block title %}Relatório gerencial de medições{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div>
-        <h1 class="mb-1">Relatorio gerencial de medicoes</h1>
+        <h1 class="mb-1">Relatório gerencial de medições</h1>
         <p class="text-muted mb-0">Filtre por tipo, obra, contratado e periodo. Escolha as colunas que devem aparecer.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
@@ -67,7 +67,7 @@
 <div class="row g-3 mb-4">
     <div class="col-md-4"><div class="card shadow-sm h-100"><div class="card-body"><h6>Total medido</h6><h4>R$ {{ totais.medido|floatformat:2 }}</h4></div></div></div>
     <div class="col-md-4"><div class="card shadow-sm h-100"><div class="card-body"><h6>Descontos</h6><h4>R$ {{ totais.descontos|floatformat:2 }}</h4></div></div></div>
-    <div class="col-md-4"><div class="card shadow-sm h-100"><div class="card-body"><h6>Total liquido</h6><h4>R$ {{ totais.liquido|floatformat:2 }}</h4></div></div></div>
+    <div class="col-md-4"><div class="card shadow-sm h-100"><div class="card-body"><h6>Total líquido</h6><h4>R$ {{ totais.liquido|floatformat:2 }}</h4></div></div></div>
 </div>
 
 <div class="card shadow-sm">

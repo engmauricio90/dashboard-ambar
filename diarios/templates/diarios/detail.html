@@ -36,12 +36,12 @@
                     <div class="col-md-4"><strong>Clima:</strong> {{ diario.get_condicao_climatica_display|default:'-' }}</div>
                     <div class="col-md-4"><strong>Turno:</strong> {{ diario.get_turno_display }}</div>
                     <div class="col-md-4"><strong>Situação:</strong> {{ diario.get_situacao_obra_display|default:'-' }}</div>
-                    <div class="col-md-4"><strong>Responsavel:</strong> {{ diario.responsavel_preenchimento }}</div>
-                    <div class="col-md-4"><strong>Tecnico:</strong> {{ diario.responsavel_tecnico|default:'-' }}</div>
-                    <div class="col-12"><strong>Servicos executados:</strong><br>{{ diario.descricao_servicos|linebreaksbr|default:'-' }}</div>
-                    <div class="col-md-6"><strong>Ocorrencias/interferencias:</strong><br>{{ diario.ocorrencias_interferencias|linebreaksbr|default:'-' }}</div>
-                    <div class="col-md-6"><strong>Pendencias:</strong><br>{{ diario.pendencias|linebreaksbr|default:'-' }}</div>
-                    <div class="col-md-6"><strong>Orientacoes:</strong><br>{{ diario.orientacoes|linebreaksbr|default:'-' }}</div>
+                    <div class="col-md-4"><strong>Responsável:</strong> {{ diario.responsavel_preenchimento }}</div>
+                    <div class="col-md-4"><strong>Técnico:</strong> {{ diario.responsavel_tecnico|default:'-' }}</div>
+                    <div class="col-12"><strong>Serviços executados:</strong><br>{{ diario.descricao_servicos|linebreaksbr|default:'-' }}</div>
+                    <div class="col-md-6"><strong>Ocorrências/interferências:</strong><br>{{ diario.ocorrencias_interferencias|linebreaksbr|default:'-' }}</div>
+                    <div class="col-md-6"><strong>Pendências:</strong><br>{{ diario.pendencias|linebreaksbr|default:'-' }}</div>
+                    <div class="col-md-6"><strong>Orientações:</strong><br>{{ diario.orientacoes|linebreaksbr|default:'-' }}</div>
                     <div class="col-md-6"><strong>Observações:</strong><br>{{ diario.observacoes|linebreaksbr|default:'-' }}</div>
                     <div class="col-12"><strong>Visita:</strong> {% if diario.houve_visita %}Sim - {{ diario.visitante_nome|default:'Não informado' }}{% else %}Não{% endif %}</div>
                 </div>
@@ -50,14 +50,14 @@
 
         <div class="card shadow-sm mb-4">
             <div class="card-body">
-                <h5 class="mb-3">Ocorrencias</h5>
+                <h5 class="mb-3">Ocorrências</h5>
                 <div class="table-responsive">
                     <table class="table table-sm align-middle">
                         <thead><tr><th>Tipo</th><th>Descrição</th><th>Prazo</th><th>Financeiro</th><th>Status</th></tr></thead>
                         <tbody>
                             {% for item in diario.ocorrencias.all %}
                             <tr><td>{{ item.get_tipo_display }}</td><td>{{ item.descricao }}</td><td>{{ item.get_impacto_prazo_display }}</td><td>{{ item.get_impacto_financeiro_display }}</td><td>{{ item.get_status_display }}</td></tr>
-                            {% empty %}<tr><td colspan="5">Sem ocorrencias.</td></tr>{% endfor %}
+                            {% empty %}<tr><td colspan="5">Sem ocorrências.</td></tr>{% endfor %}
                         </tbody>
                     </table>
                 </div>
@@ -122,10 +122,10 @@
 
         <div class="card shadow-sm">
             <div class="card-body">
-                <h5 class="mb-3">Historico</h5>
+                <h5 class="mb-3">Histórico</h5>
                 {% for item in diario.historico.all %}
                 <div class="border-bottom py-2">{{ item.get_acao_display }}<br><span class="text-muted small">{{ item.created_at }} - {{ item.usuario|default:'Sistema' }}</span></div>
-                {% empty %}<p class="text-muted">Sem historico.</p>{% endfor %}
+                {% empty %}<p class="text-muted">Sem histórico.</p>{% endfor %}
             </div>
         </div>
     </div>
