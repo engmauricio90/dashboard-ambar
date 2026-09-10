@@ -1,3 +1,5 @@
+import posixpath
+
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.http import Http404
@@ -5,7 +7,14 @@ from django.views.static import serve
 
 
 def _normalized_media_path(path):
-    return str(path or '').replace('\\', '/').lstrip('/')
+    raw_path = str(path or '').replace('\\', '/').lstrip('/')
+    normalized_path = posixpath.normpath(raw_path)
+    if normalized_path in {'', '.'}:
+        return ''
+    parts = [part for part in normalized_path.split('/') if part]
+    if '..' in parts:
+        return ''
+    return normalized_path
 
 
 def _usuario_pode_acessar_media(request, path):

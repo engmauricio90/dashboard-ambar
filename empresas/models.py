@@ -1,21 +1,29 @@
+from pathlib import PurePosixPath
+
 from django.conf import settings
 from django.core.validators import RegexValidator
 from django.db import models
+from django.utils.text import get_valid_filename
+
+
+def _safe_upload_filename(filename):
+    safe_name = PurePosixPath(str(filename or 'arquivo').replace('\\', '/')).name
+    return get_valid_filename(safe_name) or 'arquivo'
 
 
 def empresa_logo_upload_to(instance, filename):
     slug = instance.slug or 'sem-slug'
-    return f'empresas/{slug}/branding/logo/{filename}'
+    return f'empresas/{slug}/branding/logo/{_safe_upload_filename(filename)}'
 
 
 def empresa_cabecalho_upload_to(instance, filename):
     slug = instance.slug or 'sem-slug'
-    return f'empresas/{slug}/branding/cabecalho/{filename}'
+    return f'empresas/{slug}/branding/cabecalho/{_safe_upload_filename(filename)}'
 
 
 def empresa_rodape_upload_to(instance, filename):
     slug = instance.slug or 'sem-slug'
-    return f'empresas/{slug}/branding/rodape/{filename}'
+    return f'empresas/{slug}/branding/rodape/{_safe_upload_filename(filename)}'
 
 
 class Empresa(models.Model):

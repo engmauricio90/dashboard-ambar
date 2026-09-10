@@ -11,12 +11,14 @@ from django.utils import timezone
 from openpyxl import load_workbook
 
 from documentos.formatting import format_date_br, format_money_br, format_percent_br
+from documentos.excel.workbook import ExcelColumn, ExcelReportBuilder
 from documentos.theme import DocumentTheme
 from obras.models import DespesaObra, NotaFiscal, Obra, RetencaoTecnicaObra
 from controles.models import ItemOrdemCompraGeral, NotaFiscalOrdemCompraGeral, OrdemCompraGeral
 from empresas.models import Empresa, UsuarioEmpresa
 
 from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor, ItemContaPagarOrdemCompra, PrevisaoFinanceira
+from .forms import ImportarCredoresSiengeForm
 
 
 class FinanceiroIntegracaoObraTests(TestCase):
@@ -44,6 +46,29 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertEqual(theme.company_name, 'Empresa Sem Logo')
         self.assertEqual(theme.geometry.width, DocumentTheme.A4_LANDSCAPE[0])
         self.assertIsNotNone(theme.font('body'))
+
+    def test_excel_report_builder_escapa_formula_em_texto(self):
+        builder = ExcelReportBuilder(empresa=self.empresa, title='Seguranca Excel')
+        builder.add_table(
+            [ExcelColumn('descricao', 'Descricao'), ExcelColumn('valor', 'Valor', number_format=ExcelReportBuilder.MONEY_FORMAT)],
+            [{'descricao': '=HYPERLINK("https://exemplo.invalid","abrir")', 'valor': Decimal('-12.35')}],
+        )
+
+        workbook = load_workbook(BytesIO(builder.build()), data_only=False)
+        worksheet = workbook.active
+
+        self.assertEqual(worksheet['A2'].value, "'=HYPERLINK(\"https://exemplo.invalid\",\"abrir\")")
+        self.assertEqual(worksheet['A2'].data_type, 's')
+        self.assertEqual(Decimal(str(worksheet['B2'].value)), Decimal('-12.35'))
+
+    def test_importacao_financeira_rejeita_arquivo_nao_csv(self):
+        form = ImportarCredoresSiengeForm(
+            data={'tipo_relatorio': 'aberto'},
+            files={'arquivo': SimpleUploadedFile('despesas.xlsx', b'conteudo', content_type='application/octet-stream')},
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('arquivo', form.errors)
 
     def _outra_empresa_com_cadastros(self):
         outra = Empresa.objects.create(nome='Cassoni', slug='cassoni', ativa=True)

@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.core.exceptions import ValidationError
 
 from obras.models import Obra
 
@@ -10,6 +11,7 @@ from .services import gerar_username_por_email
 
 User = get_user_model()
 GRUPOS_FUNCIONAIS = ['Administrador', 'Diretoria', 'Financeiro', 'Engenharia', 'Compras', 'Administrativo', 'Obras', 'Consulta']
+MAX_BRANDING_IMAGE_SIZE = 5 * 1024 * 1024
 
 
 def grupos_funcionais_queryset():
@@ -236,6 +238,21 @@ class IdentidadeVisualEmpresaForm(forms.ModelForm):
             if isinstance(field.widget, forms.ClearableFileInput):
                 css_class = 'form-control'
             field.widget.attrs.setdefault('class', css_class)
+
+    def _clean_branding_image(self, field_name):
+        image = self.cleaned_data.get(field_name)
+        if image and getattr(image, 'size', 0) > MAX_BRANDING_IMAGE_SIZE:
+            raise ValidationError('Envie uma imagem com no maximo 5 MB.')
+        return image
+
+    def clean_logo(self):
+        return self._clean_branding_image('logo')
+
+    def clean_cabecalho_documentos(self):
+        return self._clean_branding_image('cabecalho_documentos')
+
+    def clean_rodape_documentos(self):
+        return self._clean_branding_image('rodape_documentos')
 
 
 class ClientePlataformaForm(forms.ModelForm):

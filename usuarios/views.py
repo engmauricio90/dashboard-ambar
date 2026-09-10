@@ -5,6 +5,7 @@ from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth.models import Group
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_POST
 
 from empresas.services import vincular_usuario_as_empresas_do_criador
 
@@ -164,16 +165,16 @@ def editar_usuario(request, user_id):
 
 
 @login_required
+@require_POST
 def alternar_status_usuario(request, user_id):
     if not _pode_administrar_usuarios(request.user):
         messages.error(request, 'Voce nao tem permissao para alterar usuarios.')
         return redirect('minha_area')
     usuario = get_object_or_404(User, id=user_id)
-    if request.method == 'POST':
-        if usuario == request.user:
-            messages.error(request, 'Voce nao pode inativar o proprio usuario.')
-        else:
-            usuario.is_active = not usuario.is_active
-            usuario.save(update_fields=['is_active'])
-            messages.success(request, 'Status do usuario atualizado.')
+    if usuario == request.user:
+        messages.error(request, 'Voce nao pode inativar o proprio usuario.')
+    else:
+        usuario.is_active = not usuario.is_active
+        usuario.save(update_fields=['is_active'])
+        messages.success(request, 'Status do usuario atualizado.')
     return redirect('lista_usuarios')

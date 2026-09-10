@@ -34,6 +34,7 @@ class ExcelReportBuilder:
         'measured': 'DCF5E5',
         'receivable': 'FEE2E2',
     }
+    FORMULA_PREFIXES = ('=', '+', '-', '@')
 
     def __init__(self, empresa=None, title='', subtitle='', sheet_name='Relatorio', orientation='landscape'):
         self.theme = DocumentTheme(empresa, orientation=orientation)
@@ -81,6 +82,11 @@ class ExcelReportBuilder:
     def _fill(self, color):
         return PatternFill('solid', fgColor=self.FILLS.get(color, color))
 
+    def _safe_cell_value(self, value):
+        if isinstance(value, str) and value.lstrip().startswith(self.FORMULA_PREFIXES):
+            return f"'{value}"
+        return value
+
     def add_table(self, columns, rows):
         header_row = self.current_row
         thin = Side(style='thin', color='CBD5E1')
@@ -119,7 +125,7 @@ class ExcelReportBuilder:
             row_font = Font(bold=bool(row.get('__bold')), color='111827')
             cell_bgs = row.get('__cell_bgs') if isinstance(row.get('__cell_bgs'), dict) else {}
             for col_index, column in enumerate(columns, start=1):
-                cell = self.ws.cell(self.current_row, col_index, row.get(column.key))
+                cell = self.ws.cell(self.current_row, col_index, self._safe_cell_value(row.get(column.key)))
                 cell.border = border
                 if column.key in cell_bgs:
                     cell.fill = self._fill(cell_bgs[column.key])

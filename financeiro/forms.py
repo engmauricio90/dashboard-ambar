@@ -1,4 +1,5 @@
 from decimal import Decimal
+from pathlib import PurePosixPath
 
 from django import forms
 from django.forms import inlineformset_factory
@@ -9,6 +10,18 @@ from obras.models import Obra
 from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor, ItemContaPagarOrdemCompra, PrevisaoFinanceira
 
 
+MAX_CSV_UPLOAD_SIZE = 10 * 1024 * 1024
+
+
+def validar_upload_csv(upload):
+    filename = PurePosixPath(str(getattr(upload, 'name', '') or '').replace('\\', '/')).name
+    if not filename.lower().endswith('.csv'):
+        raise forms.ValidationError('Envie um arquivo CSV.')
+    if getattr(upload, 'size', 0) > MAX_CSV_UPLOAD_SIZE:
+        raise forms.ValidationError('Envie um CSV com no maximo 10 MB.')
+    return upload
+
+
 class ImportarCredoresSiengeForm(forms.Form):
     TIPO_RELATORIO_CHOICES = [
         ('aberto', 'Contas em aberto'),
@@ -17,6 +30,9 @@ class ImportarCredoresSiengeForm(forms.Form):
 
     tipo_relatorio = forms.ChoiceField(label='Tipo de relatório', choices=TIPO_RELATORIO_CHOICES)
     arquivo = forms.FileField(label='Arquivo CSV')
+
+    def clean_arquivo(self):
+        return validar_upload_csv(self.cleaned_data['arquivo'])
 
 
 class FornecedorForm(BootstrapModelForm):

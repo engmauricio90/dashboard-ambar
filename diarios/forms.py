@@ -15,6 +15,9 @@ from .models import (
 )
 
 
+MAX_DIARIO_IMAGE_SIZE = 10 * 1024 * 1024
+
+
 class OptionalExtraFormMixin:
     meaningful_fields = []
     ignored_values = {}
@@ -187,6 +190,8 @@ class FotoDiarioForm(OptionalExtraFormMixin, BootstrapModelForm):
             if hasattr(imagem, 'close'):
                 imagem.close()
             return imagem
+        if getattr(imagem, 'size', 0) > MAX_DIARIO_IMAGE_SIZE:
+            raise ValidationError('Envie uma imagem com no maximo 10 MB.')
 
         posicao = imagem.tell() if hasattr(imagem, 'tell') else None
         try:

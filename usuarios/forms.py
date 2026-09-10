@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import PasswordResetForm
 from django.contrib.auth.models import Group
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from urllib.parse import urlparse
 
 from obras.forms import BootstrapModelForm
@@ -11,6 +12,7 @@ from .models import PerfilUsuario
 
 
 User = get_user_model()
+MAX_AVATAR_SIZE = 5 * 1024 * 1024
 
 
 class PlataformaPasswordResetForm(PasswordResetForm):
@@ -111,6 +113,12 @@ class PerfilUsuarioForm(BootstrapModelForm):
             'itens_por_pagina': 'Itens por pagina',
         }
 
+    def clean_avatar(self):
+        avatar = self.cleaned_data.get('avatar')
+        if avatar and getattr(avatar, 'size', 0) > MAX_AVATAR_SIZE:
+            raise ValidationError('Envie uma imagem com no maximo 5 MB.')
+        return avatar
+
 
 class MeuPerfilForm(BootstrapModelForm):
     class Meta:
@@ -120,3 +128,9 @@ class MeuPerfilForm(BootstrapModelForm):
             'dashboard_inicial': 'Dashboard inicial',
             'itens_por_pagina': 'Itens por pagina',
         }
+
+    def clean_avatar(self):
+        avatar = self.cleaned_data.get('avatar')
+        if avatar and getattr(avatar, 'size', 0) > MAX_AVATAR_SIZE:
+            raise ValidationError('Envie uma imagem com no maximo 5 MB.')
+        return avatar

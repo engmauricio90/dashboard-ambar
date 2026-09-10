@@ -433,6 +433,13 @@ class MidiaMultiempresaTests(TestCase):
             self.assertEqual(response.status_code, 200)
             response.close()
 
+    def test_midia_rejeita_path_traversal(self):
+        self.client.force_login(self.usuario_ambar)
+
+        response = self.client.get(reverse('protected_media', kwargs={'path': '../settings.py'}))
+
+        self.assertEqual(response.status_code, 404)
+
 
 class IsolamentoListagensMultiempresaTests(TestCase):
     def setUp(self):

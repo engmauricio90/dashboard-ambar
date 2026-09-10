@@ -51,6 +51,17 @@ class UsuariosTests(TestCase):
         self.assertEqual(outro.username, 'outro')
         self.assertTrue(outro.is_active)
 
+    def test_status_usuario_legado_nao_altera_por_get(self):
+        self.user.is_staff = True
+        self.user.save(update_fields=['is_staff'])
+        outro = User.objects.create_user(username='outro-get', password='senha')
+
+        response = self.client.get(reverse('alternar_status_usuario', args=[outro.id]))
+
+        self.assertEqual(response.status_code, 405)
+        outro.refresh_from_db()
+        self.assertTrue(outro.is_active)
+
     def test_diretoria_sem_grupo_administrador_nao_administra_usuarios(self):
         self.user.groups.add(Group.objects.get_or_create(name='Diretoria')[0])
 

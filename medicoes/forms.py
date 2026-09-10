@@ -3,6 +3,7 @@ from decimal import Decimal
 from django import forms
 from django.forms import inlineformset_factory
 
+from financeiro.forms import validar_upload_csv
 from obras.forms import BootstrapForm, BootstrapModelForm
 
 from .models import (
@@ -31,6 +32,9 @@ class ImportarOrcamentoForm(BootstrapForm):
         empresa = kwargs.pop('empresa', None)
         super().__init__(*args, **kwargs)
         self.fields['obra'].queryset = Obra.objects.filter(empresa=empresa) if empresa else Obra.objects.none()
+
+    def clean_arquivo(self):
+        return validar_upload_csv(self.cleaned_data['arquivo'])
 
 
 class OrcamentoMedicaoManualForm(BootstrapModelForm):

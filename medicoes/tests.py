@@ -17,6 +17,7 @@ from controles.models import FaturamentoDireto
 from documentos.pdf import PdfDocument, PdfTableColumn
 
 from .forms import RelatorioMedicoesForm
+from .forms import ImportarOrcamentoForm
 from .models import (
     Empreiteiro,
     FaturamentoDiretoMedicao,
@@ -310,6 +311,16 @@ class MedicoesTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(OrcamentoMedicao.objects.filter(nome='Planilha invalida').exists())
+
+    def test_importacao_medicao_rejeita_arquivo_nao_csv(self):
+        form = ImportarOrcamentoForm(
+            data={'obra': self.obra.id, 'nome': 'Planilha invalida', 'tipo': OrcamentoMedicao.TIPO_CONSTRUTORA},
+            files={'arquivo': SimpleUploadedFile('planilha.xlsm', b'conteudo', content_type='application/octet-stream')},
+            empresa=self.empresa,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('arquivo', form.errors)
 
     def test_edita_itens_da_planilha_importada(self):
         orcamento, item = self._orcamento()

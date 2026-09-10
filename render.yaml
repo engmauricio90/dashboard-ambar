@@ -35,7 +35,7 @@ services:
       - key: DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS
         value: "True"
       - key: DJANGO_SECURE_HSTS_PRELOAD
-        value: "True"
+        value: "False"
       - key: DJANGO_LOG_LEVEL
         value: INFO
       - key: POSTGRES_CONN_MAX_AGE
