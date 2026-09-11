@@ -23,6 +23,7 @@ staticfiles/
 # Logs
 *.log
 render*.json
+backups/
 
 # Test / cache
 tmp/
