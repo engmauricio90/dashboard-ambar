@@ -106,6 +106,9 @@
                     {% endif %}
                     {% if request.user.is_staff or request.user.is_superuser %}
                     <a class="nav-link" href="{% url 'clientes_plataforma' %}">Clientes</a>
+                    <a class="nav-link" href="{% url 'leads_plataforma' %}">Leads</a>
+                    <a class="nav-link" href="{% url 'assinaturas_plataforma' %}">Assinaturas</a>
+                    <a class="nav-link" href="{% url 'contratacoes_plataforma' %}">Contratações</a>
                     <a class="nav-link" href="{% url 'social_automation:home' %}" data-legacy-label="Automacao Social">Automação Social</a>
                     {% endif %}
                     <a class="nav-link" href="{% url 'minha_area' %}">Minha área</a>

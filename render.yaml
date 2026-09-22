@@ -84,6 +84,18 @@ services:
         value: "7"
       - key: SOCIAL_REEL_RENDER_TIMEOUT_SECONDS
         value: "30"
+      - key: BILLING_GRACE_DAYS
+        value: "5"
+      - key: MERCADOPAGO_ENVIRONMENT
+        value: sandbox
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: MERCADOPAGO_TEST_PAYER_EMAIL
+        sync: false
+      - key: PUBLIC_CHECKOUT_RATE_LIMIT
+        value: "5"
+      - key: PUBLIC_CHECKOUT_RATE_LIMIT_WINDOW
+        value: "3600"
       - key: SOCIAL_AUTOMATION_CRON_SECRET
         sync: false
       - key: INSTAGRAM_ACCESS_TOKEN
@@ -97,6 +109,12 @@ services:
       - key: SOCIAL_INSTAGRAM_CLIENT_SECRET
         sync: false
       - key: SOCIAL_INSTAGRAM_OAUTH_REDIRECT_URI
+        sync: false
+      - key: MERCADOPAGO_ACCESS_TOKEN
+        sync: false
+      - key: MERCADOPAGO_PUBLIC_KEY
+        sync: false
+      - key: MERCADOPAGO_WEBHOOK_SECRET
         sync: false
       - key: SENTRY_ENVIRONMENT
         value: production

@@ -82,6 +82,15 @@ SOCIAL_AUTOMATION_TICK_LOCK_SECONDS = int(env('SOCIAL_AUTOMATION_TICK_LOCK_SECON
 SOCIAL_REEL_MAX_FILE_MB = int(env('SOCIAL_REEL_MAX_FILE_MB', '20'))
 SOCIAL_REEL_DURATION_SECONDS = int(env('SOCIAL_REEL_DURATION_SECONDS', '7'))
 SOCIAL_REEL_RENDER_TIMEOUT_SECONDS = int(env('SOCIAL_REEL_RENDER_TIMEOUT_SECONDS', '30'))
+MERCADOPAGO_ACCESS_TOKEN = env('MERCADOPAGO_ACCESS_TOKEN', '')
+MERCADOPAGO_PUBLIC_KEY = env('MERCADOPAGO_PUBLIC_KEY', '')
+MERCADOPAGO_WEBHOOK_SECRET = env('MERCADOPAGO_WEBHOOK_SECRET', '')
+MERCADOPAGO_ENVIRONMENT = env('MERCADOPAGO_ENVIRONMENT', 'sandbox')
+MERCADOPAGO_TEST_PAYER_EMAIL = env('MERCADOPAGO_TEST_PAYER_EMAIL', '')
+BILLING_GRACE_DAYS = int(env('BILLING_GRACE_DAYS', '5'))
+PUBLIC_BASE_URL = env('PUBLIC_BASE_URL', '')
+PUBLIC_CHECKOUT_RATE_LIMIT = int(env('PUBLIC_CHECKOUT_RATE_LIMIT', '5'))
+PUBLIC_CHECKOUT_RATE_LIMIT_WINDOW = int(env('PUBLIC_CHECKOUT_RATE_LIMIT_WINDOW', '3600'))
 
 render_hostname = env('RENDER_EXTERNAL_HOSTNAME')
 if render_hostname and render_hostname not in ALLOWED_HOSTS:
@@ -105,6 +114,8 @@ INSTALLED_APPS = [
     'usuarios',
     'empresas',
     'social_automation',
+    'site_publico',
+    'billing',
 ]
 
 MIDDLEWARE = [
@@ -115,6 +126,7 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'empresas.middleware.EmpresaAtivaMiddleware',
+    'billing.middleware.BillingAccessMiddleware',
     'config.middleware.LoginRequiredMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -190,6 +202,17 @@ LOGOUT_REDIRECT_URL = 'login'
 PLATFORM_NAME = env('PLATFORM_NAME', 'Sistema de Obras')
 PLATFORM_BASE_URL = env('PLATFORM_BASE_URL', '')
 PLATFORM_SUPPORT_EMAIL = env('PLATFORM_SUPPORT_EMAIL', '')
+PUBLIC_WHATSAPP_NUMBER = env('PUBLIC_WHATSAPP_NUMBER', '')
+PUBLIC_WHATSAPP_MESSAGE = env(
+    'PUBLIC_WHATSAPP_MESSAGE',
+    'Ola! Conheci a Estribo e gostaria de entender como a plataforma pode ajudar na gestao da minha construtora.',
+)
+PUBLIC_GA4_ID = env('PUBLIC_GA4_ID', '')
+PUBLIC_GOOGLE_ADS_ID = env('PUBLIC_GOOGLE_ADS_ID', '')
+PUBLIC_META_PIXEL_ID = env('PUBLIC_META_PIXEL_ID', '')
+PUBLIC_LEAD_NOTIFICATION_EMAIL = env('PUBLIC_LEAD_NOTIFICATION_EMAIL', '')
+PUBLIC_LEAD_RATE_LIMIT = int(env('PUBLIC_LEAD_RATE_LIMIT', '5'))
+PUBLIC_LEAD_RATE_LIMIT_WINDOW = int(env('PUBLIC_LEAD_RATE_LIMIT_WINDOW', '3600'))
 
 EMAIL_BACKEND = env(
     'EMAIL_BACKEND',

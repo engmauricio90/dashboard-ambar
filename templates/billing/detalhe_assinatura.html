@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Assinatura {{ assinatura.id }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h1>{{ assinatura.empresa.nome }}</h1>
+        <p class="text-muted mb-0">{{ assinatura.get_periodicidade_display }} - {{ assinatura.get_status_display }}</p>
+    </div>
+    <a class="btn btn-secondary" href="{% url 'assinaturas_plataforma' %}">Voltar</a>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-5">
+        <div class="card mb-3">
+            <div class="card-header fw-bold">Assinatura</div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-5">Valor</dt><dd class="col-sm-7">R$ {{ assinatura.valor_contratado }}</dd>
+                    <dt class="col-sm-5">Moeda</dt><dd class="col-sm-7">{{ assinatura.moeda }}</dd>
+                    <dt class="col-sm-5">Início</dt><dd class="col-sm-7">{{ assinatura.data_inicio|date:"d/m/Y H:i"|default:"-" }}</dd>
+                    <dt class="col-sm-5">Fim do período</dt><dd class="col-sm-7">{{ assinatura.data_fim_periodo|date:"d/m/Y H:i"|default:"-" }}</dd>
+                    <dt class="col-sm-5">Próxima cobrança</dt><dd class="col-sm-7">{{ assinatura.proxima_cobranca|date:"d/m/Y H:i"|default:"-" }}</dd>
+                    <dt class="col-sm-5">Tolerância</dt><dd class="col-sm-7">{{ assinatura.grace_until|date:"d/m/Y H:i"|default:"-" }}</dd>
+                    <dt class="col-sm-5">Gateway ID</dt><dd class="col-sm-7">{{ assinatura.gateway_subscription_id|default:"-"|truncatechars:18 }}</dd>
+                    <dt class="col-sm-5">Checkout</dt><dd class="col-sm-7">{% if assinatura.checkout_url %}<a href="{{ assinatura.checkout_url }}" target="_blank" rel="noopener">Abrir checkout</a>{% else %}-{% endif %}</dd>
+                </dl>
+                {% if assinatura.cancel_at_period_end %}
+                    <div class="alert alert-warning mt-3 mb-0">
+                        <strong>Cancelamento agendado para o fim do período.</strong><br>
+                        O acesso permanece ativo até {{ assinatura.data_fim_periodo|date:"d/m/Y H:i"|default:"a data final ser definida" }}.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="d-flex gap-2">
+            <form method="post" action="{% url 'ativar_assinatura_manual' assinatura.id %}">
+                {% csrf_token %}
+                <button class="btn btn-outline-success" type="submit">Ativar manualmente</button>
+            </form>
+            {% if not assinatura.cancel_at_period_end %}
+                <form method="post" action="{% url 'cancelar_assinatura_plataforma' assinatura.id %}">
+                    {% csrf_token %}
+                    <button class="btn btn-outline-danger" type="submit">Cancelar ao fim do período</button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-header fw-bold">Pagamentos</div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Status</th>
+                            <th>Valor</th>
+                            <th>Forma</th>
+                            <th>Gateway</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for pagamento in pagamentos %}
+                            <tr>
+                                <td>{{ pagamento.criado_em|date:"d/m/Y H:i" }}</td>
+                                <td>{{ pagamento.get_status_display }}</td>
+                                <td>R$ {{ pagamento.valor }}</td>
+                                <td>{{ pagamento.forma_pagamento|default:"-" }}</td>
+                                <td>{{ pagamento.gateway_payment_id|default:"-"|truncatechars:18 }}</td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="5" class="text-muted text-center py-4">Nenhum pagamento registrado.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -17,6 +17,7 @@ urlpatterns = [
     path('pagar/importar-credores/', views.importar_contas_pagar_sienge, name='importar_contas_pagar_sienge'),
     path('pagar/nova/', views.nova_conta_pagar, name='nova_conta_pagar'),
     path('pagar/<int:conta_id>/editar/', views.editar_conta_pagar, name='editar_conta_pagar'),
+    path('pagar/<int:conta_id>/excluir/', views.excluir_conta_pagar, name='excluir_conta_pagar'),
     path('pagar/<int:conta_id>/baixar/', views.baixar_conta_pagar, name='baixar_conta_pagar'),
     path('previsoes/', views.lista_previsoes_financeiras, name='lista_previsoes_financeiras'),
     path('previsoes/nova/', views.nova_previsao_financeira, name='nova_previsao_financeira'),

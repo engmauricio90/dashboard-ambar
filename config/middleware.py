@@ -14,10 +14,15 @@ class LoginRequiredMiddleware:
         return self.get_response(request)
 
     def _is_exempt_path(self, path):
+        if path == '/':
+            return True
+        if path in {'/privacidade/', '/termos/', '/assinar/'}:
+            return True
         exempt_prefixes = (
             reverse(settings.LOGIN_URL),
             reverse('logout'),
             reverse('healthz'),
+            '/billing/',
             '/senha/',
             '/social-media/public/',
             '/social-media/public-jpg/',

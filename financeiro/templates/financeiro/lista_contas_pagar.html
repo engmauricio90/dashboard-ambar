@@ -77,6 +77,7 @@
                             <a href="{% url 'baixar_conta_pagar' conta.id %}" class="btn btn-sm btn-outline-success">Pagar</a>
                             {% endif %}
                             <a href="{% url 'editar_conta_pagar' conta.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                            <a href="{% url 'excluir_conta_pagar' conta.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
                         </td>
                     </tr>
                     {% empty %}

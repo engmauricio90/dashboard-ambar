@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Lead {{ lead.nome }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h1>{{ lead.nome }}</h1>
+        <p class="text-muted mb-0">{{ lead.empresa }} · {{ lead.get_status_display }}</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-primary" href="{% url 'preparar_contratacao_lead' lead.id %}">Preparar contratação</a>
+        <a class="btn btn-secondary" href="{% url 'leads_plataforma' %}">Voltar</a>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-7">
+        <div class="card mb-3">
+            <div class="card-header fw-bold">Contato</div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">Nome</dt><dd class="col-sm-8">{{ lead.nome }}</dd>
+                    <dt class="col-sm-4">Empresa</dt><dd class="col-sm-8">{{ lead.empresa }}</dd>
+                    <dt class="col-sm-4">E-mail</dt><dd class="col-sm-8"><a href="mailto:{{ lead.email }}">{{ lead.email }}</a></dd>
+                    <dt class="col-sm-4">Telefone</dt><dd class="col-sm-8">{{ lead.telefone }}</dd>
+                    <dt class="col-sm-4">WhatsApp</dt>
+                    <dd class="col-sm-8">
+                        {% if whatsapp_lead_url %}
+                            <a class="btn btn-sm btn-success" target="_blank" rel="noopener" href="{{ whatsapp_lead_url }}">Abrir WhatsApp</a>
+                        {% else %}
+                            <span class="text-muted">Telefone não informado</span>
+                        {% endif %}
+                    </dd>
+                </dl>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header fw-bold">Qualificação</div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">Função/cargo</dt><dd class="col-sm-8">{{ lead.cargo_funcao|default:"-" }}</dd>
+                    <dt class="col-sm-4">Quantidade de obras</dt><dd class="col-sm-8">{{ lead.quantidade_obras|default:"-" }}</dd>
+                    <dt class="col-sm-4">Interesse comercial</dt><dd class="col-sm-8">{{ lead.get_billing_preference_display|default:"-" }}</dd>
+                    <dt class="col-sm-4">Como controla hoje</dt><dd class="col-sm-8">{{ lead.get_como_controla_hoje_display|default:"-" }}</dd>
+                    <dt class="col-sm-4">Principal dificuldade</dt><dd class="col-sm-8">{{ lead.get_principal_dificuldade_display|default:"-" }}</dd>
+                    <dt class="col-sm-4">Mensagem</dt><dd class="col-sm-8">{{ lead.mensagem|default:"-"|linebreaksbr }}</dd>
+                </dl>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header fw-bold">Origem</div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">UTM source</dt><dd class="col-sm-8">{{ lead.utm_source|default:"-" }}</dd>
+                    <dt class="col-sm-4">UTM medium</dt><dd class="col-sm-8">{{ lead.utm_medium|default:"-" }}</dd>
+                    <dt class="col-sm-4">UTM campaign</dt><dd class="col-sm-8">{{ lead.utm_campaign|default:"-" }}</dd>
+                    <dt class="col-sm-4">UTM content</dt><dd class="col-sm-8">{{ lead.utm_content|default:"-" }}</dd>
+                    <dt class="col-sm-4">UTM term</dt><dd class="col-sm-8">{{ lead.utm_term|default:"-" }}</dd>
+                    <dt class="col-sm-4">GCLID</dt><dd class="col-sm-8">{{ lead.gclid|default:"-" }}</dd>
+                    <dt class="col-sm-4">FBCLID</dt><dd class="col-sm-8">{{ lead.fbclid|default:"-" }}</dd>
+                    <dt class="col-sm-4">Landing path</dt><dd class="col-sm-8">{{ lead.landing_path|default:"-" }}</dd>
+                    <dt class="col-sm-4">Referrer</dt><dd class="col-sm-8">{{ lead.referrer|default:"-" }}</dd>
+                    <dt class="col-sm-4">Consentimento</dt><dd class="col-sm-8">{{ lead.consent_at|date:"d/m/Y H:i"|default:"-" }}</dd>
+                    <dt class="col-sm-4">Criado em</dt><dd class="col-sm-8">{{ lead.created_at|date:"d/m/Y H:i" }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="card">
+            <div class="card-header fw-bold">Acompanhamento comercial</div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">Status</label>
+                        {{ form.status }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Observação comercial</label>
+                        {{ form.observacao_comercial }}
+                    </div>
+                    <button class="btn btn-primary" type="submit">Salvar</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

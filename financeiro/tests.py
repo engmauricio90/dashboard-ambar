@@ -257,6 +257,50 @@ class FinanceiroIntegracaoObraTests(TestCase):
         self.assertEqual(despesa.valor, Decimal('350.00'))
         self.assertEqual(self.obra.total_despesa_real, Decimal('350.00'))
 
+    def test_excluir_conta_pagar_remove_despesa_integrada_da_obra(self):
+        conta = ContaPagar.objects.create(
+            fornecedor='Fornecedor Exclusao',
+            obra=self.obra,
+            centro_custo=self.centro,
+            categoria='material',
+            descricao='Despesa integrada',
+            data_emissao=date(2026, 4, 2),
+            data_vencimento=date(2026, 4, 20),
+            valor=Decimal('350.00'),
+        )
+        conta_id = conta.id
+        despesa_id = conta.despesa_obra_id
+
+        response_get = self.client.get(reverse('excluir_conta_pagar', args=[conta_id]))
+        self.assertEqual(response_get.status_code, 200)
+        self.assertContains(response_get, 'tambem sera removida do financeiro da obra')
+
+        response = self.client.post(reverse('excluir_conta_pagar', args=[conta_id]))
+
+        self.assertRedirects(response, reverse('lista_contas_pagar'))
+        self.assertFalse(ContaPagar.objects.filter(id=conta_id).exists())
+        self.assertFalse(DespesaObra.objects.filter(id=despesa_id).exists())
+
+    def test_excluir_conta_pagar_de_outra_empresa_retorna_404(self):
+        outra, obra, centro, _fornecedor = self._outra_empresa_com_cadastros()
+        conta = ContaPagar.objects.create(
+            empresa=outra,
+            fornecedor='Fornecedor Cassoni',
+            obra=obra,
+            centro_custo=centro,
+            categoria='material',
+            descricao='Despesa de outro tenant',
+            data_emissao=date(2026, 4, 2),
+            data_vencimento=date(2026, 4, 20),
+            valor=Decimal('100.00'),
+        )
+
+        response = self.client.post(reverse('excluir_conta_pagar', args=[conta.id]))
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(ContaPagar.objects.filter(id=conta.id).exists())
+        self.assertTrue(DespesaObra.objects.filter(id=conta.despesa_obra_id).exists())
+
     def test_conta_pagar_sem_obra_remove_despesa_anterior(self):
         conta = ContaPagar.objects.create(
             fornecedor='Fornecedor A',

@@ -705,9 +705,19 @@ def excluir_despesa(request, obra_id, despesa_id):
 
     if request.method == 'POST':
         descricao = despesa.descricao
-        despesa.delete()
-        messages.success(request, f'Despesa "{descricao}" excluida com sucesso.')
+        from financeiro.models import ContaPagar
+        from financeiro.services import excluir_conta_pagar_integrada
+
+        conta = ContaPagar.objects.filter(despesa_obra=despesa, empresa=request.empresa).first()
+        if conta:
+            excluir_conta_pagar_integrada(conta)
+            messages.success(request, f'Despesa "{descricao}" excluida da obra e do Financeiro.')
+        else:
+            despesa.delete()
+            messages.success(request, f'Despesa "{descricao}" excluida com sucesso.')
         return redirect('historico_financeiro', obra_id=obra.id)
+
+    integrada_ao_financeiro = hasattr(despesa, 'conta_pagar_origem')
 
     return render(
         request,
@@ -715,7 +725,11 @@ def excluir_despesa(request, obra_id, despesa_id):
         {
             'titulo': 'Excluir despesa',
             'mensagem': f'Voce esta prestes a excluir a despesa "{despesa.descricao}".',
-            'detalhe': 'O total financeiro da obra sera recalculado automaticamente.',
+            'detalhe': (
+                'A conta a pagar vinculada tambem sera excluida do Financeiro.'
+                if integrada_ao_financeiro
+                else 'O total financeiro da obra sera recalculado automaticamente.'
+            ),
             'confirmar_label': 'Excluir despesa',
             'cancelar_href': reverse('historico_financeiro', args=[obra.id]),
         },

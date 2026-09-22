@@ -149,6 +149,15 @@ def sincronizar_conta_pagar_obra(conta):
     conta.despesa_obra = despesa
 
 
+@transaction.atomic
+def excluir_conta_pagar_integrada(conta):
+    """Remove a conta e o reflexo dela no financeiro da obra."""
+    despesa_id = conta.despesa_obra_id
+    conta.delete()
+    if despesa_id:
+        DespesaObra.objects.filter(pk=despesa_id).delete()
+
+
 def sincronizar_conta_pagar_ordem_compra(conta):
     from controles.models import NotaFiscalOrdemCompraGeral
 

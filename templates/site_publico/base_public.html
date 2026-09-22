@@ -1,0 +1,102 @@
+{% load static %}
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ page_title|default:"Estribo | Gest&atilde;o de obras para construtoras" }}{% endblock %}</title>
+  <meta name="description" content="{{ meta_description|default:'Gest&atilde;o de obras, medi&ccedil;&otilde;es, compras, financeiro e di&aacute;rios em uma &uacute;nica plataforma para construtoras.' }}">
+  <link rel="canonical" href="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Estribo | Gest&atilde;o de obras para construtoras">
+  <meta property="og:description" content="Gest&atilde;o de obras, medi&ccedil;&otilde;es, compras, financeiro e di&aacute;rios em uma &uacute;nica plataforma para construtoras.">
+  <meta property="og:url" content="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}">
+  <meta property="og:site_name" content="Estribo">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Estribo | Gest&atilde;o de obras para construtoras">
+  <meta name="twitter:description" content="Do contrato ao resultado da obra.">
+  <link rel="icon" type="image/png" sizes="32x32" href="{% static 'site_publico/brand/favicon-32.png' %}">
+  <link rel="apple-touch-icon" href="{% static 'site_publico/brand/apple-touch-icon.png' %}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'site_publico/css/public.css' %}">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Estribo",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Web",
+    "description": "Plataforma de gestao operacional e financeira para construtoras.",
+    "url": "{{ request.scheme }}://{{ request.get_host }}/"
+  }
+  </script>
+</head>
+<body
+  data-ga4-id="{{ public_ga4_id|default:'' }}"
+  data-google-ads-id="{{ public_google_ads_id|default:'' }}"
+  data-meta-pixel-id="{{ public_meta_pixel_id|default:'' }}"
+>
+  <a class="skip-link" href="#conteudo">Ir para o conte&uacute;do</a>
+  <header class="public-header" data-public-header>
+    <nav class="public-nav" aria-label="Navega&ccedil;&atilde;o principal">
+      <a class="brand brand-logo-link" href="/" aria-label="Estribo">
+        <img class="brand-logo brand-logo-horizontal" src="{% static 'site_publico/brand/logo-estribo-horizontal.png' %}" width="224" height="66" alt="Estribo - Gest&atilde;o para construtoras">
+      </a>
+      <button class="nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="public-menu">
+        <span></span><span></span><span></span>
+        <span class="sr-only">Abrir menu</span>
+      </button>
+      <div class="nav-menu" id="public-menu" data-nav-menu>
+        <a href="/#plataforma">Plataforma</a>
+        <a href="/#solucoes">Solu&ccedil;&otilde;es</a>
+        <a href="/#construtoras">Para construtoras</a>
+        <a href="/#planos">Planos</a>
+        <a href="/#seguranca">Seguran&ccedil;a</a>
+      </div>
+      <div class="nav-actions">
+        <a class="nav-login" href="{% url 'login' %}">Entrar</a>
+        <a class="btn btn-primary" href="{% url 'checkout_publico' %}" data-track="pricing_start_checkout">Come&ccedil;ar agora</a>
+      </div>
+    </nav>
+  </header>
+  <main id="conteudo">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="public-footer">
+    <div class="footer-grid">
+      <div>
+        <img class="footer-brand-logo" src="{% static 'site_publico/brand/logo-estribo-horizontal-white.png' %}" width="224" height="66" alt="Estribo - Gest&atilde;o para construtoras">
+      </div>
+      <div>
+        <h2>Produto</h2>
+        <a href="#plataforma">Plataforma</a>
+        <a href="#solucoes">Solu&ccedil;&otilde;es</a>
+        <a href="/#planos">Planos</a>
+        <a href="#seguranca">Seguran&ccedil;a</a>
+      </div>
+      <div>
+        <h2>Empresa</h2>
+        <a href="#origem">Sobre</a>
+        <a href="/#demonstracao">Contato</a>
+      </div>
+      <div id="legal">
+        <h2>Legal</h2>
+        <a href="{% url 'public_termos' %}">Termos de Uso</a>
+        <a href="{% url 'public_privacidade' %}">Pol&iacute;tica de Privacidade</a>
+        <a href="{% url 'login' %}">Entrar</a>
+      </div>
+    </div>
+    <div class="footer-bottom">&copy; 2026 Estribo. Todos os direitos reservados.</div>
+  </footer>
+  <div class="cookie-banner" data-cookie-banner hidden>
+    <p>Usamos cookies opcionais para medir campanhas e melhorar a comunica&ccedil;&atilde;o comercial da Estribo.</p>
+    <div>
+      <button class="btn btn-secondary" type="button" data-cookie-reject>Recusar</button>
+      <button class="btn btn-primary" type="button" data-cookie-accept>Aceitar</button>
+    </div>
+  </div>
+  <script src="{% static 'site_publico/js/public.js' %}" defer></script>
+</body>
+</html>

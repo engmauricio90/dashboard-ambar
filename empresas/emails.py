@@ -16,6 +16,10 @@ logger = logging.getLogger(__name__)
 def _absolute_url(request, path):
     if settings.PLATFORM_BASE_URL:
         return urljoin(settings.PLATFORM_BASE_URL.rstrip('/') + '/', path.lstrip('/'))
+    if getattr(settings, 'PUBLIC_BASE_URL', ''):
+        return urljoin(settings.PUBLIC_BASE_URL.rstrip('/') + '/', path.lstrip('/'))
+    if request is None:
+        raise ValueError('PLATFORM_BASE_URL ou PUBLIC_BASE_URL precisa estar configurada para envio sem request.')
     return request.build_absolute_uri(path)
 
 

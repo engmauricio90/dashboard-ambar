@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Preparar contratação{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h1>Preparar contratação</h1>
+        <p class="text-muted mb-0">{{ lead.nome }} - {{ lead.empresa }}</p>
+    </div>
+    <a class="btn btn-secondary" href="{% url 'detalhe_lead_plataforma' lead.id %}">Voltar</a>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-header fw-bold">Dados da assinatura</div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    {{ form.non_field_errors }}
+                    <div class="mb-3">
+                        <label class="form-label" for="{{ form.empresa.id_for_label }}">Empresa cliente</label>
+                        {{ form.empresa }}
+                        <div class="form-text">{{ form.empresa.help_text }}</div>
+                        {{ form.empresa.errors }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="{{ form.periodicidade.id_for_label }}">Periodicidade</label>
+                        {{ form.periodicidade }}
+                        {{ form.periodicidade.errors }}
+                    </div>
+                    <button class="btn btn-primary" type="submit">Preparar checkout</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="card">
+            <div class="card-header fw-bold">Oferta Estribo</div>
+            <div class="card-body">
+                <ul class="list-unstyled mb-0">
+                    {% for codigo, config in periodicidades.items %}
+                        <li class="border-bottom py-2">
+                            <strong>{{ config.rotulo }}</strong><br>
+                            R$ {{ config.valor }} a cada {{ config.meses }} mês(es)<br>
+                            <span class="text-muted">Plano único, obras ilimitadas, usuários ilimitados e 10 GB inclusos.</span>
+                        </li>
+                    {% endfor %}
+                </ul>
+                <p class="text-muted small mt-3 mb-0">Parcelamento recorrente no checkout não foi habilitado sem validação técnica concreta do gateway.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

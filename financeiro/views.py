@@ -44,6 +44,7 @@ from .importadores import decodificar_csv_upload, importar_contas_pagar_credores
 from .models import CentroCusto, ContaPagar, ContaReceber, Fornecedor, PrevisaoFinanceira
 from .services import baixar_conta_pagar as baixar_conta_pagar_service
 from .services import baixar_conta_receber as baixar_conta_receber_service
+from .services import excluir_conta_pagar_integrada
 
 
 financeiro_required = group_required('Financeiro', 'Diretoria')
@@ -1025,3 +1026,34 @@ def relatorio_financeiro_pdf(request):
     )
     response['Content-Disposition'] = 'inline; filename="relatorio_financeiro.pdf"'
     return response
+
+
+@financeiro_required
+@empresa_required
+def excluir_conta_pagar(request, conta_id):
+    conta = get_object_or_404(ContaPagar, id=conta_id, empresa=request.empresa)
+    redirect_name = {
+        ContaPagar.STATUS_PAGO: 'lista_contas_pagas',
+        ContaPagar.STATUS_CANCELADO: 'lista_contas_pagar_canceladas',
+    }.get(conta.status, 'lista_contas_pagar')
+
+    if request.method == 'POST':
+        descricao = conta.descricao
+        excluir_conta_pagar_integrada(conta)
+        messages.success(request, f'Despesa "{descricao}" excluida do Financeiro e da obra vinculada.')
+        return redirect(redirect_name)
+
+    detalhe = 'A conta a pagar sera excluida definitivamente.'
+    if conta.despesa_obra_id:
+        detalhe += ' A despesa correspondente tambem sera removida do financeiro da obra.'
+    return render(
+        request,
+        'obras/confirmar_exclusao.html',
+        {
+            'titulo': 'Excluir despesa financeira',
+            'mensagem': f'Voce esta prestes a excluir a despesa "{conta.descricao}".',
+            'detalhe': detalhe,
+            'confirmar_label': 'Excluir despesa',
+            'cancelar_href': reverse(redirect_name),
+        },
+    )

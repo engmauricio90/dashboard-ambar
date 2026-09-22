@@ -1,0 +1,20 @@
+{% extends "site_publico/base_public.html" %}
+{% block title %}Status da assinatura | Estribo{% endblock %}
+{% block content %}
+<section class="section-shell checkout-result" {% if intent.status == 'CONVERTIDO' %}data-track-view="subscription_confirmed"{% else %}data-track-view="checkout_return"{% endif %}>
+  {% if intent.status == 'CONVERTIDO' %}
+    <p class="eyebrow">Assinatura confirmada</p><h1>Sua Estribo está pronta.</h1>
+    <p><strong>{{ intent.empresa.nome }}</strong> · {{ intent.get_periodicidade_display }}</p>
+    <p>Enviamos para seu e-mail o link para criar sua senha e acessar a plataforma.</p>
+    <a class="btn btn-primary btn-lg" href="{% url 'login' %}">Acessar Estribo</a>
+  {% elif intent.status == 'FALHOU' or intent.status == 'CANCELADO' or intent.status == 'EXPIRADO' %}
+    <p class="eyebrow">Contratação não concluída</p><h1>O pagamento não foi confirmado.</h1>
+    <p>Nenhuma empresa foi criada. Você pode retomar o checkout ou falar com nosso time.</p>
+    {% if intent.gateway_checkout_url %}<a class="btn btn-primary" href="{{ intent.gateway_checkout_url }}" rel="noopener">Continuar pagamento</a>{% endif %}
+  {% else %}
+    <p class="eyebrow">Confirmação em andamento</p><h1>Estamos confirmando seu pagamento.</h1>
+    <p>A liberação acontece somente depois da confirmação segura do Mercado Pago. Atualize esta página em alguns instantes.</p>
+    {% if intent.gateway_checkout_url %}<a class="btn btn-secondary" href="{{ intent.gateway_checkout_url }}" rel="noopener">Continuar pagamento</a>{% endif %}
+  {% endif %}
+</section>
+{% endblock %}

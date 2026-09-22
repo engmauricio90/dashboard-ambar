@@ -7,6 +7,7 @@ from django.contrib.auth import views as auth_views
 from empresas import views as empresas_views
 from usuarios.auth_views import RateLimitedLoginView, RateLimitedPasswordResetView
 from social_automation import views as social_automation_views
+from billing import urls as billing_urls
 
 from .views import protected_media
 
@@ -27,6 +28,8 @@ urlpatterns = [
     path('plataforma/clientes/<int:empresa_id>/editar/', empresas_views.editar_cliente_plataforma, name='editar_cliente_plataforma'),
     path('plataforma/clientes/convites/<int:vinculo_id>/reenviar/', empresas_views.reenviar_convite_plataforma, name='reenviar_convite_plataforma'),
     path('plataforma/automacoes/social/', include('social_automation.urls')),
+    path('', include(billing_urls.platform_urlpatterns)),
+    path('billing/', include('billing.urls')),
     path(
         'senha/redefinir/',
         RateLimitedPasswordResetView.as_view(),
@@ -47,6 +50,7 @@ urlpatterns = [
         auth_views.PasswordResetCompleteView.as_view(template_name='registration/password_reset_complete.html'),
         name='password_reset_complete',
     ),
+    path('', include('site_publico.urls')),
     path('', include('dashboard.urls')),
     path('obras/', include('obras.urls')),
     path('controles/', include('controles.urls')),

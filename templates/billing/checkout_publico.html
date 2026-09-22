@@ -1,0 +1,38 @@
+{% extends "site_publico/base_public.html" %}
+{% block title %}Assinar Estribo{% endblock %}
+{% block content %}
+<section class="section-shell checkout-shell" data-track-view="pricing_start_checkout">
+  <div class="checkout-heading">
+    <p class="eyebrow">Contratação segura</p>
+    <h1>Comece com a Estribo.</h1>
+    <p>Escolha o ciclo, informe seus dados e conclua no ambiente oficial do Mercado Pago.</p>
+  </div>
+  <div class="checkout-layout">
+    <form class="demo-form checkout-form" method="post" data-checkout-form>
+      {% csrf_token %}
+      {{ form.website }}{{ form.utm_source }}{{ form.utm_medium }}{{ form.utm_campaign }}{{ form.utm_content }}{{ form.utm_term }}{{ form.gclid }}{{ form.fbclid }}
+      {% if form.non_field_errors %}<div class="form-errors full">{{ form.non_field_errors }}</div>{% endif %}
+      <label>Nome do responsável *{{ form.nome_responsavel }}{{ form.nome_responsavel.errors }}</label>
+      <label>Nome da empresa *{{ form.nome_empresa }}{{ form.nome_empresa.errors }}</label>
+      <label>E-mail *{{ form.email }}{{ form.email.errors }}</label>
+      <label>WhatsApp *{{ form.telefone }}{{ form.telefone.errors }}</label>
+      <label class="full">Periodicidade{{ form.periodicidade }}{{ form.periodicidade.errors }}</label>
+      <label class="checkbox-field full">{{ form.consentimento }}<span>Li e concordo com os <a href="{% url 'public_termos' %}">Termos de Uso</a> e a <a href="{% url 'public_privacidade' %}">Política de Privacidade</a>.</span>{{ form.consentimento.errors }}</label>
+      <button class="btn btn-primary btn-lg" type="submit" data-track="checkout_form_submit">Ir para pagamento seguro</button>
+      <p class="checkout-security full">O pagamento acontece no Mercado Pago. A Estribo não recebe nem armazena os dados do seu cartão.</p>
+    </form>
+    <aside class="checkout-summary">
+      <p class="eyebrow">Plano único</p>
+      {% for codigo, config in periodicidades.items %}
+        <div data-checkout-summary="{{ codigo }}" {% if form.periodicidade.value != codigo %}hidden{% endif %}>
+          <h2>{{ config.rotulo }}</h2>
+          <strong>R$ {{ config.valor }}</strong>
+          <span>renovação automática a cada {{ config.meses }} mês(es)</span>
+        </div>
+      {% endfor %}
+      <ul><li>Todas as funcionalidades</li><li>Obras ilimitadas</li><li>Usuários ilimitados</li><li>10 GB incluídos</li></ul>
+      <p>Prefere pagamento parcelado? <a href="/#demonstracao">Fale com nosso time.</a></p>
+    </aside>
+  </div>
+</section>
+{% endblock %}

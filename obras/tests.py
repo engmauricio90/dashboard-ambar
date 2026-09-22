@@ -6,6 +6,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from empresas.models import Empresa, UsuarioEmpresa
+from financeiro.models import ContaPagar
 from controles.models import FaturamentoDireto
 from medicoes.models import (
     ItemMedicaoConstrutora,
@@ -288,6 +289,28 @@ class ObraFluxoFinanceiroTests(TestCase):
 
         self.assertRedirects(response, reverse('historico_financeiro', args=[self.obra.id]))
         self.assertFalse(DespesaObra.objects.filter(id=despesa.id).exists())
+
+    def test_excluir_despesa_integrada_remove_conta_pagar(self):
+        conta = ContaPagar.objects.create(
+            fornecedor='Fornecedor integrado',
+            obra=self.obra,
+            categoria='material',
+            descricao='Despesa originada no financeiro',
+            data_emissao=date(2026, 4, 20),
+            data_vencimento=date(2026, 4, 30),
+            valor=Decimal('80.00'),
+        )
+        conta_id = conta.id
+        despesa_id = conta.despesa_obra_id
+
+        response_get = self.client.get(reverse('excluir_despesa', args=[self.obra.id, despesa_id]))
+        self.assertContains(response_get, 'conta a pagar vinculada tambem sera excluida')
+
+        response = self.client.post(reverse('excluir_despesa', args=[self.obra.id, despesa_id]))
+
+        self.assertRedirects(response, reverse('historico_financeiro', args=[self.obra.id]))
+        self.assertFalse(DespesaObra.objects.filter(id=despesa_id).exists())
+        self.assertFalse(ContaPagar.objects.filter(id=conta_id).exists())
 
     def test_excluir_nota_fiscal_remove_registro(self):
         nota = NotaFiscal.objects.create(

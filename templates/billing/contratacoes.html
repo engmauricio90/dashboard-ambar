@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Contratações self-service{% endblock %}
+{% block content %}
+<h1>Contratações self-service</h1>
+<form method="get" class="card card-body mb-3"><div class="row g-2 align-items-end">
+  {% for field in form %}<div class="col-md-2"><label class="form-label">{{ field.label }}</label>{{ field }}</div>{% endfor %}
+  <div class="col-md-2"><button class="btn btn-primary w-100" type="submit">Filtrar</button></div>
+</div></form>
+<div class="card"><div class="table-responsive"><table class="table table-striped align-middle mb-0"><thead><tr><th>Data</th><th>Empresa</th><th>Responsável</th><th>Periodicidade</th><th>Status</th><th>Origem</th><th>Conversão</th><th></th></tr></thead><tbody>
+{% for intent in page_obj %}<tr><td>{{ intent.created_at|date:"d/m/Y H:i" }}</td><td>{{ intent.nome_empresa }}</td><td>{{ intent.nome_responsavel }}</td><td>{{ intent.get_periodicidade_display }}</td><td>{{ intent.get_status_display }}</td><td>{{ intent.utm_source|default:"Direto" }}</td><td>{{ intent.empresa.nome|default:"-" }}</td><td><a class="btn btn-sm btn-outline-primary" href="{% url 'detalhe_contratacao_plataforma' intent.id %}">Abrir</a></td></tr>
+{% empty %}<tr><td colspan="8" class="text-center text-muted py-4">Nenhuma contratação encontrada.</td></tr>{% endfor %}
+</tbody></table></div></div>
+{% endblock %}
